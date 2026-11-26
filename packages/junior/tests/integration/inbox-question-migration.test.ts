@@ -26,6 +26,8 @@ const backfill =
   ) ?? -1;
 
 const REQUEST = `{"question":"Roll out?","fields":[],"evidence":[{"label":"Canary","url":"https://ci.example.com/1"}]}`;
+// The item keeps its own copy for the release before this one.
+const ITEM_REQUEST = JSON.parse(REQUEST);
 // The question keeps the request, with its `evidence` links as `related`.
 const MOVED_REQUEST = {
   question: "Roll out?",
@@ -44,7 +46,9 @@ function legacyQuestion(
   const answer = extra.closed ? `'{"values":{"go":["Yes"]}}'` : "NULL";
   const status = extra.closed ? "done" : "open";
   const closedAt = extra.closed ? "now()" : "NULL";
-  return `INSERT INTO junior_inbox_items (id, kind, status, closed_at, visibility, title, body, subject_kind, subject_id, owner_id, added_by_turn_id, created_at, updated_at, request, answer) VALUES ('${id}', '${kind}', '${status}', ${closedAt}, 'public', 'Roll out ${id}?', 'The canary is clean.', 'question', 'key:${id}', '${owner}', 'turn-${id}', '2026-10-01T12:00:00Z', '2026-10-01T12:00:00Z', ${request}, ${answer})`;
+  // A notice keeps its link in `subject_url`.
+  const link = kind === "notice" ? `'https://ci.example.com/2'` : "NULL";
+  return `INSERT INTO junior_inbox_items (id, kind, status, closed_at, visibility, title, body, subject_kind, subject_id, dedupe_key, subject_url, owner_id, added_by_turn_id, created_at, updated_at, request, answer) VALUES ('${id}', '${kind}', '${status}', ${closedAt}, 'public', 'Roll out ${id}?', 'The canary is clean.', 'question', 'key:${id}', 'key:${id}', ${link}, '${owner}', 'turn-${id}', '2026-10-01T12:00:00Z', '2026-10-01T12:00:00Z', ${request}, ${answer})`;
 }
 
 function conversation(id: string): string {
@@ -87,19 +91,27 @@ describe("inbox question migration", () => {
 
       await run();
 
-      // Each question takes its item's id, and the item points at it.
+      // Each question takes its item's id, and the item points at it. The
+      // item keeps its own copy of the content, because the release before
+      // this one still reads it.
       expect(
         await fixture.sql.query(
           `SELECT id, subject_id, title, body, request, answer FROM junior_inbox_items ORDER BY id`,
         ),
       ).toEqual(
-        ["heads-up", "rollout", "shipped"].map((id) => ({
-          answer: null,
-          body: null,
-          id,
-          request: null,
-          subject_id: id,
-          title: null,
+        [
+          { answer: null, request: null, id: "heads-up" },
+          { answer: null, request: ITEM_REQUEST, id: "rollout" },
+          {
+            answer: { values: { go: ["Yes"] } },
+            request: ITEM_REQUEST,
+            id: "shipped",
+          },
+        ].map((row) => ({
+          ...row,
+          body: "The canary is clean.",
+          subject_id: row.id,
+          title: `Roll out ${row.id}?`,
         })),
       );
       expect(
@@ -112,7 +124,15 @@ describe("inbox question migration", () => {
           body: "The canary is clean.",
           conversation_id: "slack:C123:1.000001",
           id: "heads-up",
-          request: null,
+          // The notice's link becomes its one related link.
+          request: {
+            related: [
+              {
+                label: "https://ci.example.com/2",
+                url: "https://ci.example.com/2",
+              },
+            ],
+          },
           title: "Roll out heads-up?",
           turn_id: "turn-heads-up",
         },
@@ -155,10 +175,10 @@ describe("inbox question migration", () => {
         ),
       ).toEqual([
         {
-          answer: null,
+          answer: { values: { go: ["No"] } },
           subject_id: "late",
           subject_kind: "question",
-          title: null,
+          title: "Hold v42 now?",
         },
       ]);
       expect(

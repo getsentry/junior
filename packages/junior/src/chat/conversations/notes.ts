@@ -34,23 +34,6 @@ function failedTurnNote(
 /** Most notes that one Turn shows. Older notes in the window are dropped. */
 const MAX_CONVERSATION_NOTES_PER_TURN = 20;
 
-function noteIdempotencyKey(key: string): string {
-  return `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:conversation_note:${key}`;
-}
-
-/** Return whether a Conversation already has the note with this key. */
-export async function hasConversationNote(input: {
-  conversationId: string;
-  key: string;
-}): Promise<boolean> {
-  return Boolean(
-    await getConversationEventStore().loadByIdempotencyKey(
-      input.conversationId,
-      noteIdempotencyKey(input.key),
-    ),
-  );
-}
-
 /**
  * Attach a core-written note to a Conversation. It does not start a Turn or
  * change Conversation activity. The key makes a retry add nothing. Long text
@@ -73,7 +56,7 @@ export async function addConversationNote(input: {
     [
       {
         createdAtMs: input.createdAtMs,
-        idempotencyKey: noteIdempotencyKey(input.key),
+        idempotencyKey: `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:conversation_note:${input.key}`,
         data: {
           type: "structured_event",
           namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,

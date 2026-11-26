@@ -40,7 +40,7 @@ describe("dashboard canonical-event mock routes", () => {
       startedAt: string,
       lastSeenAt: string,
     ): ConversationSummaryReport => ({
-      kind: "root",
+      kind: "thread",
       channel: "CQA123",
       channelName: "proj-checkout",
       conversationId,
@@ -329,25 +329,25 @@ describe("dashboard canonical-event mock routes", () => {
     expect(dashboardQa.annotations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          kind: "resource_link",
+          kind: "object",
           key: "getsentry/getsentry#21571",
           plugin: "github",
           status: "merged",
         }),
         expect.objectContaining({
-          kind: "resource_link",
+          kind: "object",
           key: "getsentry/getsentry#21572",
           plugin: "github",
           status: "open",
         }),
         expect.objectContaining({
-          kind: "resource_link",
+          kind: "object",
           key: "getsentry/getsentry#21569",
           plugin: "github",
           status: "draft",
         }),
         expect.objectContaining({
-          kind: "resource_link",
+          kind: "object",
           key: "getsentry/sentry#121727",
           plugin: "github",
           status: "merged",
@@ -488,7 +488,7 @@ describe("dashboard canonical-event mock routes", () => {
       );
       expect(archivedThread).toMatchObject({
         agentTree: [
-          { conversationId: DASHBOARD_QA_CONVERSATION_ID, kind: "root" },
+          { conversationId: DASHBOARD_QA_CONVERSATION_ID, kind: "thread" },
           { conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID, kind: "thread" },
         ],
         kind: "thread",

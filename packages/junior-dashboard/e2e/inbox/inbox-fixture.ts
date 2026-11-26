@@ -4,6 +4,7 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
 import { PULL_REQUEST_RESOURCE } from "../../src/mock-reporting/snooze-resources";
 import { mockSearchRows } from "../search-fixture";
+import { mockObjectLinks, mockPeopleCode } from "../mock-reports";
 
 export const viewer = {
   displayName: "Dashboard User",
@@ -489,15 +490,15 @@ export async function mockInboxItems(
     return route.fallback();
   });
   await page.route("**/api/versions**", async (route) => {
-    const response = await route.fetch();
-    const versions = await response.json();
     const sleeping = [...(await snoozedRows())].sort().join(",");
+    // The mock API's tokens stay fixed. This one also moves with snoozes.
     return route.fulfill({
       json: {
-        ...versions,
-        inboxItems: `${versions.inboxItems}:${snoozeChanges}:${sleeping}`,
+        conversationDetails: {},
+        conversations: "mock",
+        inboxItems: `mock:${snoozeChanges}:${sleeping}`,
+        spend: "mock",
       },
-      response,
     });
   });
   const archived = [answered, dismissedNotice];
@@ -659,8 +660,7 @@ export async function mockViewerCodeChanges(
   // Like the server: 100 changes a page, in the given order, and the cursor
   // of the next page while one is left. Here the cursor is the offset.
   await page.route(/\/api\/people\/[^/]+\/code(\?.*)?$/, async (route) => {
-    const response = await route.fetch();
-    const report = await response.json();
+    const report = await mockPeopleCode(route);
     const nowMs = Date.parse(report.generatedAt);
     const daysAgo = (days: number) =>
       new Date(nowMs - days * 86_400_000).toISOString();
@@ -668,7 +668,6 @@ export async function mockViewerCodeChanges(
       new URL(route.request().url()).searchParams.get("cursor") ?? 0,
     );
     await route.fulfill({
-      response,
       json: {
         ...report,
         nextCursor:
@@ -711,12 +710,10 @@ export async function mockViewerCodeChanges(
   await page.route(/\/api\/objects\?/, async (route) => {
     const urls = new URL(route.request().url()).searchParams.getAll("url");
     if (!urls.some((url) => cards.has(url))) return route.fallback();
-    const response = await route.fetch();
     const report: { objects: { object?: unknown; url: string }[] } =
-      await response.json();
+      await mockObjectLinks(route);
     // The API leaves out a link it has no card for.
     await route.fulfill({
-      response,
       json: {
         ...report,
         objects: urls.flatMap((url) => {

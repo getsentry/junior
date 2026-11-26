@@ -578,6 +578,9 @@ importers:
       '@sentry/junior-github':
         specifier: workspace:*
         version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)
+      '@sentry/junior-linear':
+        specifier: workspace:*
+        version: link:../junior-linear
       '@sentry/junior-notion':
         specifier: workspace:*
         version: link:../junior-notion

@@ -497,6 +497,12 @@ export async function insertInboxItem(
         .returning({ id: juniorQuestions.id });
       if (!asked[0]) return undefined;
     }
+    // The old owner columns stay for the release before this one, and a
+    // trigger writes them from this owner (migration
+    // `20261126011025_inbox_item_owners`). A later release drops both.
+    await tx.execute(
+      sql`select set_config('junior.inbox_item_owner_kind', ${input.owner.kind}, true), set_config('junior.inbox_item_owner_id', ${input.owner.id}, true)`,
+    );
     const inserted = await tx
       .insert(juniorInboxItems)
       .values({

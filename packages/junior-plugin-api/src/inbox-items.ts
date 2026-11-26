@@ -63,6 +63,8 @@ export interface PluginInboxSubjectKind {
    * unless they can see it. An item that would have nobody on it is not
    * added, and an open one closes.
    *
+   * Nobody can take the item, because a take cannot change the roles.
+   *
    * A dismiss removes only the person who dismissed the item. Junior first
    * calls the plugin's `inboxItemDismissed` hook, which removes their role
    * on the provider. When the hook fails, the dismiss fails and the person

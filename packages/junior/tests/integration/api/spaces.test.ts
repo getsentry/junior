@@ -15,10 +15,22 @@ import {
   versionsSchema,
 } from "@/api/schema";
 import { canReadConversation } from "@/api/conversations/access";
+import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
+import {
+  getConfigDefaults,
+  setConfigDefaults,
+} from "@/chat/configuration/defaults";
+import { createLocationConfigurationService } from "@/chat/configuration/service";
+import type {
+  ConfigEntry,
+  LocationConfigurationService,
+  LocationConfigurationStorage,
+} from "@/chat/configuration/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
-import { createSetSpaceConfigurationTool } from "@/chat/tools/set-space-configuration";
+import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
+import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -158,6 +170,19 @@ async function listNames(
   return spaceListSchema
     .parse(await response.json())
     .spaces.map((space) => space.name);
+}
+
+/** A Slack channel's configuration, kept in memory. */
+function memoryStorage(): LocationConfigurationStorage {
+  const entries = new Map<string, ConfigEntry>();
+  return {
+    get: async (key) => entries.get(key),
+    list: async () => [...entries.values()],
+    set: async (entry) => {
+      entries.set(entry.key, entry);
+    },
+    unset: async (key) => entries.delete(key),
+  };
 }
 
 describe("Spaces API", () => {
@@ -348,6 +373,75 @@ describe("Spaces API", () => {
     ).toEqual([inSpace]);
   });
 
+  it("moves a Conversation into, between, and out of Spaces with the agent tool", async () => {
+    const ana = apiFor("spaces-tool-ana@example.com");
+    const bo = apiFor("spaces-tool-bo@example.com");
+    const anaUser = await signedInViewer("spaces-tool-ana@example.com");
+    const first = await createSpace(ana, "Tool first");
+    const second = await createSpace(ana, "Tool second");
+    const conversationId = await startConversation(ana, "tool-move");
+    const thread = await startThread(
+      conversationId,
+      "local:spaces-tool-thread",
+    );
+    const move = (
+      input: { conversation_id?: string; space: string | null },
+      from = thread,
+    ) =>
+      createMoveConversationToSpaceTool({
+        conversationId: from,
+        resolveActorIdentity: async () => ({
+          identity: { id: `identity:${anaUser.id}` } as Identity,
+          user: anaUser,
+        }),
+      }).execute?.(input, {});
+
+    // By a dashboard link, from a Thread of the root.
+    expect(
+      await move({
+        conversation_id: conversationId,
+        space: `https://junior.example.com/spaces/${first.id}`,
+      }),
+    ).toEqual({
+      conversation_id: conversationId,
+      space: { id: first.id, name: "Tool first" },
+    });
+    // From one Space to another, by ID.
+    expect(
+      await move({ conversation_id: conversationId, space: second.id }),
+    ).toMatchObject({ space: { id: second.id } });
+    expect(await detailSpace(ana, thread)).toMatchObject({ id: second.id });
+    // A child stays in the Space of its root.
+    await expect(move({ space: first.id })).rejects.toThrow(
+      "Only a top-level conversation moves",
+    );
+    // Names are not unique, so a name is not enough.
+    await expect(
+      move({ conversation_id: conversationId, space: "Tool first" }),
+    ).rejects.toThrow("not a Space ID or a link to a Space");
+    // The person must be a member of the Space that it joins.
+    const others = await createSpace(bo, "Tool others");
+    await expect(
+      move({ conversation_id: conversationId, space: others.id }),
+    ).rejects.toThrow("Join the Space to add work to it.");
+    expect(
+      await move({ conversation_id: conversationId, space: null }),
+    ).toMatchObject({ space: null });
+    // A conversation in a private Space stays in it.
+    const hidden = spaceSchema.parse(
+      await (
+        await send(ana, "POST", "", {
+          name: "Tool private",
+          visibility: "private",
+        })
+      ).json(),
+    );
+    await move({ conversation_id: conversationId, space: hidden.id });
+    await expect(
+      move({ conversation_id: conversationId, space: null }),
+    ).rejects.toThrow("A conversation in a private Space stays in it.");
+  });
+
   it("keeps a private Space and its Conversations with its members", async () => {
     const ana = apiFor("spaces-private-ana@example.com");
     const bo = apiFor("spaces-private-bo@example.com");
@@ -418,6 +512,7 @@ describe("Spaces API", () => {
     // Data stays in the Space: Conversations in it read each other, and a
     // Conversation outside it reads none of them.
     expect((await moveTo(ana, oneOff, space.id)).status).toBe(200);
+    expect(await detail(ana, oneOff)).toMatchObject({ visibility: "private" });
     expect(await canReadConversation(getDb(), oneOff, inSpace)).toBe(true);
     const outside = await startConversation(ana, "payroll-outside");
     expect(await canReadConversation(getDb(), outside, inSpace)).toBe(false);
@@ -504,14 +599,19 @@ describe("Spaces API", () => {
       email: string,
       conversationId: string,
       input: { key: string; value: string | null },
+      extra: {
+        configuration?: Record<string, unknown>;
+        locationConfiguration?: LocationConfigurationService;
+      } = {},
     ) => {
       const user = await signedInViewer(email);
-      return await createSetSpaceConfigurationTool({
-        conversationId,
+      return await createSetConfigurationTool({
+        ...extra,
         resolveActorIdentity: async () => ({
           identity: { id: `identity:${user.id}` } as Identity,
           user,
         }),
+        conversationId,
       }).execute?.(input, {});
     };
     const read = async (app: Hono<JuniorApiEnv>) =>
@@ -532,12 +632,13 @@ describe("Spaces API", () => {
         value: "a",
       }),
     ).rejects.toThrow("secret-related");
+    // A Conversation with no Slack channel and no Space has nothing to set.
     await expect(
       setting("spaces-config-ana@example.com", outside, {
         key: "github.repo",
         value: "a/b",
       }),
-    ).rejects.toThrow("in no Space");
+    ).rejects.toThrow("no Slack channel or Space");
 
     // A Thread changes the Space of its root.
     expect(
@@ -546,8 +647,11 @@ describe("Spaces API", () => {
         value: "getsentry/junior",
       }),
     ).toMatchObject({
-      space: { id: space.id, name: "Configured" },
-      entries: [{ key: "github.repo", value: "getsentry/junior" }],
+      space: {
+        id: space.id,
+        name: "Configured",
+        entries: [{ key: "github.repo", value: "getsentry/junior" }],
+      },
     });
     // Anyone who reads the Space reads its configuration.
     expect(await read(bo)).toMatchObject([
@@ -582,8 +686,107 @@ describe("Spaces API", () => {
         key: "github.repo",
         value: null,
       }),
-    ).toMatchObject({ entries: [] });
+    ).toMatchObject({ space: { entries: [] } });
     expect(await read(bo)).toEqual([]);
+
+    // A move earlier in the Turn changes the Space that the tool writes.
+    const anaUser = await signedInViewer("spaces-config-ana@example.com");
+    const setInTurn = createSetConfigurationTool({
+      conversationId: outside,
+      resolveActorIdentity: async () => ({
+        identity: { id: `identity:${anaUser.id}` } as Identity,
+        user: anaUser,
+      }),
+    });
+    expect((await moveTo(ana, outside, space.id)).status).toBe(200);
+    expect(
+      await setInTurn.execute?.({ key: "github.repo", value: "a/moved" }, {}),
+    ).toMatchObject({
+      space: {
+        id: space.id,
+        entries: [{ key: "github.repo", value: "a/moved" }],
+      },
+    });
+    await setInTurn.execute?.({ key: "github.repo", value: null }, {});
+    expect((await moveTo(ana, outside, null)).status).toBe(200);
+
+    // In a Slack channel and a Space, one change sets both, and a later
+    // tool in the Turn reads the new value. A read prefers the Space's.
+    const channel = createLocationConfigurationService(memoryStorage());
+    const configuration: Record<string, unknown> = {};
+    expect(
+      await setting(
+        "spaces-config-ana@example.com",
+        inSpace,
+        { key: "sentry.org", value: "getsentry" },
+        { configuration, locationConfiguration: channel },
+      ),
+    ).toMatchObject({
+      channel: { entries: [{ key: "sentry.org", value: "getsentry" }] },
+      space: { entries: [{ key: "sentry.org", value: "getsentry" }] },
+    });
+    expect(configuration).toEqual({ "sentry.org": "getsentry" });
+    // Removing it brings back the install default for the rest of the Turn.
+    const previousDefaults = getConfigDefaults();
+    setConfigDefaults({ "sentry.org": "install-org" });
+    try {
+      await setting(
+        "spaces-config-ana@example.com",
+        inSpace,
+        { key: "sentry.org", value: null },
+        { configuration, locationConfiguration: channel },
+      );
+    } finally {
+      setConfigDefaults(previousDefaults);
+    }
+    expect(configuration).toEqual({ "sentry.org": "install-org" });
+    await setting(
+      "spaces-config-ana@example.com",
+      inSpace,
+      { key: "sentry.org", value: "getsentry" },
+      { configuration, locationConfiguration: channel },
+    );
+    await channel.set({ key: "sentry.org", value: "channel-org" });
+    const read_ = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc config get sentry.org",
+      { conversationId: inSpace, locationConfiguration: channel },
+    );
+    expect(read_.handled && JSON.parse(read_.result.stdout)).toMatchObject({
+      scope: "space",
+      value: "getsentry",
+    });
+    // Outside a Space, it sets only the channel. A non-member never writes
+    // the channel either, because every check runs before any write.
+    expect(
+      await setting(
+        "spaces-config-bo@example.com",
+        outside,
+        { key: "sentry.project", value: "junior" },
+        { locationConfiguration: channel },
+      ),
+    ).not.toHaveProperty("space");
+    // A key that no plugin reads still saves, with a warning.
+    expect(
+      await setting(
+        "spaces-config-bo@example.com",
+        outside,
+        { key: "made.up", value: "x" },
+        { locationConfiguration: channel },
+      ),
+    ).toMatchObject({
+      warning: expect.stringContaining('No installed plugin reads "made.up"'),
+    });
+    await expect(
+      setting(
+        "spaces-config-bo@example.com",
+        inSpace,
+        { key: "sentry.project", value: "other" },
+        { locationConfiguration: channel },
+      ),
+    ).rejects.toThrow("not a member of Configured");
+    expect(await channel.get("sentry.project")).toMatchObject({
+      value: "junior",
+    });
   });
 
   it("stops and archives every Conversation when a Space is archived", async () => {

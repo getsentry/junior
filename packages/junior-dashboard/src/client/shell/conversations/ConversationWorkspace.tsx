@@ -295,7 +295,10 @@ export function ConversationWorkspace(props: {
           newAction={{ label: "New conversation", onClick: openCreate }}
           scrollList="destinations"
         >
-          <InboxNav selectedConversationId={selectedId} />
+          <InboxNav
+            selectedConversationId={selectedId}
+            selectedSpaceId={props.detail.data?.space?.id}
+          />
         </ListPane>
       ) : null}
       <div className="h-full min-h-0 min-w-0 flex-1">

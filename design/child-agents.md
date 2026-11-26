@@ -53,7 +53,8 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 ## Gaps
 
 - Some behavior of a child agent depends on its kind in more than one
-  place. This breaks "its `kind` is the only switch". getsentry/junior#3060
+  place. This breaks "its behavior depends only on whether it is a `task`
+  and on who sent the Turn". getsentry/junior#3060, getsentry/junior#4275,
   and getsentry/junior#2567 track it.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".

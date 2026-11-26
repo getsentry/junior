@@ -33,7 +33,8 @@ import {
 } from "@sentry/junior-plugin-api";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

@@ -41,7 +41,8 @@ import {
 } from "../fixtures/thread-input";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

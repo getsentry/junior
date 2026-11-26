@@ -40,7 +40,7 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-cloudflare"]);
 
 ## Config
 
-Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. An explicit account, zone, or Worker in a request always wins.
+Ask Junior to set conversation config in a Slack channel or Space, or define the same keys for every conversation with `createApp({ configDefaults })`. An explicit account, zone, or Worker in a request always wins.
 
 ### Conversation defaults
 
@@ -49,7 +49,7 @@ Set conversation config with `jr-rpc config set`, or define the same keys for ev
 
 Default Cloudflare account when a request does not identify one.
 
-- **Define:** `jr-rpc config set cloudflare.account.id <account_id>`
+- **Define:** ask Junior to set `cloudflare.account.id`
 - **Install-wide default:** `configDefaults["cloudflare.account.id"]`
 - **Required:** No; Junior can discover it with Account Resources: Read
 - **Environment override:** None
@@ -61,7 +61,7 @@ Default Cloudflare account when a request does not identify one.
 
 Default Cloudflare zone when a request does not identify one.
 
-- **Define:** `jr-rpc config set cloudflare.zone.id <zone_id>`
+- **Define:** ask Junior to set `cloudflare.zone.id`
 - **Install-wide default:** `configDefaults["cloudflare.zone.id"]`
 - **Required:** No
 - **Environment override:** None
@@ -73,7 +73,7 @@ Default Cloudflare zone when a request does not identify one.
 
 Default Worker for requests such as “check the latest errors” or “show the recent deploy.”
 
-- **Define:** `jr-rpc config set cloudflare.worker.name <worker_name>`
+- **Define:** ask Junior to set `cloudflare.worker.name`
 - **Install-wide default:** `configDefaults["cloudflare.worker.name"]`
 - **Required:** No
 - **Environment override:** None

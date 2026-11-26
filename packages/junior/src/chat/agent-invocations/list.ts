@@ -23,9 +23,9 @@ import {
 } from "@/chat/task-execution/store";
 import type { ChildMessage } from "./child-message";
 import { isDroppedChildInput } from "./child-input";
-import { CHILD_AGENT_KINDS, type ChildAgent } from "./types";
+import type { ChildAgent } from "./types";
 
-const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
+const childConversationKindSchema = z.enum(["thread", "task"]);
 
 /** Bound the child agents that one listing reads. */
 const CHILD_AGENT_LIST_LIMIT = 200;
@@ -87,7 +87,7 @@ export async function listChildAgents(
   const children = await Promise.all(
     rows.map(async (row): Promise<ChildAgent> => {
       // Every child agent stores its kind.
-      const kind = childAgentKindSchema.parse(row.kind);
+      const kind = childConversationKindSchema.parse(row.kind);
       const stoppedAtMs = row.stoppedAt?.getTime();
       const running =
         stoppedAtMs === undefined &&
@@ -153,25 +153,6 @@ async function runsOnConversationLoop(
     }
   }
   return false;
-}
-
-/**
- * Return whether input waits in a child's mailbox that will run a later Turn
- * that answers its parent, such as a fired Timer whose Watch is already gone.
- * The input that the running attempt took belongs to its own Turn, which
- * can ack it as late as its end.
- */
-export async function hasWaitingParentWork(
-  conversationId: string,
-): Promise<boolean> {
-  const work = await getConversationWorkState({ conversationId });
-  const running = new Set(work?.runningInboundMessageIds);
-  return await runsOnConversationLoop(
-    (work?.messages ?? []).filter(
-      (message) => !running.has(message.inboundMessageId),
-    ),
-    [],
-  );
 }
 
 /**

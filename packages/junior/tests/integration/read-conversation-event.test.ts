@@ -20,7 +20,8 @@ import { createTools } from "@/chat/tool-support/create-tools";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

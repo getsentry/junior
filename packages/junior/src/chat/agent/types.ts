@@ -336,6 +336,11 @@ export type AgentRun = {
    * unless a caller already bound credentials.
    */
   actor?: Actor;
+  /**
+   * The Actor is an app or bot that wrote the request, not a person. Tools
+   * that need a person, such as Inbox items, see no person in this Run.
+   */
+  actorIsApp?: boolean | undefined;
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext | undefined;
   source: Source;
@@ -408,7 +413,7 @@ export function actorFromRun(
 
 /**
  * Reject contradictory provider coordinates before the run touches state.
- * `conversationKind` comes from the stored Conversation, never from the Run.
+ * `conversation` comes from the stored Conversation, never from the Run.
  */
 export function assertRunConsistency(
   run: Pick<
@@ -421,7 +426,7 @@ export function assertRunConsistency(
     | "actor"
     | "dispatch"
   >,
-  conversationKind?: ConversationKind,
+  conversation?: { kind: ConversationKind; hasParent: boolean },
 ): void {
   const { destination, source } = run;
   switch (source.kind) {
@@ -468,7 +473,7 @@ export function assertRunConsistency(
         case "local": {
           // A person's Turn in a Thread replies in the Thread. Its
           // Destination is the Thread's own copy of its root's.
-          if (conversationKind === "thread") {
+          if (conversation?.kind === "thread" && conversation.hasParent) {
             break;
           }
           if (source.conversationId !== destination.conversationId) {

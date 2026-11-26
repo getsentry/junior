@@ -2,7 +2,8 @@
  * The Inbox item of an issue that Junior created. Each GitHub assignee with
  * a linked account is on it. Assigning a person on GitHub adds them, and
  * unassigning removes them. The item closes when the issue closes, is
- * deleted or transferred, or nobody is left. A dismiss unassigns the person on GitHub (`dismissGitHubItem`).
+ * deleted or transferred, or nobody is left. A reopen brings it back for
+ * everyone still assigned. A dismiss unassigns the person on GitHub (`dismissGitHubItem`).
  *
  * The item belongs to the Conversation that first saved the issue's card.
  * The issue body footer names the Conversations that wrote it, and only
@@ -25,11 +26,11 @@ import { isBotLogin } from "./ownership.js";
 // A footer names a few Conversations, but a person can edit it.
 const FOOTER_READ_CONCURRENCY = 4;
 
-// A reopen does not bring a closed item back. A new assignment does.
 const ITEM_ACTIONS = new Set([
   "assigned",
   "closed",
   "deleted",
+  "reopened",
   "transferred",
   "unassigned",
 ]);
@@ -56,8 +57,11 @@ const issueEventSchema = z.object({
 
 /** One change to the assignees or the state of an issue that Junior created. */
 export interface GitHubIssueItemEvent {
-  /** The assignee whom this event assigned, who joins the item. */
-  assigned?: string;
+  /**
+   * The assignees whom this event asks, who join the item: the one that it
+   * assigned, or on a reopen everyone still assigned.
+   */
+  asked: string[];
   assignees: string[];
   conversationIds: string[];
   issueId: string;
@@ -83,11 +87,15 @@ export function normalizeGitHubIssueItemEvent(args: {
   if (!isBotLogin(issue.user.login, args.botEmail)) return undefined;
   const conversationIds = githubConversationIds(issue.body);
   if (conversationIds.length === 0) return undefined;
+  const assignees = (issue.assignees ?? []).map((person) => person.login);
   return {
-    ...(action === "assigned" && assignee
-      ? { assigned: assignee.login }
-      : undefined),
-    assignees: (issue.assignees ?? []).map((person) => person.login),
+    asked:
+      action === "reopened"
+        ? assignees
+        : action === "assigned" && assignee
+          ? [assignee.login]
+          : [],
+    assignees,
     conversationIds,
     issueId: String(issue.id),
     number: issue.number,
@@ -187,10 +195,9 @@ async function showIssueItem(args: SyncArgs): Promise<void> {
     });
     return;
   }
-  const assigned = event.assigned ? identityOf(event.assigned) : undefined;
   await items.upsert({
     assigneeIdentityIds,
-    askedIdentityIds: assigned ? [assigned] : [],
+    askedIdentityIds: event.asked.flatMap((person) => identityOf(person) ?? []),
     // The URL stands alone, so the dashboard shows the issue as one card.
     body: `You are assigned to #${event.number}.\n\n${event.url}`,
     subject,

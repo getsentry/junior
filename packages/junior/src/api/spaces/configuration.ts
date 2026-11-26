@@ -8,7 +8,7 @@ import { requireSpace, spaceParamsValidator } from "./access";
 
 /**
  * Create the route that reads a Space's configuration. Anyone who reads the
- * Space reads it. Junior changes it with its `setSpaceConfiguration` tool,
+ * Space reads it. Junior changes it with its `setConfiguration` tool,
  * when a member asks.
  */
 export function createSpaceConfigurationRoutes(): Hono<JuniorApiEnv> {

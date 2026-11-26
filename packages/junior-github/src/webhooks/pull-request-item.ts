@@ -2,7 +2,8 @@
  * The one Inbox item of a Junior pull request. It holds every ask on the
  * pull request, and each person on it has their own:
  *
- * - The requester reviews it or merges it (`pull-request-action.ts`).
+ * - The requester reviews it, merges it, or marks a draft ready
+ *   (`pull-request-action.ts`).
  * - Each other requested reviewer reviews it.
  *
  * A merge conflict has its own item (`merge-conflict-checks/policy.ts`).
@@ -54,8 +55,34 @@ function closeReason(
 /** The item text that says why Junior asked for the review again. */
 const REVIEW_AGAIN_TEXT: Record<GitHubReviewAskReason, string> = {
   checks: "Checks now pass, and every comment is handled.",
-  handled: "Every comment on your change request is handled.",
+  handled: "Every comment on your review is handled.",
+  question: "A comment asks you a question.",
 };
+
+/** The item text that gives the requester their action. */
+function requesterText(
+  action: GitHubPullRequestAction,
+  number: number,
+  reason: GitHubReviewAskReason | undefined,
+  state: GitHubPullRequestMergeState,
+): string {
+  if (action === "merge") {
+    // The text stays true when someone approves later, because the item
+    // changes only when the action changes.
+    return state.reviewOutcome === "approved"
+      ? `#${number} is approved, and GitHub says that it can merge.`
+      : `GitHub says that #${number} can merge with no review. Review it, then merge it.`;
+  }
+  const asked = reason ? REVIEW_AGAIN_TEXT[reason] : undefined;
+  if (action === "review") {
+    return asked ?? `GitHub asks you to review #${number}.`;
+  }
+  if (action === "mark_ready") {
+    return `You approved #${number}. Mark it ready for review.`;
+  }
+  const step = `#${number} is a draft. Review it, then mark it ready for review.`;
+  return asked ? `${asked} ${step}` : step;
+}
 
 /**
  * Add, change, or close the item of one pull request from what GitHub says
@@ -104,20 +131,11 @@ export async function showPullRequestItem(
   // Inbox hides the review and merge text under a row head that says it,
   // so keep it in step with `textRepeatsHead` there.
   const review = `GitHub asks you to review #${number}.`;
+  const requesterLine =
+    action && requesterText(action, number, args.reason, state);
   const lines = [
-    ...(action === "merge"
-      ? [
-          state.reviewOutcome === "approved"
-            ? `#${number} is approved, and GitHub says that it can merge.`
-            : `GitHub says that #${number} can merge with no review. Review it, then merge it.`,
-        ]
-      : []),
-    ...(action === "review"
-      ? [args.reason ? REVIEW_AGAIN_TEXT[args.reason] : review]
-      : []),
-    ...(reviewers.length > 0 && !(action === "review" && !args.reason)
-      ? [review]
-      : []),
+    ...(requesterLine ? [requesterLine] : []),
+    ...(reviewers.length > 0 && requesterLine !== review ? [review] : []),
   ];
   await items.upsert({
     askedIdentityIds: [

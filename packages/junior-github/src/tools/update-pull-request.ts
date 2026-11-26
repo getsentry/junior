@@ -17,6 +17,7 @@ import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import {
   appendGitHubRequesterAttribution,
+  linkedGitHubLogin,
   readGitHubBody,
   requesterPerson,
   resolveGitHubRequester,
@@ -25,6 +26,7 @@ import type { GitHubDb } from "../db/database.js";
 import {
   CONVERT_PULL_REQUEST_TO_DRAFT,
   MARK_PULL_REQUEST_READY_FOR_REVIEW,
+  PULL_REQUEST_REVIEWER,
 } from "../graphql-documents.js";
 import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
@@ -70,15 +72,22 @@ const inputSchema = z
       .describe(
         "Set false to mark a draft pull request ready for review, or true to convert it back to a draft.",
       ),
+    request_review: z
+      .literal(true)
+      .optional()
+      .describe(
+        "Set true to ask only the person who asked for the pull request to review it on GitHub. A draft stays a draft, so nobody else is asked. A person who has reviewed it is not asked again, unless their latest approval or change request was dismissed.",
+      ),
   })
   .strict()
   .refine(
-    ({ title, body, base, state, draft }) =>
+    ({ title, body, base, state, draft, request_review }) =>
       title !== undefined ||
       body !== undefined ||
       base !== undefined ||
       state !== undefined ||
-      draft !== undefined,
+      draft !== undefined ||
+      request_review !== undefined,
     { message: "At least one pull request field must be provided." },
   );
 
@@ -99,11 +108,18 @@ const pullRequestSchema = z.object({
 });
 type PullRequest = z.output<typeof pullRequestSchema>;
 interface Result extends PluginToolOutput, PullRequest {
+  review_requested?: boolean;
   target: "updatePullRequest";
   subscribable?: SubscribableResource | undefined;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   pullRequestSchema.extend({
+    review_requested: z
+      .boolean()
+      .optional()
+      .describe(
+        "With request_review: true when GitHub asks the person for a review, false when they have reviewed it and their latest approval or change request was not dismissed.",
+      ),
     target: z.literal("updatePullRequest"),
   }),
 );
@@ -146,6 +162,93 @@ async function setPullRequestDraft(input: {
     );
   }
   return isDraft;
+}
+
+const reviewerSchema = z.object({
+  data: z.object({
+    repository: z.object({
+      pullRequest: z.object({
+        reviewRequests: z.object({
+          nodes: z.array(
+            z.object({
+              requestedReviewer: z
+                .object({ login: z.string().optional() })
+                .nullable(),
+            }),
+          ),
+        }),
+        reviews: z.object({ nodes: z.array(z.object({ state: z.string() })) }),
+      }),
+    }),
+  }),
+});
+
+/**
+ * Ask the requester to review a pull request on GitHub, and return true when
+ * GitHub asks them after the call.
+ *
+ * Junior keeps a draft for its requester when marking it ready would ask the
+ * code owners. A review request asks only the person it names, and the Inbox
+ * item follows from it (`webhooks/pull-request-action.ts`). A person whom
+ * GitHub already asks is not asked again. Nor is a person who has reviewed
+ * it, and the result is false: after a change request or a comment-only
+ * review, only the review-again flow asks, and an approved draft's item says
+ * to mark it ready. An approval stands when a comment follows it. A person
+ * with no review yet is asked. So is one whose latest approval or change
+ * request was dismissed, also with comments since: a dismissal resets their
+ * decision, so those comments wait for a new ask
+ * (`webhooks/pull-request-next-action.ts`).
+ */
+async function requestRequesterReview(
+  egress: PluginEgress,
+  repo: { name: string; owner: string },
+  number: number,
+  login: string,
+): Promise<boolean> {
+  const read = await githubApi(egress, {
+    operation: "github.pull.reviewer.get",
+    method: "POST",
+    path: "/graphql",
+    body: {
+      ...PULL_REQUEST_REVIEWER,
+      variables: { login, name: repo.name, number, owner: repo.owner },
+    },
+  });
+  const parsed = reviewerSchema.safeParse(read.body);
+  if (!read.ok || !parsed.success) {
+    const message = `GitHub pull request reviewer lookup failed with HTTP ${read.status}: ${githubErrorMessage(read.body)}`;
+    throw new Error(message);
+  }
+  const { pullRequest } = parsed.data.data.repository;
+  const lower = login.toLowerCase();
+  if (
+    pullRequest.reviewRequests.nodes.some(
+      (node) => node.requestedReviewer?.login?.toLowerCase() === lower,
+    )
+  ) {
+    return true;
+  }
+  const states = pullRequest.reviews.nodes.map((review) => review.state);
+  const decided = [...states].reverse().find((state) => state !== "COMMENTED");
+  if (decided ? decided !== "DISMISSED" : states.length > 0) return false;
+  const response = await githubApi(egress, {
+    operation: "github.pull.request_reviewers",
+    method: "POST",
+    path: `${repoPath(repo)}/pulls/${number}/requested_reviewers`,
+    body: { reviewers: [login] },
+  });
+  if (!response.ok) {
+    const message = `GitHub review request for ${login} failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
+    // 422 means GitHub cannot ask this person, such as one without access
+    // to the repository.
+    if (response.status === 422) {
+      throw new PluginToolInputError(
+        `${message}. Do not retry: tell them in the thread where they asked.`,
+      );
+    }
+    throw new Error(message);
+  }
+  return true;
 }
 
 /** Update mutable PR metadata while preserving runtime-owned body attribution. */
@@ -193,6 +296,14 @@ export function createGitHubUpdatePullRequestTool(
       }
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);
+      const reviewerLogin = update.request_review
+        ? linkedGitHubLogin(requesterPerson(requester)?.user)
+        : undefined;
+      if (update.request_review && !reviewerLogin) {
+        throw new PluginToolInputError(
+          "The person who asked for this pull request has no linked GitHub account, so GitHub cannot ask for their review. Do not retry: tell them in the thread where they asked.",
+        );
+      }
       const currentBody =
         update.body !== undefined
           ? await readGitHubBody(ctx.egress, {
@@ -280,6 +391,14 @@ export function createGitHubUpdatePullRequestTool(
           repositoryFullName: repo.ref,
         });
       }
+      const reviewRequested = reviewerLogin
+        ? await requestRequesterReview(
+            ctx.egress,
+            repo,
+            providerResult.number,
+            reviewerLogin,
+          )
+        : undefined;
       const subscribable = gitHubPullRequestSubscribable({
         canSubscribe: ctx.events.canSubscribe,
         number: providerResult.number,
@@ -312,6 +431,9 @@ export function createGitHubUpdatePullRequestTool(
             }),
           },
         ],
+        ...(reviewRequested !== undefined
+          ? { review_requested: reviewRequested }
+          : undefined),
         target: "updatePullRequest",
         ...data,
       };

@@ -36,6 +36,7 @@ import {
   subjectTodo,
 } from "@/chat/inbox-items/subjects";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { hasAssigneeRoles } from "@/chat/inbox-items/plugin-dismiss";
 import {
   actOnInboxItem,
   readInboxItemForUser,
@@ -269,7 +270,9 @@ function inboxItemPayload(
     canAct: canActOnInboxItem(item, viewer.id),
     canAnswer: canAnswerInboxItem(item, viewer.id),
     canTake:
-      canActOnInboxItem(item, viewer.id) && !isOnlyAssignee(item, viewer.id),
+      canActOnInboxItem(item, viewer.id) &&
+      !isOnlyAssignee(item, viewer.id) &&
+      !hasAssigneeRoles(item),
     conversationIds: conversationHidden ? [] : item.conversationIds,
     createdAt: item.createdAt.toISOString(),
     id: item.id,

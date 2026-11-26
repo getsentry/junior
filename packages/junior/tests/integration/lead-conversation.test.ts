@@ -39,7 +39,6 @@ import { createWatch } from "@/chat/events/store";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorDestinations,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -171,7 +170,7 @@ describe("Lead", () => {
     expect(
       await getConversationStore().get({ conversationId: started }),
     ).toMatchObject({
-      kind: "root",
+      kind: "thread",
       spaceId: space.id,
       title: "Image cleanup",
       visibility: "public",
@@ -554,14 +553,10 @@ describe("Lead", () => {
 
     // Delivery checks access again and fails closed: once the root is
     // private, no other tree hears it.
-    const [root] = await getDb()
-      .select({ destinationId: juniorConversations.destinationId })
-      .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, started.conversation_id));
     await getDb()
-      .update(juniorDestinations)
+      .update(juniorConversations)
       .set({ visibility: "private" })
-      .where(eq(juniorDestinations.id, root!.destinationId!));
+      .where(eq(juniorConversations.conversationId, started.conversation_id));
     await endTurn("root-turn-4", ["person-message-4"]);
     expect(await heard(lead.conversationId)).toEqual(statuses);
     expect(await heard(boWork.conversationId)).toHaveLength(7);

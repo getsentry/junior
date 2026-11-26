@@ -134,12 +134,12 @@ describe("inbox item with no assignees", () => {
   });
 });
 
-describe("inbox item for Everyone in a private Conversation", () => {
+describe("inbox item in a private Conversation", () => {
   afterEach(async () => {
     await closeConversationFixture();
   });
 
-  it("is for the people who can see the Conversation", async () => {
+  it("cannot go to Everyone yet, and is only for the people who can see the Conversation", async () => {
     const fixture = await createConversationFixture();
     const privateId = "slack:CPRIV:1.000001";
     await getConversationStore().recordActivity({
@@ -170,45 +170,43 @@ describe("inbox item for Everyone in a private Conversation", () => {
       },
       createSlackInboxItemToolServices(() => fixture.queue),
     ) as any;
-    const added = await add.execute(
-      add.prepareArguments({
-        kind: "action",
-        title: "Pick a rollout day",
-        body: "The deploy waits on a day.",
-        assignees: ["everyone"],
-        request: {
-          question: "Which day?",
-          fields: [
-            {
-              id: "day",
-              kind: "choice",
-              label: "Day",
-              options: [{ label: "Monday" }, { label: "Tuesday" }],
-            },
-          ],
-        },
-      }),
-      {} as any,
+    const ask = (assignees?: string[]) =>
+      add.execute(
+        add.prepareArguments({
+          kind: "action",
+          title: "Pick a rollout day",
+          body: "The deploy waits on a day.",
+          ...(assignees ? { assignees } : undefined),
+          request: {
+            question: "Which day?",
+            fields: [
+              {
+                id: "day",
+                kind: "choice",
+                label: "Day",
+                options: [{ label: "Monday" }, { label: "Tuesday" }],
+              },
+            ],
+          },
+        }),
+        {} as any,
+      );
+    // The old visibility check stays for the release before this one, so a
+    // private item cannot name Everyone yet.
+    await expect(ask(["everyone"])).rejects.toThrow(
+      "cannot be assigned to Everyone",
     );
-    expect(added.item).toMatchObject({
-      assignees: ["everyone"],
-      visibility: "private",
-    });
+    const added = await ask();
+    expect(added.item).toMatchObject({ visibility: "private" });
 
-    // Ana sees it up for grabs. It waits on no one, so her count leaves it
-    // out.
+    // With no assignees named, the item goes to Ana, who asked.
     const anas = await api(fixture, ana)("?for=viewer&sort=waiting");
-    expect(anas.items).toMatchObject([
-      { id: added.item.id, assignedToEveryone: true, canAct: true },
-    ]);
-    expect(await api(fixture, ana)("/count")).toMatchObject({
-      needsViewer: 0,
-    });
+    expect(anas.items).toMatchObject([{ id: added.item.id, canAct: true }]);
     expect(await api(fixture, ana)(`/${added.item.id}`)).toMatchObject({
       id: added.item.id,
       canAct: true,
     });
-    // Ben cannot see the Conversation, so Everyone does not include him.
+    // Ben cannot see the Conversation, so the item is not for him.
     expect((await api(fixture, ben)("?for=viewer&sort=waiting")).items).toEqual(
       [],
     );

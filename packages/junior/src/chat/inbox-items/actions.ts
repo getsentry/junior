@@ -178,6 +178,14 @@ export async function actOnInboxItem(args: {
         "Only an assignee can take this item.",
       );
     }
+    // The roles on the object are the assignees, and a take cannot change
+    // them on the provider.
+    if (hasAssigneeRoles(item)) {
+      throw new InboxItemActionError(
+        "invalid",
+        "Roles on the object set who is on this item.",
+      );
+    }
     // A retry after a failed send finds the User already the only assignee.
     // It still sends: each take message has a key, so only missing ones go.
     if (

@@ -10,7 +10,6 @@ import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
 import {
   juniorConversationMetrics,
   juniorConversations,
-  juniorDestinations,
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
@@ -118,12 +117,12 @@ function channelExpression(table: typeof turnRoot) {
 function locationLabel(row: {
   channel: string;
   channelName: string | null;
-  destinationVisibility: string | null;
   surface: string;
+  visibility: string | null;
 }): string {
   if (row.surface !== "slack")
     return surfaceLabel(row.surface as "api" | "internal" | "scheduler");
-  if (row.destinationVisibility !== "public") return "Private Conversation";
+  if (row.visibility !== "public") return "Private Conversation";
   return (
     slackLocationLabel({
       channel: row.channel || undefined,
@@ -223,7 +222,7 @@ function rootBucketRows(args: {
       date: sql<string>`TO_CHAR(${buckets.bucket}, ${sql.raw(`'${format}'`)})`,
       durationMs: sql<number>`COALESCE(sum(${buckets.durationMs}), 0)::double precision`,
       failed: sql<number>`(count(*) FILTER (
-        WHERE ${buckets.isLastTurn} AND ${conversationTurnFailedSql(turnRoot)} AND ${turnRoot.stoppedAt} IS NULL
+        WHERE ${buckets.isLastTurn} AND ${turnRoot.stoppedAt} IS NULL AND ${conversationTurnFailedSql(turnRoot)}
       ))::integer`,
       tokens: sql<number | null>`sum(${buckets.tokens})::double precision`,
     })
@@ -278,22 +277,13 @@ export async function readPeopleProfileFromSql(
         .select({
           channel,
           channelName: turnRoot.channelName,
-          destinationVisibility: juniorDestinations.visibility,
           surface,
+          visibility: turnRoot.visibility,
           ...aggregate,
         })
         .from(roots)
         .innerJoin(turnRoot, personRootJoin(roots))
-        .leftJoin(
-          juniorDestinations,
-          eq(juniorDestinations.id, turnRoot.destinationId),
-        )
-        .groupBy(
-          channel,
-          turnRoot.channelName,
-          juniorDestinations.visibility,
-          surface,
-        ),
+        .groupBy(channel, turnRoot.channelName, turnRoot.visibility, surface),
       getDb()
         .select({ surface, ...aggregate })
         .from(roots)

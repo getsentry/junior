@@ -40,9 +40,10 @@ export const MOCK_LEAD_WATCHED_CONVERSATION_IDS = [
 
 /**
  * A mock Lead's transcript, at fixture time: two Turns that start fixture
- * Conversations in each state and watch some, then a Watch report for one
- * that needs the viewer and one that failed. Another member asks first, and
- * the viewer asks next, since members share their Space's Lead.
+ * Conversations in each state and watch some, two routine Watch reports, then
+ * a Watch report for one that needs the viewer and one that failed. Another
+ * member asks first, and the viewer asks next, since members share their
+ * Space's Lead.
  */
 export function mockLeadEvents(
   actorIdentity: ActorIdentity,
@@ -157,9 +158,10 @@ export function mockLeadEvents(
     status: string,
     watched: MockStart,
     summary: string,
+    n = 0,
   ): MockEventData & { type: "message" } => ({
     type: "message",
-    messageId: `mock-lead-${status}-${watched.conversationId}`,
+    messageId: `mock-lead-${status}-${watched.conversationId}${n ? `-${n}` : ""}`,
     role: "user",
     eventType: "agent.update",
     eventNamespace: "junior",
@@ -202,6 +204,13 @@ export function mockLeadEvents(
     starts: [latency, sentaur],
     watches: [latency, sentaur],
   });
+  // Routine updates that no reply follows. They fold into one row.
+  for (const [n, minutesAgo] of [42, 38].entries()) {
+    push(
+      NOW_MS - minutesAgo * MINUTE_MS,
+      report("done", latency, `"${latency.title}" finished a Turn.`, n + 1),
+    );
+  }
   turn({
     atMs: NOW_MS - 36 * MINUTE_MS,
     id: "mock-lead-sentaur-waiting",

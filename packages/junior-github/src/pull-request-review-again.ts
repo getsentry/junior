@@ -4,15 +4,21 @@
  *
  * Only an explicit signal asks again: Junior marks every comment of the
  * reviewer's latest change request addressed or declined with the feedback
- * tool. Pushes, base-branch syncs, comments, and replies never ask on their
- * own. The ask also waits until the required checks of the head commit pass.
+ * tool. For the requester, a comment-only review counts as a change request
+ * (`webhooks/pull-request-next-action.ts`), so their comment-only reviews
+ * after their latest decision count too. Pushes, base-branch syncs,
+ * comments, and replies never ask on their own. The ask also waits until
+ * the required checks of the head commit pass.
  * GitHub sends no webhook for a reaction, so the feedback tool reads this
  * when it marks a comment. When the checks have not passed yet, it saves a
  * held ask, and the check suite webhook reads this again.
  */
 import type { PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { PULL_REQUEST_REVIEW_AGAIN } from "./graphql-documents.js";
+import {
+  PULL_REQUEST_REQUIRED_CHECKS,
+  PULL_REQUEST_REVIEW_AGAIN,
+} from "./graphql-documents.js";
 
 /**
  * One GitHub API read: a GraphQL query when `body` is set, else a REST GET.
@@ -59,38 +65,48 @@ const checkContextSchema = z.discriminatedUnion("__typename", [
   }),
 ]);
 
+// The fields of the `RequiredChecks` GraphQL fragment.
+const requiredChecksSchema = z.object({
+  baseRef: z
+    .object({
+      refUpdateRule: z
+        .object({
+          requiredStatusCheckContexts: z
+            .array(z.string().nullable())
+            .nullable(),
+        })
+        .nullable(),
+    })
+    .nullable(),
+  baseRefName: z.string().min(1),
+  commits: z.object({
+    nodes: z.array(
+      z.object({
+        commit: z.object({
+          statusCheckRollup: z
+            .object({
+              contexts: z.object({
+                nodes: z.array(checkContextSchema.nullable()),
+                pageInfo: z.object({ hasNextPage: z.boolean() }),
+              }),
+            })
+            .nullable(),
+        }),
+      }),
+    ),
+  }),
+});
+
+const requiredChecksReadSchema = z.object({
+  data: z.object({
+    repository: z.object({ pullRequest: requiredChecksSchema }),
+  }),
+});
+
 const reviewAgainSchema = z.object({
   data: z.object({
     repository: z.object({
-      pullRequest: z.object({
-        baseRef: z
-          .object({
-            refUpdateRule: z
-              .object({
-                requiredStatusCheckContexts: z
-                  .array(z.string().nullable())
-                  .nullable(),
-              })
-              .nullable(),
-          })
-          .nullable(),
-        baseRefName: z.string().min(1),
-        commits: z.object({
-          nodes: z.array(
-            z.object({
-              commit: z.object({
-                statusCheckRollup: z
-                  .object({
-                    contexts: z.object({
-                      nodes: z.array(checkContextSchema.nullable()),
-                      pageInfo: z.object({ hasNextPage: z.boolean() }),
-                    }),
-                  })
-                  .nullable(),
-              }),
-            }),
-          ),
-        }),
+      pullRequest: requiredChecksSchema.extend({
         reviewRequests: z.object({
           nodes: z.array(
             z
@@ -120,6 +136,20 @@ const reviewAgainSchema = z.object({
                 }),
                 databaseId: z.number().nullable(),
                 state: z.string(),
+                submittedAt: z.string().nullable(),
+              })
+              .nullable(),
+          ),
+        }),
+        timelineItems: z.object({
+          nodes: z.array(
+            z
+              .object({
+                createdAt: z.string().optional(),
+                requestedReviewer: z
+                  .object({ login: z.string().optional() })
+                  .nullable()
+                  .optional(),
               })
               .nullable(),
           ),
@@ -206,6 +236,59 @@ function requiredChecksPass(
   return true;
 }
 
+// How many of the reviewer's latest reviews `PULL_REQUEST_REVIEW_AGAIN`
+// reads.
+const REVIEWS_READ = 20;
+
+type FeedbackReview = NonNullable<
+  z.output<
+    typeof reviewAgainSchema
+  >["data"]["repository"]["pullRequest"]["reviews"]["nodes"][number]
+>;
+
+/**
+ * Return the reviews whose comments Junior must mark before it asks again,
+ * oldest first, or undefined when there is no feedback to answer. The
+ * feedback is the reviewer's latest change request. For the requester
+ * (`commentsCount`), it also takes their comment-only reviews after their
+ * latest approval or change request. After an approval, only the
+ * comment-only reviews after a later ask count, so a comment on an
+ * approved pull request does not ask again. For others, a comment-only
+ * review is left out, so a reply to Junior does not hide their change
+ * request. A full page of comment-only reviews can hide older reviews,
+ * which count as open.
+ */
+async function feedbackReviews(
+  reviews: FeedbackReview[],
+  askedAt: number,
+  commentsCount: () => Promise<boolean>,
+): Promise<FeedbackReview[] | undefined> {
+  let decidedIndex = reviews.length - 1;
+  while (decidedIndex >= 0 && reviews[decidedIndex]?.state === "COMMENTED") {
+    decidedIndex -= 1;
+  }
+  const decided = reviews[decidedIndex];
+  // A dismissed review resets the decision, as an approval stands, so only
+  // comments after a later ask count (`requesterFeedback`).
+  const decidedAt =
+    decided?.state === "APPROVED" || decided?.state === "DISMISSED"
+      ? Date.parse(decided.submittedAt ?? "")
+      : undefined;
+  const comments = reviews
+    .slice(decidedIndex + 1)
+    .filter(
+      (review) =>
+        decidedAt === undefined ||
+        (askedAt > decidedAt && Date.parse(review.submittedAt ?? "") > askedAt),
+    );
+  const changeRequest = decided?.state === "CHANGES_REQUESTED";
+  if (comments.length > 0 && (await commentsCount())) {
+    if (decided === undefined && reviews.length >= REVIEWS_READ) return;
+    return changeRequest ? [decided, ...comments] : comments;
+  }
+  return changeRequest ? [decided] : undefined;
+}
+
 /**
  * Read whether `reviewer`'s latest change request on a pull request is
  * ready for their review again. The comments of a change request are its
@@ -216,6 +299,12 @@ export async function readReviewAgainReadiness(
   read: GitHubRead,
   target: {
     botUserId: number;
+    /**
+     * Whether the reviewer is the requester, whose comment-only reviews count
+     * as a change request. Read only when the reviewer's latest review is
+     * comment-only.
+     */
+    isRequester?: (() => Promise<boolean>) | undefined;
     /**
      * The comment that the caller just marked. It counts as marked, because
      * GitHub's GraphQL read can lag behind a reaction that was just added.
@@ -242,26 +331,53 @@ export async function readReviewAgainReadiness(
   const requested = pull.reviewRequests.nodes.some(
     (request) => request?.requestedReviewer?.login?.toLowerCase() === lower,
   );
-  const review = pull.reviews.nodes[0];
-  if (requested || review?.state !== "CHANGES_REQUESTED") return "none";
-  const comments = review.comments.nodes.filter((comment) => comment !== null);
-  // A comment past the first 100 cannot be read, so it counts as open.
-  if (comments.length < review.comments.totalCount) return "none";
+  if (requested) return "none";
+  const askedAt = Math.max(
+    Number.NEGATIVE_INFINITY,
+    ...pull.timelineItems.nodes.flatMap((item) =>
+      item?.createdAt && item.requestedReviewer?.login?.toLowerCase() === lower
+        ? [Date.parse(item.createdAt)]
+        : [],
+    ),
+  );
+  const reviews = await feedbackReviews(
+    pull.reviews.nodes.filter((review) => review !== null),
+    askedAt,
+    async () => (await target.isRequester?.()) ?? false,
+  );
+  if (!reviews) return "none";
   const { marked } = target;
   const justMarked = (id: number | null, kind: "review" | "review_body") =>
     marked?.kind === kind && marked.id === id;
-  const bodyMarked =
-    justMarked(review.databaseId, "review_body") ||
-    markedBy(review, target.botUserId);
-  const bodyCounts = review.body.trim() !== "" || comments.length === 0;
-  if (bodyCounts && !bodyMarked) return "none";
-  const commentsMarked = comments.every(
-    (comment) =>
-      justMarked(comment.databaseId, "review") ||
-      markedBy(comment, target.botUserId),
-  );
-  if (!commentsMarked) return "none";
+  for (const review of reviews) {
+    const comments = review.comments.nodes.filter(
+      (comment) => comment !== null,
+    );
+    // A comment past the first 100 cannot be read, so it counts as open.
+    if (comments.length < review.comments.totalCount) return "none";
+    const bodyMarked =
+      justMarked(review.databaseId, "review_body") ||
+      markedBy(review, target.botUserId);
+    const bodyCounts = review.body.trim() !== "" || comments.length === 0;
+    if (bodyCounts && !bodyMarked) return "none";
+    const commentsMarked = comments.every(
+      (comment) =>
+        justMarked(comment.databaseId, "review") ||
+        markedBy(comment, target.botUserId),
+    );
+    if (!commentsMarked) return "none";
+  }
+  return (await readRequiredChecksPass(read, target, pull))
+    ? "ready"
+    : "checks";
+}
 
+async function readRequiredChecksPass(
+  read: GitHubRead,
+  target: { name: string; owner: string },
+  pull: z.output<typeof requiredChecksSchema>,
+): Promise<boolean> {
+  const { name, owner } = target;
   const rules = branchRulesSchema.parse(
     await read({
       operation: "github.repo.branch-rules.get",
@@ -288,9 +404,29 @@ export async function readReviewAgainReadiness(
     required,
     contexts,
     rollup?.contexts.pageInfo.hasNextPage ?? false,
-  )
-    ? "ready"
-    : "checks";
+  );
+}
+
+/**
+ * Read whether every required check of a pull request's head commit
+ * passes, so an ask for a review does not go out before CI is green.
+ */
+export async function readGitHubRequiredChecksPass(
+  read: GitHubRead,
+  target: { name: string; number: number; owner: string },
+): Promise<boolean> {
+  const { name, number, owner } = target;
+  const pull = requiredChecksReadSchema.parse(
+    await read({
+      body: {
+        ...PULL_REQUEST_REQUIRED_CHECKS,
+        variables: { name, number, owner },
+      },
+      operation: "github.pull.required-checks.get",
+      path: "/graphql",
+    }),
+  ).data.repository.pullRequest;
+  return await readRequiredChecksPass(read, target, pull);
 }
 
 // A held ask waits for the checks of one fix, which take hours at most.
@@ -357,22 +493,31 @@ export async function dropHeldGitHubReviewAsk(
 }
 
 /**
- * Why Junior asked a reviewer again: `handled` when the last comment was
- * marked and the checks already passed, `checks` when passing checks
- * released a held ask.
+ * Why Junior asked a reviewer: `handled` when the last comment was marked
+ * and the checks already passed, `checks` when passing checks released a
+ * held ask, `question` when a Junior comment asked the requester.
  */
-export type GitHubReviewAskReason = "checks" | "handled";
+export type GitHubReviewAskReason = "checks" | "handled" | "question";
 
 // The tool asks on GitHub, and GitHub's review request webhook shows the
-// item. The mark only needs to outlive that delivery.
+// item. Until then, the mark only needs to outlive that delivery.
 const ASKED_TTL_MS = 60 * 60 * 1000;
+
+// Each sync writes the whole item again, so a shown mark stays and keeps
+// the item's text until the requester acts. A review ask seldom stays open
+// longer. After that, the item shows the general text.
+const SHOWN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const askedSchema = z.object({
   at: z.iso.datetime(),
+  // Unset means `handled`.
+  reason: z.enum(["handled", "question"]).optional(),
   reviewer: z.string().min(1),
+  /** The item shows the ask, so a later sync does not push it again. */
+  shown: z.boolean().optional(),
 });
 
-/** A review that the feedback tool asked for, until the item shows it. */
+/** A review that a Junior tool asked for, until the requester acts. */
 export type GitHubReviewAsked = z.output<typeof askedSchema>;
 
 function askedKey(target: {
@@ -382,28 +527,24 @@ function askedKey(target: {
   return `pull-request-review-asked:${target.repositoryFullName.toLowerCase()}#${target.number}`;
 }
 
-/** Record that the feedback tool asked `reviewer` again on one pull request. */
+/** Record that a Junior tool asked `reviewer` on one pull request. */
 export async function markGitHubReviewAsked(
   state: PluginState,
   target: { number: number; repositoryFullName: string },
   asked: GitHubReviewAsked,
 ): Promise<void> {
-  await state.set(askedKey(target), askedSchema.parse(asked), ASKED_TTL_MS);
+  await state.set(
+    askedKey(target),
+    askedSchema.parse(asked),
+    asked.shown ? SHOWN_TTL_MS : ASKED_TTL_MS,
+  );
 }
 
-/** Return the review that the feedback tool asked for on one pull request. */
+/** Return the review that a Junior tool asked for on one pull request. */
 export async function readGitHubReviewAsked(
   state: PluginState,
   target: { number: number; repositoryFullName: string },
 ): Promise<GitHubReviewAsked | undefined> {
   const saved = askedSchema.safeParse(await state.get(askedKey(target)));
   return saved.success ? saved.data : undefined;
-}
-
-/** Drop the record of a review that the feedback tool asked for. */
-export async function dropGitHubReviewAsked(
-  state: PluginState,
-  target: { number: number; repositoryFullName: string },
-): Promise<void> {
-  await state.delete(askedKey(target));
 }

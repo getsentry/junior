@@ -5,6 +5,7 @@ import { withRequestedMailbox, waitForOutlineRead } from "../harness";
 import { expectRequestBudget } from "../request-budget";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
+import { mockConversationDetail } from "../mock-reports";
 
 test.describe("new UI", () => {
   const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -280,7 +281,6 @@ test.describe("new UI", () => {
       async () => {
         await page.goto(
           `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
-          { waitUntil: "networkidle" },
         );
         await expect(
           page.getByRole("heading", {
@@ -306,8 +306,9 @@ test.describe("new UI", () => {
       }
     });
     const repeated = () => asked.filter((url, at) => asked.indexOf(url) !== at);
-    // A pull request of a row below the fold.
-    const below = "https://github.com/getsentry/relay/pull/3396";
+    // A link in the text of a row below the fold. The server reads the
+    // cards of a row's Annotations, so only text links come here.
+    const below = "https://code.example.com/acme/checkout/pull/5378";
     const firstRead = page.waitForResponse(
       (response) => new URL(response.url()).pathname === "/api/objects",
     );
@@ -440,7 +441,7 @@ test.describe("new UI", () => {
       conversationId: `long-${index}`,
       cumulativeDurationMs: 1_000 + index,
       displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
@@ -816,10 +817,11 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === childDetailPath,
       async (route) => {
-        const response = await route.fetch();
         await route.fulfill({
-          json: { ...(await response.json()), isParticipant: true },
-          response,
+          json: {
+            ...(await mockConversationDetail(route)),
+            isParticipant: true,
+          },
         });
       },
     );

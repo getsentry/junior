@@ -19,6 +19,7 @@ import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { InboxItemPayload } from "@/api/schema";
 import {
+  juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorInboxItemAssignees,
@@ -89,7 +90,11 @@ async function createIssue(): Promise<string> {
     },
     resolveActorIdentity: async () => await readActorIdentity(person),
     source: { kind: "parent_message" },
-    turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
+    turnTools: turnBehavior({
+      kind: "task",
+      hasParent: true,
+      personInput: false,
+    }).tools,
     workspace: {} as never,
   })["github_createIssue"]!.execute!(
     {
@@ -161,16 +166,25 @@ async function apiAs(email: string) {
   return api;
 }
 
-/** Dismiss the item as the signed-in person with this email. */
-async function dismissAs(email: string, itemId: string): Promise<number> {
+/** Act on the item as the signed-in person with this email. */
+async function actAs(
+  email: string,
+  itemId: string,
+  action: "dismiss" | "take",
+): Promise<number> {
   const response = await (
     await apiAs(email)
   ).request(`http://localhost/api/inbox-items/${itemId}/actions`, {
-    body: JSON.stringify({ action: "dismiss" }),
+    body: JSON.stringify({ action }),
     headers: { "content-type": "application/json" },
     method: "POST",
   });
   return response.status;
+}
+
+/** Dismiss the item as the signed-in person with this email. */
+async function dismissAs(email: string, itemId: string): Promise<number> {
+  return await actAs(email, itemId, "dismiss");
 }
 
 /** The open items that the person's Inbox lists. */
@@ -182,9 +196,10 @@ async function inboxOf(email: string): Promise<InboxItemPayload[]> {
   return ((await response.json()) as { items: InboxItemPayload[] }).items;
 }
 
-/** Give the issue's Conversation a private Destination. */
+/** Make the issue's Conversation and its Destination private. */
 async function makeConversationPrivate(): Promise<void> {
   await getDb().update(juniorDestinations).set({ visibility: "private" });
+  await getDb().update(juniorConversations).set({ visibility: "private" });
 }
 
 describe("the Inbox item of an issue that Junior created", () => {
@@ -296,6 +311,13 @@ describe("the Inbox item of an issue that Junior created", () => {
         assignees: ["pat@example.com", "sam@example.com"],
         status: "open",
       });
+      // The GitHub assignees are on the item, so nobody can take it.
+      expect(
+        (await inboxOf("pat@example.com")).find(
+          (listed) => listed.id === item!.id,
+        ),
+      ).toMatchObject({ canTake: false });
+      expect(await actAs("pat@example.com", item!.id, "take")).toBe(400);
 
       // Pat's dismiss unassigns Pat on GitHub, and Sam stays on the item.
       expect(await dismissAs("pat@example.com", item!.id)).toBe(200);
@@ -334,12 +356,15 @@ describe("the Inbox item of an issue that Junior created", () => {
       await sendGitHubWebhook("issues", issueEvent(body, "closed", ["pat"]));
       expect(await issueItem()).toMatchObject({ status: "done" });
 
-      // Assigned again, Pat and Sam both dismiss at once. The second one
-      // to leave is the last, so the item closes and nobody is left on it.
-      await sendGitHubWebhook(
-        "issues",
-        issueEvent(body, "assigned", ["pat"], { assignee: { login: "pat" } }),
-      );
+      // A reopen brings the item back for Pat, who is still assigned. Sam
+      // joins it when assigned. Then Pat and Sam both dismiss at once. The
+      // second one to leave is the last, so the item closes and nobody is
+      // left.
+      await sendGitHubWebhook("issues", issueEvent(body, "reopened", ["pat"]));
+      expect(await issueItem()).toMatchObject({
+        assignees: ["pat@example.com"],
+        status: "open",
+      });
       await sendGitHubWebhook(
         "issues",
         issueEvent(body, "assigned", ["pat", "sam"], {

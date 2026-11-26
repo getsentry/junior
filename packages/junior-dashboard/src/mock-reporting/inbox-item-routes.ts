@@ -31,6 +31,32 @@ function errorResponse(error: string, status: 400 | 404): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
 }
 
+/** Build what `GET /inbox-items` answers for its query. */
+export function readMockInboxItemList(query: Record<string, string>) {
+  const { conversationId, for: forViewer, owner, q, snoozed, status } = query;
+  return {
+    items: readMockInboxItems(NOW_MS, {
+      closed: Boolean(status && status !== "open"),
+      conversationId,
+      // A search and a Conversation's own list still show snoozed rows.
+      forViewer: forViewer === "viewer" && !q && !conversationId,
+      q: q || undefined,
+      snoozed: snoozed === "true",
+    }).filter((item) => !owner || item.owner.kind === owner),
+  };
+}
+
+/** Build what `GET /inbox-items/count` answers for its query. */
+export function readMockInboxItemCount(query: Record<string, string>) {
+  const { automations, ...counts } = readMockInboxItemCounts(NOW_MS);
+  return {
+    ...(query["include"]?.split(",").includes("automations")
+      ? { automations }
+      : undefined),
+    ...counts,
+  };
+}
+
 /**
  * Answer Inbox item reads and actions, and Inbox snoozes, from the mock
  * items, so the dashboard does not query a database that has no review
@@ -39,35 +65,12 @@ function errorResponse(error: string, status: 400 | 404): Response {
 export function addMockInboxItemRoutes(
   app: Hono<{ Variables: JuniorApiVariables }>,
 ): void {
-  app.get("/inbox-items", (c) => {
-    const {
-      conversationId,
-      for: forViewer,
-      owner,
-      q,
-      snoozed,
-      status,
-    } = c.req.query();
-    return jsonResponse(inboxItemListSchema, {
-      items: readMockInboxItems(NOW_MS, {
-        closed: Boolean(status && status !== "open"),
-        conversationId,
-        // A search and a Conversation's own list still show snoozed rows.
-        forViewer: forViewer === "viewer" && !q && !conversationId,
-        q: q || undefined,
-        snoozed: snoozed === "true",
-      }).filter((item) => !owner || item.owner.kind === owner),
-    });
-  });
-  app.get("/inbox-items/count", (c) => {
-    const { automations, ...counts } = readMockInboxItemCounts(NOW_MS);
-    return jsonResponse(inboxItemCountSchema, {
-      ...(c.req.query("include")?.split(",").includes("automations")
-        ? { automations }
-        : undefined),
-      ...counts,
-    });
-  });
+  app.get("/inbox-items", (c) =>
+    jsonResponse(inboxItemListSchema, readMockInboxItemList(c.req.query())),
+  );
+  app.get("/inbox-items/count", (c) =>
+    jsonResponse(inboxItemCountSchema, readMockInboxItemCount(c.req.query())),
+  );
   app.get("/inbox-items/waiting-conversations", () =>
     jsonResponse(inboxItemWaitingConversationsSchema, {
       conversations: readMockWaitingConversations(NOW_MS).conversations,

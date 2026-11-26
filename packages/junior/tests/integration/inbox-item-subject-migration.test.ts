@@ -176,20 +176,15 @@ describe("inbox item subject migration", () => {
           ],
         },
       ]);
-      // A notice gets a request with only its old subject link, so its card
-      // still lists what it is about.
+      // A notice keeps no request, because the old kind check still holds.
+      // Its old subject link stays in `subject_url` in the stored form, and
+      // its question reads it from there.
       expect(
         await fixture.sql.query(
-          `SELECT request FROM junior_inbox_items WHERE id = 'heads-up'`,
+          `SELECT request, subject_url FROM junior_inbox_items WHERE id = 'heads-up'`,
         ),
       ).toEqual([
-        {
-          request: {
-            evidence: [
-              { label: "New guide", url: "https://docs.example.com/guide" },
-            ],
-          },
-        },
+        { request: null, subject_url: "https://docs.example.com/guide" },
       ]);
       // A closed item's links get the same form, so its subject link is no
       // second copy of the link that it cites.

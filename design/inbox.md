@@ -23,10 +23,11 @@ groups and acts on its rows.
   asks. It can link to other objects, such as a pull request.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
-- Only an assignee answers a private item. Anyone who can see a public
-  question can answer it, but only an assignee dismisses or takes it. The
-  answer carries the authority of the person who gives it. Junior, an
-  Event, or a trigger never answers or approves for a person.
+- Only an assignee answers a private item that has assignees. Anyone who
+  can see a public question can answer it, but only an assignee dismisses
+  or takes it. The answer carries the authority of the person who gives
+  it. Junior, an Event, or a trigger never answers or approves for a
+  person.
 - "Needs you" means one thing on every surface: an ask or a Conversation
   tree that waits on you.
 
@@ -173,6 +174,14 @@ groups and acts on its rows.
   who can see the Conversation only after that gets no item until the
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".
+- In a private Space, the Inbox lists and counts a "To do for you" item by
+  Participants and Destination, not by Space membership. A Participant who
+  is not a member sees it but cannot open it, and a member who is not a
+  Participant does not see it. This breaks "only while they can see the
+  Conversation's private content".
+- A typed message leaves a question for Everyone, or a question with no
+  assignees, open. Only its card or the Inbox answers it. This breaks "a
+  typed message still answers it".
 - An Automation alert shows only in the dashboard Inbox. Slack shows no
   card for it. For a blocked Automation, Slack gets a DM with no card. For a
   failed run or a trigger that is not available, Slack gets nothing. This
