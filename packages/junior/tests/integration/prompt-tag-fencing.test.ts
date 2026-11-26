@@ -1,7 +1,6 @@
 import { findTags } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
-import { buildPromptInput } from "@/chat/agent/prompt";
-import { instructionForInputs } from "@/chat/agent/instruction";
+import { buildPromptInput, instructionForInputs } from "@/chat/agent/prompt";
 import { buildStoredAttachmentPromptText } from "@/chat/attachments/model-input";
 import {
   hasCurrentInstruction,
