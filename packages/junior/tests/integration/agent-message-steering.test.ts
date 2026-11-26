@@ -96,10 +96,13 @@ describe("agent message steering", () => {
       const childId = await spawnChild(harness, "steer-parent-child", {
         agentName: "researcher",
       });
+      // A person's Turn in the child's Thread, unless a Source says
+      // otherwise.
       const send = async (
         actor: AgentRun["actor"],
         key: string,
         text: string,
+        source: Source = slackParentRun().source,
       ) =>
         await createMessageAgentTool(
           bindMessageAgent(
@@ -107,6 +110,7 @@ describe("agent message steering", () => {
               ...childRun(childId),
               actor,
               credentialContext: credentialContextForActor(actor!),
+              source,
             },
             { queue, state },
           )!,
@@ -124,6 +128,12 @@ describe("agent message steering", () => {
         await send(parentActor, "call-retry", "The retry path is fine.");
         vi.setSystemTime(Date.now() + 1);
         await send(parentActor, "call-timeout", "The timeout is fine.");
+        // A child Turn that a parent message started acts for no person
+        // itself, so its message never steers, even for the same Actor.
+        vi.setSystemTime(Date.now() + 1);
+        await send(parentActor, "call-logs", "The logs are clean.", {
+          kind: "parent_message",
+        });
         // A child Turn for another person never steers this Turn.
         vi.setSystemTime(Date.now() + 1);
         await send(otherActor, "call-billing", "Billing looks off.");
@@ -160,11 +170,16 @@ describe("agent message steering", () => {
           /source="child_agent"[\s\S]*The timeout is fine\./,
         ),
       ]);
+      // The other two each run in their own Turn.
       expect(harness.runs.map((run) => run.actor)).toEqual([
+        parentActor,
         parentActor,
         otherActor,
       ]);
-      expect(harness.runs[1]!.instruction.text).toContain("Billing looks off.");
+      expect(harness.runs[1]!.instruction.text).toContain(
+        "The logs are clean.",
+      );
+      expect(harness.runs[2]!.instruction.text).toContain("Billing looks off.");
       expect(await eventMessages(slackParentConversationId)).toEqual([]);
     } finally {
       await harness.close();
@@ -285,6 +300,83 @@ describe("agent message steering", () => {
       ]);
       expect(harness.runs[1]!.instruction.text).toContain("Check the alerts.");
       expect(harness.runs[2]!.instruction.text).toContain("Check billing.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("does not steer a message from a Turn of the same Actor with other credentials", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    const { queue, state } = harness;
+    try {
+      const ana = await signedInViewer("other-credentials@example.com");
+      const anaActor = webActorFromUser(ana);
+      const root = async (key: string) =>
+        (
+          await createAndEnqueueConversation(
+            {
+              actor: anaActor,
+              idempotencyKey: key,
+              message: "Check the deploy.",
+            },
+            { queue, state },
+          )
+        ).conversationId;
+      const target = await root("other-credentials-target");
+      const sender = await root("other-credentials-sender");
+      // A Turn for ana's Actor whose credentials are not ana's own, so its
+      // credential digest differs from the running Turn's.
+      const bo = await signedInViewer("other-credentials-bo@example.com");
+      const credentialContext = credentialContextForActor(webActorFromUser(bo));
+      const drained: AgentSteeringMessage[][] = [];
+      harness.onRun(async (run) => {
+        if (harness.runs.length > 1) return await finishRun(run);
+        await commitRunInput(run);
+        const startedAtMs = Date.now();
+        await createMessageAgentTool(
+          bindMessageAgent(
+            {
+              actor: anaActor,
+              conversationId: sender,
+              credentialContext,
+              destination: (await getConversationStore().get({
+                conversationId: sender,
+              }))!.destination!,
+              instruction: { text: "Steer the deploy check." },
+              source: createWebSource(sender, "public"),
+              turnId: "other-credentials-turn",
+            },
+            { queue, state },
+          )!,
+        ).execute!(
+          { text: "Also check the retry path.", to: target },
+          { toolCallId: "call-other-credentials" },
+        );
+        vi.setSystemTime(startedAtMs);
+        const steered = await steerRun(run, (messages) => {
+          drained.push(messages);
+        });
+        const outcome = await finishRun(
+          run,
+          { noReply: {} },
+          undefined,
+          steered,
+        );
+        vi.setSystemTime(startedAtMs + EVENT_WAIT_MS + 10);
+        return outcome;
+      });
+      await harness.drain(target);
+
+      // The message waits and runs in its own Turn.
+      expect(drained.flat()).toEqual([]);
+      expect(harness.runs.map((run) => run.actor)).toEqual([
+        expect.objectContaining({ platform: "web", userId: ana.id }),
+        EVENT_SYSTEM_ACTOR,
+      ]);
+      expect(harness.runs[1]!.instruction.text).toContain(
+        "Also check the retry path.",
+      );
     } finally {
       await harness.close();
     }

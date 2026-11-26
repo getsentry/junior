@@ -25,21 +25,20 @@ const steeringSenderMetadataSchema = z.object({
 });
 
 /**
- * Return the steering facts of a Turn that acts for a person with that
- * person's own credentials: a person's Turn, or a child Turn that a parent
- * message started. An Event, Watch, timer, or Automation Turn returns
- * nothing, so its messages never steer.
+ * Return the steering facts of a Turn that a person started with that
+ * person's own credentials. Any other Turn, such as an Event, Watch, timer,
+ * Automation, or parent-message Turn, returns nothing, so its messages never
+ * steer.
  */
 export function steeringSenderForRun(
   run: Pick<AgentRun, "actor" | "credentialContext" | "source">,
 ): SteeringSender | undefined {
   const { actor, credentialContext } = run;
-  const kind = run.source.kind;
   if (
     !isUserActor(actor) ||
     !credentialContext ||
     !("type" in credentialContext.actor) ||
-    !(isPersonInput(kind) || kind === "parent_message")
+    !isPersonInput(run.source.kind)
   ) {
     return undefined;
   }
