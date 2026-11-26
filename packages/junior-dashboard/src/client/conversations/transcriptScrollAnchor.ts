@@ -73,6 +73,22 @@ export function captureScrollAnchor(
   };
 }
 
+/** Hold the reader's place on `row`, such as a row that a jump showed. */
+export function captureRowAnchor(
+  row: Element,
+  viewport: VerticalBounds,
+): ScrollAnchor | null {
+  const element =
+    row.closest<HTMLElement>(`[${SCROLL_ANCHOR_ATTRIBUTE}]`) ??
+    row.querySelector<HTMLElement>(`[${SCROLL_ANCHOR_ATTRIBUTE}]`);
+  if (!element) return null;
+  return {
+    element,
+    key: element.getAttribute(SCROLL_ANCHOR_ATTRIBUTE) ?? "",
+    offset: element.getBoundingClientRect().top - viewport.top,
+  };
+}
+
 /**
  * Measure how far the anchor moved since it was recorded.
  *

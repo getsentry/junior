@@ -43,7 +43,8 @@ function runtimeContext() {
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
     turnTools: turnBehavior({
-      kind: "root",
+      kind: "thread",
+      hasParent: false,
       personInput: true,
     }).tools,
     workspace: {} as any,

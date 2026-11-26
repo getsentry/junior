@@ -51,9 +51,8 @@ Check the rows in this order. The first match decides.
   Destination across the threads of a channel, DM, or group DM.
 - Row 6 applies to every person and to every requester visibility. A
   person who is a participant of the target does not change the result.
-- Code: `canAccessConversation` in
-  `packages/junior/src/api/conversations/access.ts`. Its unit test has a
-  case for each row.
+- Code: `canAccessConversation` in `src/api/conversations/access.ts`. Its
+  unit test has a case for each row.
 
 ## Writes
 
@@ -68,8 +67,8 @@ Check the rows in this order. The first match decides.
   inside its Space.
 - `startConversation` makes a root in the Space from its Lead, with the
   Space's visibility. It runs as the person who asked, and the Lead's task
-  is its first message. The start is not reviewed. Action review judges the
-  new root's own tool calls, the same way it judges a child agent's.
+  is its first message. Action review judges its task, then the new root's
+  own tool calls, the same way it judges a child agent's.
 
 ## Rules for every surface
 
@@ -87,9 +86,12 @@ Check the rows in this order. The first match decides.
 ## Rule for people
 
 A person who reads directly, through the dashboard, the API, MCP, or ACP,
-is not a Conversation. Anyone may read a public Conversation. Only its
-Participants may read and act on a private one (`canViewPrivateContent`,
-`isParticipant`). This rule never lets one Conversation read another.
+is not a Conversation. Anyone may read a public Conversation and join it by
+posting. Only its Participants may read and act on a private one
+(`canViewPrivateContent`, `isParticipant`). Any Participant may Invite a
+person, and each person may only Leave on their own. A Slack-backed one
+follows its channel instead. This rule never lets one Conversation read
+another.
 
 In a private Space, membership decides instead. Every member may read each
 of its Conversations and join one by posting. A person who is not a member
@@ -103,17 +105,15 @@ for the Space. A member adds people to it.
   `canAccessConversation`.
   A Conversation Watch checks again at each delivery and fails closed,
   before any text from the target reaches the watcher.
-- A Lead's `searchConversations` finds Conversations whose root is public,
-  is at the Destination of the requester's root, or is in the requester's
-  private Space. It finds child agents
-  only when asked. It never finds the requester's own tree. Its results
+- A Lead's `searchConversations` finds roots that are public, at the
+  Destination of the requester's root, or in its private Space. It finds
+  child agents only when asked, and never the requester's own tree. Results
   include the summary and outcome status. `participating` keeps only roots
   where the person is a Participant.
-- `listAgents` with a `query` finds roots that are public, at the
-  Destination of the requester's root, or in its private Space, and the Conversations in the
-  requester's own tree, except the requester. Its results include the
-  summary and outcome status. The requester's team ranks first, then the
-  roots where the person it works for is a Participant.
+- `listAgents` with a `query` finds the same roots, plus the requester's own
+  tree except the requester, with the summary and outcome status. The
+  requester's team ranks first, then roots where the person it works for is
+  a Participant.
 - `searchConversationMessages` is only available in public Conversations
   and returns only public Conversations. It is a Slack tool, so it returns
   only Slack Conversations.

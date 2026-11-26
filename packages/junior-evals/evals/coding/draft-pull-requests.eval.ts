@@ -1,7 +1,9 @@
 import { describe, expect } from "vitest";
 import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
-import { insertGitHubPullRequestWatch } from "@junior-evals/fixture/insert";
-import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import {
+  insertGitHubPullRequestWatch,
+  insertLinkedGitHubIdentity,
+} from "@junior-evals/fixture/insert";
 import { completedToolCalls } from "@junior-evals/fixture/results";
 import { test, type RunAgent, type ToolCall } from "@junior-evals/fixture/test";
 import { repository, repositoryRef } from "./github-fixture";
@@ -48,6 +50,8 @@ function draftChecksPassedWebhook(number: DraftNumber) {
 async function startDraftThread(run: RunAgent, number: DraftNumber) {
   const draft = `getsentry/junior#${number}`;
   const conversation = await run(slackMention(`What does ${draft} change?`));
+  // The Slack person who asked reviews on GitHub as this login.
+  await insertLinkedGitHubIdentity({ id: 7_002, login: "octo-requester" });
   await insertGitHubPullRequestWatch({
     conversation,
     draft: true,
@@ -56,8 +60,8 @@ async function startDraftThread(run: RunAgent, number: DraftNumber) {
   return conversation;
 }
 
-/** Completed calls that mark a pull request ready, direct or deferred. */
-function markReadyCalls(result: { toolCalls: ToolCall[] }) {
+/** Completed pull request updates, direct or deferred. */
+function updateCalls(result: { toolCalls: ToolCall[] }) {
   return [
     ...completedToolCalls("github_updatePullRequest", result).map(
       (call) => call.input,
@@ -66,7 +70,17 @@ function markReadyCalls(result: { toolCalls: ToolCall[] }) {
       .map((call) => call.input as { arguments?: unknown; tool_name?: string })
       .filter((input) => input.tool_name === "github_updatePullRequest")
       .map((input) => input.arguments),
-  ].filter((input) => (input as { draft?: unknown })?.draft === false);
+  ] as Array<{ draft?: unknown; request_review?: unknown } | undefined>;
+}
+
+/** Completed calls that mark a pull request ready. */
+function markReadyCalls(result: { toolCalls: ToolCall[] }) {
+  return updateCalls(result).filter((input) => input?.draft === false);
+}
+
+/** Completed calls that ask the requester to review a pull request. */
+function reviewAskCalls(result: { toolCalls: ToolCall[] }) {
+  return updateCalls(result).filter((input) => input?.request_review === true);
 }
 
 describe("Watches", () => {
@@ -83,50 +97,30 @@ describe("Watches", () => {
     expect(delivery.replies).toEqual([]);
   });
 
-  test("when the checks of a Junior draft with code owners pass, keep it a draft and tell the requester", async ({
+  // The review request gives the requester an Inbox item, so a reply would
+  // ask them twice.
+  test("when the checks of a Junior draft with code owners pass, keep it a draft and ask only the requester to review it", async ({
     run,
   }) => {
     const conversation = await startDraftThread(run, 696);
 
     const delivery = await conversation.continue(draftChecksPassedWebhook(696));
-    await expect(delivery).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The reply says the required checks of getsentry/junior#696 pass and the draft waits for the requester's review.",
-          "The reply names @getsentry/cache-owners as the code owners that marking it ready asks to review.",
-        ],
-        fail: [
-          "Do not say that getsentry/junior#696 is ready for review or was marked ready.",
-        ],
-      }),
-    );
 
     expect(markReadyCalls(delivery)).toEqual([]);
-    expect(delivery.replies).toHaveLength(1);
+    expect(reviewAskCalls(delivery)).toHaveLength(1);
+    expect(delivery.replies).toEqual([]);
   });
 
-  test("when the AGENTS.md of a Junior draft asks for drafts, keep it a draft and tell the requester", async ({
+  test("when the AGENTS.md of a Junior draft asks for drafts, keep it a draft and ask only the requester to review it", async ({
     run,
   }) => {
     const conversation = await startDraftThread(run, 697);
 
     const delivery = await conversation.continue(draftChecksPassedWebhook(697));
-    await expect(delivery).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The reply says the required checks of getsentry/junior#697 pass and the draft waits for the requester's review.",
-          "The reply says the repository's AGENTS.md asks for draft pull requests.",
-        ],
-        fail: [
-          "Do not say that getsentry/junior#697 is ready for review or was marked ready.",
-        ],
-      }),
-    );
 
     expect(markReadyCalls(delivery)).toEqual([]);
-    expect(delivery.replies).toHaveLength(1);
+    expect(reviewAskCalls(delivery)).toHaveLength(1);
+    expect(delivery.replies).toEqual([]);
   });
 
   test("when a Junior draft names an open decision, keep it a draft", async ({

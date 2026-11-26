@@ -73,11 +73,14 @@ export function turnOf(
       ? "automation"
       : mode === "child_agent"
         ? "task"
-        : "root";
+        : "thread";
   return {
     userActor,
-    idleNeedsPendingWork: turnBehavior({ kind, personInput: userActor })
-      .idleNeedsPendingWork,
+    idleNeedsPendingWork: turnBehavior({
+      kind,
+      hasParent: kind === "task",
+      personInput: userActor,
+    }).idleNeedsPendingWork,
   };
 }
 

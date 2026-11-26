@@ -73,8 +73,9 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     page.getByText("Ask the Lead to start, find, or check on work…"),
   ).toBeVisible();
 
-  // The Space's details sit beside the Lead: its Conversations and members.
+  // The Space's details sit beside the Lead: its Threads and members.
   const details = page.getByRole("complementary", { name: "Space details" });
+  await details.getByRole("button", { name: "Done · 2" }).click();
   await expect(
     details.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
@@ -232,10 +233,11 @@ test("a non-member sees a Space whose Lead no member has talked to", async ({
   await expect(
     page.getByText("No member has talked to this Space's Lead yet."),
   ).toBeVisible();
+  // Its one Thread is done, so it shows once Done opens.
+  const threads = page.getByRole("region", { exact: true, name: "Threads" });
+  await threads.getByRole("button", { name: "Done · 1" }).click();
   await expect(
-    page
-      .getByRole("region", { name: "Conversations" })
-      .getByRole("link", { name: /Onboarding doc review/ }),
+    threads.getByRole("link", { name: /Onboarding doc review/ }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });
@@ -257,6 +259,7 @@ test.describe("on a touch screen", () => {
     ).toBeVisible();
     await page.getByRole("button", { name: "Space details" }).click();
     const sheet = page.getByRole("dialog", { name: "Space details" });
+    await sheet.getByRole("button", { name: "Done · 2" }).click();
     await expect(
       sheet.getByRole("link", { name: /Plan the billing migration/ }),
     ).toBeVisible();

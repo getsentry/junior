@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getDb } from "@/chat/db";
 import { createSpace, listSpaces, updateSpace } from "@/chat/spaces/store";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
@@ -17,6 +18,7 @@ import {
   spaceReport,
   spaceResponse,
 } from "./access";
+import { readSpaceStates } from "./state";
 
 /** Create the routes that list, create, read, and change Spaces. */
 export function createSpaceRoutes(): Hono<JuniorApiEnv> {
@@ -27,11 +29,19 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
     requireViewer,
     validateRequest("query", spaceListQuerySchema, "Invalid query parameters."),
     async (context) => {
-      const spaces = await listSpaces(
-        context.get("viewer").id,
-        context.req.valid("query"),
+      const viewerUserId = context.get("viewer").id;
+      const spaces = await listSpaces(viewerUserId, context.req.valid("query"));
+      const states = await readSpaceStates(
+        getDb(),
+        spaces.map((space) => space.id),
+        viewerUserId,
       );
-      return jsonResponse(spaceListSchema, { spaces: spaces.map(spaceReport) });
+      return jsonResponse(spaceListSchema, {
+        spaces: spaces.map((space) => ({
+          ...spaceReport(space),
+          ...states.get(space.id),
+        })),
+      });
     },
   );
 

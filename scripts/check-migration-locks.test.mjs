@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  checkDrops,
   checkMigrationLocks,
   migrationLockViolations,
 } from "./check-migration-locks.mjs";
@@ -76,6 +77,41 @@ test("exempts baseline files only while they still break a rule", async () => {
       "0001_fixed.sql: breaks no lock rule; remove it from scripts/migration-locks-baseline.json",
       "0002_new.sql: unbounded-backfill",
       "0003_gone.sql: file not found; remove it from scripts/migration-locks-baseline.json",
+    ],
+  );
+});
+
+test("requires a drop to name a release that is out, except in baseline files", () => {
+  const drop = 'ALTER TABLE "items" DROP COLUMN "kind";';
+  const ignore = (reason) =>
+    [`-- squawk-ignore ban-drop-column${reason}`, drop].join("\n");
+  const warning = (file) => ({
+    file,
+    line: 0,
+    column: 22,
+    rule_name: "ban-drop-column",
+    message: "dropping a column may break existing clients",
+  });
+  assert.deepEqual(
+    checkDrops(
+      [
+        ["0000_old.sql", drop],
+        ["0001_fixed.sql", 'ALTER TABLE "items" ADD COLUMN "note" text;'],
+        ["0002_new.sql", drop],
+        ["0003_no_reason.sql", ignore("")],
+        ["0004_unreleased.sql", ignore(" -- unused since 0.316.0")],
+        ["0005_released.sql", ignore(" -- unused since 0.99.1")],
+      ],
+      [warning("0000_old.sql"), warning("0002_new.sql")],
+      ["0000_old.sql", "0001_fixed.sql", "0009_gone.sql"],
+      "0.315.0",
+    ).map((error) => error.split(": ").slice(0, 2).join(": ")),
+    [
+      "0002_new.sql:0:22: ban-drop-column",
+      "0001_fixed.sql: has no drop or rename; remove it from scripts/migration-drops-baseline.json",
+      "0003_no_reason.sql:1: drop-without-release",
+      "0004_unreleased.sql:1: drop-without-release",
+      "0009_gone.sql: file not found; remove it from scripts/migration-drops-baseline.json",
     ],
   );
 });

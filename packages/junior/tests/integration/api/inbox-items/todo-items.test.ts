@@ -8,7 +8,7 @@ import { getInboxItem } from "@/chat/inbox-items/store";
 import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { setTodoStatusByUser } from "@/chat/todos/store";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
+import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import {
   juniorConversationParticipants,
   juniorConversations,

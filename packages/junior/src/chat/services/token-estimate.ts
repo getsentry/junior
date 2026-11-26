@@ -164,6 +164,17 @@ function claudeResizedImageSize(
 }
 
 /**
+ * The largest size that any Claude model reads an image at. Claude scales a
+ * larger image down to this size, so an image at this size loses no detail.
+ */
+export function claudeMaxImageSize(
+  width: number,
+  height: number,
+): [number, number] {
+  return claudeResizedImageSize(width, height, CLAUDE_HIGH_RES_IMAGE);
+}
+
+/**
  * Estimate one image for a model with the rule that `estimateMessagesTokens`
  * uses. `sized` is false when the image used the flat per-image value.
  */

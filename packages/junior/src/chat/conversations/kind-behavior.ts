@@ -152,7 +152,8 @@ const PERSON_IN_THREAD: TurnBehavior = {
 
 // A child agent's Turn comes from its parent, its child agents, or its
 // Watches. Its final response stays in its Conversation and is its reply to
-// the parent.
+// the parent. It has no `noReply`: every Turn reports to the parent, and the
+// parent decides what to do with it.
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
@@ -171,7 +172,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
     settings: false,
     reply: false,
     reportBlocked: "parent",
-    noReply: true,
+    noReply: false,
   },
 };
 
@@ -192,6 +193,7 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
   settings: PERSON_IN_THREAD.tools.settings,
+  noReply: PERSON_IN_THREAD.tools.noReply,
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
@@ -244,6 +246,8 @@ const LEAD_TOOLS = [
   "systemTime",
   "updateUserCustomization",
   "setConfiguration",
+  "listSpaces",
+  "moveConversationToSpace",
   "noReply",
 ] as const satisfies readonly StaticToolName[];
 
@@ -273,24 +277,37 @@ const LEAD: TurnBehavior = {
   },
 };
 
-/** Return the behavior of one Turn. */
+// A Lead Turn that no person sent, such as a Watch Event or another agent's
+// message. It lists the Lead's tools, so the Lead keeps one tool list, but
+// it changes no settings: only a person's request does.
+const LEAD_RUNTIME_TURN: TurnBehavior = {
+  ...LEAD,
+  tools: { ...LEAD.tools, settings: false },
+};
+
+/**
+ * Return the behavior of one Turn. A `thread` with a parent runs like a
+ * top-level `thread`, and also reports to its parent.
+ */
 export function turnBehavior(args: {
   kind: ConversationKind;
+  hasParent: boolean;
   personInput: boolean;
 }): TurnBehavior {
   switch (args.kind) {
-    case "root":
+    case "thread":
+      if (args.hasParent) {
+        return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
+      }
       return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
     case "automation":
       return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
-    case "thread":
-      return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
       if (!args.personInput) return CHILD_AGENT_TURN;
       // Only an agent writes input to a task.
       throw new Error("A task Conversation cannot have a person's input");
     case "lead":
-      return LEAD;
+      return args.personInput ? LEAD : LEAD_RUNTIME_TURN;
   }
 }
 
@@ -333,11 +350,13 @@ export function canMoveToSpace(
 }
 
 /**
- * Return whether a Conversation of this kind copies its root's visibility.
- * A root takes the visibility of its Destination or Space.
+ * Return whether a Conversation copies its root's visibility: it has a
+ * parent. A root takes the visibility of its Destination or Space.
  */
-export function copiesRootVisibility(kind: ConversationKind): boolean {
-  return !isTopLevelKind(kind);
+export function copiesRootVisibility(
+  conversation: Pick<Conversation, "parentConversationId">,
+): boolean {
+  return !isTopLevel(conversation);
 }
 
 /**
@@ -355,9 +374,31 @@ export function isTopLevel(
   return !conversation.parentConversationId;
 }
 
-/** Return whether a Conversation of this kind has no parent. */
-export function isTopLevelKind(kind: ConversationKind): boolean {
-  return kind === "root" || kind === "automation" || kind === "lead";
+/**
+ * Return whether a Conversation of this kind may have this parent edge. A
+ * `thread` may have a parent, a Task must, and an Automation run or a Lead
+ * never does.
+ */
+export function kindAllowsParent(
+  kind: ConversationKind,
+  hasParent: boolean,
+): boolean {
+  switch (kind) {
+    case "thread":
+      return true;
+    case "task":
+      return hasParent;
+    case "automation":
+    case "lead":
+      return !hasParent;
+  }
+}
+
+/** Return whether a Conversation is a child Thread: a `thread` with a parent. */
+export function isThread(
+  conversation: Pick<Conversation, "kind" | "parentConversationId">,
+): boolean {
+  return conversation.kind === "thread" && !isTopLevel(conversation);
 }
 
 /**

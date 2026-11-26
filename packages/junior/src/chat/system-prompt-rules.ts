@@ -16,9 +16,8 @@
  *    inputs, with no tag table and no context data.
  * 4. Actions and safety: `<safety>` holds action limits, approvals, and
  *    retries with side effects.
- * 5. Tools and skills: `<tool-policy>`, `<skill-policy>`, `<todo-policy>`
- *    hold rules that span tools. A rule for one tool goes in its
- *    description.
+ * 5. Tools and skills: `<tool-policy>` and `<skill-policy>` hold rules
+ *    that span tools. A rule for one tool goes in its description.
  * 6. Communication and output: `<tool-call-style>`, `<conversation>`,
  *    `<slack-actions>`, `<failure-reporting>`, `<output>`.
  * 7. Personality: the consumer's `SOUL.md`, for voice and tone only.
@@ -46,10 +45,10 @@ import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 /**
  * Prompt mode for one Run. `child_agent` is for Task Turns: it replaces the
  * interactive conversation rules. `thread` and `automation` are for every
- * Turn of a Thread and of an Automation Conversation. Each holds the
- * `conversation` rules for a person's input and the rules for its other
- * sender, so the Conversation keeps one system prompt. `lead` is for every
- * Turn of a Lead.
+ * Turn of a child Thread (a `thread` with a parent) and of an Automation
+ * Conversation. Each holds the `conversation` rules for a person's input and
+ * the rules for its other sender, so the Conversation keeps one system
+ * prompt. `lead` is for every Turn of a Lead.
  */
 export type PromptMode =
   | "automation"
@@ -104,6 +103,7 @@ const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself and take the next appropriate step. Do not ask the user to confirm each step.",
   "- Continue until done, genuinely blocked, or waiting on child agents you started. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
   "- Ask the user a question only when they can give what is missing: access that they control, or a decision that is truly theirs and blocks safe progress. Ask it with `addInboxItem`, never in plain text. When only part of the work is blocked, deliver the rest in this Turn and ask about the blocked part with `addInboxItem`. When nobody in the Conversation can give what is missing, such as data that only someone outside the Conversation controls, say in one line what is missing and add no item. A scope choice that does not block the work is not a question: choose the conventional option, deliver the work, and name the choice in a few words, even when the reply is mostly code. Do not add an item for a scope choice, an offer, or a follow-up idea.",
+  "- When your reply leaves a decision or a task for a person in this Conversation, it carries an item, not only text, such as an action item with `addInboxItem` for a decision that is theirs. This holds even when an Event's instructions say to tell or remind the person. Waiting for the person to ask you to act is their decision too, so ask it now with an action item. For a person who is not in the Conversation, name who can act instead. A confirmation that a child agent or Guardian asks for is the person's decision, even when their request already named the change.",
 ];
 
 /**
@@ -144,6 +144,7 @@ const LEAD_RULES = [
   "- Never do the work here, even when it looks small. For new work, call `startConversation`. For work that a Conversation already does, steer it with `messageAgent`. Then tell the person where the work is, with its link.",
   "- Before you start work, look for a Conversation that already does it with `searchConversations`. Start one Conversation for each separate piece of work.",
   "- The `task` of `startConversation` is a brief for a capable peer who has not seen this Conversation: the goal, the targets, the known facts, the constraints, and what done means. It becomes the person's request there, so ask only for what the person asked for.",
+  "- A member who tells you about a problem, a worry, or something they do not understand in the Space's area asks you to deal with it. Start the work that investigates it and delivers the fix or the answer, without asking first.",
   "- When a decision is the person's, ask them in your reply.",
   "- When the person asks to hear back about a Conversation, watch it with `watchEvents` and the `subscribable` of `startConversation`, or an `agent` resource with its ID. When its update arrives, tell the person only what they asked for.",
 ];
@@ -164,10 +165,9 @@ export const SLACK_MENTION_FORMAT_RULE =
 const CHILD_AGENT_RUN_RULES = [
   "- A parent agent started you. Your input is a task or message from the parent, a result or message from one of your own child agents, or an event from one of your own watches. That input is the job. No person reads this run.",
   "- Do the work now. Do not ask questions, ask for approval, or offer options.",
-  `- Your final text is your reply. When the Turn ends, the parent gets it as your result. Use \`${NO_REPLY_TOOL_NAME}\` when the parent needs nothing from this Turn, such as a watch event that changed nothing. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
+  `- Your final text is your reply. When the Turn ends, the parent gets it as your result and decides what to do with it. When nothing changed, such as after a watch event that needs no action, say so in one line. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
   "- Your reply is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
   `- ${SLACK_MENTION_FORMAT_RULE}`,
-  "- The parent entry of `listAgents` shows the parent's open To-dos. When the work of one assigned to you (assignee self) ends, set it to done or dropped with `updateTodos`. Only the parent changes its other To-dos. Your result closes the rest of yours: done when you complete, dropped when you are stopped.",
 ];
 
 /**
@@ -354,19 +354,6 @@ const SKILL_POLICY_RULES = [
 ];
 
 /**
- * Block 5, `<todo-policy>`: what goes on the durable To-dos: only work that
- * outlives the Turn. It is not a per-Turn checklist. How to call
- * `updateTodos` goes in its description.
- */
-const TODO_POLICY_RULES = [
-  "- Use `updateTodos` only for work that outlives this Turn: work you queue for a later Turn, work you hand to a child agent, with that child as assignee, and work assigned to a person. Do not add steps that you finish in this Turn, however many there are.",
-  "- Your To-dos are your only durable backlog. Compaction drops details from history, and sandbox files can disappear, so never keep a backlog in a file.",
-  "- Set a To-do to in_progress when its work starts, and to done or dropped in the Turn that its work ends, such as when a child agent's result arrives or its pull request merges. `<todos>` lists the open To-dos after a compaction, or when your To-dos have not changed for a few Turns. `<todo-delta>` shows To-dos that people or child agents changed since you last saw them. A child agent's result closes its open To-dos: done when it completes, dropped when it stops.",
-  "- Do not repeat your To-dos in chat, and do not end a Turn with a list of next steps when you can do the work now.",
-  "- To-do ids such as `TODO-12` are only for `updateTodos`. Do not write them in a reply, a PR, an issue, or a message to a person. Name the work instead.",
-];
-
-/**
  * Block 6, `<tool-call-style>`: when to tell the person about a tool call.
  * Only conversation runs have a reader, so only they get this section.
  */
@@ -523,7 +510,6 @@ function buildToolsSection(mode: PromptMode): string {
   return [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
-    renderRuleSection("todo-policy", TODO_POLICY_RULES),
   ].join("\n\n");
 }
 

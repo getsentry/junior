@@ -1,13 +1,23 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK } from "../src/pull-request-action-backfill";
+import {
+  claimGitHubPullRequestReadySync,
+  releaseGitHubPullRequestReadySync,
+} from "../src/pull-request-outcomes/store";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { GITHUB_PULL_REQUEST_ACTION_SYNC_TASK } from "../src/webhooks/pull-request-action";
 import { createGitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
+import { createPluginHarness } from "./plugin-harness";
 import {
   DEDUPE_KEY,
   PULL_URL,
   checkSuiteCompleted,
   mockGitHub,
   pullRequestAction,
+  requesterUsers,
+  reviewRequested,
   reviewSubmitted,
   route,
   seedJuniorPullRequest,
@@ -35,6 +45,8 @@ describe("next action item", () => {
       draft: false,
       mergeableStates: ["blocked"],
       merged: false,
+      // The required check has not reported, so no one asks the requester.
+      requiredChecks: ["test"],
       reviews: [],
       state: "open",
       title: "feat(inbox): Add the Inbox notice",
@@ -47,7 +59,7 @@ describe("next action item", () => {
       // The repo requires a review, and no one approved it yet.
       await webhook.handler(checkSuiteCompleted());
       expect(calls).toEqual([]);
-      expect(requests).toEqual(["pull"]);
+      expect(requests).toEqual(["pull", "rules"]);
 
       // The change request is on the older page of reviews.
       github.reviews = [
@@ -208,28 +220,23 @@ describe("next action item", () => {
       reviews: [],
       state: "open",
     };
-    mockGitHub(github, []);
+    const requests: string[] = [];
+    mockGitHub(github, requests);
     try {
       await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
       const webhook = route(fixture, calls);
 
       // The repo requires no review, so GitHub says that it can merge. A
-      // pending review request still comes first. A request for someone
-      // else or for a team waits on them, so no item asks the requester.
-      github.requestedReviewers = ["someone-else"];
-      await webhook.handler(pullRequestAction("review_requested"));
-      github.requestedReviewers = [];
+      // pending review request still comes first. A request for a team
+      // waits on the team, but asks nothing of the requester, so Junior asks
+      // for the requester's review too.
       github.requestedTeams = ["reviewers"];
       await webhook.handler(pullRequestAction("review_requested"));
-      expect(calls).toEqual([]);
-
-      // A request for the requester asks for their review.
-      github.requestedTeams = [];
-      github.requestedReviewers = ["requester"];
-      await webhook.handler(pullRequestAction("review_requested"));
+      expect(requests).toContain("request Requester");
       expect(calls).toMatchObject([
         { kind: "upsert", notice: { title: "Review requested · #946" } },
       ]);
+      github.requestedTeams = [];
 
       // With no request left, the same item asks to review and merge.
       github.requestedReviewers = [];
@@ -310,6 +317,8 @@ describe("next action item", () => {
       merged: false,
       // Requests for other people or for a team do not wait on the requester.
       requestedReviewers: ["someone-else"],
+      // The required check has not reported, so no one asks the requester.
+      requiredChecks: ["test"],
       reviews: [],
       state: "open",
     };
@@ -395,6 +404,97 @@ describe("next action item", () => {
     }
   });
 
+  it("asks the requester to review a draft and mark it ready, then to review it", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const github: GitHubState = {
+      draft: true,
+      mergeableStates: ["draft"],
+      merged: false,
+      // Junior kept the draft for the requester and asked only them.
+      requestedReviewers: ["requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      await webhook.handler(pullRequestAction("review_requested"));
+      const subject = {
+        id: PULL_URL,
+        title: "Add the Inbox notice (#946)",
+        url: PULL_URL,
+      };
+      expect(calls).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          kind: "upsert",
+          notice: {
+            assigneeIdentityIds: ["identity-requester"],
+            body: `#946 is a draft. Review it, then mark it ready for review.\n\n${PULL_URL}`,
+            dedupeKey: DEDUPE_KEY,
+            subject,
+            title: "Review requested · #946",
+            waitsOnAssignees: true,
+          },
+        },
+      ]);
+
+      // The requester approves it, but it stays a draft, such as when the
+      // repo's AGENTS.md leaves it for a person to mark ready. The same item
+      // now gives the one step left.
+      github.requestedReviewers = [];
+      github.reviews = [{ state: "APPROVED", user: { login: "requester" } }];
+      await webhook.handler(
+        reviewSubmitted("approved", { login: "requester" }),
+      );
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: {
+          assigneeIdentityIds: ["identity-requester"],
+          body: `You approved #946. Mark it ready for review.\n\n${PULL_URL}`,
+          dedupeKey: DEDUPE_KEY,
+          subject,
+          title: "Review requested · #946",
+          waitsOnAssignees: true,
+        },
+      });
+
+      // A comment after the approval does not undo it: the item stays.
+      const count = calls.length;
+      github.reviews.push({ state: "COMMENTED", user: { login: "requester" } });
+      await webhook.handler(
+        reviewSubmitted("commented", { login: "requester" }),
+      );
+      expect(calls).toHaveLength(count);
+
+      // GitHub asks them again before they mark it ready. Once it is
+      // ready, the same item says only that GitHub asks for the review.
+      github.requestedReviewers = ["requester"];
+      github.reviews = [];
+      github.draft = false;
+      github.mergeableStates = ["blocked"];
+      await webhook.handler(pullRequestAction("ready_for_review"));
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: {
+          assigneeIdentityIds: ["identity-requester"],
+          body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
+          dedupeKey: DEDUPE_KEY,
+          subject,
+          title: "Review requested · #946",
+          waitsOnAssignees: true,
+        },
+      });
+      expect(calls).toHaveLength(3);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("reuses one installation token for later webhooks", async () => {
     const fixture = await createGitHubFixture();
     const requests: string[] = [];
@@ -403,6 +503,8 @@ describe("next action item", () => {
         draft: false,
         mergeableStates: ["blocked"],
         merged: false,
+        // The requester commented, so no one asks them for a review.
+        comments: [{ at: "2026-07-02T11:00:00Z", login: "Requester" }],
         reviews: [],
         state: "open",
       },
@@ -433,7 +535,7 @@ describe("next action item", () => {
     }
   });
 
-  it("logs the GraphQL error when GitHub returns errors with no data", async () => {
+  it("logs a GraphQL error that a retry cannot fix", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
     const errors: string[] = [];
@@ -447,15 +549,14 @@ describe("next action item", () => {
       },
       [],
     );
-    // GitHub reports GraphQL errors, such as a rate limit, with HTTP 200.
+    // GitHub reports GraphQL errors with HTTP 200 and no data.
     mswServer.use(
       http.post("https://api.github.com/graphql", () =>
         HttpResponse.json({
           errors: [
             {
-              message:
-                "API rate limit already exceeded for installation ID 456.",
-              type: "RATE_LIMITED",
+              message: "Could not resolve to a Repository.",
+              type: "NOT_FOUND",
             },
           ],
         }),
@@ -468,6 +569,162 @@ describe("next action item", () => {
         "GitHub pull request action failed: GitHubGraphqlError",
       ]);
       expect(calls).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("syncs again in a task after the rate limit resets, because GitHub does not send the webhook again", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    const resetAt = Math.floor(Date.now() / 1000) + 600;
+    mswServer.use(
+      http.post(
+        "https://api.github.com/graphql",
+        () =>
+          HttpResponse.json({
+            errors: [
+              {
+                message:
+                  "API rate limit already exceeded for installation ID 456.",
+                type: "RATE_LIMIT",
+              },
+            ],
+          }),
+        { once: true },
+      ),
+      http.get("https://api.github.com/rate_limit", () =>
+        HttpResponse.json({
+          resources: {
+            graphql: { limit: 12500, remaining: 0, reset: resetAt },
+          },
+        }),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const h = createPluginHarness(fixture, requesterUsers);
+
+      await h.deliver(
+        reviewRequested(github, "Requester", "2026-07-02T12:00:00.000Z"),
+      );
+      expect(h.notices).toEqual([]);
+      expect(h.startedTasks).toEqual([
+        {
+          delaySeconds: expect.any(Number),
+          key: expect.stringMatching(
+            /^pull-request-action-sync:getsentry\/junior#946:\d+:0$/,
+          ),
+          name: GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
+          payload: {
+            number: 946,
+            repositoryFullName: "getsentry/junior",
+            restarts: 0,
+          },
+        },
+      ]);
+      const delaySeconds = h.startedTasks[0]?.delaySeconds ?? 0;
+      expect(delaySeconds).toBeGreaterThanOrEqual(600);
+      expect(delaySeconds).toBeLessThanOrEqual(606);
+
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          notice: expect.objectContaining({
+            dedupeKey: DEDUPE_KEY,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("starts a new sync task when the task hits the rate limit again, because the queue drops a task an hour after it starts", async () => {
+    const fixture = await createGitHubFixture();
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    const rateLimited = () =>
+      http.post(
+        "https://api.github.com/graphql",
+        () =>
+          HttpResponse.json({
+            errors: [
+              { message: "API rate limit exceeded.", type: "RATE_LIMIT" },
+            ],
+          }),
+        { once: true },
+      );
+    mswServer.use(
+      rateLimited(),
+      rateLimited(),
+      http.get("https://api.github.com/rate_limit", () =>
+        HttpResponse.json({
+          resources: {
+            graphql: {
+              limit: 12500,
+              remaining: 0,
+              reset: Math.floor(Date.now() / 1000) + 2 * 60 * 60,
+            },
+          },
+        }),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const h = createPluginHarness(fixture, requesterUsers);
+
+      await h.deliver(
+        reviewRequested(github, "Requester", "2026-07-02T12:00:00.000Z"),
+      );
+      // A task message expires 60 minutes after it starts.
+      expect(h.startedTasks.map((task) => task.delaySeconds)).toEqual([
+        55 * 60,
+      ]);
+
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([]);
+      expect(h.startedTasks).toEqual([
+        expect.objectContaining({
+          delaySeconds: 55 * 60,
+          key: expect.stringMatching(/:1$/),
+          payload: {
+            number: 946,
+            repositoryFullName: "getsentry/junior",
+            restarts: 1,
+          },
+        }),
+      ]);
+
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          notice: expect.objectContaining({
+            dedupeKey: DEDUPE_KEY,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+      expect(h.startedTasks).toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -492,6 +749,180 @@ describe("next action item", () => {
       await route(fixture, calls).handler(reviewSubmitted("approved"));
       expect(requests).toEqual([]);
       expect(calls).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("backfills the next action of quiet pull requests once, one page at a time", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    // GitHub asked the requester before the derivation shipped, and no
+    // webhook came since.
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        requestedReviewers: ["Requester"],
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      // A full first page of pull requests that no person asked for. They
+      // need no GitHub read.
+      for (let number = 1; number <= 50; number += 1) {
+        fixture.codeIndex.seed({
+          conversationIds: [],
+          number,
+          openedAt: new Date("2026-07-01T12:00:00.000Z"),
+          providerId: String(number),
+          repository: { name: "getsentry/junior", providerId: "2001" },
+          state: "open",
+          updatedAt: new Date("2026-07-01T12:00:00.000Z"),
+        });
+      }
+      const h = createPluginHarness(fixture, requesterUsers);
+      const backfills = () =>
+        h.startedTasks.filter(
+          (task) => task.name === GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK,
+        );
+      const now = Date.parse("2026-07-03T12:00:00.000Z");
+
+      await h.heartbeat(now);
+      expect(backfills()).toHaveLength(1);
+      await h.runStartedTasks();
+      expect(requests).toEqual([]);
+      expect(h.notices).toEqual([]);
+
+      await h.heartbeat(now + 60_000);
+      await h.runStartedTasks();
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          notice: expect.objectContaining({
+            dedupeKey: DEDUPE_KEY,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+
+      // The last page is done, so a dismissed item stays closed.
+      h.dismiss(DEDUPE_KEY);
+      await h.heartbeat(now + 120_000);
+      expect(backfills()).toEqual([]);
+      // The reconcile and the name repair read GitHub APIs that this test
+      // does not mock.
+      expect(
+        h.heartbeatLogs.filter(([, message]) =>
+          message.includes("pull request action"),
+        ),
+      ).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("backfills a page again when a webhook was checking one of its pull requests", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      // A webhook checks the pull request while the backfill runs. It checks
+      // again for the backfill's request, but does not ask in limbo.
+      const claim = await claimGitHubPullRequestReadySync(
+        fixture.db(),
+        "1001",
+        { now: new Date(), staleMs: 60_000 },
+      );
+      if (!claim || claim === "held") {
+        throw new Error("expected the webhook's claim");
+      }
+      const h = createPluginHarness(fixture, requesterUsers);
+      const now = Date.parse("2026-07-03T12:00:00.000Z");
+      await h.heartbeat(now);
+      await h.runStartedTasks();
+      expect(requests).toEqual([]);
+      let held: number | undefined = claim.requests;
+      while (held !== undefined) {
+        held = await releaseGitHubPullRequestReadySync(fixture.db(), "1001", {
+          id: claim.id,
+          requests: held,
+        });
+      }
+
+      // The next heartbeat runs the page again, and it asks.
+      await h.heartbeat(now + 60_000);
+      await h.runStartedTasks();
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual(["request Requester"]);
+      expect(h.notices.map(({ notice }) => notice.title)).toEqual([
+        "Review requested · #946",
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("finishes the backfill past a pull request that Junior does not track", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["blocked"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    try {
+      // The code index and the requester know the pull request, but Junior
+      // has no row for it, so no webhook can hold its check.
+      const at = new Date("2026-07-01T12:00:00.000Z");
+      fixture.codeIndex.seed({
+        conversationIds: ["slack:C123:1712345.0001"],
+        number: 946,
+        openedAt: at,
+        providerId: "1001",
+        repository: { name: "getsentry/junior", providerId: "2001" },
+        state: "open",
+        updatedAt: at,
+      });
+      await fixture.db().insert(juniorGitHubPullRequestRequesters).values({
+        conversationId: "slack:C123:1712345.0001",
+        createdAt: at,
+        identityId: "identity-requester",
+        number: 946,
+        repositoryFullName: "getsentry/junior",
+        updatedAt: at,
+      });
+      const h = createPluginHarness(fixture, requesterUsers);
+      const backfills = () =>
+        h.startedTasks.filter(
+          (task) => task.name === GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK,
+        );
+      const now = Date.parse("2026-07-03T12:00:00.000Z");
+      await h.heartbeat(now);
+      await h.runStartedTasks();
+      await h.heartbeat(now + 60_000);
+      expect(backfills()).toEqual([]);
+      expect(requests).toEqual([]);
     } finally {
       await fixture.close();
     }

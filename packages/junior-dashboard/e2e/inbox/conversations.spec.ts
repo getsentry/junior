@@ -5,6 +5,7 @@ import { withRequestedMailbox, waitForOutlineRead } from "../harness";
 import { expectRequestBudget } from "../request-budget";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
+import { mockConversationDetail } from "../mock-reports";
 
 test.describe("new UI", () => {
   const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -439,7 +440,7 @@ test.describe("new UI", () => {
       conversationId: `long-${index}`,
       cumulativeDurationMs: 1_000 + index,
       displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
@@ -815,10 +816,11 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === childDetailPath,
       async (route) => {
-        const response = await route.fetch();
         await route.fulfill({
-          json: { ...(await response.json()), isParticipant: true },
-          response,
+          json: {
+            ...(await mockConversationDetail(route)),
+            isParticipant: true,
+          },
         });
       },
     );

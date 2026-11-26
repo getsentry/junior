@@ -57,7 +57,8 @@ import type {
 } from "@/chat/sandbox/workspace";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 
@@ -608,6 +609,11 @@ describe("agent plugin hooks", () => {
           id: "userPrompt:1",
           pluginName: "agent-demo",
           text: "y".repeat(8_000),
+        },
+        {
+          id: "userPrompt:0",
+          pluginName: "overflow-demo",
+          text: "The context of this plugin could not load for this Turn.",
         },
       ]);
     } finally {

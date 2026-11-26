@@ -13,6 +13,7 @@ import {
   rowHead,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 import { scrollListUntil } from "./scroll-until";
 
 test.describe("new UI", () => {
@@ -430,10 +431,9 @@ test.describe("new UI", () => {
       if (new URL(route.request().url()).searchParams.has("cursor")) {
         olderReads += 1;
       }
-      const body = await (await route.fetch()).json();
+      const body = await mockFeedPage(route);
       const done = body.conversations.filter(
-        (conversation: { pinnedAt?: string; turnActive?: boolean }) =>
-          !conversation.pinnedAt && !conversation.turnActive,
+        (conversation) => !conversation.pinnedAt && !conversation.turnActive,
       );
       await route.fulfill({
         json: { ...body, conversations: done, nextCursor: "older" },
@@ -478,7 +478,7 @@ test.describe("new UI", () => {
       const older = url.searchParams.has("cursor");
       // Both pages split the mock's first page.
       url.searchParams.delete("cursor");
-      const body = await (await route.fetch({ url: url.toString() })).json();
+      const body = await mockFeedPage(route, url);
       const running = (conversation: {
         treeState?: string;
         turnActive?: boolean;

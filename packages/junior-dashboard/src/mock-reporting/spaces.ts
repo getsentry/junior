@@ -26,6 +26,7 @@ import { errorResponse } from "./errors";
 import {
   NOW_MS,
   readMockConversationDetail,
+  readMockConversationFeed,
   setMockConversationArchived,
 } from "./fixtures";
 import { mockLeadSpaceId } from "./sends";
@@ -202,17 +203,34 @@ export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
   };
 }
 
-/** Keep the feed rows of one Space. */
+/**
+ * Keep the feed rows of one Space, each with its tree state, as the API
+ * reads it for a Space's Threads.
+ */
 export function filterMockConversationsBySpace(
   feed: ConversationFeed,
   spaceId: string,
 ): ConversationFeed {
   return {
     ...feed,
-    conversations: feed.conversations.filter(
-      (row) => mockConversationSpaces.get(row.conversationId) === spaceId,
-    ),
+    conversations: feed.conversations
+      .filter(
+        (row) => mockConversationSpaces.get(row.conversationId) === spaceId,
+      )
+      .map((row) => ({ ...row, treeState: mockTreeState(row) })),
   };
+}
+
+/** A mock row's tree state. A row with none reads one from its own status. */
+function mockTreeState(row: ConversationFeed["conversations"][number]) {
+  return (
+    row.treeState ??
+    (row.status === "needs_input"
+      ? "needs_you"
+      : row.turnActive || row.status === "working"
+        ? "working"
+        : "done")
+  );
 }
 
 /**
@@ -288,7 +306,10 @@ export function addMockConversationSpaceRoute(
     const conversation = readMockConversationDetail(conversationId, 1);
     if (!conversation?.isParticipant)
       return errorResponse("Conversation not found.", 404);
-    if (conversation.kind !== "root" && conversation.kind !== "automation")
+    if (
+      (conversation.kind !== "thread" && conversation.kind !== "automation") ||
+      conversation.parentConversationId
+    )
       return errorResponse(
         "Only a top-level conversation moves. A child is in the Space of its root.",
         409,
@@ -324,6 +345,28 @@ export function addMockConversationSpaceRoute(
       space: spaceRef(spaceId ?? undefined),
     });
   });
+}
+
+const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
+
+/**
+ * Roll up the state of a Space's active feed rows, as the API's Space list
+ * does.
+ */
+function spaceState(
+  spaceId: string,
+): Pick<SpaceReport, "latestTurnFailed" | "treeState"> {
+  const rows = readMockConversationFeed().conversations.filter(
+    (row) =>
+      !row.archivedAt &&
+      mockConversationSpaces.get(row.conversationId) === spaceId,
+  );
+  const states = rows.map(mockTreeState);
+  return {
+    latestTurnFailed: rows.some((row) => row.latestTurnFailed),
+    treeState:
+      TREE_STATE_ORDER.find((state) => states.includes(state)) ?? "done",
+  };
 }
 
 function view(space: MockSpace): SpaceReport {
@@ -407,6 +450,26 @@ function findSpace(param: Record<string, string>): MockSpace | Response {
   );
 }
 
+/** Build what `GET /spaces` answers for its query, or nothing for a bad one. */
+export function readMockSpaceList(query: Record<string, string>) {
+  const parsed = spaceListQuerySchema.safeParse(query);
+  if (!parsed.success) return undefined;
+  const spaces = [...mockSpaces.values()]
+    .filter(
+      (space) =>
+        (parsed.data.membership === "all" || space.viewerMember) &&
+        readable(space) &&
+        Boolean(space.archivedAt) === parsed.data.archived,
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
+  return {
+    spaces: spaces.map((space) => ({
+      ...view(space),
+      ...spaceState(space.id),
+    })),
+  };
+}
+
 /**
  * Create the mock `/api/spaces` routes. A private Space is missing to a
  * person who is not a member.
@@ -420,17 +483,9 @@ export function createMockSpaceRoutes(): Hono<{
     return next();
   });
   app.get("/", (c) => {
-    const query = spaceListQuerySchema.safeParse(c.req.query());
-    if (!query.success) return errorResponse("Invalid query parameters.", 400);
-    const spaces = [...mockSpaces.values()]
-      .filter(
-        (space) =>
-          (query.data.membership === "all" || space.viewerMember) &&
-          readable(space) &&
-          Boolean(space.archivedAt) === query.data.archived,
-      )
-      .sort((left, right) => left.name.localeCompare(right.name));
-    return jsonResponse(spaceListSchema, { spaces: spaces.map(view) });
+    const list = readMockSpaceList(c.req.query());
+    if (!list) return errorResponse("Invalid query parameters.", 400);
+    return jsonResponse(spaceListSchema, list);
   });
   app.post("/", async (c) => {
     const body = createSpaceBodySchema.safeParse(await c.req.json());

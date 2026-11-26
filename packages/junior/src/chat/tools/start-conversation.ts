@@ -19,8 +19,8 @@ export const startConversationToolDefinition = zodToolDefinition({
     "Use messageAgent instead for work that a conversation already does.",
   ].join(" "),
   exposure: "modelOnly",
-  // Like spawnAgent: the start is not reviewed. The new root runs as the
-  // person, and action review judges its own tool calls.
+  // Like spawnAgent: not read-only, so action review judges the task. The new
+  // root runs as the person, and review then judges its own tool calls.
   approvalMode: "auto",
   annotations: {
     destructiveHint: false,

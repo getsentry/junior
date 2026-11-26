@@ -21,6 +21,7 @@ import { waitForRequestsToEnd } from "../harness";
 import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
@@ -807,10 +808,8 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
-        const feed = await response.json();
+        const feed = await mockFeedPage(route);
         await route.fulfill({
-          response,
           json: {
             ...feed,
             conversations: feed.conversations.filter(

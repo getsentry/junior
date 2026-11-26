@@ -9,7 +9,7 @@ import type { Conversation } from "../src/client/types";
 
 function conversation(id: string, title = id): Conversation {
   return {
-    kind: "root",
+    kind: "thread",
     cumulativeDurationMs: 0,
     displayTitle: title,
     id,

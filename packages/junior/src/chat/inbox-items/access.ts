@@ -213,6 +213,15 @@ export function inboxItemNeedsInput(): SQL {
 }
 
 /**
+ * SQL: the Inbox item sets the status of the Conversation that owns it. A
+ * To-do's item waits only on its assignee, so it shows only to them, through
+ * their tree state and Inbox. It does not change that status.
+ */
+export function inboxItemSetsConversationStatus(): SQL {
+  return notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`);
+}
+
+/**
  * SQL: the Inbox item is not assigned only to other people. It is assigned
  * to this User, to Everyone, or to no one. This is the assignee rule of
  * `canActOnInboxItem`; keep the two the same.
@@ -368,9 +377,11 @@ export async function inboxItemReaderForUserInConversation(
 export interface InboxItemAgentScope {
   /**
    * Whether the Actor of the Turn is a person. A system Actor, such as the
-   * Actor of an event Turn, is not.
+   * Actor of an event Turn, is not, and an app Actor is not.
    */
   actorIsPerson: boolean;
+  /** User of an app Actor. An app is not a person, so it gets no item. */
+  appUserId?: string;
   /** Whether the current Conversation is not public. */
   inPrivateConversation: boolean;
   reader: InboxItemReader;
@@ -387,11 +398,14 @@ export interface InboxItemAgentScope {
 export async function readInboxItemAgentScope(
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "resolveActorIdentity" | "source"
+    "actorIsApp" | "conversationId" | "resolveActorIdentity" | "source"
   >,
 ): Promise<InboxItemAgentScope> {
-  // Only a user Identity resolves, so a system Actor has none.
-  const actor = await context.resolveActorIdentity?.();
+  // Only a user Identity resolves, so a system Actor has none. An app can
+  // have a user Identity and a User, but it is not a person.
+  const resolved = await context.resolveActorIdentity?.();
+  const actor = context.actorIsApp ? undefined : resolved;
+  const appUserId = context.actorIsApp ? resolved?.user?.id : undefined;
   const user = actor?.user;
   const automationId =
     context.source.kind === "scheduled_automation" ||
@@ -404,6 +418,7 @@ export async function readInboxItemAgentScope(
   const tenant = current?.tenant;
   return {
     actorIsPerson: actor !== undefined,
+    ...(appUserId ? { appUserId } : undefined),
     inPrivateConversation: current?.visibility !== "public",
     reader: {
       conversationId: context.conversationId,

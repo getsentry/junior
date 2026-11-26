@@ -1,7 +1,8 @@
 import { waitForOutlineRead } from "../harness";
 import { mockInboxItems } from "./inbox-fixture";
-import { screenshot } from "../screenshot";
+import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
@@ -30,6 +31,23 @@ test.describe("new UI", () => {
       name: /Roll out payments-v42/,
     });
     await expect(pinned).toBeVisible();
+    // On hover, its `⋯` takes the place of its state on the right.
+    const pinnedState = inFlight
+      .getByRole("listitem")
+      .filter({
+        has: page.getByRole("link", { name: /Roll out payments-v42/ }),
+      })
+      .getByRole("img", { name: "Pinned" });
+    await expect(pinnedState).toBeVisible();
+    // The shot keeps the pointer only at its own size.
+    await page.setViewportSize(desktop);
+    await pinned.hover();
+    await expect(pinnedState).toBeHidden();
+    await screenshot(page, "inbox-in-flight-hover", {
+      lightTheme: true,
+      target: inFlight,
+      view: "desktop",
+    });
     // A right-click on an In flight row opens its Conversation menu.
     const menu = page.getByRole("menu");
     await pinned.click({ button: "right" });
@@ -79,8 +97,7 @@ test.describe("new UI", () => {
     page,
   }) => {
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const conversation = (
         index: number,
         displayTitle: string,
@@ -98,7 +115,6 @@ test.describe("new UI", () => {
         ...fields,
       });
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: [

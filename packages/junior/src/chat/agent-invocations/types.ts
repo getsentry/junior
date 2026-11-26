@@ -1,9 +1,9 @@
 import { actorSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { ChildConversationKind } from "@/chat/conversations/store";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
+import type { AgentUpdateStatus } from "./agent-update";
 import { AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/statuses";
 
 const exactStringSchema = z
@@ -14,13 +14,10 @@ const exactStringSchema = z
 export const agentNameSchema = exactStringSchema.max(64);
 
 /**
- * Kind of a new child Conversation. A Thread is a child that people can
- * message; a Task is one that only its parent messages.
+ * Kind of a child agent, stored as its Conversation kind. A Thread is a
+ * child that people can message; a Task is one that only its parent messages.
  */
-export const CHILD_AGENT_KINDS = [
-  "thread",
-  "task",
-] as const satisfies readonly ChildConversationKind[];
+export const CHILD_AGENT_KINDS = ["thread", "task"] as const;
 export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];
 
 /** `messageAgent` target for the parent of a child agent. */
@@ -63,9 +60,15 @@ export type ChildAgentSender = {
 type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
 export type SpawnChildAgentInput = z.input<typeof spawnChildAgentInputSchema>;
 
-/** How a finished task of a child agent ended. A stop is not a result. */
-export const CHILD_AGENT_RESULTS = ["completed", "blocked", "failed"] as const;
-type ChildAgentResult = (typeof CHILD_AGENT_RESULTS)[number];
+/**
+ * How a finished Turn of a child agent ended: the status of its agent
+ * update. A stop is not a result.
+ */
+export const CHILD_AGENT_RESULTS = [
+  "done",
+  "blocked",
+  "failed",
+] as const satisfies readonly AgentUpdateStatus[];
 
 /** Current state of one child agent, read from its Turns and mailbox. */
 export type ChildAgent = {
@@ -76,8 +79,8 @@ export type ChildAgent = {
   /** Why the child is blocked, failed, or stopped. */
   errorMessage?: string;
   kind: ChildAgentKind;
-  /** How the newest task that finished without a stop ended. */
-  lastResult?: ChildAgentResult;
+  /** How the newest Turn that finished without a stop ended. */
+  lastResult?: (typeof CHILD_AGENT_RESULTS)[number];
   status: AgentInvocationStatus;
   /** Latest task that the parent gave the child. */
   task: string;

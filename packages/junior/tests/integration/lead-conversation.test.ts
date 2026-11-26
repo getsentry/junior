@@ -170,7 +170,7 @@ describe("Lead", () => {
     expect(
       await getConversationStore().get({ conversationId: started }),
     ).toMatchObject({
-      kind: "root",
+      kind: "thread",
       spaceId: space.id,
       title: "Image cleanup",
       visibility: "public",

@@ -52,6 +52,11 @@ const SETTLE_TIMEOUT_MS = 5_000;
 // frame or two of the change that causes them.
 const QUIET_FRAMES = 3;
 
+// How long the page must also stay still. React holds a Suspense boundary's
+// content for up to 300ms after it last showed a fallback, such as a lazy
+// button that loaded, so the DOM can sit still that long before it changes.
+const QUIET_MS = 350;
+
 // Resizes to the page height before a shot fails. One resize fits most
 // pages. A second fits a page that a tall viewport makes taller.
 const MAX_FIT_RESIZES = 3;
@@ -207,8 +212,13 @@ async function settle(page: Page) {
   const deadline = Date.now() + SETTLE_TIMEOUT_MS;
   const remaining = () => Math.max(deadline - Date.now(), 1);
   let started: Request[] = [];
+  // A live page polls, and a poll for a read that already loaded in this
+  // settle shows nothing new. Only a read the page has not made yet waits
+  // for another round, or a poll every second keeps the page from settling.
+  const seen = new Set<string>();
+  const keyOf = (request: Request) => `${request.method()} ${request.url()}`;
   const onStart = (request: Request) => {
-    started.push(request);
+    if (!seen.has(keyOf(request))) started.push(request);
   };
   const urls = (requests: Iterable<Request>) =>
     [...requests].map((request) => request.url()).join(", ") || "unknown";
@@ -222,9 +232,11 @@ async function settle(page: Page) {
           `The page kept starting requests for ${SETTLE_TIMEOUT_MS}ms: ${urls(started)}`,
         );
       }
+      for (const request of started) seen.add(keyOf(request));
       started = [];
       await waitForRequestsToEnd(page, remaining());
       await loadAssets(page, remaining());
+      await waitForMarksToEnd(page, remaining());
       await waitForQuiet(page, remaining());
     } while (started.length > 0);
   } finally {
@@ -283,17 +295,45 @@ async function loadAssets(page: Page, timeout: number) {
 }
 
 /**
- * Wait for frames in a row with no DOM change and no scroll. Throws with the
- * element that kept changing, so the spec can wait for what moves it.
+ * Wait until no row shows a jump mark. A jump marks the row it lands on for
+ * a moment on a real timer, so a shot could catch the mark in one view and
+ * miss it in the next.
+ */
+async function waitForMarksToEnd(page: Page, timeout: number) {
+  await page
+    .waitForFunction(
+      // Menus also set data-highlighted on the active item, and keep it.
+      () =>
+        !document.querySelector(
+          "[data-transcript-seq][data-highlighted], [data-inbox-item-ask][data-highlighted]",
+        ),
+      undefined,
+      { timeout },
+    )
+    .catch(() => {
+      throw new Error(
+        `A jump mark (data-highlighted) was still showing after ${SETTLE_TIMEOUT_MS}ms.`,
+      );
+    });
+}
+
+/**
+ * Wait for frames in a row, and `QUIET_MS`, with no DOM change and no
+ * scroll. Throws with the element that kept changing, so the spec can wait
+ * for what moves it.
  */
 async function waitForQuiet(page: Page, timeout: number) {
   const busy = await page.evaluate(
-    ({ frames, timeout }) =>
+    ({ frames, quietMs, timeout }) =>
       new Promise<string | null>((resolve) => {
         let last = "";
         let quiet = 0;
+        // The frame time of the first still frame. Frame times are real
+        // even when a spec pins Date.
+        let stillSince: number | undefined;
         const changed = (target: EventTarget | null) => {
           quiet = 0;
+          stillSince = undefined;
           if (!(target instanceof Element)) return;
           last = target.id
             ? `#${target.id}`
@@ -317,14 +357,15 @@ async function waitForQuiet(page: Page, timeout: number) {
           resolve(result);
         };
         const timer = setTimeout(() => done(last || "document"), timeout);
-        const frame = () => {
+        const frame = (time: number) => {
           quiet += 1;
-          if (quiet > frames) done(null);
+          stillSince ??= time;
+          if (quiet > frames && time - stillSince >= quietMs) done(null);
           else requestAnimationFrame(frame);
         };
         requestAnimationFrame(frame);
       }),
-    { frames: QUIET_FRAMES, timeout },
+    { frames: QUIET_FRAMES, quietMs: QUIET_MS, timeout },
   );
   if (busy) {
     throw new Error(
