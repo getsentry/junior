@@ -51,7 +51,9 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(
     spaces.getByRole("link", { name: "Billing migration" }),
   ).toHaveAttribute("aria-current", "page");
-  const details = page.getByRole("complementary", { name: "Space details" });
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
   await expect(
     details.getByText(
       "Move invoicing to the new billing provider without double charges.",
@@ -193,7 +195,9 @@ test("a Space's page shows its settings when they are opened", async ({
 }) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  const details = page.getByRole("complementary", { name: "Space details" });
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
   const settings = details.getByRole("region", { name: "Settings" });
   // Settings load only when opened.
   await expect(settings.getByText("github.repo")).toHaveCount(0);
@@ -209,7 +213,7 @@ test("a Space's page shows its settings when they are opened", async ({
 
   await page.goto(`${dashboard.baseURL}${DOCS}`);
   const docsSettings = page
-    .getByRole("complementary", { name: "Space details" })
+    .getByRole("complementary", { name: "Conversation details" })
     .getByRole("region", { name: "Settings" });
   await docsSettings.getByRole("button", { name: "Show" }).click();
   await expect(
@@ -223,7 +227,9 @@ test("another Space's page does not show the last Space's Threads", async ({
 }) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  const details = page.getByRole("complementary", { name: "Space details" });
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
   const billingRow = details.getByRole("link", {
     name: /Plan the billing migration/,
   });
@@ -347,7 +353,7 @@ test("creating a Space opens it", async ({ dashboard, page }) => {
   ).toBeVisible();
   await expect(
     page
-      .getByRole("complementary", { name: "Space details" })
+      .getByRole("complementary", { name: "Conversation details" })
       .getByText("Keep checkout fast and error-free."),
   ).toBeVisible();
   // Its new Lead introduces itself.
@@ -521,7 +527,7 @@ test("a member adds people to a private Space with the people picker", async ({
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${PRICING}`);
   const members = page
-    .getByRole("complementary", { name: "Space details" })
+    .getByRole("complementary", { name: "Conversation details" })
     .getByRole("region", { name: "Members" });
   await members.getByRole("button", { name: "Add" }).click();
   const search = members.getByRole("combobox", { name: "Add members" });

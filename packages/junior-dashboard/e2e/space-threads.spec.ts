@@ -77,7 +77,7 @@ test("a Space's Threads show what each one needs, Done collapsed", async ({
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
   const threads = page
-    .getByRole("complementary", { name: "Space details" })
+    .getByRole("complementary", { name: "Conversation details" })
     .getByRole("region", { exact: true, name: "Threads" });
   const group = (name: string) =>
     threads.getByRole("region", { exact: true, name });
@@ -136,9 +136,9 @@ test("a phone shows a Space's Threads in its details sheet", async ({
   await seedThreads(page);
   await page.setViewportSize(mobile);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  await page.getByRole("button", { name: "Space details" }).click();
+  await page.getByRole("button", { name: "Conversation details" }).click();
   const threads = page
-    .getByRole("dialog", { name: "Space details" })
+    .getByRole("dialog", { name: "Conversation details" })
     .getByRole("region", { exact: true, name: "Threads" });
   await expect(threads.getByRole("heading", { level: 4 })).toHaveText([
     "Needs you · 2",
