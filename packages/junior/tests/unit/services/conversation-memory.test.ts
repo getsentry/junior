@@ -362,7 +362,7 @@ describe("buildConversationContext", () => {
     expect(context?.match(/<\/message>/g)).toHaveLength(1);
   });
 
-  it("shows a long message in full", () => {
+  it("shows a long message under the per-message cap in full", () => {
     const paragraph =
       "Materialized State is the record that each Turn rebuilds from Events. ";
     const text = Array.from(
@@ -386,49 +386,34 @@ describe("buildConversationContext", () => {
     expect(context).not.toContain("truncated");
   });
 
-  it("cuts a message that alone exceeds the size cap and says how to read it", () => {
+  it("cuts a message over the per-message cap and says how to read it", () => {
     const conversation = coerceThreadConversationState({});
     conversation.messages = [
       {
         id: "msg-1",
         role: "user",
-        text: "older",
+        text: `start ${"x".repeat(10_000)} end`,
         createdAtMs: 1000,
+        meta: { slackTs: "1795727795.305449" },
       },
       {
         id: "msg-2",
         role: "user",
-        text: `start ${"x".repeat(70_000)} end`,
+        text: `web ${"y".repeat(10_000)}`,
         createdAtMs: 2000,
-        meta: { slackTs: "1795727795.305449" },
-      },
-    ];
-
-    const block = buildConversationContext(conversation);
-    const context = block.text ?? "";
-    expect(block).toMatchObject({ shownMessages: 1, omittedMessages: 1 });
-    expect(context.length).toBeLessThan(61_000);
-    expect(context).toContain("user: start x");
-    expect(context).not.toContain(" end");
-    expect(context).toMatch(/truncated.*slackThreadRead/);
-    expect(context).toMatch(/searchConversationEvents/);
-  });
-
-  it("keeps text of an oversized message that escaping makes longer", () => {
-    const conversation = coerceThreadConversationState({});
-    conversation.messages = [
-      {
-        id: "msg-1",
-        role: "user",
-        text: "&".repeat(70_000),
-        createdAtMs: 1000,
       },
     ];
 
     const context = buildConversationContext(conversation).text ?? "";
-    expect(context.length).toBeLessThan(61_000);
-    expect(context).toContain("&amp;".repeat(10_000));
-    expect(context).toMatch(/truncated.*readConversationEvent/);
+    const rendered = /user: (start x+)/.exec(context)?.[1];
+    expect(rendered).toHaveLength(8_000);
+    expect(context).not.toContain(" end");
+    expect(context).toContain(
+      "[truncated: read the full Message with slackThreadRead]",
+    );
+    expect(context).toContain(
+      "[truncated: read the full Message with a searchConversationEvents query, then readConversationEvent]",
+    );
   });
 });
 
