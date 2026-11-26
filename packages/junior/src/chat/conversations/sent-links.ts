@@ -21,12 +21,7 @@
  * - `app.sent_links.failed.count`: links whose attach threw.
  * Policy: policies/observability.md.
  */
-import type {
-  PluginRegistration,
-  PluginStartedTaskDefinition,
-} from "@sentry/junior-plugin-api";
 import { and, asc, eq, isNotNull, lte, or } from "drizzle-orm";
-import * as z from "zod";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
@@ -39,6 +34,7 @@ import {
   juniorMessageAttachments,
 } from "@/db/schema";
 import { attachObjectLinkForUser } from "./object-attach";
+import { SENT_LINKS_ATTACH_TASK, SENT_LINKS_PLUGIN } from "./sent-links-task";
 import { queueTurnInputLinks } from "./sql/message-links";
 
 // Each link can read a provider, so one run attaches a few.
@@ -65,35 +61,6 @@ function linkWhere(keys: readonly LinkKey[]) {
   );
 }
 
-const SENT_LINKS_PLUGIN = "sent-links";
-const ATTACH_TASK = "attach";
-
-const attachPayloadSchema = z
-  .object({ conversationId: z.string().min(1) })
-  .strict();
-
-const attachTask: PluginStartedTaskDefinition<typeof attachPayloadSchema> = {
-  payload: attachPayloadSchema,
-  async run(ctx) {
-    await attachSentLinks(Date.now(), {
-      conversationId: ctx.payload.conversationId,
-    });
-  },
-};
-
-/**
- * Core task registration that attaches the due sent links of one
- * Conversation. A Turn starts it with `startSentLinksAttach`.
- */
-export const sentLinksRegistration: PluginRegistration = {
-  manifest: {
-    name: SENT_LINKS_PLUGIN,
-    displayName: "Sent links",
-    description: "Adds the links that people send to linked work",
-  },
-  tasks: { [ATTACH_TASK]: attachTask },
-};
-
 /**
  * Start the `attach` task of a Conversation when it has due links, after
  * the transaction that queued them commits. `key` names the input, so a
@@ -116,14 +83,14 @@ export async function startSentLinksAttach(
   try {
     await send(
       {
-        name: ATTACH_TASK,
+        name: SENT_LINKS_ATTACH_TASK,
         payload: { conversationId: args.conversationId },
         plugin: SENT_LINKS_PLUGIN,
       },
       {
         idempotencyKey: startedPluginTaskIdempotencyKey({
           key: `${args.conversationId}:${args.key}`,
-          name: ATTACH_TASK,
+          name: SENT_LINKS_ATTACH_TASK,
           plugin: SENT_LINKS_PLUGIN,
         }),
       },

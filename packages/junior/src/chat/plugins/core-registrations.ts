@@ -10,7 +10,7 @@ import { memoryRegistration } from "@/chat/memory/registration";
 import { notificationsTaskRegistration } from "@/chat/notifications/task";
 import { readWebPushConfig } from "@/chat/notifications/web-push";
 import { relatedConversationsRegistration } from "@/chat/related-conversations/registration";
-import { sentLinksRegistration } from "@/chat/conversations/sent-links";
+import { sentLinksRegistration } from "@/chat/conversations/sent-links-task";
 import { todosRegistration } from "@/chat/todos/registration";
 
 /** Return whether a core feature owns this registration name. */
