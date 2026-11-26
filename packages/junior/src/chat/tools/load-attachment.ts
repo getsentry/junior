@@ -9,9 +9,12 @@ import {
   storeAttachmentOnFirstUse,
 } from "@/chat/attachments/download";
 import type { ReadAttachmentSource } from "@/chat/attachments/source";
-import { readLiveAttachment } from "@/chat/attachments/store";
-import { attachmentIdParam } from "@/chat/attachments/tool-params";
+import {
+  readLiveAttachment,
+  type StoredAttachment,
+} from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { recordAttachmentsDelivered } from "@/chat/conversations/projection";
 import { ATTACHMENT_DIR } from "@/chat/sandbox/paths";
 import type {
   SandboxCommandInput,
@@ -131,11 +134,21 @@ export function createLoadAttachmentTool(args: {
   /** Downloads a file that Junior recorded without storing it yet. */
   readAttachmentSource?: ReadAttachmentSource;
   storage: AttachmentStorage;
+  /**
+   * Store a file of the Conversation's provider thread by its provider file
+   * id. Returns `undefined` when the id is not a provider file id.
+   */
+  storeProviderFile?: (fileId: string) => Promise<StoredAttachment | undefined>;
   workspace: SandboxWorkspace;
 }) {
+  const readAttachment = async (attachmentId: string) =>
+    await readLiveAttachment({
+      attachmentId,
+      conversationId: args.conversationId,
+      db: args.db,
+    });
   return zodTool({
-    description:
-      "Load a stored attachment for this conversation into the sandbox.",
+    description: "Load a file of this conversation into the sandbox.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -144,15 +157,20 @@ export function createLoadAttachmentTool(args: {
       readOnlyHint: false,
     },
     inputSchema: z.object({
-      attachment_id: attachmentIdParam,
+      attachment_id: z
+        .string()
+        .min(1)
+        .describe(
+          "Attachment id from attachment context, or the Slack file id (`F…`) of a file in the current thread.",
+        ),
     }),
     outputSchema: juniorToolOutputSchema,
-    execute: async ({ attachment_id }) => {
-      const attachment = await readLiveAttachment({
-        attachmentId: attachment_id,
-        conversationId: args.conversationId,
-        db: args.db,
-      });
+    execute: async ({ attachment_id }, options) => {
+      let attachment = await readAttachment(attachment_id);
+      if (!attachment && args.storeProviderFile) {
+        const stored = await args.storeProviderFile(attachment_id);
+        if (stored) attachment = await readAttachment(stored.id);
+      }
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
         throw new ToolInputError(
           "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
@@ -230,6 +248,14 @@ export function createLoadAttachmentTool(args: {
         cmd: "rm",
         args: ["-rf", "--", partsDir],
       });
+      // The transcript shows the file at the tool call that read it.
+      if (options?.toolCallId) {
+        await recordAttachmentsDelivered({
+          attachments: [attachment],
+          conversationId: args.conversationId,
+          toolCallId: options.toolCallId,
+        });
+      }
       return {
         path: sandboxPath,
         filename: attachment.filename,

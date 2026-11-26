@@ -1,7 +1,6 @@
 import pLimit from "p-limit";
 import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
-import { getSlackFileId } from "./attachments";
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
 import type { completeText, ConversationModelCost } from "@/chat/core-model";
@@ -25,6 +24,7 @@ import {
   readAttachmentVisionSummary,
   recordSlackAttachment,
 } from "@/chat/slack/attachments";
+import type { SlackMessageAttachment } from "@/chat/slack/message-files";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { toOptionalString } from "@/chat/coerce";
 import { logInfo, logWarn } from "@/chat/logging";
@@ -99,7 +99,7 @@ export interface VisionContextService {
     },
   ) => Promise<void>;
   resolveUserAttachments: (
-    attachments: Attachment[] | undefined,
+    attachments: SlackMessageAttachment[] | undefined,
     context: ResolveUserAttachmentsContext,
   ) => Promise<UserInputAttachment[]>;
 }
@@ -340,7 +340,7 @@ async function storeSlackFile(args: {
 }
 
 async function resolveUserAttachmentsWithDeps(
-  attachments: Attachment[] | undefined,
+  attachments: SlackMessageAttachment[] | undefined,
   context: ResolveUserAttachmentsContext,
   deps: Pick<VisionContextDeps, "attachmentStorage" | "completeText">,
 ): Promise<UserInputAttachment[]> {
@@ -383,7 +383,7 @@ async function resolveUserAttachmentsWithDeps(
       continue;
     }
 
-    const slackFileId = getSlackFileId(attachment);
+    const slackFileId = attachment.slackFileId;
     const url = attachment.url;
     // Only an image that may go to the model inline needs its bytes in
     // memory. Stream every other Slack file into storage, or record a large

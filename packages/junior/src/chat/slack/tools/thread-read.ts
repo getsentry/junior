@@ -25,14 +25,7 @@ import {
   renderAttachmentText,
 } from "@/chat/slack/message/attachments";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
-import type { JuniorSqlDatabase } from "@/db/db";
-import { matchSlackAttachments } from "@/chat/slack/attachments";
 import { getConversationStore } from "@/chat/db";
-
-interface ThreadReadAttachmentDeps {
-  conversationId: string;
-  db: JuniorSqlDatabase;
-}
 
 /**
  * Combine top-level `files` with files nested inside `attachments`
@@ -53,10 +46,7 @@ function collectMessageFiles(msg: SlackThreadReply): SlackFileRef[] {
 }
 
 /** Project a thread reply to safe output fields (strips url_private etc). */
-function sanitizeMessage(
-  msg: SlackThreadReply,
-  attachmentIdsBySlackFileId: ReadonlyMap<string, string>,
-) {
+function sanitizeMessage(msg: SlackThreadReply) {
   const attachmentText = renderAttachmentText(msg.attachments);
   const files = collectMessageFiles(msg);
 
@@ -85,9 +75,6 @@ function sanitizeMessage(
             name: f.name,
             mimetype: f.mimetype,
             size: f.size,
-            ...(f.id && attachmentIdsBySlackFileId.get(f.id)
-              ? { attachment_id: attachmentIdsBySlackFileId.get(f.id) }
-              : undefined),
           })),
         }
       : undefined),
@@ -163,10 +150,7 @@ export const slackThreadReadToolDefinition = zodToolDefinition({
 });
 
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
-export function createSlackThreadReadTool(
-  context: SlackToolContext,
-  attachmentDeps?: ThreadReadAttachmentDeps,
-) {
+export function createSlackThreadReadTool(context: SlackToolContext) {
   return zodTool({
     ...slackThreadReadToolDefinition,
     execute: async ({ url, channel_id, slack_ts, limit, max_pages }) => {
@@ -289,28 +273,7 @@ export function createSlackThreadReadTool(
       const resolvedThreadTs =
         threadTs ?? root?.thread_ts ?? root?.ts ?? lookupTs;
 
-      const slackFileIds = replies.flatMap((reply) =>
-        collectMessageFiles(reply)
-          .map((file) => file.id)
-          .filter((fileId): fileId is string => Boolean(fileId)),
-      );
-      const storedAttachments = attachmentDeps
-        ? await matchSlackAttachments({
-            conversationId: attachmentDeps.conversationId,
-            db: attachmentDeps.db,
-            providerIds: slackFileIds,
-          })
-        : [];
-      const attachmentIdsBySlackFileId = new Map(
-        storedAttachments.flatMap((attachment) =>
-          attachment.providerId
-            ? [[attachment.providerId, attachment.id] as const]
-            : [],
-        ),
-      );
-      const messages = replies.map((reply) =>
-        sanitizeMessage(reply, attachmentIdsBySlackFileId),
-      );
+      const messages = replies.map(sanitizeMessage);
       const conversationIds = await findThreadConversationIds({
         channelId,
         teamId: context.teamId,

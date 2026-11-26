@@ -892,7 +892,7 @@ function attachmentsDeliveredIdempotencyKey(args: {
   );
 }
 
-/** Record files delivered for humans without adding them to Pi replay. */
+/** Record files that Junior sent or read, without adding them to Pi replay. */
 export async function recordAttachmentsDelivered(args: {
   attachments: Array<{
     bytes: number;

@@ -58,6 +58,7 @@ import { createSlackListCreateTool } from "@/chat/slack/tools/list/create";
 import { createSlackListGetItemsTool } from "@/chat/slack/tools/list/get-items";
 import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-item";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
+import { storeSlackThreadFile } from "@/chat/slack/thread-files";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { userLookupIdentityProviders } from "@/chat/identities/lookup-providers";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
@@ -337,11 +338,7 @@ const STATIC_TOOL_BINDERS = {
   slackCanvasRead: () => createSlackCanvasReadTool(),
   slackCanvasEdit: (run) => createSlackCanvasEditTool(run.state),
   slackCanvasWrite: (run) => createSlackCanvasWriteTool(run.state),
-  slackThreadRead: (run) =>
-    createSlackThreadReadTool(slackOf(run), {
-      conversationId: run.context.conversationId,
-      db: getSqlExecutor(),
-    }),
+  slackThreadRead: (run) => createSlackThreadReadTool(slackOf(run)),
   slackChannelJoin: (run) => createSlackChannelJoinTool(slackOf(run)),
   searchConversationMessages: (run) =>
     isPublic(run)
@@ -518,11 +515,21 @@ const RUN_BUILT_TOOL_BUILDERS = {
   },
   loadAttachment: (run) => {
     const attachments = attachmentStore(run);
+    const slack = run.slack;
     return attachments
       ? createLoadAttachmentTool({
           ...attachments,
-          ...(run.slack
-            ? { readAttachmentSource: readSlackAttachmentSource }
+          ...(slack
+            ? {
+                readAttachmentSource: readSlackAttachmentSource,
+                storeProviderFile: async (fileId: string) =>
+                  await storeSlackThreadFile({
+                    ...attachments,
+                    channelId: slack.locationChannelId,
+                    fileId,
+                    threadTs: slack.threadTs,
+                  }),
+              }
             : undefined),
           workspace: run.context.workspace,
         })

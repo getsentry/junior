@@ -14,6 +14,10 @@ import { botConfig } from "@/chat/config";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
+  readSlackMessageAttachments,
+  type SlackMessageAttachment,
+} from "@/chat/slack/message-files";
+import {
   logException,
   getActiveTraceId,
   logInfo,
@@ -234,7 +238,7 @@ interface SlackTurnDeps {
   getSlackAdapter: () => SlackAdapter;
   pausedTurns: PausedTurns;
   resolveUserAttachments: (
-    attachments: Message["attachments"] | undefined,
+    attachments: SlackMessageAttachment[] | undefined,
     context: {
       conversationId?: string;
       threadId?: string | undefined;
@@ -476,7 +480,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentSteeringMessage[]> => {
           return await mapBounded(queuedMessages, async (queued) => {
-            const attachments = queued.message.attachments;
+            const attachments = readSlackMessageAttachments(queued.message);
             // An answer steers in as its Inbox item tag.
             const inboxItemInput = await loadInboxItemInput(
               getMessageInboxItemChange(queued.message),

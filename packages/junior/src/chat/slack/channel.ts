@@ -82,6 +82,8 @@ export async function listThreadReplies(input: {
   limit?: number;
   maxPages?: number | undefined;
   targetMessageTs?: string[];
+  /** Read only replies in this range, such as one reply by its timestamp. */
+  range?: { oldest: SlackMessageTs; latest: SlackMessageTs };
 }): Promise<SlackThreadReply[]> {
   const client = getSlackClient();
   const channelId = input.channelId;
@@ -108,6 +110,7 @@ export async function listThreadReplies(input: {
           ts: input.threadTs,
           limit: pageLimit,
           cursor,
+          ...(input.range ? { ...input.range, inclusive: true } : undefined),
         }),
       3,
       { action: "conversations.replies" },

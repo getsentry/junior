@@ -8,6 +8,7 @@ import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { MAX_EAGER_SLACK_FILE_BYTES } from "@/chat/slack/vision-context";
+import type { SlackMessageAttachment } from "@/chat/slack/message-files";
 import { juniorAttachments } from "@/db/schema";
 import {
   createTestMessage,
@@ -282,8 +283,9 @@ describe("Slack behavior: mixed attachment media", () => {
       name: "repro.mp4",
       size: 6 * MIB,
       url: "https://files.slack.com/files-pri/T0TEST-F0BIGVIDEO/repro.mp4",
+      slackFileId: "F0BIGVIDEO",
       fetchData,
-    } as Message["attachments"][number];
+    } satisfies SlackMessageAttachment;
     queueSlackPrivateFileDownload({
       body: chunkedDownload(6),
       headers: { "content-type": "video/mp4" },
@@ -331,8 +333,9 @@ describe("Slack behavior: mixed attachment media", () => {
       name: "standup.mp4",
       size: MAX_EAGER_SLACK_FILE_BYTES + 1,
       url: "https://files.slack.com/files-pri/T0TEST-F0RECORDING/standup.mp4",
+      slackFileId: "F0RECORDING",
       fetchData,
-    } as Message["attachments"][number];
+    } satisfies SlackMessageAttachment;
 
     const [first] = await resolveUserAttachments([recording], {
       conversationId,
@@ -383,6 +386,7 @@ describe("Slack behavior: mixed attachment media", () => {
         name: `capture-${index}.pcap`,
         size: MAX_ATTACHMENT_BYTES + 1,
         url: `https://files.slack.com/files-pri/T0TEST-F0HUGE${index}/capture-${index}.pcap`,
+        slackFileId: `F0HUGE${index}`,
         fetchData,
       })),
       { conversationId },

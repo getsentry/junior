@@ -4,6 +4,4 @@ import * as z from "zod";
 export const attachmentIdParam = z
   .string()
   .min(1)
-  .describe(
-    "Stored attachment ID, as shown in attachment context or Slack read results.",
-  );
+  .describe("Stored attachment ID, as shown in attachment context.");
