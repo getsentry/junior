@@ -72,14 +72,14 @@ inputs:
     description: The output that the viewer has now.
 rules:
   - id: pr-ended
-    serves: [open-while-asked]
+    serves: [ended-silent, open-while-asked]
     rows:
       - when: { state: merged }
         output: { close: done }
       - when: { state: closed }
         output: { close: dismissed }
   - id: pr-merge
-    serves: [first-rule-wins, unknown-keeps]
+    serves: [ready-to-merge, first-rule-wins, unknown-keeps]
     rows:
       - when:
           state: open
@@ -123,7 +123,7 @@ rules:
           viewer.can_merge: true
         output: { ask: { label: Ready to merge } }
   - id: pr-review-again
-    serves: [one-way-to-ask]
+    serves: [review-again, comment-review, one-way-to-ask]
     rows:
       - when:
           draft: true
@@ -138,7 +138,7 @@ rules:
           viewer.requester: true
         output: { ask: { label: Review requested } }
   - id: pr-review
-    serves: [one-way-to-ask, commands-not-changes]
+    serves: [always-asks, removed-request, one-way-to-ask, commands-not-changes]
     rows:
       - when: { viewer.requested: true, draft: true }
         output:
@@ -153,7 +153,7 @@ rules:
       - when: { viewer.requested: true, viewer.replied: false }
         output: { ask: { label: Review requested, dismiss: remove-reviewer } }
   - id: pr-mark-ready
-    serves: [one-way-to-ask]
+    serves: [held-draft, one-way-to-ask]
     rows:
       - when: { draft: true, viewer.approved: true, viewer.requester: true }
         output:
