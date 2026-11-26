@@ -18,14 +18,3 @@ export function useSpaceLead(spaceId: string | undefined) {
     staleTime: Number.POSITIVE_INFINITY,
   });
 }
-
-/**
- * Tell whether a Conversation page shows a Lead, and whether the page knows
- * that yet. It waits for the detail, so the wrong chrome does not flash.
- */
-export function useLeadPageKind(detail: { kind: string } | undefined) {
-  return {
-    known: detail !== undefined,
-    lead: detail?.kind === "lead",
-  };
-}

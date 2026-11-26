@@ -237,7 +237,6 @@ const LEAD_TOOLS = [
   "listAgents",
   "stopAgent",
   "archiveAgent",
-  "searchConversations",
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",
@@ -259,7 +258,6 @@ const LEAD_TOOLS = [
 // The tools a Lead uses on most Turns to find and follow its person's work.
 const LEAD_DIRECT_TOOLS = [
   "listAgents",
-  "searchConversations",
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",

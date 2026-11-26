@@ -51,7 +51,7 @@ export function TranscriptMessageShell(props: {
           )}
         >
           {kind === "assistant" && props.lead ? (
-            <LeadMark size="avatar" />
+            <LeadMark />
           ) : kind === "assistant" ? (
             <img
               alt=""
