@@ -28,6 +28,7 @@
     "path-case:check": "node scripts/check.mjs path-case",
     "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts packages/junior-dashboard/oxlint/*.test.ts",
     "test-architecture:check": "node scripts/check.mjs test-architecture",
+    "process-env:check": "node scripts/check.mjs process-env",
     "type-assertions:check": "node scripts/check.mjs type-assertions",
     "await-in-loop:check": "node scripts/check.mjs await-in-loop",
     "nav-request-budgets:check": "node scripts/check.mjs nav-request-budgets",
