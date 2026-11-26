@@ -10,6 +10,7 @@ export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
   AGENT_UPDATE_EVENT_TYPE,
   isAgentInvocationResultEventType,
+  isAgentMessageEventType,
   isAgentUpdateEventType,
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";

@@ -20,11 +20,10 @@ import { readActorIdentity } from "@/chat/plugins/viewer";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { AgentMessageTargetError } from "./errors";
+import { TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE } from "./result-event-type";
 import { PARENT_AGENT_TARGET } from "./types";
 
 const AGENT_MESSAGE_EVENT_NAMESPACE = "junior";
-/** Event type of a message from another top-level agent. */
-const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
 
 /**
  * Check that a top-level agent can message another top-level agent under

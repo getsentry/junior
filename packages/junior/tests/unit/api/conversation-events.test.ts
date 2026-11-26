@@ -60,7 +60,7 @@ describe("conversation report event projection", () => {
         };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -123,7 +123,7 @@ describe("conversation report event projection", () => {
         return value.count === 0 ? undefined : { title: "Background work" };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {

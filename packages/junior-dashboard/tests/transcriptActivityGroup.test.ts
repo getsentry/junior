@@ -114,7 +114,7 @@ function failure(): RenderedTranscriptEntry {
 }
 
 describe("transcript activity group", () => {
-  it("collapses non-message activity and agent invocation results, and keeps failures, subagents, and chat messages open", () => {
+  it("collapses non-message activity and agent invocation results, and keeps failures, subagents, agent messages, and chat messages open", () => {
     expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
     expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(true);
     expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(false);
@@ -128,6 +128,13 @@ describe("transcript activity group", () => {
       isCollapsibleActivityEntry(message("agent_invocation.completed")),
     ).toBe(true);
     expect(isCollapsibleActivityEntry(failure())).toBe(false);
+    // A message to another agent stays open, like a message from one.
+    const sent = tool("send");
+    if (sent.kind === "tool") {
+      sent.part.name = "messageAgent";
+      sent.part.input = { text: "Check the cache too.", to: "reviewer" };
+    }
+    expect(isCollapsibleActivityEntry(sent)).toBe(false);
   });
 
   it("uses a uniform event count for collapsed activity labels", () => {
@@ -166,7 +173,7 @@ describe("transcript activity group", () => {
     ).toBe("1 event · 300ms");
   });
 
-  it("folds quiet replies and unanswered Event messages", () => {
+  it("folds quiet replies and unanswered Event messages, but not agent messages", () => {
     const entries = [
       turnMessage("person", "user"),
       turnMessage("loud-reply", "assistant"),
@@ -176,6 +183,10 @@ describe("transcript activity group", () => {
       }),
       turnMessage("ci", "user", { eventType: "pull_request.checks.failed" }),
       tool("fix"),
+      turnMessage("child-message", "user", {
+        eventType: "agent.message",
+        noReply: true,
+      }),
       turnMessage("quiet-reply", "assistant", { quiet: true }),
       turnMessage("review", "user", { eventType: "pull_request.merged" }),
       turnMessage("merged-reply", "assistant"),
@@ -185,9 +196,11 @@ describe("transcript activity group", () => {
       "quiet-reply",
       "ci",
     ]);
-    expect(activityGroupSummary(entries.slice(2, 6))).toBe(
-      "1 tool call · 2 events · 1 quiet reply",
-    );
+    expect(
+      activityGroupSummary(
+        entries.slice(2, 7).filter((entry) => entry.key !== "child-message"),
+      ),
+    ).toBe("1 tool call · 2 events · 1 quiet reply");
   });
 
   it("summarizes collapsed activity contents for the tooltip", () => {

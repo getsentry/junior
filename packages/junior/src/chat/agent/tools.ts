@@ -34,7 +34,7 @@ import type { Skill, SkillMetadata } from "@/chat/skills";
 import {
   createPluginHookRunner,
   type PluginHookRunner,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/runner";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {

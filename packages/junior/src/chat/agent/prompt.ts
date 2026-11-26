@@ -19,7 +19,7 @@ import {
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
 } from "@/chat/prompt";
-import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
+import { getPluginUserPromptContributions } from "@/chat/plugins/hooks/prompt";
 import { pluginPromptHistoryMessages } from "@/chat/plugins/prompt-history-messages";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
