@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   conversationAncestors,
@@ -75,7 +75,9 @@ export async function setConversationArchive(
       }
       // An archived target keeps its time, so a repeat or concurrent archive
       // writes the same time to what it adds, and one restore undoes both.
-      // Descendants that are already archived keep their own time.
+      // Descendants that are already archived keep their own time. Only the
+      // target is locked, so the guard keeps the time of a descendant that
+      // was archived on its own after the tree read.
       const current = tree.get(args.conversationId)?.archivedAt;
       const archivedAt = current ?? new Date();
       await setArchivedAt(
@@ -85,6 +87,7 @@ export async function setConversationArchive(
           ...unarchived.map((node) => node.conversationId),
         ],
         archivedAt,
+        isNull(juniorConversations.archivedAt),
       );
       return {
         archivedAt: archivedAt.toISOString(),
