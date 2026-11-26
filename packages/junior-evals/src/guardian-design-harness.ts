@@ -2,9 +2,10 @@
  * Guardian design eval harness.
  *
  * Each case states the outcome that `design/guardian.md` asks for, and cites
- * one of its rule IDs. Cases reach Guardian only through `GuardianArm`, so a
- * new Guardian plugs in as another arm with no change to the cases.
- * `GUARDIAN_DESIGN_ARM` picks the arm. The current Guardian is the default.
+ * one of its rule IDs. Cases reach Guardian only through the runtime
+ * `Guardian` interface, so each implementation is one arm, with no change
+ * to the cases. `GUARDIAN_DESIGN_ARM` picks the arm. The current Guardian is
+ * the default.
  *
  * These cases run in `evals:guardian` and gate like the rest of it. A failing
  * case names a gap between the design and the arm, so the check stays red
@@ -15,10 +16,20 @@ import {
   type DescribeEvalOptions,
   type JsonValue,
 } from "vitest-evals";
-import type { ToolActionProposal } from "@/chat/guardian/proposal";
-import { currentGuardianArm } from "./guardian-design-current-arm";
+import { completeObject } from "@/chat/core-model";
+import { createCurrentGuardian } from "@/chat/guardian/current";
+import type { Guardian, GuardianRequest } from "@/chat/guardian/guardian";
+import { guardianPluginFacts } from "@/chat/guardian/policy";
+import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { ProviderError } from "@/chat/services/provider-error";
+import { resolveGuardianModelId } from "./guardian-harness";
 
 const SAMPLE_TIMEOUT_MS = 60_000;
+
+// A model that the AI Gateway does not serve, so each review call fails as
+// it does in a provider outage.
+const UNAVAILABLE_MODEL_ID = "junior-evals/unavailable-model";
 
 /**
  * What happens to one action.
@@ -39,32 +50,11 @@ export type GuardianOutcome =
 export type GuardianDecider = "rule" | "guardian" | "person";
 
 /**
- * Facts that the design says Junior gives Guardian (`facts-from-junior`) and
- * that today's proposal does not carry. The proposal of a case is what core
- * sends today. These facts are what the design adds.
+ * One planned action, or the calls of one Code Mode batch, for Guardian.
+ * The proposal of a case is what core sends today. Its facts are what the
+ * design adds.
  */
-export interface GuardianDesignFacts {
-  /**
-   * Lines of the person whose instruction the action serves that reach this
-   * Turn from somewhere else: from the Turn that started the work
-   * (`instruction`), as words that an agent relayed, or as a message from
-   * the person's linked account.
-   */
-  personLines?: Array<{
-    text: string;
-    via: "instruction" | "relayed" | "linked-account";
-  }>;
-  /** Exact actions that the person confirmed in an Inbox item. */
-  confirmed?: Array<{ tool: string; input: Record<string, unknown> }>;
-  /** Resources that the same instruction created, such as a pull request. */
-  createdByInstruction?: string[];
-}
-
-/** One planned action, or the calls of one Code Mode batch, for Guardian. */
-export interface GuardianDesignRequest {
-  /** One action, or each call of one Code Mode batch, in order. */
-  actions: ToolActionProposal[];
-  facts?: GuardianDesignFacts;
+export interface GuardianDesignRequest extends GuardianRequest {
   /** The review model cannot answer, as in a provider outage. */
   reviewUnavailable?: boolean;
 }
@@ -82,14 +72,25 @@ export interface GuardianDesignResult {
   inboxItems: number;
 }
 
-/** The seam: one Guardian implementation that the suite measures. */
-export type GuardianArm = (
-  request: GuardianDesignRequest,
-  options: { signal: AbortSignal },
-) => Promise<GuardianDesignResult>;
+/** Build one arm's Guardian for the review model of a request. */
+type GuardianArm = (modelId: string) => Guardian;
+
+/** The facts that production gives for the installed plugins. */
+function destinationFacts() {
+  return guardianPluginFacts(
+    pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+  );
+}
 
 const ARMS: Record<string, GuardianArm> = {
-  current: currentGuardianArm,
+  current: (modelId) =>
+    createCurrentGuardian(
+      createGuardianActionReviewer({
+        completeObject,
+        destinationFacts: destinationFacts(),
+        modelId,
+      }),
+    ),
 };
 
 function selectedArm(): { arm: GuardianArm; name: string } {
@@ -101,6 +102,49 @@ function selectedArm(): { arm: GuardianArm; name: string } {
     );
   }
   return { arm, name };
+}
+
+/** Run one request through one arm, as the gate does, and report the outcomes. */
+async function runArm(
+  arm: GuardianArm,
+  request: GuardianDesignRequest,
+  signal: AbortSignal,
+): Promise<GuardianDesignResult> {
+  const { reviewUnavailable, ...guardianRequest } = request;
+  const guardian = arm(
+    reviewUnavailable ? UNAVAILABLE_MODEL_ID : resolveGuardianModelId(),
+  );
+  const result = await guardian.review(guardianRequest, { signal });
+  const actions: GuardianDesignResult["actions"] = [];
+  for (const action of result.actions) {
+    if (action.outcome === "unavailable") {
+      // A provider failure that the case did not ask for is a broken eval
+      // run, not an outcome of the case.
+      if (action.error instanceof ProviderError && !reviewUnavailable) {
+        throw action.error;
+      }
+      if (guardian.onUnavailable === "stop-run") {
+        // The gate stops the Run, so no later action of the batch happens.
+        actions.push({ outcome: "run-stopped" });
+        return { actions, inboxItems: 0 };
+      }
+      actions.push({ outcome: "unavailable" });
+      continue;
+    }
+    actions.push(
+      action.decidedBy === "person"
+        ? { decidedBy: "person", outcome: "allow", reason: action.reason }
+        : {
+            decidedBy: "guardian",
+            outcome: action.outcome,
+            reason: action.decision.reason,
+            ...(action.decision.rule
+              ? { rule: action.decision.rule }
+              : undefined),
+          },
+    );
+  }
+  return { actions, inboxItems: result.inboxItems };
 }
 
 /** Rule IDs of `design/guardian.md` that the cases cite. */
@@ -241,9 +285,11 @@ export const guardianDesignHarness = createHarness<
     const results = await Promise.allSettled(
       Array.from({ length: samples }, () => {
         const timeout = AbortSignal.timeout(SAMPLE_TIMEOUT_MS);
-        return arm(input.request, {
-          signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-        });
+        return runArm(
+          arm,
+          input.request,
+          signal ? AbortSignal.any([signal, timeout]) : timeout,
+        );
       }),
     );
     signal?.throwIfAborted();

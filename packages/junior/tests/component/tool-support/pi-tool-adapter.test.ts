@@ -3,6 +3,7 @@ import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orche
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import {
   createToolActionReview,
   type ToolActionReview,
@@ -55,7 +56,7 @@ function actionReview(
     },
     onDecision: vi.fn(async () => undefined),
     onFatal,
-    reviewer,
+    guardian: createCurrentGuardian(reviewer),
   });
 }
 

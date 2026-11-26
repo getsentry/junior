@@ -6,6 +6,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { http } from "msw";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -51,7 +52,7 @@ const allowAll = createToolActionReview({
   },
   onDecision: async () => undefined,
   onFatal: () => undefined,
-  reviewer: {
+  guardian: createCurrentGuardian({
     review: async () => ({
       decision: "allow",
       reason: "The user asked for this.",
@@ -59,7 +60,7 @@ const allowAll = createToolActionReview({
       rule: "none",
       userAuthorization: "high",
     }),
-  },
+  }),
 });
 
 type SavedFile = { content: string | Uint8Array; path: string };

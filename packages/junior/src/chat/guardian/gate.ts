@@ -19,6 +19,7 @@ import {
   addPriorRejection,
   projectToolActionRejection,
 } from "@/chat/guardian/history";
+import type { Guardian } from "@/chat/guardian/guardian";
 import type {
   RootConversation,
   ScriptCallStatus,
@@ -26,7 +27,6 @@ import type {
   ToolActionEvidence,
   ToolActionProposal,
   ToolActionReviewDecision,
-  ToolActionReviewer,
   ToolActionScript,
 } from "@/chat/guardian/proposal";
 import { mapBounded } from "@/chat/fan-out";
@@ -166,11 +166,22 @@ export class ToolActionRejectedError extends Error {
   }
 }
 
-/** Required review could not run, so the action was not executed. */
+const ACTION_REVIEW_UNAVAILABLE_INSTRUCTIONS = [
+  "The action did not run because its review could not run. This is not a risk decision.",
+  "You may retry the same action once. If it fails again, tell the person what you could not do.",
+  "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
+].join("\n");
+
+/**
+ * Required review could not run, so the action was not executed. With
+ * `retry`, only this action failed and the agent may retry it once.
+ */
 export class ToolActionReviewUnavailableError extends Error {
-  constructor(options?: { cause?: unknown }) {
+  constructor(options?: { cause?: unknown; retry?: boolean }) {
     super(
-      "Required action review is unavailable; the action was not executed.",
+      options?.retry
+        ? ACTION_REVIEW_UNAVAILABLE_INSTRUCTIONS
+        : "Required action review is unavailable; the action was not executed.",
       {
         cause: options?.cause,
       },
@@ -472,12 +483,13 @@ async function prepareToolActionReview(
  */
 export const MAX_TOOL_ACTION_BATCH = 10;
 
-/** Most Guardian reviews of one batch that run at the same time. */
-const MAX_CONCURRENT_REVIEWS = 4;
+/** Most actions of one batch that the gate prepares or records at the same time. */
+const MAX_CONCURRENT_PREPARATIONS = 4;
 
 /** Outcome of the review step of one action, before gate state changes. */
 type ReviewStep =
   | { kind: "skipped" }
+  | { kind: "confirmed" }
   | {
       kind: "reviewed";
       decision: ToolActionReviewDecision;
@@ -485,9 +497,21 @@ type ReviewStep =
     }
   | { kind: "unavailable"; error: ToolActionReviewUnavailableError };
 
+function unavailableStep(error: unknown): ReviewStep {
+  return {
+    kind: "unavailable",
+    error:
+      error instanceof ToolActionReviewUnavailableError
+        ? error
+        : new ToolActionReviewUnavailableError({ cause: error }),
+  };
+}
+
 /** Create the core review path that prepares actions and enforces Guardian decisions. */
 export function createToolActionReview(options: {
   context: ToolActionReviewContext;
+  /** The Guardian that decides each action. */
+  guardian: Guardian;
   /** Persist the Guardian decision before the reviewed action can continue. */
   onDecision(event: {
     toolCallId: string;
@@ -497,7 +521,6 @@ export function createToolActionReview(options: {
   /** Escalate unavailable review to the owning agent-run boundary. */
   onFatal(error: ToolActionReviewUnavailableError): void;
   priorRejections?: ToolActionPriorRejection[];
-  reviewer: ToolActionReviewer;
 }): ToolActionReview {
   const priorRejections = [...(options.priorRejections ?? [])];
   const pendingRejections = new Map<string, ToolActionRejectionMarker>();
@@ -513,53 +536,95 @@ export function createToolActionReview(options: {
   >();
 
   /**
-   * Review one action and record its decision. Gate state does not change
-   * here, so concurrent reviews in one batch cannot corrupt it.
+   * Prepare each action, send the proposals of the batch to Guardian at
+   * once, and record each decision. Gate state does not change here.
    */
-  const reviewStep = async (
-    action: ToolAction,
-    rejections: ToolActionPriorRejection[],
+  const reviewSteps = async (
+    actions: readonly ToolAction[],
     signal: AbortSignal | undefined,
-  ): Promise<ReviewStep> => {
-    try {
-      const proposal = await prepareToolActionReview(
-        action,
-        options.context,
-        rejections,
-      );
-      if (!proposal) {
-        return { kind: "skipped" };
-      }
-      const decision = await options.reviewer.review(
-        proposal,
-        signal ? { signal } : {},
-      );
-      await options.onDecision({
-        toolCallId: action.toolCallId,
-        toolName: proposal.tool.name,
-        decision,
-      });
-      return { kind: "reviewed", decision, proposal };
-    } catch (error) {
-      if (signal?.aborted) {
-        throw error;
-      }
-      return {
-        kind: "unavailable",
-        error:
-          error instanceof ToolActionReviewUnavailableError
-            ? error
-            : new ToolActionReviewUnavailableError({ cause: error }),
-      };
-    }
+  ): Promise<ReviewStep[]> => {
+    // Each action sees the same prior rejections, so the order in which
+    // preparations finish cannot change a proposal.
+    const rejections = [...priorRejections];
+    const prepared = await mapBounded(
+      actions,
+      async (action): Promise<ToolActionProposal | ReviewStep> => {
+        try {
+          return (
+            (await prepareToolActionReview(
+              action,
+              options.context,
+              rejections,
+            )) ?? { kind: "skipped" }
+          );
+        } catch (error) {
+          if (signal?.aborted) {
+            throw error;
+          }
+          return unavailableStep(error);
+        }
+      },
+      MAX_CONCURRENT_PREPARATIONS,
+    );
+    const proposals = prepared.filter(
+      (entry): entry is ToolActionProposal => !("kind" in entry),
+    );
+    const result =
+      proposals.length > 0
+        ? await options.guardian.review({ actions: proposals }, { signal })
+        : { actions: [], inboxItems: 0 };
+    // The outcome of each action that has a proposal, in batch order.
+    let next = 0;
+    const outcomes = prepared.map((entry) =>
+      "kind" in entry ? undefined : result.actions[next++],
+    );
+    // Record each decision before its action can continue. A decision that
+    // cannot be recorded fails its action like a review that cannot run.
+    return await mapBounded(
+      prepared,
+      async (entry, index): Promise<ReviewStep> => {
+        const outcome = outcomes[index];
+        if ("kind" in entry) {
+          return entry;
+        }
+        if (!outcome) {
+          throw new Error("A proposal of the batch has no Guardian outcome.");
+        }
+        if (outcome.outcome === "unavailable") {
+          return unavailableStep(outcome.error);
+        }
+        if (outcome.decidedBy === "person") {
+          return { kind: "confirmed" };
+        }
+        try {
+          await options.onDecision({
+            toolCallId: actions[index]!.toolCallId,
+            toolName: entry.tool.name,
+            decision: outcome.decision,
+          });
+        } catch (error) {
+          if (signal?.aborted) {
+            throw error;
+          }
+          return unavailableStep(error);
+        }
+        return {
+          kind: "reviewed",
+          decision: outcome.decision,
+          proposal: entry,
+        };
+      },
+      MAX_CONCURRENT_PREPARATIONS,
+    );
   };
 
   /**
    * Count each attempt in the batch once, in batch order. An attempt with a
    * rejection adds one to the count from before the attempt, also when it
    * has allowed actions or spans several batches. An attempt with only
-   * allowed actions resets the count. Skipped and unavailable actions do not
-   * change it. Return the attempt state of each action.
+   * allowed actions resets the count, also an action that the person
+   * confirmed. Skipped and unavailable actions do not change it. Return the
+   * attempt state of each action.
    */
   const countAttempts = (
     actions: readonly ToolAction[],
@@ -580,10 +645,13 @@ export function createToolActionReview(options: {
     });
     for (const [index, state] of states.entries()) {
       const step = steps[index]!;
-      if (step.kind !== "reviewed" || state.rejected) {
+      if (
+        (step.kind !== "reviewed" && step.kind !== "confirmed") ||
+        state.rejected
+      ) {
         continue;
       }
-      if (step.decision.decision === "allow") {
+      if (step.kind === "confirmed" || step.decision.decision === "allow") {
         // A later action of the same attempt can still add one.
         consecutiveRejections = 0;
         continue;
@@ -619,12 +687,21 @@ export function createToolActionReview(options: {
     step: ReviewStep,
     exhausted: boolean,
   ): ToolActionReviewResult => {
-    if (step.kind === "skipped") {
+    if (step.kind === "skipped" || step.kind === "confirmed") {
       return { allowed: true };
     }
     if (step.kind === "unavailable") {
-      options.onFatal(step.error);
-      return { allowed: false, error: step.error };
+      if (options.guardian.onUnavailable === "stop-run") {
+        options.onFatal(step.error);
+        return { allowed: false, error: step.error };
+      }
+      return {
+        allowed: false,
+        error: new ToolActionReviewUnavailableError({
+          cause: step.error.cause,
+          retry: true,
+        }),
+      };
     }
     const { decision, proposal } = step;
     if (decision.decision === "allow") {
@@ -665,14 +742,7 @@ export function createToolActionReview(options: {
         "guardian.action_review",
         {},
         async () => {
-          // Each action sees the same prior rejections, so the order in
-          // which concurrent reviews finish cannot change a proposal.
-          const rejections = [...priorRejections];
-          const steps = await mapBounded(
-            actions,
-            (action) => reviewStep(action, rejections, signal),
-            MAX_CONCURRENT_REVIEWS,
-          );
+          const steps = await reviewSteps(actions, signal);
           // Change gate state in batch order, so it does not depend on
           // which review finished first.
           const states = countAttempts(actions, steps);

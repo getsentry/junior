@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AnyToolDefinition } from "@/chat/tool-support/definition";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import {
   createToolActionReview,
   MAX_TOOL_ACTION_BATCH,
@@ -9,6 +10,7 @@ import {
   type ToolActionReview,
   type ToolActionReviewContext,
 } from "@/chat/guardian/gate";
+import type { Guardian } from "@/chat/guardian/guardian";
 import type {
   ToolActionReviewDecision,
   ToolActionReviewer,
@@ -66,7 +68,7 @@ function reviewContext(
     },
     onDecision: vi.fn(async () => undefined),
     onFatal: vi.fn(),
-    reviewer,
+    guardian: createCurrentGuardian(reviewer),
   });
 }
 
@@ -482,6 +484,87 @@ describe("tool action review", () => {
     );
   });
 
+  it("fails only the action when its Guardian bounds review failures", async () => {
+    const onFatal = vi.fn();
+    const failure = new Error("provider unavailable");
+    const guardian: Guardian = {
+      onUnavailable: "fail-action",
+      review: async ({ actions }) => ({
+        actions: actions.map(() => ({
+          error: failure,
+          outcome: "unavailable" as const,
+        })),
+        inboxItems: 0,
+      }),
+    };
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Generate the report.",
+      },
+      guardian,
+      onDecision: vi.fn(async () => undefined),
+      onFatal,
+    });
+
+    await expect(
+      reviewToolAction(
+        "tool-call",
+        "generateReport",
+        definition({ approvalMode: "review" }),
+        { reportId: "weekly" },
+        actionReview,
+      ),
+    ).rejects.toMatchObject({
+      cause: failure,
+      message: expect.stringContaining("This is not a risk decision."),
+      name: "ToolActionReviewUnavailableError",
+    });
+    expect(onFatal).not.toHaveBeenCalled();
+  });
+
+  it("runs an action that the person confirmed with no recorded review", async () => {
+    const onDecision = vi.fn(async () => undefined);
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Generate the report.",
+      },
+      guardian: {
+        onUnavailable: "fail-action",
+        review: async () => ({
+          actions: [
+            {
+              decidedBy: "person",
+              outcome: "allow",
+              reason: "The person confirmed this exact action.",
+            },
+          ],
+          inboxItems: 0,
+        }),
+      },
+      onDecision,
+      onFatal: vi.fn(),
+    });
+
+    await expect(
+      reviewToolAction(
+        "tool-call",
+        "generateReport",
+        definition({ approvalMode: "review" }),
+        { reportId: "weekly" },
+        actionReview,
+      ),
+    ).resolves.toBeUndefined();
+    expect(onDecision).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the Guardian decision cannot be recorded", async () => {
     const failure = new Error("event log unavailable");
     const actionReview = createToolActionReview({
@@ -496,14 +579,14 @@ describe("tool action review", () => {
         throw failure;
       },
       onFatal: vi.fn(),
-      reviewer: {
+      guardian: createCurrentGuardian({
         review: async () => ({
           decision: "allow",
           reason: "The requested report is safe.",
           riskLevel: "low",
           userAuthorization: "high",
         }),
-      },
+      }),
     });
 
     await expect(
@@ -575,7 +658,7 @@ describe("tool action review", () => {
       },
       onDecision,
       onFatal: vi.fn(),
-      reviewer: { review },
+      guardian: createCurrentGuardian({ review }),
     });
     const reviewed = definition({ approvalMode: "review" });
 
