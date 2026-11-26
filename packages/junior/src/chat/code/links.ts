@@ -1,4 +1,4 @@
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 
 function codeLinks(provider: string) {
   return getPlugins().find((plugin) => plugin.manifest.name === provider)

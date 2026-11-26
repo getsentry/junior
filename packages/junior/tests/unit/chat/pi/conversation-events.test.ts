@@ -1,6 +1,6 @@
+import { agentHistoryItemSchema } from "@/core/history/items";
 import { describe, expect, it } from "vitest";
 import {
-  agentHistoryItemSchema,
   conversationEventSchema,
   decodeStoredConversationEvent,
   type ConversationEvent,

@@ -5,7 +5,6 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -31,7 +30,7 @@ import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -108,7 +107,7 @@ import type {
   ToolState,
 } from "@/chat/tool-support/types";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -395,7 +394,6 @@ const STATIC_TOOL_BINDERS = {
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
     createUpdateInboxItemTool(run.context, run.inboxItemServices()),
-  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];

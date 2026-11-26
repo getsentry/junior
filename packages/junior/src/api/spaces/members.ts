@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getDb } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { readCachedUserByEmail } from "@/chat/identities/user-cache";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { joinSpace, leaveSpace, listSpaceMembers } from "@/chat/spaces/store";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
@@ -36,10 +37,7 @@ export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
       await requireSpace(context.get("viewer").id, spaceId);
       const members = await listSpaceMembers(spaceId);
       return jsonResponse(spaceMemberListSchema, {
-        members: members.map((member) => ({
-          ...member,
-          joinedAt: member.joinedAt.toISOString(),
-        })),
+        members,
       });
     },
   );
@@ -51,15 +49,17 @@ export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
     spaceParamsValidator,
     validateRequest("json", addSpaceMemberBodySchema, "Invalid request body."),
     async (context) => {
-      const viewerUserId = context.get("viewer").id;
+      const viewer = context.get("viewer");
+      const viewerUserId = viewer.id;
       const { spaceId } = context.req.valid("param");
-      await requireMemberSpace(viewerUserId, spaceId);
+      const space = await requireMemberSpace(viewerUserId, spaceId);
       const email = normalizeIdentityEmail(context.req.valid("json").email);
       const person = email
         ? await readCachedUserByEmail(getDb(), email)
         : undefined;
       if (!person) throwApiError(404, "No person has that email.");
-      await joinSpace(spaceId, person.user.id);
+      const lead = await getSpaceLead({ member: viewer, space });
+      await joinSpace(lead.conversationId, person.user.id);
       return await spaceResponse(viewerUserId, spaceId);
     },
   );
@@ -69,12 +69,14 @@ export function createSpaceMemberRoutes(): Hono<JuniorApiEnv> {
     requireViewer,
     spaceParamsValidator,
     async (context) => {
-      const viewerUserId = context.get("viewer").id;
+      const viewer = context.get("viewer");
+      const viewerUserId = viewer.id;
       const { spaceId } = context.req.valid("param");
       // An archived Space can be joined too, so a Space that every member
       // left stays restorable.
-      await requireSpace(viewerUserId, spaceId);
-      await joinSpace(spaceId, viewerUserId);
+      const space = await requireSpace(viewerUserId, spaceId);
+      const lead = await getSpaceLead({ member: viewer, space });
+      await joinSpace(lead.conversationId, viewerUserId);
       return await spaceResponse(viewerUserId, spaceId);
     },
   );

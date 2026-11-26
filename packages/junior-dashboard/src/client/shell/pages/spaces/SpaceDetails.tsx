@@ -2,7 +2,6 @@ import type { SpaceReport } from "@sentry/junior/api/schema";
 import { lazy, Suspense, useState } from "react";
 
 import { ActorAvatar } from "../../../components/ActorAvatar";
-import { DetailsPanel } from "../../../components/DetailsPanel";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import {
@@ -11,7 +10,6 @@ import {
   DetailsRow,
 } from "../../../conversations/DetailsList";
 import { useSpaceData, useSpaceMembersData } from "../../../spaces/queries";
-import { SpaceThreads } from "../../../spaces/SpaceThreads";
 
 // The picker opens only after a click, so it loads with the first open
 // instead of with every Space page.
@@ -30,43 +28,30 @@ const SpaceSettings = lazy(() =>
 );
 
 /**
- * The Space beside its Lead: what the Space is for, its Threads, its
- * members, and its settings. On a phone it is a bottom sheet.
+ * A Lead's Space in its Conversation details: what the Space is for, its
+ * members, and its settings. The Lead's Threads show above it.
  */
-export function SpaceDetailsPanel(props: { onClose(): void; spaceId: string }) {
+export function LeadSpaceDetails(props: { spaceId: string }) {
   const space = useSpaceData(props.spaceId).data;
-  return (
-    <DetailsPanel
-      label="Space details"
-      onClose={props.onClose}
-      title={
-        <h2 className="m-0 font-sans text-sm font-semibold text-dashboard-text">
-          Space
-        </h2>
-      }
-    >
-      <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0">
-        {space ? (
-          <SpaceOverview space={space} />
-        ) : (
-          <Skeleton className="h-4 w-2/3" />
-        )}
-      </div>
-    </DetailsPanel>
+  return space ? (
+    <SpaceOverview space={space} />
+  ) : (
+    <Skeleton className="h-4 w-2/3" />
   );
 }
 
-/** A Space's description, its Threads, its members, and its settings. */
+/** A Space's description, its members, and its settings. */
 export function SpaceOverview(props: { space: SpaceReport }) {
   const { space } = props;
   return (
     <>
       {space.description ? (
-        <p className="m-0 px-1 pb-2 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-          {space.description}
-        </p>
+        <DetailsCard label="About" title="About">
+          <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+            {space.description}
+          </p>
+        </DetailsCard>
       ) : null}
-      <SpaceThreads spaceId={space.id} />
       <SpaceMembers space={space} />
       <SpaceSettingsCard space={space} />
     </>

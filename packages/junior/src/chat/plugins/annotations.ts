@@ -1,4 +1,8 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
 import {
   conversationAnnotationInputSchema,
   type ConversationAnnotation,
@@ -6,10 +10,7 @@ import {
   type PluginAnnotations,
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorConversationAnnotations,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversationAnnotations } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 
 function annotationFromRow(row: {
@@ -132,8 +133,9 @@ export async function listConversationAnnotations(
 /**
  * Load stored annotations for a bounded set of conversations, newest update
  * first. Child agents save annotations in their own Conversation, but people
- * see the root Conversation. So a root also reads the annotations of every
- * Conversation in its tree. The newest annotation wins for each object.
+ * see the top-level Conversation. So each Conversation also reads the
+ * annotations of every Conversation below it. The newest annotation wins for
+ * each object.
  */
 export async function listConversationAnnotationsById(
   db: JuniorDatabase,
@@ -142,46 +144,33 @@ export async function listConversationAnnotationsById(
   const byConversation = new Map<string, ConversationAnnotation[]>();
   if (conversationIds.length === 0) return byConversation;
 
-  const requested = new Set(conversationIds);
   const rows = await db
     .select({
       annotation: juniorConversationAnnotations,
-      rootConversationId: juniorConversations.rootConversationId,
+      owner: conversationSubtreeColumns.scopeConversationId,
     })
     .from(juniorConversationAnnotations)
     .innerJoin(
-      juniorConversations,
+      conversationSubtree(conversationIds),
       eq(
-        juniorConversations.conversationId,
+        conversationSubtreeColumns.conversationId,
         juniorConversationAnnotations.conversationId,
-      ),
-    )
-    // Filter both ids on the joined Conversation row. An OR across the two
-    // tables cannot use an index and scans both tables.
-    .where(
-      or(
-        inArray(juniorConversations.conversationId, [...requested]),
-        inArray(juniorConversations.rootConversationId, [...requested]),
       ),
     )
     .orderBy(desc(juniorConversationAnnotations.updatedAt));
 
   const seen = new Set<string>();
-  for (const { annotation: row, rootConversationId } of rows) {
+  for (const { annotation: row, owner } of rows) {
     const annotation = annotationFromRow(row);
     if (!annotation) continue;
-    // A root's own row matches both ids; add it once.
-    for (const owner of new Set([row.conversationId, rootConversationId])) {
-      if (!owner || !requested.has(owner)) continue;
-      const objectKey = JSON.stringify([owner, row.plugin, row.kind, row.key]);
-      if (seen.has(objectKey)) continue;
-      seen.add(objectKey);
-      const current = byConversation.get(owner);
-      if (current) {
-        current.push(annotation);
-      } else {
-        byConversation.set(owner, [annotation]);
-      }
+    const objectKey = JSON.stringify([owner, row.plugin, row.kind, row.key]);
+    if (seen.has(objectKey)) continue;
+    seen.add(objectKey);
+    const current = byConversation.get(owner);
+    if (current) {
+      current.push(annotation);
+    } else {
+      byConversation.set(owner, [annotation]);
     }
   }
   return byConversation;

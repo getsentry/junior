@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createSlackSource, createWebSource } from "@sentry/junior-plugin-api";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { spawnChildAgent } from "@/chat/child-agents/create";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
 import {
   completedAgentRun,
@@ -22,9 +22,9 @@ import {
 import {
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "./agent-invocations";
+} from "./child-agents";
 import { webTestActor } from "./conversation";
 import { createConversationWorkHarness } from "./conversation-work";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
@@ -236,7 +236,7 @@ export async function startThread(
 ) {
   const created = await spawnChildAgent(
     {
-      ...slackInvocationInput,
+      ...slackSpawnInput,
       kind: "thread",
       ...input,
       agentName: harness.agentName,
@@ -269,7 +269,7 @@ export async function startFinishedThread(
 /** The Run of the shared Slack parent Turn that spawns and messages children. */
 export function slackParentRun(overrides: Partial<AgentRun> = {}): AgentRun {
   return {
-    actor: slackInvocationInput.actor,
+    actor: slackSpawnInput.actor,
     conversationId: slackParentConversationId,
     destination: slackDestination,
     instruction: { text: "Coordinate the work." },

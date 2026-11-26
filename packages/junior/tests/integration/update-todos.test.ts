@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
-import type { AgentUpdate } from "@/chat/agent-invocations/agent-update";
+import { spawnChildAgent } from "@/chat/child-agents/create";
+import type { AgentUpdate } from "@/chat/child-agents/agent-update";
 import { getSqlExecutor } from "@/chat/db";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
@@ -12,11 +12,11 @@ import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
-  invocationInput,
+  spawnInput,
   parentConversationId,
   prepareParentConversation,
   createPublishChildTurn,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { signedInViewer } from "../fixtures/user";
 
@@ -27,7 +27,7 @@ async function createHarness() {
     (
       await spawnChildAgent(
         {
-          ...invocationInput,
+          ...spawnInput,
           agentName,
           idempotencyKey: `todos-${agentName}`,
           input: "Review the draft",
@@ -65,7 +65,7 @@ async function createHarness() {
     /** Sends one child Turn's result to the parent, as its loop does. */
     send: async (conversationId: string, update: AgentUpdate) =>
       await publishChildTurn({
-        actor: invocationInput.actor,
+        actor: spawnInput.actor,
         conversationId,
         turnId: "turn_child",
         update,
@@ -344,7 +344,7 @@ describe("updateTodos", () => {
     }
   });
 
-  it("closes a child's open To-dos once its completed or stopped result reaches the parent after them", async () => {
+  it("drops a child's open To-dos once its stopped result reaches the parent after them, and leaves them open on a completed result", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const tick = () => vi.setSystemTime(Date.now() + 1_000);
     const harness = await createHarness();
@@ -406,8 +406,8 @@ describe("updateTodos", () => {
           todo.changedByAgent?.name,
         ]),
       ).toEqual([
-        ["Echo open", "done", "Echo"],
-        ["Echo started", "done", "Echo"],
+        ["Echo open", "open", undefined],
+        ["Echo started", "in_progress", undefined],
         ["Echo dropped", "dropped", undefined],
         ["Foxtrot open", "dropped", "Foxtrot"],
         ["Golf open", "open", undefined],

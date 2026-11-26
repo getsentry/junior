@@ -129,7 +129,7 @@ export async function readRuntimeInfoReport(): Promise<RuntimeInfoReport> {
 export async function readPluginOperationalReportFeed(): Promise<PluginOperationalReportFeed> {
   const nowMs = Date.now();
   const { getPluginOperationalReports } =
-    await import("@/chat/plugins/agent-hooks");
+    await import("@/chat/plugins/hooks/reports");
   return pluginOperationalReportFeedSchema.parse({
     source: "plugins",
     generatedAt: new Date(nowMs).toISOString(),

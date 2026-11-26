@@ -1,5 +1,5 @@
 import type { Nitro } from "nitro/types";
-import { readQueueConfig } from "@/chat/queue/config";
+import { toOptionalTrimmed } from "@/chat/optional-string";
 import { startLocalVercelQueueServer } from "@/chat/queue/local-server";
 import { queueCallbackRoutes } from "@/build/queue-routes";
 
@@ -17,7 +17,7 @@ const LOCAL_CONSUMER_GROUP = "local";
  * server.
  */
 export async function startDevQueue(nitro: Nitro): Promise<void> {
-  if (readQueueConfig(process.env).apiUrl) {
+  if (toOptionalTrimmed(process.env["JUNIOR_QUEUE_API_URL"])) {
     return;
   }
   // The port that Nitro's dev server listens on, unless `nitro dev --port`

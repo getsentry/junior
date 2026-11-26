@@ -1,4 +1,4 @@
-import type { BlockedReport } from "@/chat/agent-invocations/blocked-report";
+import type { BlockedReport } from "@/chat/child-agents/blocked-report";
 import { getDispatchIdForConversation } from "@/chat/agent-dispatch/store";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import { readConversationAutomationRun } from "@/chat/automations/conversation-run";

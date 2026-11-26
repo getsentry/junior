@@ -251,7 +251,12 @@ function statusLabel(
   status: string | undefined,
   detailStatus: string | undefined,
 ): string | undefined {
-  if (status && status !== "running" && status !== "completed") {
+  if (
+    status &&
+    status !== "running" &&
+    status !== "completed" &&
+    status !== "done"
+  ) {
     return status;
   }
   return detailStatus ?? status;

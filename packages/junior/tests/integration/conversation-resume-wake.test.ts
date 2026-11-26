@@ -7,10 +7,24 @@ import {
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
+  ackMessages,
+  appendInboundMessage,
+  completeConversationWork,
+  ensureConversationWake,
+  getConversationWorkState,
+  startConversationWork,
+  stopConversationWork,
+} from "@/chat/task-execution/store";
+import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import {
   closeConversationFixture,
   createConversationFixture,
   emptyConversationTurnAttempt,
 } from "../fixtures/conversation";
+import {
+  createConversationWorkHarness,
+  inboundMessage,
+} from "../fixtures/conversation-work";
 
 describe("Conversation resume wake routing", () => {
   afterEach(async () => {
@@ -100,5 +114,51 @@ describe("Conversation resume wake routing", () => {
       checkIn: async () => true,
     });
     expect(resolved).toBeUndefined();
+  });
+
+  it("completes an empty wake on a root that has no Destination", async () => {
+    await createConversationFixture();
+    const { process, queue, state } = await createConversationWorkHarness(
+      neverRunAgentRunner(),
+    );
+    const conversationId = "agent-dispatch:no_destination";
+    // Work with no Conversation record, so no Destination, whose run saw a
+    // stop late.
+    const input = inboundMessage("no-destination-input", {
+      conversationId,
+      destination: undefined,
+    });
+    await appendInboundMessage({ message: input, state });
+    const lease = await startConversationWork({ conversationId, state });
+    if (lease.status !== "acquired") throw new Error("Expected work lease");
+    await ackMessages({
+      conversationId,
+      inboundMessageIds: [input.inboundMessageId],
+      leaseToken: lease.leaseToken,
+      state,
+    });
+    await stopConversationWork({ conversationId, state });
+    await expect(
+      completeConversationWork({
+        conversationId,
+        leaseToken: lease.leaseToken,
+        resumeIfStopped: true,
+        state,
+      }),
+    ).resolves.toBe("pending");
+    await ensureConversationWake({
+      conversationId,
+      idempotencyKey: "no-destination-wake",
+      queue,
+      state,
+    });
+
+    // The wake has no input, no open Turn, and no Destination to run.
+    await expect(
+      process(queue.takeMessageFor(conversationId)),
+    ).resolves.toMatchObject({ status: "completed" });
+    await expect(
+      getConversationWorkState({ conversationId, state }),
+    ).resolves.toMatchObject({ execution: { status: "idle" } });
   });
 });

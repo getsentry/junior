@@ -12,7 +12,7 @@ import {
 } from "@/chat/cache-warming/queue";
 import { createCacheWarmingRecorder } from "@/chat/cache-warming/recorder";
 import { runCacheWarmup } from "@/chat/cache-warming/warmup";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
+import { spawnChildAgent } from "@/chat/child-agents/create";
 import { IDLE_HORIZON_MS, WARMUP_MARGIN_MS } from "@/chat/cache-warming/model";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore } from "@/chat/db";

@@ -2,8 +2,8 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createAcpConversations } from "@/api/acp/conversations";
-import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
+import { stopChildAgentsOf } from "@/chat/child-agents/stop";
+import { getAgentReplyMessageId } from "@/chat/child-agents/ids";
 import { stopConversationTurnResponseSchema } from "@/api/schema";
 import type { AgentRun } from "@/chat/agent/types";
 import {
@@ -35,14 +35,14 @@ import {
 import {
   abortableAgentRunner,
   expectChildAgentStopped,
-  invocationInput,
+  spawnInput,
   loadTurnEvents,
   spawnChildAgent,
   startRunningChildAgent,
   createPublishChildTurn,
-} from "../../../fixtures/agent-invocations";
+} from "../../../fixtures/child-agents";
 import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
-import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
+import { startChildAgent } from "../../../fixtures/child-agent-start";
 import {
   createConversationWorkHarness,
   deferred,
@@ -237,7 +237,7 @@ describe("conversation stop API", () => {
     // Its Turn took its task and replied.
     await work.process(queue.takeMessageFor(done.childConversationId));
     await createPublishChildTurn({ queue, state })({
-      actor: invocationInput.actor,
+      actor: spawnInput.actor,
       conversationId: done.childConversationId,
       update: { status: "done", text: "Child fact: 42." },
       turnId: "turn_done-child",
@@ -436,7 +436,7 @@ describe("conversation stop API", () => {
       state,
     });
     await createPublishChildTurn({ queue, state })({
-      actor: invocationInput.actor,
+      actor: spawnInput.actor,
       conversationId: child.childConversationId,
       update: { status: "blocked", text: "Child needs a token." },
       turnId: "turn_blocked-child",
@@ -535,8 +535,8 @@ describe("conversation stop API", () => {
     const stoppedAtMs = Date.now();
     // The tool call's spawn raced the stop of the child: the stop read the
     // tree before the spawn committed, so it reached only the child.
-    const missed = await spawnChildWithoutAgentInvocation({
-      actor: invocationInput.actor,
+    const missed = await startChildAgent({
+      actor: spawnInput.actor,
       conversationStore,
       idempotencyKey: "missed-spawn-grandchild",
       nowMs: stoppedAtMs + 1_000,
@@ -580,8 +580,8 @@ describe("conversation stop API", () => {
     const stoppedAtMs = Date.now();
     // The tool call's spawn raced the stop: the stop read the tree before
     // the spawn committed, so it reached only the root.
-    const missed = await spawnChildWithoutAgentInvocation({
-      actor: invocationInput.actor,
+    const missed = await startChildAgent({
+      actor: spawnInput.actor,
       conversationStore,
       idempotencyKey: "late-root-spawn-child",
       nowMs: stoppedAtMs + 1_000,

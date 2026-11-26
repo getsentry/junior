@@ -8,8 +8,8 @@ import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { juniorConversationEmbeddings, juniorConversations } from "@/db/schema";
-import { slackInvocationInput } from "../fixtures/agent-invocations";
-import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
+import { slackSpawnInput } from "../fixtures/child-agents";
+import { startChildAgent } from "../fixtures/child-agent-start";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import { seedMcpConversation } from "../fixtures/mcp-tools";
 import { createHarness } from "../fixtures/thread-input";
@@ -61,8 +61,8 @@ describe("listAgents query", () => {
     const harness = await createHarness();
     let child: string;
     try {
-      child = await spawnChildWithoutAgentInvocation({
-        actor: slackInvocationInput.actor,
+      child = await startChildAgent({
+        actor: slackSpawnInput.actor,
         conversationStore: harness.conversationStore,
         idempotencyKey: "launch-child",
         kind: "thread",

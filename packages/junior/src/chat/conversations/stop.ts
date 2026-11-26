@@ -4,7 +4,7 @@ import {
   dropOwnUnreadLoopReplies,
   reportPersonStopToParent,
   stopChildAgentsBelow,
-} from "@/chat/agent-invocations/stop";
+} from "@/chat/child-agents/stop";
 import { stopConversationTree } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";

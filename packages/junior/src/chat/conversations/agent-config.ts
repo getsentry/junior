@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import * as z from "zod";
-import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
+import { agentTypeSchema } from "@/chat/child-agents/agent-types";
 import { getSqlExecutor } from "@/chat/db";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { juniorConversations } from "@/db/schema";

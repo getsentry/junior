@@ -8,7 +8,6 @@ import type {
   ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
-  TranscriptViewToolCallPart,
 } from "../types";
 
 /** A mailbox row, or a local send that can still carry its own files. */
@@ -156,15 +155,6 @@ export function transcriptMessagesFromEvents(
     Extract<TranscriptViewPart, { type: "tool_call" }>
   >();
   const standaloneToolMessages = new Map<string, TranscriptViewMessage>();
-  // A started Conversation shows as a card that links it.
-  const noteStartedConversation = (
-    part: TranscriptViewToolCallPart,
-    call: ToolCall,
-  ): void => {
-    if ("startedConversationId" in call && call.startedConversationId) {
-      part.startedConversationId = call.startedConversationId;
-    }
-  };
   const subagents = new Map<
     string,
     Extract<TranscriptViewPart, { type: "subagent" }>
@@ -189,7 +179,6 @@ export function transcriptMessagesFromEvents(
       if (call.status !== "running") {
         existing.resultTimestamp = eventTimestamp(event);
       }
-      noteStartedConversation(existing, call);
       return;
     }
 
@@ -211,7 +200,6 @@ export function transcriptMessagesFromEvents(
         ? Date.parse(call.startedAt)
         : eventTimestamp(event),
     };
-    noteStartedConversation(part, call);
     tools.set(call.toolCallId, part);
     standaloneToolMessages.set(call.toolCallId, message);
     messages.push(message);
@@ -239,8 +227,8 @@ export function transcriptMessagesFromEvents(
         ...(data.actorIdentityId
           ? { actorIdentityId: data.actorIdentityId }
           : undefined),
-        ...(data.agentInvocationId
-          ? { agentInvocationId: data.agentInvocationId }
+        ...(data.fromParentAgent
+          ? { fromParentAgent: data.fromParentAgent }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         ...(data.eventNamespace

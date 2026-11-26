@@ -60,7 +60,7 @@ describe("conversation report event projection", () => {
         };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -123,7 +123,7 @@ describe("conversation report event projection", () => {
         return value.count === 0 ? undefined : { title: "Background work" };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -187,7 +187,8 @@ describe("conversation report event projection", () => {
         },
       },
     });
-    // A parent agent wrote this child input, so it names the agent invocation.
+    // A parent agent wrote this child input. An earlier release stored the
+    // id of the work that wrote it.
     const agentInput = event(2, {
       type: "message",
       messageId: "agent-invocation:invocation-1:input",
@@ -235,7 +236,7 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "agent-invocation:invocation-1:input",
           role: "user",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true,
           text: "audit the repo",
         },
       },
@@ -275,7 +276,7 @@ describe("conversation report event projection", () => {
           type: "message",
           messageId: "agent-invocation:invocation-1:input",
           role: "user",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true,
           redacted: true,
         },
       },
@@ -745,46 +746,6 @@ describe("conversation report event projection", () => {
     expect(JSON.stringify(projected)).not.toContain("must stay host-only");
     expect(JSON.stringify(projected)).not.toContain("No matches");
     expect(JSON.stringify(projected)).not.toContain("AAAA");
-  });
-
-  it("projects the Conversation that startConversation started only to authorized viewers", () => {
-    const details = {
-      conversation_id: "local:web:started",
-      subscribable: {
-        identifier: "local:web:started",
-        label: "Conversation Changelog",
-        namespace: "junior",
-        supported_events: ["agent.update"],
-        type: "conversation",
-      },
-    };
-    const events = [
-      event(1, {
-        type: "tool_result",
-        toolCallId: "call-1",
-        toolName: "startConversation",
-        content: [{ type: "text", text: JSON.stringify(details) }],
-        details,
-        isError: false,
-        timestamp: 1_000,
-      }),
-    ];
-    const call = (canExposePayload: boolean) => {
-      const [projected] = projectConversationReportEventPage({
-        canExposePayload,
-        events,
-      });
-      return projected?.data.type === "tool_calls"
-        ? projected.data.calls[0]
-        : undefined;
-    };
-
-    expect(call(true)?.startedConversationId).toBe("local:web:started");
-    expect(call(false)).toEqual({
-      toolCallId: "call-1",
-      name: "startConversation",
-      status: "completed",
-    });
   });
 
   it("projects dashboard source with visible message metadata", () => {

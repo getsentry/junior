@@ -29,6 +29,7 @@ import type {
 import type { TurnInputRecord } from "@/core/turn/inbox";
 import type { ClaimedTurn } from "@/core/turn/state";
 import { turnInputPayloadSchema } from "./input-payload";
+import { turnToolHooks } from "./tool-hooks";
 
 // The history stores a tool's details as JSON text, which drops undefined
 // fields. Main's tools leave optional fields undefined, so the details take
@@ -113,6 +114,9 @@ export async function turnTools(
       persistThreadRuntimeState(turn.conversationId, { sandboxRef }),
   });
   const systemTime = createSystemTimeTool();
+  const sandboxTools = Object.entries(SANDBOX_TOOLS).map(
+    ([name, create]) => [name, create()] as const,
+  );
   return {
     definitions: [
       coreTool("systemTime", systemTime, (input, { callId, signal }) =>
@@ -120,8 +124,8 @@ export async function turnTools(
           systemTime.execute!(input, { signal, toolCallId: callId }),
         ),
       ),
-      ...Object.entries(SANDBOX_TOOLS).map(([name, create]) =>
-        coreTool(name, create(), (input, { signal }) =>
+      ...sandboxTools.map(([name, tool]) =>
+        coreTool(name, tool, (input, { signal }) =>
           sandbox.tools.execute({
             toolName: name,
             input: buildSandboxInput(name, sandboxInputSchema.parse(input)),
@@ -130,6 +134,13 @@ export async function turnTools(
         ),
       ),
     ],
+    hooks: turnToolHooks({
+      tools: new Map<string, AnyToolDefinition>([
+        ["systemTime", systemTime],
+        ...sandboxTools,
+      ]),
+      workspace: sandbox.workspace,
+    }),
     close: () => sandbox.close(),
   };
 }

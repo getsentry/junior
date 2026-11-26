@@ -165,17 +165,31 @@ function ConversationTitleHeader(props: {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onDetailsClick, zen]);
 
+  // The element that last took focus. A layout switch can hide it with CSS,
+  // and then focus also falls to the body, but details did not take it.
+  const lastFocusRef = useRef<Element | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      lastFocusRef.current =
+        event.target instanceof Element ? event.target : null;
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+
   // Closing details removes their focused close button, and focus falls to
   // the body. Return it to the button that opens them. Not when a resize
-  // closes them: the resize can also hide another focused element, and the
-  // focus that falls from it stays on the body.
+  // closes them, and not when the last focused element is still on the
+  // page: a resize can also hide another focused element, and the focus
+  // that falls from it stays on the body.
   const detailsClosedByReader = props.detailsClosedByReader;
   useEffect(() => {
     if (
       wasDetailsOpen.current &&
       !detailsOpen &&
       detailsClosedByReader &&
-      document.activeElement === document.body
+      document.activeElement === document.body &&
+      !lastFocusRef.current?.isConnected
     ) {
       const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
         ? menuButtonRef.current

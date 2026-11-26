@@ -2,7 +2,7 @@ import type {
   ParentAgentField,
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { getRegistrations } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 
 type RegisteredParentAgentField = {

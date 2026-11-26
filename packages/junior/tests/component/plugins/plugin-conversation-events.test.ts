@@ -82,7 +82,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+  const { setPlugins } = await import("@/chat/plugins/hooks/registry");
   const { disconnectStateAdapter } = await import("@/chat/state/adapter");
   setPlugins([]);
   await disconnectStateAdapter();
@@ -148,8 +148,9 @@ describe("plugin conversation events", () => {
         content: { memories: [`${pluginName} memory ${createdAtMs}`] },
       },
     });
-    const { getPluginUserPromptContributions, setPlugins } =
-      await import("@/chat/plugins/agent-hooks");
+    const { getPluginUserPromptContributions } =
+      await import("@/chat/plugins/hooks/prompt");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { getConversationEventStore } = await import("@/chat/db");
     setPlugins([plugin]);
     await recordCompletedSession({ conversationId, sessionId });
@@ -292,8 +293,9 @@ describe("plugin conversation events", () => {
         },
       },
     });
-    const { getPluginOperationalReports, setPlugins } =
-      await import("@/chat/plugins/agent-hooks");
+    const { getPluginOperationalReports } =
+      await import("@/chat/plugins/hooks/reports");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { processPluginTask } = await import("@/chat/plugins/task-runner");
     setPlugins([plugin]);
     await recordCompletedSession({ conversationId, sessionId });
@@ -391,7 +393,7 @@ describe("plugin conversation events", () => {
           },
         },
       });
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     const { getConversationEventStore, getDb } = await import("@/chat/db");
     const { processPluginTask } = await import("@/chat/plugins/task-runner");
     setPlugins([plugin([completedEventV1])]);

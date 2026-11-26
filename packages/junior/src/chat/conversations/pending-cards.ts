@@ -1,6 +1,6 @@
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
-import { listChildMessages } from "@/chat/agent-invocations/child-message";
+import { listChildMessages } from "@/chat/child-agents/child-message";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { mapBounded } from "@/chat/fan-out";
 import {
