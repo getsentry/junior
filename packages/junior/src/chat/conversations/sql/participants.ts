@@ -129,7 +129,7 @@ export async function readMentionedUserIds(
   return [...new Set(rows.flatMap((row) => (row.userId ? [row.userId] : [])))];
 }
 
-/** Return whether a Conversation is a Space's Lead, whose Participants are its members. */
+/** Return whether a Conversation is a Space's Lead. */
 export async function isLeadConversation(
   db: JuniorDatabase,
   conversationId: string,
@@ -148,7 +148,7 @@ export async function isLeadConversation(
 
 /**
  * Subscribe the people that a person's Turn input Message mentions, when the
- * root is public and not a Lead. It is an Invite by mention (contract:
+ * root is public. It is an Invite by mention (contract:
  * `api/conversations/subscription.ts`), so an existing Participant keeps
  * their row and their unsubscribe.
  */
@@ -163,8 +163,6 @@ export async function recordMentionedParticipants(
     args.conversationId,
   );
   if (visibility !== "public") return;
-  // A person joins a Space on purpose, so a mention adds no member.
-  if (await isLeadConversation(executor.db(), rootConversationId)) return;
   const userIds = await readMentionedUserIds(
     executor,
     slackUserIds,

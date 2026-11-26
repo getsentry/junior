@@ -8,7 +8,6 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { ParticipantAvatarStack } from "../components/ParticipantAvatarStack";
-import type { PeoplePickerTarget } from "../components/PeoplePicker";
 import { Button } from "../components/ui/button";
 import { post } from "../http";
 import { DetailsCard } from "./DetailsList";
@@ -32,14 +31,6 @@ function canInvite(detail: ConversationDetailReport | undefined): boolean {
   );
 }
 
-/** Where Invite adds people, when it is not the Conversation itself. */
-export type ParticipantInvite = {
-  add(user: UserSearchResult): Promise<void>;
-  /** Whether the viewer may add people. */
-  allowed: boolean;
-  target: PeoplePickerTarget;
-};
-
 /**
  * The Participants of a Conversation, and Invite where the viewer may add
  * people to it.
@@ -47,23 +38,19 @@ export type ParticipantInvite = {
 export function ConversationParticipants(props: {
   conversationId: string;
   detail: ConversationDetailReport | undefined;
-  /** Adds people somewhere else, such as a Lead's Space. */
-  invite?: ParticipantInvite | undefined;
   participants: readonly ActorIdentity[];
 }) {
   const [inviting, setInviting] = useState(false);
-  const invitable = props.invite?.allowed ?? canInvite(props.detail);
+  const invitable = canInvite(props.detail);
   const queryClient = useQueryClient();
   if (props.participants.length === 0 && !invitable) return null;
-  const invite =
-    props.invite?.add ??
-    (async (user: UserSearchResult) => {
-      await post(
-        conversationInviteResponseSchema,
-        `/api/conversations/${encodeURIComponent(props.conversationId)}/invites`,
-        { slackUserId: user.slackUserId },
-      );
-    });
+  const invite = async (user: UserSearchResult) => {
+    await post(
+      conversationInviteResponseSchema,
+      `/api/conversations/${encodeURIComponent(props.conversationId)}/invites`,
+      { userId: user.userId },
+    );
+  };
   return (
     <DetailsCard
       action={
@@ -96,9 +83,7 @@ export function ConversationParticipants(props: {
               });
             }}
             submitLabel="Invite"
-            target={
-              props.invite?.target ?? { conversationId: props.conversationId }
-            }
+            target={{ conversationId: props.conversationId }}
           />
         </Suspense>
       ) : null}

@@ -6,9 +6,10 @@ import {
 } from "@tanstack/react-query";
 import {
   conversationFeedSchema,
+  conversationLeaveResponseSchema,
+  leadSchema,
   setConversationSpaceResponseSchema,
   spaceListSchema,
-  spaceMemberListSchema,
   spaceSchema,
   type SpaceReport,
   type SpaceVisibilityReport,
@@ -19,22 +20,26 @@ import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
 } from "../conversations/queries";
-import { del, fetchDashboardJson, patch, post, put } from "../http";
+import { fetchDashboardJson, patch, post, put } from "../http";
 import { invalidateInboxItemCollections } from "../inbox/queries";
 
 const spacesKey = ["dashboard", "spaces"] as const;
 const memberSpacesKey = [...spacesKey, "member"] as const;
 const spaceKey = (spaceId: string | undefined) =>
   [...spacesKey, "space", spaceId] as const;
-const spaceMembersKey = (spaceId: string | undefined) =>
-  [...spaceKey(spaceId), "members"] as const;
 
-/** The query key of a Space's Lead. */
-export const spaceLeadKey = (spaceId: string | undefined) =>
-  [...spaceKey(spaceId), "lead"] as const;
+/** The query of a Space's Lead. The Lead's id never changes. */
+export function spaceLeadQuery(spaceId: string) {
+  return {
+    queryKey: [...spaceKey(spaceId), "lead"] as const,
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      fetchDashboardJson(leadSchema, `${spaceApiPath(spaceId)}/lead`, signal),
+    staleTime: Number.POSITIVE_INFINITY,
+  };
+}
 
 /** The API path of one Space. */
-export const spaceApiPath = (spaceId: string) =>
+const spaceApiPath = (spaceId: string) =>
   `/api/spaces/${encodeURIComponent(spaceId)}`;
 
 /** Fetch the viewer's Spaces that are not archived, for the pane. */
@@ -84,21 +89,6 @@ export function useSpaceData(spaceId: string | undefined) {
     queryKey: spaceKey(spaceId),
     queryFn: ({ signal }) =>
       fetchDashboardJson(spaceSchema, spaceApiPath(spaceId!), signal),
-    retry: false,
-  });
-}
-
-/** Fetch the members of one Space. */
-export function useSpaceMembersData(spaceId: string | undefined) {
-  return useQuery({
-    enabled: Boolean(spaceId),
-    queryKey: spaceMembersKey(spaceId),
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        spaceMemberListSchema,
-        `${spaceApiPath(spaceId!)}/members`,
-        signal,
-      ),
     retry: false,
   });
 }
@@ -165,29 +155,28 @@ export function useUpdateSpace() {
 }
 
 /**
- * Join or leave one Space as the viewer. A member's read makes the Lead, so
- * the Lead reads again too.
+ * Leave one Space as the viewer: Leave its Lead, as any root. A former
+ * member can't read a private Space, so this drops everything cached for it
+ * and reads the feeds and Inbox again without its rows.
  */
-export function useSpaceMembership() {
+export function useLeaveSpace() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ join, spaceId }: { join: boolean; spaceId: string }) =>
-      join
-        ? put(spaceSchema, `${spaceApiPath(spaceId)}/members/me`, {})
-        : del(spaceSchema, `${spaceApiPath(spaceId)}/members/me`),
-    onSuccess: (space) => {
-      // A former member can't read a private Space, so drop everything
-      // cached for it and read the feeds and Inbox again without its rows.
-      if (space.visibility === "private" && !space.viewerIsMember) {
-        const lead = queryClient.getQueryData<{ conversationId: string }>(
-          spaceLeadKey(space.id),
-        );
+    mutationFn: async (space: SpaceReport) => {
+      const lead = await queryClient.fetchQuery(spaceLeadQuery(space.id));
+      await post(
+        conversationLeaveResponseSchema,
+        `/api/conversations/${encodeURIComponent(lead.conversationId)}/leave`,
+        {},
+      );
+      return lead.conversationId;
+    },
+    onSuccess: (leadId, space) => {
+      if (space.visibility === "private") {
         queryClient.removeQueries({ queryKey: spaceKey(space.id) });
-        if (lead) {
-          queryClient.removeQueries({
-            queryKey: conversationDetailQueryKey(lead.conversationId),
-          });
-        }
+        queryClient.removeQueries({
+          queryKey: conversationDetailQueryKey(leadId),
+        });
         for (const [queryKey, detail] of queryClient.getQueriesData<
           ConversationSnapshot | undefined
         >({ queryKey: ["conversation"] })) {
@@ -201,35 +190,14 @@ export function useSpaceMembership() {
           invalidateInboxItemCollections(queryClient),
         ]);
       }
-      // The Lead's Participants and subscription are the membership.
       return Promise.all([
-        storeSpace(queryClient, space),
-        queryClient.invalidateQueries({ queryKey: spaceMembersKey(space.id) }),
-        queryClient.invalidateQueries({ queryKey: spaceLeadKey(space.id) }),
-        ...invalidateSpaceDetails(queryClient, space.id),
+        queryClient.invalidateQueries({ queryKey: spaceKey(space.id) }),
+        queryClient.invalidateQueries({ queryKey: memberSpacesKey }),
+        queryClient.invalidateQueries({
+          queryKey: conversationDetailQueryKey(leadId),
+        }),
       ]);
     },
-  });
-}
-
-/** Add one person to a Space by their email. */
-export function useAddSpaceMember() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ email, spaceId }: { email: string; spaceId: string }) =>
-      post(spaceSchema, `${spaceApiPath(spaceId)}/members`, { email }),
-    // The people picker adds several people at once, and their responses
-    // can arrive in any order. So refetch the Space instead of storing a
-    // response, which can hold an older member count.
-    onSuccess: (_space, { spaceId }) =>
-      Promise.all([
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: spaceKey(spaceId),
-        }),
-        queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
-        queryClient.invalidateQueries({ queryKey: memberSpacesKey }),
-      ]),
   });
 }
 

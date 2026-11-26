@@ -496,7 +496,7 @@ describe("Lead", () => {
     expect(await listed(bo)).toEqual([]);
   });
 
-  it("steers its children, and outside roots only for a member who takes part", async () => {
+  it("steers its children and other public roots, as any root", async () => {
     const runner = readRunsAgentRunner();
     const { queue, state } = await createConversationWorkHarness(
       runner.agentRunner,
@@ -536,13 +536,13 @@ describe("Lead", () => {
     await expect(send(boInSpace, "call-space")).resolves.toMatchObject({
       conversation_id: boInSpace,
     });
-    // Outside the Space, only a root of the member who asked.
+    // Outside the Space, any public root, as from any public root.
     await expect(send(anaOutside, "call-ana")).resolves.toMatchObject({
       conversation_id: anaOutside,
     });
-    await expect(send(boOutside, "call-bo")).rejects.toThrow(
-      "is outside this Space",
-    );
+    await expect(send(boOutside, "call-bo")).resolves.toMatchObject({
+      conversation_id: boOutside,
+    });
   });
 
   it("rolls up its children, and stops them with the Lead", async () => {
