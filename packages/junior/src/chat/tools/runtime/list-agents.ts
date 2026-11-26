@@ -57,9 +57,7 @@ type ListedAgentStatus = (typeof LISTED_AGENT_STATUSES)[number];
 
 function childAgentStatus(agent: ChildAgent): ListedAgentStatus {
   switch (agent.status) {
-    case "pending":
     case "running":
-    case "paused":
     case "stopped":
       return agent.status;
     case "blocked":
