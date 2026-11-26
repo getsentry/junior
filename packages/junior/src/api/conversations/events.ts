@@ -1,6 +1,6 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { isInheritedForkHistory } from "@/chat/child-agents/fork-history";
-import { isParentMessageAuthor } from "@/chat/child-agents/parent-message";
+import { isSavedParentMessage } from "@/chat/child-agents/parent-message";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -160,14 +160,15 @@ function reportMessageActorIdentity(
  * Mark a child's input that its parent agent wrote, so the dashboard does not
  * show the person who started the root as its author. Rows from earlier
  * releases store the id of the work that wrote them at the
- * `agentInvocationId` meta key. A parent message names its author.
+ * `agentInvocationId` meta key.
  */
 export function reportParentAgentInput(message: {
   agentInvocationId: unknown;
   authorUserId: unknown;
+  fromParentAgent: unknown;
 }): { fromParentAgent: true } | undefined {
   return typeof message.agentInvocationId === "string" ||
-    isParentMessageAuthor({ userId: message.authorUserId })
+    isSavedParentMessage(message)
     ? { fromParentAgent: true }
     : undefined;
 }
@@ -403,6 +404,7 @@ function reportEventData(args: {
           authorUserId: reportingMessageAuthorSchema.safeParse(
             data.meta?.["author"],
           ).data?.userId,
+          fromParentAgent: data.meta?.["fromParentAgent"],
         }),
         ...(args.canExposePayload
           ? reportInboxItemChanges(data.meta)

@@ -110,6 +110,7 @@ function readMessages(
       >`coalesce(${payload}->>'authorIdentityId', ${juniorConversationEvents.actorIdentityId})`,
       authorUserId: sql<string | null>`${payload}->'meta'->'author'->>'userId'`,
       createdAt: juniorConversationEvents.createdAt,
+      fromParentAgent: sql<unknown>`${payload}->'meta'->'fromParentAgent'`,
       messageId: sql<string>`${payload}->>'messageId'`,
       seq: juniorConversationEvents.seq,
       text: sql<string>`coalesce(left(${payload}->>'text', ${CONVERSATION_OUTLINE_TEXT_LENGTH}), '')`,

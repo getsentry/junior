@@ -31,7 +31,7 @@ import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import {
-  isParentMessageAuthor,
+  isSavedParentMessage,
   parentMessageAuthor,
 } from "@/chat/child-agents/parent-message";
 import { readParentMessage } from "@/chat/child-agents/parent-message-input";
@@ -73,7 +73,12 @@ export function turnInputFactsFromConversationMessage(
   },
 ): TurnInputFacts | undefined {
   // A parent message's Turn always saved its Actor and Source.
-  if (isParentMessageAuthor(message.author)) {
+  if (
+    isSavedParentMessage({
+      authorUserId: message.author?.userId,
+      fromParentAgent: message.meta?.fromParentAgent,
+    })
+  ) {
     return args.savedActor && args.savedSource
       ? {
           actor: args.savedActor,

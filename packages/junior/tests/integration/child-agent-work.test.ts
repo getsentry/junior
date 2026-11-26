@@ -261,6 +261,7 @@ describe("child agent task work", () => {
           role: "user",
           text: expect.stringContaining(slackSpawnInput.input),
           meta: expect.objectContaining({
+            fromParentAgent: true,
             requestText: slackSpawnInput.input,
           }),
         }),

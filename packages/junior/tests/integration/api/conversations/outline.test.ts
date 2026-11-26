@@ -83,6 +83,10 @@ describe("conversation outline API", () => {
       message("answer", "assistant", "  done  "),
       message("long", "user", long),
       message("link", "user", `<${link}>`),
+      // A parent message saved before `fromParentAgent` existed.
+      message("legacy-task", "user", "legacy task", {
+        author: { userId: "parent-agent:parent-conversation" },
+      }),
     ]);
 
     const outline = await readOutline(conversationId);
@@ -93,11 +97,13 @@ describe("conversation outline API", () => {
       ["hi <@U1>", "done"],
       ["a".repeat(195), undefined],
       [link.slice(0, 199), undefined],
+      ["legacy task", undefined],
     ]);
     expect(outline.items[0]?.seq).toBeLessThan(outline.items[1]!.seq);
     expect(outline.items[0]?.createdAt).toBe(new Date(1).toISOString());
     expect(outline.items[0]?.actorIdentityId).toBe(askerIdentityId);
     expect(outline.items[1]?.fromParentAgent).toBe(true);
+    expect(outline.items[4]?.fromParentAgent).toBe(true);
   });
 
   it("lists no items for a viewer who cannot see the transcript", async () => {
