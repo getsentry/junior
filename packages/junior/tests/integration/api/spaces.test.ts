@@ -229,10 +229,25 @@ describe("Spaces API", () => {
       teamId: "T1",
       userId: "USPACESBO",
     });
-    await startConversation(ana, "spaces-api-mention", {
+    const mentionId = await startConversation(ana, "spaces-api-mention", {
       message: "<@USPACESBO> look",
       spaceId: space.id,
     });
+    // Nor does Invite, which a Space's Conversations do not offer.
+    const detail = await request(
+      ana,
+      "GET",
+      `/conversations/${encodeURIComponent(mentionId)}`,
+    );
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).not.toHaveProperty("canInvite");
+    const invite = await request(
+      ana,
+      "POST",
+      `/conversations/${encodeURIComponent(mentionId)}/invites`,
+      { slackUserId: "USPACESBO" },
+    );
+    expect(invite.status).toBe(403);
     expect(
       spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
     ).toMatchObject({ memberCount: 1, viewerIsMember: false });

@@ -370,7 +370,9 @@ async function readConversationDetailFromSql(
     ...(canContinueInSlack(record.conversation, access)
       ? { canContinueInSlack: true as const }
       : undefined),
-    ...(canInviteToConversation(access)
+    // A Space's Conversations share its Lead's Participants, which are the
+    // Space's members, so Invite is not offered there.
+    ...(canInviteToConversation(access) && !state.space
       ? { canInvite: true as const }
       : undefined),
     ...(leaveEndsAccess(access)

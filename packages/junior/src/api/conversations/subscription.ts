@@ -302,6 +302,11 @@ export async function inviteToConversation(
 ): Promise<ConversationInviteResponse> {
   const conversation = await readInvitableConversation(viewer, conversationId);
   if (!conversation) throwApiError(404, "Conversation not found.");
+  // The Participants of a Lead are its Space's members, and a person joins
+  // a Space on purpose, so Invite adds nobody there, as a mention does not.
+  if (await isLeadConversation(getDb(), conversation.rootConversationId)) {
+    throwApiError(403, "Add people to a Space as members.");
+  }
   const [userId] = await readMentionedUserIds(
     getSqlExecutor(),
     [body.slackUserId],
