@@ -1,10 +1,10 @@
 import * as z from "zod";
 import {
-  AgentInvocationLimitError,
+  ChildAgentLimitError,
   AgentMessageTargetError,
   AgentStoppedError,
-} from "@/chat/agent-invocations/errors";
-import { PARENT_AGENT_TARGET } from "@/chat/agent-invocations/types";
+} from "@/chat/child-agents/errors";
+import { PARENT_AGENT_TARGET } from "@/chat/child-agents/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -92,7 +92,7 @@ export function createMessageAgentTool(
             { cause: error },
           );
         }
-        if (error instanceof AgentInvocationLimitError) {
+        if (error instanceof ChildAgentLimitError) {
           throw new ToolInputError(
             `${error.message}. Wait for active children to finish before you give more work.`,
             { cause: error },

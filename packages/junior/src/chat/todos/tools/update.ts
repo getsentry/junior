@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import { findChildAgentConversationId } from "@/chat/agent-invocations/bindings";
+import { findChildAgentConversationId } from "@/chat/child-agents/bindings";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { renderTodoAssignee } from "@/chat/todos/prompt";
 import {

@@ -27,11 +27,8 @@ import type {
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
 import { readChildConversationSender } from "./child-input";
-import {
-  resultAuthorId,
-  withAgentInvocationResultActors,
-} from "./result-actors";
-import { getAgentReplyMessageId } from "./ids";
+import { resultAuthorId, withSenderActors } from "./sender-actors";
+import { getAgentMessageId, getAgentReplyMessageId } from "./ids";
 import {
   childMessageSenderMetadata,
   listChildMessages,
@@ -44,7 +41,7 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { listUnreportedSiblingAgents } from "./list";
 import { recordChildAgentEnded, type SubagentOutcome } from "./markers";
 import {
-  AGENT_INVOCATION_EVENT_NAMESPACE,
+  AGENT_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
   AGENT_UPDATE_EVENT_TYPE,
 } from "./result-event-type";
@@ -185,13 +182,13 @@ export async function enqueueAgentMessageToParent(args: {
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
   const senderId = args.sender.childConversationId;
-  const inboundMessageId = `agent-invocation:${senderId}:message:${args.messageKey}`;
+  const inboundMessageId = getAgentMessageId(senderId, args.messageKey);
   const summary = `${childAgentLabel(args.sender)} sent a message.`;
   const metadata = senderEventMetadata(args.actor, {
     eventKey: inboundMessageId,
     eventType: AGENT_MESSAGE_EVENT_TYPE,
     identifier: senderId,
-    namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+    namespace: AGENT_EVENT_NAMESPACE,
     trustedSummary: summary,
   });
   await enqueueAutomatedInput({
@@ -273,7 +270,7 @@ export async function enqueueStarterUpdate(args: {
       eventKey: inboundMessageId,
       eventType: AGENT_UPDATE_EVENT_TYPE,
       identifier: senderId,
-      namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+      namespace: AGENT_EVENT_NAMESPACE,
       ...(stillWorks ? undefined : { status }),
       trustedSummary: `${childAgentLabel(args.sender)} ${stillWorks ? "sent a message." : RESULT_SUMMARIES[status]}`,
     }),
@@ -403,7 +400,7 @@ export function createChildConversationWorker(options: {
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
     const work = await resolveMailboxTurnWork(context);
-    const kept = work ? await withAgentInvocationResultActors(work) : undefined;
+    const kept = work ? await withSenderActors(work) : undefined;
     if (!kept) {
       // No open Turn is left for an empty wake, such as a late stop request,
       // or a stop or parent check dropped every input.

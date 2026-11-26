@@ -21,7 +21,7 @@ import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import {
   spawnChildAgent,
   startRunningChildAgent,
-} from "../../../fixtures/agent-invocations";
+} from "../../../fixtures/child-agents";
 import {
   expectPlanCost,
   expectSqlBudget,

@@ -1,6 +1,6 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
-import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
-import { isParentMessageAuthor } from "@/chat/agent-invocations/parent-message";
+import { isInheritedForkHistory } from "@/chat/child-agents/fork-history";
+import { isParentMessageAuthor } from "@/chat/child-agents/parent-message";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -158,20 +158,17 @@ function reportMessageActorIdentity(
 
 /**
  * Mark a child's input that its parent agent wrote, so the dashboard does not
- * show the person who started the root as its author. Rows from before
- * parent messages store the id of the work that wrote them. A parent message
- * is named by its own id.
+ * show the person who started the root as its author. Rows from earlier
+ * releases store the id of the work that wrote them at the
+ * `agentInvocationId` meta key. A parent message names its author.
  */
 export function reportParentAgentInput(message: {
   agentInvocationId: unknown;
   authorUserId: unknown;
-  messageId: string;
-}): { agentInvocationId: string } | undefined {
-  if (typeof message.agentInvocationId === "string") {
-    return { agentInvocationId: message.agentInvocationId };
-  }
-  return isParentMessageAuthor({ userId: message.authorUserId })
-    ? { agentInvocationId: message.messageId }
+}): { fromParentAgent: true } | undefined {
+  return typeof message.agentInvocationId === "string" ||
+    isParentMessageAuthor({ userId: message.authorUserId })
+    ? { fromParentAgent: true }
     : undefined;
 }
 
@@ -406,7 +403,6 @@ function reportEventData(args: {
           authorUserId: reportingMessageAuthorSchema.safeParse(
             data.meta?.["author"],
           ).data?.userId,
-          messageId: data.messageId,
         }),
         ...(args.canExposePayload
           ? reportInboxItemChanges(data.meta)

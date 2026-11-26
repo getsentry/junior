@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  messageChildAgent,
-  spawnChildAgent,
-} from "@/chat/agent-invocations/create";
-import { getAgentReplyMessageId } from "@/chat/agent-invocations/ids";
-import { listChildAgents } from "@/chat/agent-invocations/list";
-import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
+import { messageChildAgent, spawnChildAgent } from "@/chat/child-agents/create";
+import { getAgentReplyMessageId } from "@/chat/child-agents/ids";
+import { listChildAgents } from "@/chat/child-agents/list";
+import { enqueueStarterUpdate } from "@/chat/child-agents/result";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
@@ -21,12 +18,12 @@ import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   abortableAgentRunner,
-  invocationInput,
+  spawnInput,
   loadTurnEvents,
   parentConversationId,
   prepareParentConversation,
   createPublishChildTurn,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   stoppedConversationMessageTexts,
@@ -76,7 +73,7 @@ async function createHarness(agentRunner: AgentRunner) {
     ) =>
       await messageChildAgent(
         {
-          actor: invocationInput.actor,
+          actor: spawnInput.actor,
           childConversationId,
           idempotencyKey,
           input,
@@ -101,7 +98,7 @@ async function createHarness(agentRunner: AgentRunner) {
       (
         await spawnChildAgent(
           {
-            ...invocationInput,
+            ...spawnInput,
             ...input,
             parentToolCallId: input.idempotencyKey,
             parentTurnId: input.idempotencyKey,
@@ -138,7 +135,7 @@ describe("stopping child agents", () => {
       const turnId = runner.runs[0]!.turnId;
       // The child replies, and the parent has not read the reply at the stop.
       await harness.deliver({
-        actor: invocationInput.actor,
+        actor: spawnInput.actor,
         conversationId: childId,
         update: { status: "done", text: "Old finding." },
         turnId,
@@ -409,13 +406,13 @@ describe("stopping child agents", () => {
       });
       // A result and a `reply` reach the child mailbox before the stop.
       await harness.deliver({
-        actor: invocationInput.actor,
+        actor: spawnInput.actor,
         conversationId: doneHelperId,
         update: { status: "blocked", text: "Helper needs a token." },
         turnId: "turn_done-helper",
       });
       await harness.deliver({
-        actor: invocationInput.actor,
+        actor: spawnInput.actor,
         conversationId: openHelperId,
         update: { status: "done", text: "Open helper finding." },
         turnId: "turn_open-helper",

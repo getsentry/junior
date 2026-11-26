@@ -1,4 +1,4 @@
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { PiMessage } from "@/chat/pi/messages";
 import {

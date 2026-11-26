@@ -1,8 +1,8 @@
 import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
-import { readLastParentMessageAtMs } from "@/chat/agent-invocations/parent-message";
-import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
+import { readLastParentMessageAtMs } from "@/chat/child-agents/parent-message";
+import { AGENTS_TOOL_SOURCE } from "@/chat/child-agents/tool-source";
 import {
   conversationDescendants,
   readConversationTrees,

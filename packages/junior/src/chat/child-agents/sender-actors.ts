@@ -20,7 +20,9 @@ const senderActorMetadataSchema = z.object({ actor: actorSchema });
  * one attempt only when their author ids and sources match. Mid-Turn drains
  * take only `interrupt` messages, and results are `defer`. So results never
  * share a Turn and its credentials with another Actor or with watch Events.
- * Keep this id unique per Actor if either rule changes.
+ * Keep this id unique per Actor if either rule changes. The id is opaque.
+ * It keeps the value that earlier releases wrote, because a queued result
+ * from before a deploy is checked against it.
  */
 export function resultAuthorId(actor: Actor): string {
   switch (actor.platform) {
@@ -48,7 +50,7 @@ function senderActorFromMetadata(metadata: unknown): Actor | undefined {
  * system Actor. Input that `isDroppedChildInput` drops is left out. Returns
  * undefined when no input is left.
  */
-export async function withAgentInvocationResultActors(
+export async function withSenderActors(
   work: MailboxTurnWork,
 ): Promise<MailboxTurnWork | undefined> {
   if (work.kind !== "mailbox") {

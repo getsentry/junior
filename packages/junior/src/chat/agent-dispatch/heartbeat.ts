@@ -23,7 +23,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
 import type { IdentityDispatcher } from "./identity";
-import { createEndStoppedChildWork } from "@/chat/agent-invocations/result";
+import { createEndStoppedChildWork } from "@/chat/child-agents/result";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,

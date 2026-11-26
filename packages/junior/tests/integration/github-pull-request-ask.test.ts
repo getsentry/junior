@@ -18,15 +18,15 @@ import { juniorInboxItems } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { mswServer } from "../msw/server";
 
 const API = "https://api.github.com/repos/getsentry/junior/pulls/1592";
 const PULL_URL = "https://github.com/getsentry/junior/pull/1592";
 const BOT = "sentry-junior[bot]";
-const person = slackInvocationInput.actor;
+const person = slackSpawnInput.actor;
 
 let app: Awaited<ReturnType<typeof createApp>>;
 

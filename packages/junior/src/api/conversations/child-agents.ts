@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { listChildAgents } from "@/chat/agent-invocations/list";
+import { listChildAgents } from "@/chat/child-agents/list";
 import { getConversationStore, getDb } from "@/chat/db";
 import { throwApiError } from "../http";
 import { type ConversationChildAgentsReport } from "../schema/child-agent";

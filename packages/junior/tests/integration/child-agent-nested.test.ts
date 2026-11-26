@@ -1,20 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/child-agents/result";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
-import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
+} from "../fixtures/child-agents";
+import { startChildAgent } from "../fixtures/child-agent-start";
 import {
   createHarness,
   finishRun,
   type Harness,
 } from "../fixtures/thread-input";
 
-const actor = slackInvocationInput.actor;
+const actor = slackSpawnInput.actor;
 
 /** Spawn a child agent of `parentConversationId` as `startAgent` does. */
 async function spawn(
@@ -22,7 +22,7 @@ async function spawn(
   idempotencyKey: string,
   parentConversationId = slackParentConversationId,
 ) {
-  return await spawnChildWithoutAgentInvocation({
+  return await startChildAgent({
     actor,
     conversationStore: harness.conversationStore,
     idempotencyKey,

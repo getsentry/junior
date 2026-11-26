@@ -420,6 +420,8 @@ const turnFailedEventDataSchema = z
 
 // Subagent histories are child conversations; the marker references the child by
 // its own conversation id rather than a polymorphic transcript locator.
+// `subagentInvocationId` is the stored key of the marker id. Stored history
+// keeps it, so the name stays.
 const subagentStartedEventDataSchema = z
   .object({
     type: z.literal("subagent_started"),

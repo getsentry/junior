@@ -2,8 +2,8 @@ import { createWebSource, type User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { canReadConversation } from "@/api/conversations/access";
 import { readConversationFeed } from "@/api/conversations/list";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import type { AgentRun } from "@/chat/agent/types";
 import { ownsLocation } from "@/chat/conversations/kind-behavior";
 import {

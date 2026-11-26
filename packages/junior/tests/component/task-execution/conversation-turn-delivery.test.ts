@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getSpawnedChildConversationId } from "@/chat/agent-invocations/ids";
+import { getSpawnedChildConversationId } from "@/chat/child-agents/ids";
 import { getConversationEventStore } from "@/chat/db";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";

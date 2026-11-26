@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getAgentBinding } from "@/chat/agent-invocations/bindings";
-import { MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT } from "@/chat/agent-invocations/create";
+import { getAgentBinding } from "@/chat/child-agents/bindings";
+import { MAX_ACTIVE_CHILD_AGENTS } from "@/chat/child-agents/create";
 import {
-  AgentInvocationLimitError,
+  ChildAgentLimitError,
   AgentNameInUseError,
   AgentStoppedError,
-} from "@/chat/agent-invocations/errors";
-import { getParentMessageId } from "@/chat/agent-invocations/ids";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
+} from "@/chat/child-agents/errors";
+import { getParentMessageId } from "@/chat/child-agents/ids";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { readRootConversation } from "@/chat/child-agents/root-conversation";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
+import { stopChildAgentsOf } from "@/chat/child-agents/stop";
 import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import type { AgentRun } from "@/chat/agent/types";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
@@ -34,9 +34,9 @@ import {
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   loadSubagentEvents,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import {
   createConversationWorkQueueTestAdapter,
   deferred,
@@ -98,7 +98,7 @@ describe("spawn and messageAgent", () => {
       ).resolves.toMatchObject({ kind: "thread", title: "Deploy check" });
       const run = harness.runs.at(-1)!;
       expect(run).toMatchObject({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         conversationId: childId,
         credentialContext: parentRun().credentialContext,
         instruction: { provenance: { authority: "instruction" } },
@@ -189,7 +189,7 @@ describe("spawn and messageAgent", () => {
 
       expect(harness.runs).toHaveLength(1);
       expect(harness.runs[0]).toMatchObject({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         credentialContext: parentRun().credentialContext,
       });
       expect(harness.runs[0]!.instruction.text).toContain("Check the deploy.");
@@ -269,11 +269,7 @@ describe("spawn and messageAgent", () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
-      for (
-        let index = 1;
-        index < MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT;
-        index++
-      ) {
+      for (let index = 1; index < MAX_ACTIVE_CHILD_AGENTS; index++) {
         await spawn(harness, `call-${index}`);
       }
       // The last free spawn waits to put its task in the child's mailbox.
@@ -315,7 +311,7 @@ describe("spawn and messageAgent", () => {
       });
       expect(overResult).toEqual({
         status: "rejected",
-        reason: expect.any(AgentInvocationLimitError),
+        reason: expect.any(ChildAgentLimitError),
       });
     } finally {
       await harness.close();
@@ -529,14 +525,14 @@ describe("spawn and messageAgent", () => {
     {
       name: "different Actors",
       other: {
-        actor: { ...slackInvocationInput.actor, userId: "U999" },
+        actor: { ...slackSpawnInput.actor, userId: "U999" },
         credentialContext: { actor: { type: "user", userId: "U999" } },
       },
     },
     {
       name: "one Actor with different credentials",
       other: {
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         credentialContext: { actor: { platform: "system", name: "junior" } },
       },
     },
@@ -561,7 +557,7 @@ describe("spawn and messageAgent", () => {
         // The Turn derives its credentials from its Actor, so only the
         // split into two Turns shows the credentials of each message.
         expect(harness.runs.map((run) => run.actor)).toEqual([
-          slackInvocationInput.actor,
+          slackSpawnInput.actor,
           other.actor,
         ]);
         expect(harness.runs[0]!.instruction.text).not.toContain(

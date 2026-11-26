@@ -3,10 +3,7 @@ import {
   subscribableResourceSchema,
   type PluginEmbedder,
 } from "@sentry/junior-plugin-api";
-import {
-  listAgentRelatives,
-  type ParentAgent,
-} from "@/chat/agent-invocations/list";
+import { listAgentRelatives, type ParentAgent } from "@/chat/child-agents/list";
 import {
   searchConversations,
   type ConversationSearchResult,
@@ -26,8 +23,8 @@ import {
   CHILD_AGENT_KINDS,
   CHILD_AGENT_RESULTS,
   type ChildAgent,
-} from "@/chat/agent-invocations/types";
-import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
+} from "@/chat/child-agents/types";
+import { AGENTS_TOOL_SOURCE } from "@/chat/child-agents/tool-source";
 
 const TASK_MAX_LENGTH = 1_000;
 const ERROR_MAX_LENGTH = 500;

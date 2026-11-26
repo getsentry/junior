@@ -39,7 +39,7 @@
  * in the same change. The `build-tools` repo skill says how to write a rule.
  */
 import { renderTag, type Platform } from "@sentry/junior-plugin-api";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 

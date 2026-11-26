@@ -26,7 +26,7 @@ import type { Reply, TurnAnswer } from "@/chat/turn-answer";
 import {
   readBlockedReport,
   type BlockedReport,
-} from "@/chat/agent-invocations/blocked-report";
+} from "@/chat/child-agents/blocked-report";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;

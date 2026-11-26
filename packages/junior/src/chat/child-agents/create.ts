@@ -27,7 +27,7 @@ import {
 } from "@/chat/conversations/agent-config";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import {
-  AgentInvocationLimitError,
+  ChildAgentLimitError,
   AgentNameInUseError,
   AgentStoppedError,
 } from "./errors";
@@ -40,7 +40,7 @@ import {
 import { spawnChildAgentInputSchema, type SpawnChildAgentInput } from "./types";
 
 /** Cap concurrent active children one parent can keep in flight. */
-export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
+export const MAX_ACTIVE_CHILD_AGENTS = 8;
 
 type SpawnInput = ReturnType<typeof spawnChildAgentInputSchema.parse>;
 
@@ -62,7 +62,7 @@ async function assertCanGiveChildWork(
 
 /**
  * Throw when giving work to one child agent would put its parent over
- * `MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT`, unless the parent is a Lead. A child agent is active while
+ * `MAX_ACTIVE_CHILD_AGENTS`, unless the parent is a Lead. A child agent is active while
  * its listing shows open work, so a busy child already counts and messages
  * queued for it do not count again. A new or idle child becomes active. This
  * is the only place the rule for which child agents count lives. `active` is
@@ -75,7 +75,7 @@ async function assertChildAgentCapacity(
 ): Promise<void> {
   if (
     active.includes(childConversationId) ||
-    active.length < MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT
+    active.length < MAX_ACTIVE_CHILD_AGENTS
   ) {
     return;
   }
@@ -84,7 +84,7 @@ async function assertChildAgentCapacity(
     conversationId: parentConversationId,
   });
   if (parent && !capsActiveChildren(parent.kind)) return;
-  throw new AgentInvocationLimitError(MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT);
+  throw new ChildAgentLimitError(MAX_ACTIVE_CHILD_AGENTS);
 }
 
 /**

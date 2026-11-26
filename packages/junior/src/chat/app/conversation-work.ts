@@ -17,9 +17,9 @@ import {
   failStoppedDispatch,
   resolveAgentDispatchId,
 } from "@/chat/agent-dispatch/work";
-import { createChildConversationWorker } from "@/chat/agent-invocations/result";
-import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
-import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
+import { createChildConversationWorker } from "@/chat/child-agents/result";
+import { withSenderActors } from "@/chat/child-agents/sender-actors";
+import { stopChildAgentsOf } from "@/chat/child-agents/stop";
 import { logException, withLogContext } from "@/chat/logging";
 import { resumeForPersonInput } from "@/chat/conversations/session-stop";
 import { ownsLocation } from "@/chat/conversations/kind-behavior";
@@ -147,7 +147,7 @@ export function createConversationWork(
   ): Promise<ConversationWorkerResult> => {
     const mailboxTurn = await resolveMailboxTurnWork(context);
     if (mailboxTurn) {
-      const work = await withAgentInvocationResultActors(mailboxTurn);
+      const work = await withSenderActors(mailboxTurn);
       if (!work) {
         // A stop or parent check dropped every input.
         await context.attempt.ack();

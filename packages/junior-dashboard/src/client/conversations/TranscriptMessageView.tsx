@@ -72,7 +72,7 @@ export const TranscriptMessageView = memo(
       <TranscriptMessageShell
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
-        fromAgent={Boolean(props.message.agentInvocationId)}
+        fromAgent={props.message.fromParentAgent === true}
         lead={props.conversation.kind === "lead"}
         avatarUrl={
           transcriptMessageActor(props.conversation, props.message)?.avatarUrl
@@ -191,7 +191,7 @@ export function RedactedMessageView(props: {
     <TranscriptMessageShell
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
-      fromAgent={Boolean(props.message.agentInvocationId)}
+      fromAgent={props.message.fromParentAgent === true}
       lead={props.conversation.kind === "lead"}
       avatarUrl={
         transcriptMessageActor(props.conversation, props.message)?.avatarUrl
