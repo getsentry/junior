@@ -52,8 +52,11 @@ export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
       }
     } finally {
       // The check lets a background read stay open, so a handler can still
-      // hold its route here. Remove the handlers before the page closes.
-      await page.unrouteAll();
+      // be running here. Wait for it before the page closes: an error that it
+      // throws then fails this test, not a later one or none. A held request
+      // would keep that wait open, so a failed test releases them here too.
+      await releaseHeldRequests(page);
+      await page.unrouteAll({ behavior: "wait" });
     }
   },
 });

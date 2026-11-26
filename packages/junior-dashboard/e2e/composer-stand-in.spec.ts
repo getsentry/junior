@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 
+import { holdRequests } from "./harness";
 import { expect, test } from "./test";
 
 const CONVERSATION_ID = "slack:CQA123:1770000000.000100";
@@ -20,7 +21,7 @@ async function openStandIn(page: Page, baseURL: string) {
 
 test("Enter in the stand-in sends the message", async ({ page, dashboard }) => {
   const sent: string[] = [];
-  await page.route(EDITOR_CHUNK, () => {});
+  await holdRequests(page, EDITOR_CHUNK);
   await page.route("**/api/conversations/*/messages", async (route) => {
     if (route.request().method() === "POST") {
       sent.push(route.request().postDataJSON().message);
@@ -35,7 +36,7 @@ test("Enter in the stand-in sends the message", async ({ page, dashboard }) => {
 });
 
 test("the stand-in grows with its text", async ({ page, dashboard }) => {
-  await page.route(EDITOR_CHUNK, () => {});
+  await holdRequests(page, EDITOR_CHUNK);
   const composer = await openStandIn(page, dashboard.baseURL);
   const scrolls = () =>
     composer.evaluate((field) => field.scrollHeight > field.clientHeight);
@@ -51,7 +52,7 @@ test("a file pasted into the stand-in is attached", async ({
   page,
   dashboard,
 }) => {
-  await page.route(EDITOR_CHUNK, () => {});
+  await holdRequests(page, EDITOR_CHUNK);
   await openStandIn(page, dashboard.baseURL);
   await page.evaluate(() => {
     const data = new DataTransfer();
