@@ -52,7 +52,7 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const body = context.req.valid("json");
       const space = await createSpace({
-        creatorUserId: context.get("viewer").id,
+        creator: context.get("viewer"),
         name: body.name,
         description: body.description ?? null,
         visibility: body.visibility,

@@ -112,12 +112,14 @@ export const juniorConversations = pgTable(
     // hide it. Keep as fork clears it.
     quickQuestionAt: timestamptz("quick_question_at"),
     // Roots reference themselves; descendants reference the root whose actor
-    // and destination own their privacy boundary.
+    // and destination own their privacy boundary. A Space's Lead is the root
+    // of every Conversation in its Space.
     rootConversationId: text("root_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // The Space of a root, or null for a one-off. Only a root stores it, so
-    // a child reads the Space of its root and can never disagree with it.
+    // The Space of a Lead. Only a Lead stores it: every other Conversation in
+    // the Space has the Lead as its root and reads it from there
+    // (`rootSpaceIdSql`), so they can never disagree with it.
     spaceId: text("space_id").references(() => juniorSpaces.id),
     // Who may read the Conversation (policies/conversation-access.md).
     // Public: anyone. Private: only its root's Participants. Every row of a

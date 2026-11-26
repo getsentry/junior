@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   canExposeConversationPayload,
@@ -9,7 +9,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
   juniorDestinations,
-  juniorSpaceMembers,
   juniorSpaces,
 } from "@/db/schema";
 import { conversationIdsWithParticipantUser } from "./membership";
@@ -63,47 +62,15 @@ export async function readConversationAccessFromSql(
       membershipConversationIds.add(row.storedRootConversationId);
     }
   }
-  const [participantRootIds, memberSpaceIds] =
+  const participantRootIds =
     viewer !== undefined
-      ? await Promise.all([
-          conversationIdsWithParticipantUser(
-            db,
-            [...membershipConversationIds],
-            viewer.id,
-          ),
-          readPrivateSpaceMemberships(db, rows, viewer.id),
-        ])
-      : [new Set<string>(), new Set<string>()];
-  return conversationAccessFromRows(rows, participantRootIds, memberSpaceIds);
-}
-
-/**
- * Return the private Spaces of the rows' roots that the viewer is a member
- * of. `conversationAccessFromRows` needs them for a viewer.
- */
-export async function readPrivateSpaceMemberships(
-  db: JuniorDatabase,
-  rows: readonly ConversationAccessRow[],
-  viewerUserId: string,
-): Promise<Set<string>> {
-  const spaceIds = [
-    ...new Set(
-      rows.flatMap((row) =>
-        row.spaceVisibility === "private" && row.spaceId ? [row.spaceId] : [],
-      ),
-    ),
-  ];
-  if (spaceIds.length === 0) return new Set();
-  const members = await db
-    .select({ spaceId: juniorSpaceMembers.spaceId })
-    .from(juniorSpaceMembers)
-    .where(
-      and(
-        inArray(juniorSpaceMembers.spaceId, spaceIds),
-        eq(juniorSpaceMembers.userId, viewerUserId),
-      ),
-    );
-  return new Set(members.map((member) => member.spaceId));
+      ? await conversationIdsWithParticipantUser(
+          db,
+          [...membershipConversationIds],
+          viewer.id,
+        )
+      : new Set<string>();
+  return conversationAccessFromRows(rows, participantRootIds);
 }
 
 /** The stored tree, visibility, and root Destination that access reads. */
@@ -155,13 +122,11 @@ export async function readConversationAccessRows(
 /**
  * Resolve access from `readConversationAccessRows`. `participantRootIds`
  * holds the viewer's participant roots among the conversations and their
- * stored roots, and `memberSpaceIds` holds the viewer's private Spaces from
- * `readPrivateSpaceMemberships`. Both are empty without a viewer.
+ * stored roots. It is empty without a viewer.
  */
 export function conversationAccessFromRows(
   rows: readonly ConversationAccessRow[],
   participantRootIds: ReadonlySet<string>,
-  memberSpaceIds: ReadonlySet<string>,
 ): Map<string, ConversationAccess> {
   return new Map(
     rows.map((row) => {
@@ -184,9 +149,12 @@ export function conversationAccessFromRows(
           ? row.spaceId
           : undefined;
       // A private Space is readable only by its members, like a private
-      // Slack channel.
+      // Slack channel. Its members are the Participants of its Lead, the
+      // root of every Conversation in it.
       const isSpaceMember =
-        privateSpaceId === undefined || memberSpaceIds.has(privateSpaceId);
+        privateSpaceId === undefined ||
+        (validRootConversationId !== undefined &&
+          participantRootIds.has(validRootConversationId));
       // Participant rows belong to roots, so a row with a parent never
       // matches its own id. That keeps a forged cycle from granting access.
       const isParticipant =

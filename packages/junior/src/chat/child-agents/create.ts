@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { eq } from "drizzle-orm";
+import { capsActiveChildren } from "@/chat/conversations/kind-behavior";
 import { addConversationNote } from "@/chat/conversations/notes";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -61,22 +62,29 @@ async function assertCanGiveChildWork(
 
 /**
  * Throw when giving work to one child agent would put its parent over
- * `MAX_ACTIVE_CHILD_AGENTS`. A child agent is active while
+ * `MAX_ACTIVE_CHILD_AGENTS`, unless the parent is a Lead. A child agent is active while
  * its listing shows open work, so a busy child already counts and messages
  * queued for it do not count again. A new or idle child becomes active. This
  * is the only place the rule for which child agents count lives. `active` is
  * the parent's active children from `listOpenChildAgents`.
  */
-function assertChildAgentCapacity(
+async function assertChildAgentCapacity(
+  parentConversationId: string,
   active: readonly string[],
   childConversationId: string,
-): void {
+): Promise<void> {
   if (
-    !active.includes(childConversationId) &&
-    active.length >= MAX_ACTIVE_CHILD_AGENTS
+    active.includes(childConversationId) ||
+    active.length < MAX_ACTIVE_CHILD_AGENTS
   ) {
-    throw new ChildAgentLimitError(MAX_ACTIVE_CHILD_AGENTS);
+    return;
   }
+  // A Lead's children are its Space's Conversations, so a Lead has no cap.
+  const parent = await getConversationStore().get({
+    conversationId: parentConversationId,
+  });
+  if (parent && !capsActiveChildren(parent.kind)) return;
+  throw new ChildAgentLimitError(MAX_ACTIVE_CHILD_AGENTS);
 }
 
 /**
@@ -100,7 +108,8 @@ async function createChildAgentConversation(
   ) {
     throw new AgentNameInUseError(input.agentName);
   }
-  assertChildAgentCapacity(
+  await assertChildAgentCapacity(
+    input.parentConversationId,
     await listOpenChildAgents(input.parentConversationId),
     childConversationId,
   );
@@ -368,7 +377,11 @@ export async function messageChildAgent(
       }
       await assertCanGiveChildWork(input.parentConversationId);
       const active = await listOpenChildAgents(input.parentConversationId);
-      assertChildAgentCapacity(active, input.childConversationId);
+      await assertChildAgentCapacity(
+        input.parentConversationId,
+        active,
+        input.childConversationId,
+      );
       const queued = active.includes(input.childConversationId);
       return {
         delivery: "message",

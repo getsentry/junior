@@ -396,8 +396,6 @@ const conversationReportToolCallSchema = z
     startedSeq: z.number().int().nonnegative().optional(),
     input: z.unknown().optional(),
     output: z.unknown().optional(),
-    /** The Conversation that a completed `startConversation` call started. */
-    startedConversationId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((call, context) => {

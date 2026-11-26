@@ -628,7 +628,11 @@ export function ConversationPage(props: {
   const sidePanel = (
     <>
       {detailsShown && lead && spaceId ? (
-        <SpaceDetailsPanel onClose={closeDetails} spaceId={spaceId} />
+        <SpaceDetailsPanel
+          leadId={conversationId}
+          onClose={closeDetails}
+          spaceId={spaceId}
+        />
       ) : detailsShown && !lead ? (
         <ConversationDetailsPanel
           conversation={conversation}
@@ -845,12 +849,7 @@ export function ConversationPage(props: {
                   {detail.error.message}
                 </Card>
               ) : (
-                <LeadPageScope
-                  lastSeq={detail.data?.events.at(-1)?.seq}
-                  lead={lead}
-                  prefill={leadFirstRun.prefill}
-                  spaceId={spaceId}
-                >
+                <LeadPageScope lead={lead} spaceId={spaceId}>
                   {detail.error ? (
                     <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
                       Transcript refresh failed. Showing the latest available

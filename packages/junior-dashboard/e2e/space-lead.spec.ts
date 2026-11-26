@@ -30,33 +30,15 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     transcript.getByRole("separator", { name: "Today" }),
   ).toBeVisible();
 
-  // Each started Conversation is a card with its state, summary, and Watch.
-  const needsYou = transcript.getByRole("article", {
-    name: "Triage Sentaur GoCD deployment failures",
-  });
-  const failed = transcript.getByRole("article", {
-    name: "Deployment investigation failed",
-  });
-  const working = transcript.getByRole("article", {
-    name: "Investigate checkout latency",
-  });
-  const done = transcript.getByRole("article", {
-    name: "Checkout latency triage",
-  });
-  await expect(needsYou).toContainText("Needs you");
-  await expect(needsYou).toContainText("Watching");
-  await expect(
-    needsYou.getByRole("link", { name: "Open to approve" }),
-  ).toBeVisible();
-  await expect(failed).toContainText("Failed");
-  await expect(failed).not.toContainText("Watching");
-  await expect(failed.getByRole("link", { name: "Open" })).toBeVisible();
-  await expect(working).toContainText("Working");
-  await expect(working).toContainText("Watching");
-  await expect(working.getByRole("button", { name: "Message it" })).toHaveCount(
-    0,
-  );
-  await expect(done).toContainText("Done");
+  // The Lead's children show as child agent rows, as in any parent's
+  // transcript. The duration tells them from the Watch Event lines.
+  const child = (title: string) =>
+    transcript.getByRole("link", { name: new RegExp(`^${title} \\d+[smh]`) });
+  const working = child("Investigate checkout latency");
+  await expect(child("Triage Sentaur GoCD deployment failures")).toBeVisible();
+  await expect(child("Deployment investigation failed")).toBeVisible();
+  await expect(working).toBeVisible();
+  await expect(child("Checkout latency triage")).toBeVisible();
 
   // Routine Watch Events fold into one row. The ones that need a person
   // show as one line each, before the Lead's reply.
@@ -112,14 +94,8 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     ),
   ]);
 
-  // "Message it" puts a reference to the card's Conversation in the reply.
-  await failed.getByRole("button", { name: "Message it" }).click();
-  await expect(reply).toContainText("Deployment investigation failed");
-
-  // A card opens its Conversation.
-  await working
-    .getByRole("link", { name: /Investigate checkout latency/ })
-    .click();
+  // A child agent row opens its Conversation.
+  await working.click();
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
@@ -138,7 +114,8 @@ test("loads a Space page within its request budget", async ({
         page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
       ).toBeVisible();
     },
-    { requests: 14, serialRounds: 3 },
+    // The Space's Threads are the Lead's child agents, one more read.
+    { requests: 15, serialRounds: 3 },
   );
 });
 
@@ -233,12 +210,10 @@ test("a non-member sees a Space whose Lead no member has talked to", async ({
   await expect(
     page.getByText("No member has talked to this Space's Lead yet."),
   ).toBeVisible();
-  // Its one Thread is done, so it shows once Done opens.
-  const threads = page.getByRole("region", { exact: true, name: "Threads" });
-  await threads.getByRole("button", { name: "Done · 1" }).click();
+  // The Space's Threads are its Lead's, so it has none to list.
   await expect(
-    threads.getByRole("link", { name: /Onboarding doc review/ }),
-  ).toBeVisible();
+    page.getByRole("region", { exact: true, name: "Threads" }),
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });
 

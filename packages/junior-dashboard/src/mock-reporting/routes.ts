@@ -80,6 +80,7 @@ import { registerMockCodeChangeSearchRoutes } from "./code-change-search";
 import { registerMockSearchRoutes } from "./search-routes";
 import { mockDemoMp4 } from "./demo-mp4";
 import {
+  readMockChildAgentsReport,
   readMockConversationDetailReport,
   readMockConversationFeedPage,
 } from "./conversation-reports";
@@ -95,7 +96,6 @@ import { markMockConversationRead } from "./read-positions";
 import { readMockCodeRepository } from "./code-repository";
 import {
   NOW_MS,
-  readMockConversationChildAgents,
   continueMockConversationInSlack,
   readMockConversationDetail,
   readMockConversationEvents,
@@ -471,7 +471,7 @@ export function createMockReportingApi(): Hono<{
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockConversationChildAgents(params.data.conversationId);
+    const report = readMockChildAgentsReport(params.data.conversationId);
     return report
       ? jsonResponse(conversationChildAgentsReportSchema, report)
       : errorResponse("Conversation not found.", 404);

@@ -62,7 +62,7 @@ export function agentEvents(): EventRegistrationInput {
   };
 }
 
-/** Describe the Watch that `startConversation` offers for a new Conversation. */
+/** Describe the Watch that a tool offers for one Conversation. */
 export function agentWatch(input: {
   conversationId: string;
   title: string;

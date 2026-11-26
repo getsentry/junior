@@ -28,6 +28,8 @@ import {
 } from "./child-message";
 import { childAgentStillWorks } from "./store";
 import { renderDataTag } from "@/chat/input-tags";
+import { remindsNoReplyForChildStatus } from "@/chat/conversations/kind-behavior";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { listUnreportedSiblingAgents } from "./list";
 import { recordChildAgentEnded, type SubagentOutcome } from "./markers";
 import {
@@ -44,15 +46,15 @@ import type { ChildAgent, ChildAgentSender } from "./types";
 /**
  * Render the parent agent input for one child agent result as one
  * `<agent-result>`, the agent update that a Watch on the child also gets.
- * The system prompt says what to do for each status, so the input repeats no
- * guidance.
+ * The system prompt says what to do for each status. A Lead's done result
+ * also reminds it that a status update needs no reply.
  */
 function renderResultInput(
   sender: ChildAgentSender,
   result: { output: string; status: AgentUpdateStatus },
   openSiblings: readonly ChildAgent[],
 ): string {
-  return renderAgentResult({
+  const agentResult = renderAgentResult({
     conversationId: sender.childConversationId,
     name: sender.agentName,
     source: "child_agent",
@@ -64,6 +66,19 @@ function renderResultInput(
       ? openSiblings.map(siblingLabel).join(", ")
       : undefined,
   });
+  return result.status === "done"
+    ? withNoReplyReminder(sender, agentResult)
+    : agentResult;
+}
+
+const NO_REPLY_REMINDER = `If this is only a status update with nothing a member needs, end with \`${NO_REPLY_TOOL_NAME}\`.`;
+
+// A blocked, failed, or stopped child needs the parent to act, so only a
+// child's done result and its messages get the reminder.
+function withNoReplyReminder(sender: ChildAgentSender, input: string): string {
+  return remindsNoReplyForChildStatus(sender.parentKind)
+    ? `${input}\n${NO_REPLY_REMINDER}`
+    : input;
 }
 
 function siblingLabel(sibling: ChildAgent): string {
@@ -126,16 +141,19 @@ function senderEventMetadata(
 }
 
 function renderMessageInput(sender: ChildAgentSender, text: string): string {
-  return renderDataTag(
-    "agent-message",
-    {
-      conversation_id: sender.childConversationId,
-      name: sender.agentName,
-      source: "child_agent",
-      title: sender.title,
-    },
-    "A child agent that you started",
-    text.trim(),
+  return withNoReplyReminder(
+    sender,
+    renderDataTag(
+      "agent-message",
+      {
+        conversation_id: sender.childConversationId,
+        name: sender.agentName,
+        source: "child_agent",
+        title: sender.title,
+      },
+      "A child agent that you started",
+      text.trim(),
+    ),
   );
 }
 

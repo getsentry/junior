@@ -122,22 +122,8 @@ async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
       vercelPlugin(),
     ]),
   });
-  // Only a Lead lists `startConversation`.
-  const leadTools = createTools(
-    [],
-    {},
-    {
-      ...context,
-      turnTools: turnBehavior({
-        kind: "lead",
-        hasParent: false,
-        personInput: true,
-      }).tools,
-    },
-  ) as Record<string, AnyToolDefinition>;
   return {
     ...(createTools([], {}, context) as Record<string, AnyToolDefinition>),
-    startConversation: leadTools["startConversation"]!,
     callMcpTool: createCallMcpToolTool({
       getResolvedActiveTools: () => MCP_TOOLS,
     }),

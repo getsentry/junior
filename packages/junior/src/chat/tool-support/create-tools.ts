@@ -5,7 +5,6 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -395,7 +394,6 @@ const STATIC_TOOL_BINDERS = {
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
     createUpdateInboxItemTool(run.context, run.inboxItemServices()),
-  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];

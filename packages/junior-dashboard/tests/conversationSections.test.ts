@@ -167,35 +167,47 @@ describe("attention order", () => {
     conversation("done-old", at(4)),
   ];
 
-  it("groups needs you, working, waiting, then done, each newest Message first", () => {
+  it("groups needs you, working, waiting, then done, each newest first", () => {
+    const rows = [
+      { group: "done", id: "done-old", time: 1 },
+      { group: "waiting", id: "waiting", time: 2 },
+      { group: "needs_you", id: "needs-old", time: 3 },
+      { group: "working", id: "working", time: 4 },
+      { group: "done", id: "done-new", time: 5 },
+      { group: "needs_you", id: "needs-new", time: 6 },
+    ] as const;
     expect(
-      attentionGroups(feed).map(({ conversations, group }) => ({
+      attentionGroups(rows, (row) => row).map(({ group, rows }) => ({
         group,
-        ids: conversations.map((item) => item.id),
+        ids: rows.map((row) => row.id),
       })),
     ).toEqual([
-      // A failed latest Turn needs the viewer. A tool event does not move a
-      // row: the last Message sorts it.
-      { group: "needs_you", ids: ["failed", "tool-only", "needs-old"] },
-      { group: "working", ids: ["working-new", "working-old"] },
+      { group: "needs_you", ids: ["needs-new", "needs-old"] },
+      { group: "working", ids: ["working"] },
       { group: "waiting", ids: ["waiting"] },
-      // A pin does not change the group.
-      { group: "done", ids: ["done-new", "pinned-done", "done-old"] },
+      { group: "done", ids: ["done-new", "done-old"] },
     ]);
+    // Groups with no rows are left out.
+    expect(
+      attentionGroups(
+        rows.filter((row) => row.group !== "working"),
+        (row) => row,
+      ).map(({ group }) => group),
+    ).toEqual(["needs_you", "waiting", "done"]);
   });
 
-  it("leaves out empty groups and flattens to one order", () => {
-    const rows = feed.filter((item) => !item.id.startsWith("working"));
-    expect(attentionGroups(rows).map(({ group }) => group)).toEqual([
-      "needs_you",
-      "waiting",
-      "done",
-    ]);
-    expect(attentionOrder(rows).map((item) => item.id)).toEqual([
+  it("orders feed rows by tree state, then last Message", () => {
+    expect(attentionOrder(feed).map((item) => item.id)).toEqual([
+      // A failed latest Turn needs the viewer. A tool event does not move a
+      // row: the last Message sorts it.
       "failed",
       "tool-only",
       "needs-old",
+      "working-new",
+      "working-old",
+      // A watching tree waits.
       "waiting",
+      // A pin does not change the group.
       "done-new",
       "pinned-done",
       "done-old",
