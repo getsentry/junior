@@ -129,6 +129,8 @@ async function resolveLinearIssue(
 
 /** Linear issue links, with or without a title slug, as task cards. */
 export const linearIssueLinks: PluginObjectLinkDefinition = {
+  // Issues are read through MCP, not egress, so Junior keeps the card.
+  cacheCards: true,
   filters: [
     { host: "linear.app", pathPattern: "/*/issue/*" },
     { host: "linear.app", pathPattern: "/*/issue/*/*" },

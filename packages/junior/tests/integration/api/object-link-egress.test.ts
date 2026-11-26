@@ -229,3 +229,280 @@ it("checks link access with only the viewer's own OAuth token", async () => {
   expect(checks).toEqual(["Bearer alice-token"]);
   expect(statuses).toEqual([200, 401]);
 });
+
+/** Read `/api/objects` for one URL as one viewer. */
+async function readCards(viewer: User, url: string) {
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi());
+  const response = await app.request(
+    `http://localhost/api/objects?url=${encodeURIComponent(url)}`,
+  );
+  expect(response.status).toBe(200);
+  return objectLinksReportSchema.parse(await response.json()).objects;
+}
+
+/** The docs plugin, whose card reads the file title as the system Actor. */
+async function createDocsApp() {
+  await createApp({
+    dashboard: { disabled: true },
+    plugins: defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest,
+        hooks: {
+          grantForEgress: () => ({ name: "app", access: "read" }),
+          issueCredential: () => ({
+            type: "lease",
+            lease: {
+              expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+              headerTransforms: [
+                {
+                  domain: "api.docs.test",
+                  headers: { Authorization: "Bearer app-token" },
+                },
+              ],
+            },
+          }),
+        },
+        objectLinks: [
+          {
+            filters: [{ host: "docs.test", pathPrefix: "/d/" }],
+            objectTypes: ["document"],
+            canView: async () => true,
+            async resolve(ctx, url) {
+              // Like Sentry and Google, the plugin keeps its own copy of
+              // what it read.
+              const file = await ctx.cache.getOrLoad(
+                `file:${url.pathname}`,
+                async () => {
+                  const response = await ctx.egress.fetch({
+                    operation: "docs.file.get",
+                    provider: "docs",
+                    request: new Request(
+                      `https://api.docs.test${url.pathname}`,
+                    ),
+                  });
+                  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                  return {
+                    ttlMs: 20_000,
+                    value: (await response.json()) as { title: string },
+                  };
+                },
+              );
+              return {
+                kind: "object",
+                objectType: "document",
+                key: url.pathname,
+                label: file.title,
+                title: file.title,
+                url: url.href,
+              };
+            },
+          },
+        ],
+      }),
+    ]),
+  });
+}
+
+it("serves a card read from the HTTP cache within its TTL, then revalidates it, and a 304 keeps the entry", async () => {
+  await createDocsApp();
+  const sent: Array<string | null> = [];
+  let answer: "file" | "not_modified" = "file";
+  mswServer.use(
+    http.get("https://api.docs.test/d/2", ({ request }) => {
+      sent.push(request.headers.get("if-none-match"));
+      return answer === "file"
+        ? HttpResponse.json(
+            { title: "Launch plan" },
+            { headers: { etag: '"v1"' } },
+          )
+        : new HttpResponse(null, { status: 304 });
+    }),
+  );
+  const alice = testViewer("alice@example.com");
+  const url = "https://docs.test/d/2";
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const start = Date.now();
+    expect(await readCards(alice, url)).toMatchObject([
+      { object: { title: "Launch plan" } },
+    ]);
+    // Within the TTL, the entry serves with no request.
+    vi.setSystemTime(start + 30_000);
+    expect(await readCards(alice, url)).toMatchObject([
+      { object: { title: "Launch plan" } },
+    ]);
+    expect(sent).toEqual([null]);
+
+    // After the TTL, Junior asks with the entry's ETag. The 304 keeps the
+    // entry, so the next minute needs no request either.
+    answer = "not_modified";
+    vi.setSystemTime(start + 61_000);
+    const revalidated = await readCards(alice, url);
+    expect(revalidated).toMatchObject([{ object: { title: "Launch plan" } }]);
+    expect(revalidated[0]?.object).not.toHaveProperty("fetchedAt");
+    vi.setSystemTime(start + 100_000);
+    await readCards(alice, url);
+    expect(sent).toEqual([null, '"v1"']);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("shows the last card with when it was fetched only after its TTL, when the provider fails", async () => {
+  await createDocsApp();
+  let status = 200;
+  mswServer.use(
+    http.get("https://api.docs.test/d/3", () =>
+      status === 200
+        ? HttpResponse.json({ title: "Roadmap" })
+        : HttpResponse.json({ message: "Unavailable" }, { status }),
+    ),
+  );
+  const alice = testViewer("alice@example.com");
+  const url = "https://docs.test/d/3";
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const start = Date.now();
+    const fresh = await readCards(alice, url);
+    expect(fresh).toMatchObject([{ object: { title: "Roadmap" } }]);
+    expect(fresh[0]?.object).not.toHaveProperty("fetchedAt");
+
+    // Within the TTL, the card is fresh, even with the provider down.
+    status = 503;
+    vi.setSystemTime(start + 30_000);
+    const cached = await readCards(alice, url);
+    expect(cached[0]?.object).not.toHaveProperty("fetchedAt");
+
+    // After the TTL, the failed read shows the last card and its age.
+    vi.setSystemTime(start + 5 * 60_000);
+    expect(await readCards(alice, url)).toMatchObject([
+      {
+        object: {
+          fetchedAt: new Date(start).toISOString(),
+          title: "Roadmap",
+        },
+      },
+    ]);
+    // The plugin did not save the old body as a fresh copy, so the next
+    // read still shows its age. A rate limit also keeps the last card.
+    status = 429;
+    vi.setSystemTime(start + 5 * 60_000 + 10_000);
+    expect(await readCards(alice, url)).toMatchObject([
+      { object: { fetchedAt: new Date(start).toISOString() } },
+    ]);
+
+    // A good read again shows a current card.
+    status = 200;
+    const current = await readCards(alice, url);
+    expect(current[0]?.object).not.toHaveProperty("fetchedAt");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("shares a cached response only within one credential: viewers share the app's, never each other's", async () => {
+  const access: Array<string | null> = [];
+  const appReads: Array<string | null> = [];
+  await createApp({
+    dashboard: { disabled: true },
+    plugins: defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: oauthManifest,
+        hooks: {
+          grantForEgress: () => ({ name: "app", access: "read" }),
+          issueCredential: () => ({
+            type: "lease",
+            lease: {
+              expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+              headerTransforms: [
+                {
+                  domain: "api.tracker.test",
+                  headers: { Authorization: "Bearer app-token" },
+                },
+              ],
+            },
+          }),
+        },
+        objectLinks: [
+          {
+            filters: [{ host: "tracker.test", pathPrefix: "/t/" }],
+            async canView(ctx, url) {
+              const response = await ctx.viewerEgress.fetch({
+                operation: "tracker.ticket.access",
+                provider: "tracker",
+                request: new Request(
+                  `https://api.tracker.test${url.pathname}/access`,
+                ),
+              });
+              return response.ok;
+            },
+            objectTypes: ["task"],
+            async resolve(ctx, url) {
+              const response = await ctx.egress.fetch({
+                operation: "tracker.ticket.get",
+                provider: "tracker",
+                request: new Request(`https://api.tracker.test${url.pathname}`),
+              });
+              const ticket = (await response.json()) as { title: string };
+              return {
+                kind: "object",
+                objectType: "task",
+                key: url.pathname,
+                label: "T-2",
+                title: ticket.title,
+                url: url.href,
+              };
+            },
+          },
+        ],
+      }),
+    ]),
+  });
+  mswServer.use(
+    http.get("https://api.tracker.test/t/2/access", ({ request }) => {
+      const authorization = request.headers.get("authorization");
+      access.push(authorization);
+      return HttpResponse.json(
+        { reader: authorization },
+        { headers: { etag: '"access"' } },
+      );
+    }),
+    http.get("https://api.tracker.test/t/2", ({ request }) => {
+      appReads.push(request.headers.get("authorization"));
+      return HttpResponse.json(
+        { title: "Fix the login page" },
+        { headers: { etag: '"t2"' } },
+      );
+    }),
+  );
+  const tokens = createUserTokenStore();
+  const alice = testViewer("alice@example.com");
+  const bob = testViewer("bob@example.com");
+  for (const [viewer, token] of [
+    [alice, "alice-token"],
+    [bob, "bob-token"],
+  ] as const) {
+    await tokens.set(viewer.id, "tracker", {
+      accessToken: token,
+      refreshToken: `${token}-refresh`,
+      expiresAt: Date.now() + 3_600_000,
+      scope: "read",
+    });
+  }
+  const url = "https://tracker.test/t/2";
+
+  for (const viewer of [alice, bob, alice]) {
+    expect(await readCards(viewer, url)).toMatchObject([
+      { object: { title: "Fix the login page" } },
+    ]);
+  }
+  // Alice's access answer is fresh, but Bob's check sends his own token.
+  expect(access).toEqual(["Bearer alice-token", "Bearer bob-token"]);
+  // The viewers share the one read with the app's credential.
+  expect(appReads).toEqual(["Bearer app-token"]);
+});
