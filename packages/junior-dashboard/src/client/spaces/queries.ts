@@ -151,7 +151,7 @@ export function useUpdateSpace() {
       spaceId,
       ...body
     }: {
-      description: string | null;
+      description?: string | null;
       name: string;
       spaceId: string;
     }) => patch(spaceSchema, spaceApiPath(spaceId), body),

@@ -56,6 +56,7 @@ import { eventDetailsTrigger, turnContextTrigger } from "./panelTriggers";
 import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
 import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
+import { leadMenuState } from "../../spaces/leadMenuState";
 import { useSpaceActions } from "../../spaces/SpaceActions";
 import { useSpaceData } from "../../spaces/queries";
 import { SpaceChip } from "../../spaces/SpaceTile";
@@ -397,21 +398,17 @@ export function ConversationPage(props: {
     props.pendingArchiveUpdate,
   );
   const conversationDetail = detail.data;
-  // A Lead's menu shows its Space's archive and membership, which the Space
-  // actions write to the cache at once.
-  const menuConversation =
-    lead && leadSpace && conversation
-      ? { ...conversation, archivedAt: leadSpace.archivedAt }
-      : conversation;
-  const menuDetail =
-    lead && leadSpace && conversationDetail
-      ? { ...conversationDetail, subscribed: leadSpace.viewerIsMember }
-      : conversationDetail;
+  const menuState = leadMenuState(
+    { conversation, detail: conversationDetail },
+    lead ? leadSpace : undefined,
+  );
   const displayState = conversation
     ? conversationDisplayState(conversation)
     : undefined;
   const links = conversationLinks(conversationDetail);
+  // A Lead's title is its Space's name, which a rename sets at once.
   const title =
+    (lead ? spaceActions.name : undefined) ??
     conversationDetailTitle(detail.data) ??
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
@@ -747,7 +744,7 @@ export function ConversationPage(props: {
                 actions: {
                   archive: () => {
                     if (lead) {
-                      spaceActions.archive(!menuConversation?.archivedAt);
+                      spaceActions.archive(!menuState.conversation?.archivedAt);
                     } else if (conversation?.archivedAt) {
                       setArchived(false);
                     } else if (!conversation!.parentConversationId) {
@@ -769,9 +766,9 @@ export function ConversationPage(props: {
                     else spaceActions.leave();
                   },
                 },
-                conversation: menuConversation,
+                conversation: menuState.conversation,
                 conversationId,
-                detail: menuDetail,
+                detail: menuState.detail,
                 eventLogOpen: view === "raw",
                 getMarkdown: conversationDetail
                   ? async () =>

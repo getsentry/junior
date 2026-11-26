@@ -106,15 +106,32 @@ export function useSpaceActions(space: SpaceReport | undefined) {
     archive: setArchived,
     join: () => {
       if (!space) return notLoaded();
-      membership.mutate({ join: true, spaceId: space.id });
+      membership.mutate(
+        { join: true, spaceId: space.id },
+        {
+          onError: (error) =>
+            toast.add({
+              description:
+                error instanceof DashboardApiError ? error.apiError : undefined,
+              priority: "high",
+              title: "Could not join the Space",
+              type: "error",
+            }),
+        },
+      );
     },
     leave,
+    /** The Space's name, or the one being saved. */
+    name:
+      (update.isPending ? update.variables?.name : undefined) ?? space?.name,
     pending: { archive: archive.isPending, membership: membership.isPending },
     /** A Space and its Lead share one name. */
     rename: (name: string) => {
       if (!space) return notLoaded();
       update.mutate(
-        { description: space.description, name, spaceId: space.id },
+        // Only the name, so a stale description does not overwrite a newer
+        // one.
+        { name, spaceId: space.id },
         {
           onError: (error) =>
             toast.add({
