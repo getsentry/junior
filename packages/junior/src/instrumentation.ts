@@ -78,7 +78,7 @@ export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
     baggage: trace.baggage,
     dsn,
     environment: getEnvironment(),
-    release: getDeploymentServiceVersion(),
+    release: getDeploymentServiceVersion(process.env),
     sentryTrace: trace["sentry-trace"],
     tracesSampleRate: getTracesSampleRate(),
   };
@@ -97,8 +97,10 @@ export function initSentry(): void {
     process.env["SENTRY_ENABLE_LOGS"],
     Boolean(dsn || process.env["SENTRY_SPOTLIGHT"]?.trim()),
   );
-  const serviceVersion = getDeploymentServiceVersion();
-  const deploymentSpanAttributes = getDeploymentTelemetryAttributes();
+  const serviceVersion = getDeploymentServiceVersion(process.env);
+  const deploymentSpanAttributes = getDeploymentTelemetryAttributes(
+    process.env,
+  );
 
   Sentry.init({
     dsn,

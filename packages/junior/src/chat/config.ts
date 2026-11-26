@@ -1,5 +1,4 @@
 import { loadConfig, type JuniorConfig } from "@/config";
-import { toOptionalTrimmed } from "@/chat/optional-string";
 
 export interface BotModelConfig {
   /** Model that runs every agent Turn. */
@@ -147,7 +146,7 @@ export interface RuntimeMetadata {
 /** Return runtime metadata (version from deploy environment). */
 export function getRuntimeMetadata(): RuntimeMetadata {
   return {
-    version: toOptionalTrimmed(process.env["VERCEL_GIT_COMMIT_SHA"]),
+    version: getChatConfig().deployment.commitSha,
   };
 }
 
