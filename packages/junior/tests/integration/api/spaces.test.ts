@@ -98,6 +98,7 @@ async function startConversation(
     .conversationId;
 }
 
+/** Read one Space's list, or the viewer's own feed with no Space. */
 async function spaceFeed(
   app: Hono<JuniorApiEnv>,
   spaceId: string,
@@ -106,7 +107,7 @@ async function spaceFeed(
   const response = await request(
     app,
     "GET",
-    `/conversations?spaceId=${spaceId}&status=${status}`,
+    `/conversations?${spaceId ? `spaceId=${spaceId}&` : ""}status=${status}`,
   );
   expect(response.status).toBe(200);
   return conversationFeedSchema.parse(await response.json()).conversations;
@@ -353,6 +354,11 @@ describe("Spaces API", () => {
       name: "Ledger",
     });
     expect((await moveTo(ana, thread, null)).status).toBe(409);
+    // A member's own feed lists the Space's work, with its Threads.
+    const anaRow = (await spaceFeed(ana, "")).find(
+      (row) => row.conversationId === inSpace,
+    );
+    expect(anaRow?.threads?.map((row) => row.conversationId)).toEqual([thread]);
 
     // A move writes only the root, and the child's detail token still
     // changes, so an open child detail refreshes its Space.

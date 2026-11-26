@@ -14,6 +14,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  not,
   or,
   sql,
   type SQL,
@@ -202,10 +203,20 @@ export async function createSpace(args: {
     createdAt: now,
     updatedAt: now,
   });
-  await createSpaceLead({
-    member: args.creator,
-    space: { id, name: args.name, visibility: args.visibility },
-  });
+  try {
+    await createSpaceLead({
+      member: args.creator,
+      space: { id, name: args.name, visibility: args.visibility },
+    });
+  } catch (error) {
+    // The Lead's writes do not share a transaction with the Space. A Space
+    // with no Lead has no members, so it goes away with the failed request.
+    await executor
+      .db()
+      .delete(juniorSpaces)
+      .where(and(eq(juniorSpaces.id, id), not(exists(spaceLeadId(id)))));
+    throw error;
+  }
   const space = await readSpace(args.creator.id, id);
   if (!space) throw new Error("The Space was not saved");
   return space;

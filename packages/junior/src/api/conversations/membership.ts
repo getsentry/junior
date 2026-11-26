@@ -148,9 +148,10 @@ export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
 }
 
 /**
- * True when the person is a Participant of the conversation. Feeds filter
- * with this id set instead of a per-row membership check, so Postgres reads
- * only that person's conversations, not every root.
+ * True when the person is a Participant of the conversation, or of the Lead
+ * whose child it is, since a Lead's Participants are its Space's members.
+ * Feeds filter with this id set instead of a per-row membership check, so
+ * Postgres reads only that person's conversations, not every root.
  */
 export function conversationIsMemberRoot(member: ConversationMember): SQL {
   const participating = getDb()
@@ -169,7 +170,11 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
             eq(juniorUsers.id, juniorConversationParticipants.userId),
           )
           .where(eq(juniorUsers.primaryEmailNormalized, member.email));
-  return inArray(juniorConversations.conversationId, memberRoots);
+  // Top-level filters keep only a parent match whose parent is a Lead.
+  return or(
+    inArray(juniorConversations.conversationId, memberRoots),
+    inArray(juniorConversations.parentConversationId, memberRoots),
+  )!;
 }
 
 /**
