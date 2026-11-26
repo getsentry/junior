@@ -45,8 +45,19 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
   root's child can start children. With 0, only a root can.
 - A message id is an opaque key. Who sent a message, and what it means,
   come from its stored fields.
-- People decide when a Thread is done. An agent cannot archive a Thread
-  that a person messaged after the agent last gave it work.
+- A child agent is done when nothing in it or below it runs, waits on a
+  person, failed in its latest Turn, or has an active Watch. What the agent
+  says does not make it done. A done Thread shows under Done in the
+  Threads panel, and new work takes it out.
+- Auto-archive treats every Conversation in a tree the same way. With the
+  root's setting and grace period, it archives a done child before its
+  parent. It never archives a Lead, or a child that a person messaged
+  after its parent last gave it work.
+- An agent cannot archive a Thread that a person messaged after the agent
+  last gave it work.
+- New work from its parent, or a new ask for a person, restores an
+  auto-archived child. Only a person restores a Conversation that a person
+  or an agent archived.
 - Visibility and access come from the root, as
   `../policies/conversation-access.md` states.
 
@@ -58,8 +69,13 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
   and getsentry/junior#2567 track it.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".
-- A parent does not archive its child agents when their work is done. This
-  breaks "a parent manages the lifecycle of its child agents".
+- Auto-archive covers only roots, so a done child agent stays until a
+  person or its parent archives it. This breaks "auto-archive treats every
+  Conversation in a tree the same way". getsentry/junior#4409 tracks it.
+- A parent's message does not restore an archived child, and an archived
+  child does not count in its tree's state, so a child that needs a person
+  can stay hidden. This breaks "new work from its parent, or a new ask for
+  a person, restores an auto-archived child".
 - A parent message that arrives while a person stops its child does not
   run, and a retried spawn can lose its task to a worker that holds the
   task of the failed spawn. In both cases the parent was told that the work
