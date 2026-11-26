@@ -344,7 +344,7 @@ describe("updateTodos", () => {
     }
   });
 
-  it("closes a child's open To-dos once its completed or stopped result reaches the parent after them", async () => {
+  it("drops a child's open To-dos once its stopped result reaches the parent after them, and leaves them open on a completed result", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const tick = () => vi.setSystemTime(Date.now() + 1_000);
     const harness = await createHarness();
@@ -406,8 +406,8 @@ describe("updateTodos", () => {
           todo.changedByAgent?.name,
         ]),
       ).toEqual([
-        ["Echo open", "done", "Echo"],
-        ["Echo started", "done", "Echo"],
+        ["Echo open", "open", undefined],
+        ["Echo started", "in_progress", undefined],
         ["Echo dropped", "dropped", undefined],
         ["Foxtrot open", "dropped", "Foxtrot"],
         ["Golf open", "open", undefined],

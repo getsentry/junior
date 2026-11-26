@@ -5,7 +5,6 @@ import { pathToFileURL } from "node:url";
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { botConfig, setBotName } from "@/chat/config";
-import { coreSystemPromptRegistrations } from "@/chat/plugins/core-system-prompts";
 import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
 import { buildPluginSystemPromptContributions } from "@/chat/prompt";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
@@ -117,28 +116,19 @@ describe("juniorNitro system prompts", () => {
     for (const platform of ["slack", "local"] as const) {
       const guidance = buildPluginSystemPromptContributions(
         await getPluginSystemPromptContributions(
-          [
-            ...pluginModule.plugins.registrations,
-            ...coreSystemPromptRegistrations(),
-          ],
-          platform,
-        ),
-      );
-      const coreGuidance = buildPluginSystemPromptContributions(
-        await getPluginSystemPromptContributions(
-          coreSystemPromptRegistrations(),
+          pluginModule.plugins.registrations,
           platform,
         ),
       );
       for (const mode of PROMPT_MODES) {
         const sections = systemPrompts[platform][mode];
-        // The runtime here has no app plugins, so it builds the core blocks
-        // and the guidance of core registrations.
+        // The runtime here has no app plugins, so it builds only the core
+        // blocks.
         expect(
-          [
-            ...sections.slice(0, -1).map((section) => section.text),
-            coreGuidance,
-          ].join("\n\n"),
+          sections
+            .slice(0, -1)
+            .map((section) => section.text)
+            .join("\n\n"),
         ).toBe(await buildDeploymentSystemPrompt(platform, mode));
         expect(sections.at(-1)).toEqual({ name: "plugins", text: guidance });
       }

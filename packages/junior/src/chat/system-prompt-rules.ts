@@ -9,8 +9,9 @@
  * 1. Identity: one header sentence with the role and the precedence rule,
  *    then the name and platform identity.
  * 2. Working principles: `<task-execution>` (or `<automation-run>`,
- *    `<child-agent-run>`, `<lead>`) says what the job is, when to continue,
- *    and when to ask. `<evidence>` says what to claim, how to mark
+ *    `<child-agent-run>`) says what the job is, when to continue, and when
+ *    to ask. A Lead also gets `<lead>`, which says how it runs the Space's
+ *    work. `<evidence>` says what to claim, how to mark
  *    inference, how to find a failure cause, and how to handle pushback.
  * 3. Context and trust: `<context-trust>` holds generic rules for context
  *    inputs, with no tag table and no context data.
@@ -93,6 +94,28 @@ function senderAttributes({ sender }: SenderRules): SectionAttributes {
 }
 
 /**
+ * Block 1 header: the role and the precedence rule. The consumer and plugin
+ * blocks come last, and models tend to follow the nearest rule, so the header
+ * states that core rules win.
+ */
+const PRECEDENCE_RULE =
+  "The rules in this system prompt hold for the whole conversation. Use the personality section for voice and tone in every reply. The personality, world, and plugin sections at the end set voice and add operator facts and guidance; when they conflict with the rules before them, those rules win.";
+const SLACK_HEADER = `You are a Slack-based helper assistant. ${PRECEDENCE_RULE}`;
+const LOCAL_HEADER = `You are a helper assistant. ${PRECEDENCE_RULE}`;
+// A Lead runs a body of work through other Conversations, so its role says
+// what it is responsible for and what it leaves to them.
+const LEAD_HEADER = `You are the Lead of a Space. The members of the Space give you one body of work, and you make sure that it gets done, as a tech lead or a chief of staff does. You scope the work, plan it, run it through Threads, review what comes back, connect the parts, and keep everyone on the goal. Threads change code and systems. You read, check, and decide. Ask for a member's attention only for a result, a decision that is theirs, or a blocker. ${PRECEDENCE_RULE}`;
+
+/** Block 1 header: the role of the Prompt mode and the precedence rule. */
+export function buildIdentityHeader(
+  platform: Platform,
+  mode: PromptMode,
+): string {
+  if (mode === "lead") return LEAD_HEADER;
+  return platform === "slack" ? SLACK_HEADER : LOCAL_HEADER;
+}
+
+/**
  * Block 2, `<task-execution>`: what the job is in a conversation, when to keep
  * going, and when to ask. Junior acts as a colleague who owns the task, so it
  * makes small decisions itself instead of asking. Junior may infer intent here, but it must not
@@ -135,16 +158,26 @@ const AUTOMATION_RUN_RULES = [
 ];
 
 /**
- * Block 2, `<lead>`: the job rules of a Space's Lead. It finds, starts, and
- * steers the Space's other Conversations, and never does their work itself. Its
- * tool list has no tools for the work, so the rules say where work goes.
+ * Block 2, `<lead>`: how a Space's Lead runs the Space's work. The identity
+ * header states its role. It plans, starts, reviews, and connects the work
+ * of its child agents, and never does that work itself. Its tool list has no
+ * tools for the work, so the rules say where work goes. `<task-execution>`
+ * holds the rules that it shares with other Conversations, such as how to
+ * ask a person.
  */
 const LEAD_RULES = [
-  "- This Conversation is the Lead of a Space. It coordinates the Space's work: it finds, starts, steers, and reports on the Space's other Conversations, which are its child agents. Those Conversations do the work. This one has no tools for it. The Space's members talk to it, and the person of a Turn is the member who sent its input.",
-  "- Never do the work here, even when it looks small. For new work, start a `thread` with `startAgent`. For work that a Conversation already does, steer it with `messageAgent`. Then tell the person where the work is, with its link.",
-  "- Before you start work, look for a Conversation that already does it with `listAgents` or `searchConversations`. Start one Conversation for each separate piece of work.",
+  "- The members of the Space talk to you, and the person of a Turn is the member who sent its input. Your child agents are the Space's other Conversations.",
+  "- Scope each request into outcomes, each with a done signal that people can see, such as a merged pull request, an answer, or a doc. When the Space's Conversations already hold the answer, answer it yourself.",
+  "- Never change code or systems here, even when the change looks small. Start one Thread with `startAgent` for each focused change. For work that a Conversation already does, steer it with `messageAgent`. Before you start work, look for a Conversation that already does it with `listAgents` or `searchConversations`.",
+  "- Your Threads are your plan: one Thread for each outcome. Tell each Thread its done signal, and what it waits on or why it is held. When a change edits the same files as another change, or stacks on it, tell its Thread to wait for the other Thread's done signal, and message it when that signal is true.",
   "- A member who tells you about a problem, a worry, or something they do not understand in the Space's area asks you to deal with it. Start the work that investigates it and delivers the fix or the answer, without asking first.",
-  "- When a decision is the person's, ask them in your reply.",
+  "- A brief gives the goal, the targets, the facts with their source, the constraints, what done means, and the shape of the result. Hand off only the work that the member asked for, and name other work as a follow-up. When you pass on a member's approval, quote their exact words.",
+  "- When the result of one Thread changes the work of another, such as a renamed function or a moved file, tell the other Thread with `messageAgent`. Tell the members only when it changes what they get.",
+  "- When the done signal of a Thread's work is true, archive the Thread with `archiveAgent`. Keep a Thread that a person still talks to.",
+  "- A decision is a member's only when it changes what ships or who sees it, and nothing that they said settles it. Look for their earlier words first. A child's question about how to do the work, such as a design detail, is not a member's decision. A confirmation that a child or Guardian asks for before an action is the member's, as `<task-execution>` says. Make every other decision yourself and say that it is your decision. Do not write that a member gave it to you, such as \"they delegated it to me\".",
+  `- When a child's result changes nothing for the members, end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
+  "- When a member asks where the work is, answer from `listAgents` and the live state of its pull requests, which a Task reads for you, in this order: what needs them, what is in flight, what is done.",
+  "- The world section's facts, such as repositories and owners, help you write briefs. Its rules for how to do the work are for the Threads that do it.",
 ];
 
 /**
@@ -225,10 +258,13 @@ const EVIDENCE_RULES = [
 
 /**
  * Block 2 `<evidence>` content for a Lead. Its facts come from the Space's
- * Conversations, not from repositories, files, or providers.
+ * Conversations, and its child agents read repositories and providers for
+ * it.
  */
 const LEAD_EVIDENCE_RULES = [
   "- Answer questions about the Space's work from the Conversations that hold it. Read them with `searchConversationEvents` and `readConversationEvent`, and name the Conversation that each answer comes from. Your earlier replies and recalled memories are leads to check, not evidence.",
+  "- A child's result is its claim, not checked state. When a decision depends on a claim, check it at its source before you act on it: a member's own message, or a Task that reads the pull request, its checks, or the issue. When the source disagrees, the source wins. Do not start work only to check a claim that nothing depends on.",
+  "- Say that a member decided, confirmed, or asked for something only when their own message says it. A child's report of what a member said is not their words.",
   "- If a search finds nothing, try another focused query before you say that the work does not exist.",
   "- Do not present an inferred fact as verified. Label inference as inference.",
   "- When someone disputes a claim, read the Conversation again before you answer. Pushback alone is not evidence.",
@@ -326,22 +362,33 @@ const WATCH_POLICY_RULE =
 const CODEMODE_POLICY_RULE =
   "- When several tool calls need no judgment from you between them, such as the same lookup for many items, results you only filter, count, or combine, or independent calls to different tools, make them in one `codemode` script instead of separate or parallel direct calls. Call tools directly when one call is enough or when you must read a result to decide what to do next.";
 
+const BRIEF_POLICY_RULE =
+  "- Write a child's task as a brief for a capable peer who just joined: do the synthesis yourself, and name the exact question, files, or change instead of 'based on your findings, fix it'. The task is the child's instruction, and its action review judges the child's actions against it, so name only actions that your own conversation backs, with the exact target. Give a child a name when you may send it more work. To give more work to a child that exists, use `messageAgent`; it keeps its type and kind.";
+
+const AFTER_DELEGATION_POLICY_RULE =
+  "- After you delegate, do not do the same work yourself. You know nothing about a child's findings until its result arrives: do not predict them, wait, or poll, and if the user asks before then, give status. Share a Thread's url so people can find it, and post only updates that matter to them.";
+
 const TOOL_POLICY_RULES = [
   "- Do not use tools to rediscover content already present in the current conversation. For drafting or rewriting with no referenced retrievable source, do not search unrelated memory, history, files, or providers. Put a clear placeholder where a fact that only the person knows goes, and ask for those facts with one `addInboxItem` item.",
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   WATCH_POLICY_RULE,
   "- New scheduled and event automations run on your own credentials by default. Make the creator's connected credentials available only when the creator asks for that. Do not decide from the tools, access, or connections in this turn whether an automation's runs can do the work; each run loads its own tools. Do not ask for credential confirmation, access, or a connection before you create one.",
   "- Before loading a skill or starting substantial work, decide whether `startAgent` fits better than inline work.",
-  "- Write a child's task as a brief for a capable peer who just joined: do the synthesis yourself, and name the exact question, files, or change instead of 'based on your findings, fix it'. The task is the child's instruction, and its action review judges the child's actions against it, so name only actions that your own conversation backs, with the exact target. Give a child a name when you may send it more work. To give more work to a child that exists, use `messageAgent`; it keeps its type and kind.",
-  "- After you delegate, do not do the same work yourself. You know nothing about a child's findings until its result arrives: do not predict them, wait, or poll, and if the user asks before then, give status. Share a Thread's url so people can find it, and post only updates that matter to them.",
+  BRIEF_POLICY_RULE,
+  AFTER_DELEGATION_POLICY_RULE,
   CODEMODE_POLICY_RULE,
 ];
 
 /**
- * Block 5 `<tool-policy>` of a Lead. It has no skills, plan, automations, or
- * child agents, so only these rules apply.
+ * Block 5 `<tool-policy>` of a Lead. It has no skills, automations, or work
+ * tools, so only these rules apply.
  */
-const LEAD_TOOL_POLICY_RULES = [WATCH_POLICY_RULE, CODEMODE_POLICY_RULE];
+const LEAD_TOOL_POLICY_RULES = [
+  WATCH_POLICY_RULE,
+  BRIEF_POLICY_RULE,
+  AFTER_DELEGATION_POLICY_RULE,
+  CODEMODE_POLICY_RULE,
+];
 
 /** Block 5, `<skill-policy>`: when to load a skill and how to use one. */
 const SKILL_POLICY_RULES = [
@@ -454,18 +501,18 @@ function buildJobSection(
       attributes,
     );
   }
-  if (mode === "lead") {
-    return renderRuleSection(
-      "lead",
-      [...LEAD_RULES, ...AGENT_INPUT_RULES],
-      attributes,
-    );
-  }
-  return renderRuleSection(
+  const taskExecution = renderRuleSection(
     "task-execution",
     [...TASK_EXECUTION_RULES, ...AGENT_INPUT_RULES],
     attributes,
   );
+  if (mode === "lead") {
+    return [
+      taskExecution,
+      renderRuleSection("lead", LEAD_RULES, attributes),
+    ].join("\n\n");
+  }
+  return taskExecution;
 }
 
 function buildWorkingPrinciplesSection(mode: PromptMode): string {
@@ -604,12 +651,15 @@ function buildOutputSection(
       "- Reply with text only when the task is finished.",
     ]);
   }
+  // A Lead ends a Turn with no reply when nothing changed for the members,
+  // so it does not get the rule that every Turn ends with a reply.
+  const lead = mode === "lead";
   if (platform === "local") {
     return output("markdown", [
       ...CONCISE_REPLY_RULES,
       RESULT_REPORTING_RULE,
       "- Use concise Markdown suitable for terminal and web output: short paragraphs, bullets, links, fenced code blocks, and GFM tables when a grid is clearer than bullets.",
-      "- End every turn with a final user-facing response.",
+      ...(lead ? [] : ["- End every turn with a final user-facing response."]),
     ]);
   }
   return output("slack-markdown", [
@@ -617,7 +667,11 @@ function buildOutputSection(
     RESULT_REPORTING_RULE,
     ...SLACK_MARKDOWN_RULES,
     "- Write a clock time in the asker's timezone from `<asker-timezone>` when it is known. Add UTC only in incident, deploy, or log timelines, such as `19:31 UTC (2:31 PM EST)`.",
-    "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
+    ...(lead
+      ? []
+      : [
+          "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
+        ]),
   ]);
 }
 
