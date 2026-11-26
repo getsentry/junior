@@ -65,5 +65,3 @@ and changes an item.
 - `open-while-asked`, `state-not-events`, `commands-not-changes`: each
   source adds, changes, and closes its own items, and plugins call `upsert`
   and `close`. Nothing checks a kind against its rules.
-- `table-links`: no check compares the tables with `design/` or with the
-  verification map.
