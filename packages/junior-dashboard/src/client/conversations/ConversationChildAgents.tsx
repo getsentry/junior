@@ -113,7 +113,11 @@ function childAgentAttention(agent: ConversationChildAgent): Attention {
 export function ConversationThreads(props: {
   threads: readonly ConversationChildAgent[];
 }) {
-  const { action, items: threads } = useShowArchived(props.threads);
+  const {
+    action,
+    items: threads,
+    showArchived,
+  } = useShowArchived(props.threads);
   return (
     <DetailsCard
       action={action}
@@ -122,7 +126,12 @@ export function ConversationThreads(props: {
       title="Threads"
     >
       {threads.length > 0 ? (
-        <ThreadRows threads={attentionSort(threads, childAgentAttention)} />
+        // Archived Threads sort last, so showing them shows every row.
+        <ThreadRows
+          expanded={showArchived}
+          key={String(showArchived)}
+          threads={attentionSort(threads, childAgentAttention)}
+        />
       ) : (
         <p className="m-0">Every Thread is archived.</p>
       )}
@@ -130,10 +139,14 @@ export function ConversationThreads(props: {
   );
 }
 
-function ThreadRows(props: { threads: readonly ConversationChildAgent[] }) {
+function ThreadRows(props: {
+  expanded: boolean;
+  threads: readonly ConversationChildAgent[];
+}) {
   const feedThreads = useContext(FeedThreads);
   return (
     <DetailsList
+      defaultExpanded={props.expanded}
       itemKey={(thread) => thread.conversationId}
       items={props.threads}
       renderItem={(thread) => (

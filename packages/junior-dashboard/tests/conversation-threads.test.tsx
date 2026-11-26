@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { ConversationThreads } from "../src/client/conversations/ConversationChildAgents";
+import { DetailsList } from "../src/client/conversations/DetailsList";
 import { SpaceStateIcon } from "../src/client/spaces/SpaceStateIcon";
 
 function thread(
@@ -85,6 +86,21 @@ describe("a Conversation's Threads", () => {
     expect(rest).toContain(
       'href="/conversations/internal%3Acheck-refund-webhooks"',
     );
+  });
+
+  it("shows every row when the list starts expanded", () => {
+    // Show archived starts the Threads list expanded, since archived
+    // Threads sort last.
+    const markup = renderToStaticMarkup(
+      <DetailsList
+        defaultExpanded
+        itemKey={(item) => item}
+        items={["a", "b", "c", "d"]}
+        renderItem={(item) => <span>row-{item}</span>}
+      />,
+    );
+    expect(markup).toContain("row-d");
+    expect(markup).toContain("Show fewer");
   });
 
   it("marks a failed Thread that waits on the viewer as waiting on you", () => {
