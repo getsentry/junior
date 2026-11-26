@@ -54,6 +54,8 @@ export type ChildAgentSender = {
   agentName?: string;
   childConversationId: string;
   parentConversationId: string;
+  /** Set when the parent hears the child's `done` as a Conversation note. */
+  parentHearsDoneAsNote?: true;
   title?: string;
 };
 type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];

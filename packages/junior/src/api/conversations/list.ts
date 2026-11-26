@@ -18,6 +18,7 @@ import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { listedConversation } from "@/chat/conversations/sql/listed";
+import { spaceLeadIds } from "@/chat/spaces/tree-space";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
@@ -160,7 +161,7 @@ function conversationCodeRepositoryFilter(
 }
 
 /**
- * Keep the roots of one Space with the status that the viewer may find. A
+ * Keep the Lead's children in one Space with the status that the viewer may find. A
  * private Space shows its roots only to its members.
  */
 function conversationSpaceFilter(
@@ -169,7 +170,7 @@ function conversationSpaceFilter(
   viewerUserId: string | undefined,
 ): SQL | undefined {
   return and(
-    eq(juniorConversations.spaceId, spaceId),
+    inArray(juniorConversations.parentConversationId, spaceLeadIds(spaceId)),
     status === "archived"
       ? isNotNull(juniorConversations.archivedAt)
       : status === "active"

@@ -5,8 +5,8 @@ import { test } from "@junior-evals/fixture/test";
 
 describe("Lead", () => {
   // The Lead could write a short draft in its own reply. The case measures
-  // whether it hands the work to a Conversation instead.
-  test("when a person asks their Lead for work, it starts a Conversation for it and does not do it itself", async ({
+  // whether it hands the work to a child Conversation instead.
+  test("when a person asks their Lead for work, it starts a child Conversation for it and does not do it itself", async ({
     run,
   }) => {
     const conversation = await run(
@@ -17,15 +17,14 @@ describe("Lead", () => {
     );
 
     expect(
-      completedToolCalls("startConversation", conversation).length +
-        completedToolCalls("messageAgent", conversation).length,
+      completedToolCalls("startAgent", conversation).length,
     ).toBeGreaterThan(0);
   });
 
   // A member who raises a worry asks the Lead to deal with it. The case
   // measures whether the Lead starts that work and its start is allowed,
   // instead of asking the member to confirm first.
-  test("when a member tells their Lead about a worry, it starts a Conversation for it without asking first", async ({
+  test("when a member tells their Lead about a worry, it starts a child Conversation for it without asking first", async ({
     run,
   }) => {
     const conversation = await run(
@@ -36,7 +35,7 @@ describe("Lead", () => {
     );
 
     expect(
-      completedToolCalls("startConversation", conversation).length,
+      completedToolCalls("startAgent", conversation).length,
     ).toBeGreaterThan(0);
   });
 

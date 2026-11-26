@@ -1,4 +1,7 @@
-import { isPersonInput } from "@/chat/conversations/kind-behavior";
+import {
+  hearsChildDoneAsNote,
+  isPersonInput,
+} from "@/chat/conversations/kind-behavior";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { isEventMailboxMetadata } from "@/chat/events/notification";
 import { eq } from "drizzle-orm";
@@ -146,6 +149,7 @@ export async function readChildConversationSender(
     .select({
       agentName: juniorAgentBindings.name,
       parentConversationId: parent.conversationId,
+      parentKind: parent.kind,
       title: juniorConversations.title,
     })
     .from(juniorConversations)
@@ -166,6 +170,9 @@ export async function readChildConversationSender(
         ...(row.agentName ? { agentName: row.agentName } : undefined),
         childConversationId,
         parentConversationId: row.parentConversationId,
+        ...(hearsChildDoneAsNote(row.parentKind)
+          ? { parentHearsDoneAsNote: true as const }
+          : undefined),
         ...(row.title ? { title: row.title } : undefined),
       }
     : undefined;

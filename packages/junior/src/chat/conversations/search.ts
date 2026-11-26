@@ -46,6 +46,7 @@ import {
   juniorSpaces,
 } from "@/db/schema";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";
+import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
 
 const MAX_LINKS = 5;
 // Lowest cosine similarity that admits a Conversation with no word match.
@@ -224,14 +225,14 @@ export async function searchConversations(
       // A private Space's roots have their own Destinations, so only this
       // match reaches them.
       eq(
-        roots.spaceId,
+        rootSpaceIdSql(roots),
         db
           .select({ id: juniorSpaces.id })
           .from(requesterRoot)
           .innerJoin(
             juniorSpaces,
             and(
-              eq(juniorSpaces.id, requesterRoot.spaceId),
+              eq(juniorSpaces.id, rootSpaceIdSql(requesterRoot)),
               eq(juniorSpaces.visibility, "private"),
             ),
           )

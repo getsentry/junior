@@ -12,8 +12,9 @@ not need a home stays a one-off Conversation.
   track of that work only, so a person can hand it a lot without mixing it
   with unrelated work.
 - Every Conversation knows its Space. A Conversation is in one Space or in
-  none, and each surface can show which. The Space is a fact of the
-  Conversation, not something that is inferred from its history or parent.
+  none, and each surface can show which. A Space's Conversations are
+  children of its Lead, so a Conversation is in the Space of its tree. Its
+  history does not decide it.
 - Work that a Space starts stays in the Space. Each Conversation that the
   Space's Lead starts, and each child agent under it, is in the Space. The
   Lead reads and finds other Conversations by the usual access rules, as a
@@ -27,8 +28,8 @@ not need a home stays a one-off Conversation.
 - A Space sets its own configuration. The configuration keys that a Slack
   channel can set, such as a default repository or Sentry organization, can
   also be set on a Space. They apply to every Conversation in the Space.
-- A Space's Lead coordinates and does not do the work. It hands each
-  request to a Conversation at once, and archives work when it is done.
+- A Space's Lead coordinates and does not do the work. It hands each request
+  to a child Conversation at once, and archives work when it is done.
   Starts, messages, Watches, and action review work the same as for every
   other Conversation.
 - Finished work leaves the lists. A person can archive a Space when its
@@ -41,6 +42,10 @@ not need a home stays a one-off Conversation.
   it there: it starts in the Space, the Lead starts it, or a person moves
   it. Junior can suggest a Space, but it does not choose one without a
   person.
+- A Conversation joins a Space as a child of the Space's Lead, and leaves it
+  as a root. Its own child agents move with it.
+- A move never makes private work public. A private Conversation cannot move
+  into a public Space.
 - A child Conversation is always in the Space of its root.
 - Each Space has exactly one Lead. A person has no Lead outside a Space.
 - A Space and its Lead share one name, description, and To-do list.

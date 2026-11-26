@@ -521,6 +521,7 @@ export async function wireAgentTools(
       conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       destination: toolRoute.destination,
+      lead: args.behavior.promptMode === "lead",
       source: runSource,
       userIntent: args.currentUserIntent,
       evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
@@ -802,11 +803,6 @@ export function bindAgentTools(
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
   if (!bindSpawnAgent) return {};
-  // A Lead steers other top-level agents and starts no child agents.
-  if (agents === "lead") {
-    const messageAgent = bindMessageAgent?.(run, agents);
-    return messageAgent ? { messageAgent } : {};
-  }
   // The rule reads only the Turn behavior and the deployment, so a child gets
   // the same tools on every path. Every child has depth 1 or more, so with
   // maxAgentDepth 0 no child can spawn. With more, a child past the limit

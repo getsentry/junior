@@ -6,10 +6,12 @@ import {
   isNotNull,
   isNull,
   not,
-  notInArray,
   or,
+  sql,
   type SQL,
+  type SQLWrapper,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -88,17 +90,44 @@ function memberPrivateSpaceIds(member: ConversationMember) {
         );
 }
 
+const spaceLead = alias(juniorConversations, "membership_space_lead");
+
+/**
+ * The Leads of some Spaces, as one array. Every Conversation in a Space has
+ * its Lead as its tree root, so this finds the Space of every row. The
+ * uncorrelated `array(...)` runs once as an InitPlan, which Postgres charges
+ * once, where a hashed subquery in a filter is charged on each index probe.
+ */
+function spaceLeadArray(spaceIds: SQLWrapper): SQL {
+  const leads = getDb()
+    .select({ id: spaceLead.conversationId })
+    .from(spaceLead)
+    .where(
+      and(eq(spaceLead.kind, "lead"), inArray(spaceLead.spaceId, spaceIds)),
+    );
+  return sql`array(${leads})`;
+}
+
+/** True when the outer conversation is in no private Space. */
+function outsidePrivateSpaces(): SQL {
+  return or(
+    isNull(juniorConversations.rootConversationId),
+    sql`${juniorConversations.rootConversationId} <> all(${spaceLeadArray(privateSpaceIds())})`,
+  )!;
+}
+
+/** True when the outer conversation is in a private Space of the person. */
+function inMemberPrivateSpace(member: ConversationMember): SQL {
+  return sql`${juniorConversations.rootConversationId} = any(${spaceLeadArray(memberPrivateSpaceIds(member))})`;
+}
+
 /**
  * True when the outer root conversation is in no Space, in a public Space,
  * or in a private Space that the person is a member of. A participant who
  * leaves a private Space no longer reads its roots.
  */
 export function rootSpaceReadableBy(member: ConversationMember): SQL {
-  return or(
-    isNull(juniorConversations.spaceId),
-    notInArray(juniorConversations.spaceId, privateSpaceIds()),
-    inArray(juniorConversations.spaceId, memberPrivateSpaceIds(member)),
-  )!;
+  return or(outsidePrivateSpaces(), inMemberPrivateSpace(member))!;
 }
 
 /**
@@ -109,21 +138,13 @@ export function rootSpaceReadableBy(member: ConversationMember): SQL {
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
   return or(
     and(
-      or(
-        isNull(juniorConversations.spaceId),
-        notInArray(juniorConversations.spaceId, privateSpaceIds()),
-      ),
+      outsidePrivateSpaces(),
       or(
         isPublicConversation(juniorConversations),
         viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
       ),
     ),
-    viewerUserId
-      ? inArray(
-          juniorConversations.spaceId,
-          memberPrivateSpaceIds({ userId: viewerUserId }),
-        )
-      : undefined,
+    viewerUserId ? inMemberPrivateSpace({ userId: viewerUserId }) : undefined,
   )!;
 }
 

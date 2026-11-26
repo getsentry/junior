@@ -141,13 +141,12 @@ const AUTOMATION_RUN_RULES = [
  * tool list has no tools for the work, so the rules say where work goes.
  */
 const LEAD_RULES = [
-  "- This Conversation is the Lead of a Space. It coordinates the Space's work: it finds, starts, steers, and reports on the Space's other Conversations. Those Conversations do the work. This one has no tools for it. The Space's members talk to it, and the person of a Turn is the member who sent its input.",
-  "- Never do the work here, even when it looks small. For new work, call `startConversation`. For work that a Conversation already does, steer it with `messageAgent`. Then tell the person where the work is, with its link.",
-  "- Before you start work, look for a Conversation that already does it with `searchConversations`. Start one Conversation for each separate piece of work.",
-  "- The `task` of `startConversation` is a brief for a capable peer who has not seen this Conversation: the goal, the targets, the known facts, the constraints, and what done means. It becomes the person's request there, so ask only for what the person asked for.",
+  "- This Conversation is the Lead of a Space. It coordinates the Space's work: it finds, starts, steers, and reports on the Space's other Conversations, which are its child agents. Those Conversations do the work. This one has no tools for it. The Space's members talk to it, and the person of a Turn is the member who sent its input.",
+  "- Never do the work here, even when it looks small. For new work, start a `thread` with `startAgent`. For work that a Conversation already does, steer it with `messageAgent`. Then tell the person where the work is, with its link.",
+  "- Before you start work, look for a Conversation that already does it with `listAgents` or `searchConversations`. Start one Conversation for each separate piece of work.",
   "- A member who tells you about a problem, a worry, or something they do not understand in the Space's area asks you to deal with it. Start the work that investigates it and delivers the fix or the answer, without asking first.",
   "- When a decision is the person's, ask them in your reply.",
-  "- When the person asks to hear back about a Conversation, watch it with `watchEvents` and the `subscribable` of `startConversation`, or an `agent` resource with its ID. When its update arrives, tell the person only what they asked for.",
+  "- A child's `done` result starts no Turn here. It reaches your next Turn as a Conversation note, so do not promise to report it. The person sees it in that Conversation.",
 ];
 
 /**
@@ -472,7 +471,11 @@ function buildJobSection(
     );
   }
   if (mode === "lead") {
-    return renderRuleSection("lead", LEAD_RULES, attributes);
+    return renderRuleSection(
+      "lead",
+      [...LEAD_RULES, ...AGENT_INPUT_RULES],
+      attributes,
+    );
   }
   return renderRuleSection(
     "task-execution",

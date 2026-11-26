@@ -42,6 +42,8 @@ Check the rows in this order. The first match decides.
 | 5   | Public                                          | Allow  |
 | 6   | Private, in another tree and Destination        | Deny   |
 
+- In a Space, the Lead is the root, so row 1 covers the whole Space. A
+  private Space's tree holds only private work that its members read.
 - Row 4 skips a requester in a private Space, so the Space's data stays
   with its members. It compares only the Destination ids of the two roots.
   It has no provider or surface check. It is safe because of one invariant:
@@ -60,15 +62,13 @@ Check the rows in this order. The first match decides.
 - A private requester never writes into a public Conversation, such as
   with `messageAgent`. With row 6, a private Conversation writes only into
   Conversations at its own Destination or in its own private Space.
-- One exception: the Lead of a public Space may write into any public root
-  in its Space, for the member who asked it. Outside its Space, it may write
-  only into a public root where that member is a Participant, as the member
-  could. The Lead of a private Space gets no exception, so it writes only
-  inside its Space.
-- `startConversation` makes a root in the Space from its Lead, with the
-  Space's visibility. It runs as the person who asked, and the Lead's task
-  is its first message. Action review judges its task, then the new root's
-  own tool calls, the same way it judges a child agent's.
+- A Lead writes into the Conversations of its Space as their parent, with
+  `messageAgent`. Outside its Space, it may write only into a public root
+  where the member who asked is a Participant, as the member could. The
+  Lead of a private Space writes only inside its Space.
+- A Lead starts work in its Space with `startAgent`, as a child with the
+  Space's visibility. Action review judges its task as a child's task, with the
+  `lead-member` rule in `design/guardian.md`.
 
 ## Rules for every surface
 

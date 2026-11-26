@@ -22,10 +22,12 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Visibility**: `public` or `private`, stored on each Conversation. Anyone
   can read a public Conversation. Only its Participants can read a private
   one. Every Conversation in a tree has its root's visibility.
-- **Lead**: a Space's public top-level Conversation that finds, starts,
-  and steers the Space's other Conversations. Each Space has one. It has no
-  child agents and does no work itself. `startConversation` starts a root in
-  the Space for the Member who asked.
+- **Lead**: a Space's Conversation that finds, starts, and steers the
+  Space's other Conversations. Each Space has one, and only the Lead stores
+  its Space. The Space's other Conversations are its child agents, and the
+  Lead is the root of their tree. It does no work itself.
+- **Top-level Conversation**: a Conversation with no parent, or a child of a
+  Lead. Top-level lists show these.
 - **Space**: a named, shared home for a body of related work. A
   **Member** of a Space is a User who joined it.
 - **Thread**: a Conversation of kind `thread`, which people can message. It
@@ -34,8 +36,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `startAgent` `task` field) keep their meaning.
-- **Team**: an agent and the agents that it started: its child agents, and
-  the roots that a Lead starts. It sets who manages an agent, not access.
+- **Team**: an agent and its child agents. A Lead's child agents are the
+  Conversations in its Space. It sets who manages an agent, not access.
 - **Agent update**: the one Event (`agent.update`) that every agent sends
   when a Turn ends, or when it waits, is blocked, fails, or stops.
 - **Subagent**: the mechanism behind Threads and Tasks (`startAgent`, Agent
@@ -55,8 +57,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation is delivered to. The Run carries it. It grants no delivery or
   visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
-  assistant Messages are stored. Only a root Conversation delivers to its
-  Location. A child stores its output and returns it to its parent.
+  assistant Messages are stored. Only a Conversation that has its own
+  Location delivers to it, such as a root or a Slack Conversation that moved
+  into a Space. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
 - **Conversation status**: what one Conversation's own work needs, shared
