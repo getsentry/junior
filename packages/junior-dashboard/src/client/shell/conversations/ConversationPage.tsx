@@ -11,9 +11,10 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-import type {
-  ConversationFeed,
-  InboxItemPayload,
+import {
+  SPACE_NAME_MAX_CHARS,
+  type ConversationFeed,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "../../conversations/queries";
@@ -218,7 +219,10 @@ export function ConversationPage(props: {
   // and Participants card act on the Space.
   const leadSpace = useSpaceData(lead ? spaceId : undefined).data;
   const spaceActions = useSpaceActions(leadSpace);
-  const spaceParticipants = useSpaceParticipants(leadSpace);
+  const spaceParticipants = useSpaceParticipants(
+    lead ? spaceId : undefined,
+    leadSpace,
+  );
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   // Zen mode hides details without changing the choice, so leaving it
@@ -736,7 +740,7 @@ export function ConversationPage(props: {
               menu={{
                 actions: {
                   archive: () => {
-                    if (leadSpace) {
+                    if (lead) {
                       spaceActions.archive();
                     } else if (conversation?.archivedAt) {
                       setArchived(false);
@@ -754,7 +758,7 @@ export function ConversationPage(props: {
                   pin: (pinned) => pin.mutate(pinned),
                   rename: () => setRenaming(true),
                   subscription: (subscribed) => {
-                    if (!leadSpace) subscription.mutate(subscribed);
+                    if (!lead) subscription.mutate(subscribed);
                     else if (subscribed) spaceActions.join();
                     else spaceActions.leave();
                   },
@@ -771,12 +775,12 @@ export function ConversationPage(props: {
                       )
                   : undefined,
                 pending: {
-                  archive: leadSpace
+                  archive: lead
                     ? spaceActions.pending.archive
                     : archive.isPending,
                   delivery: delivery.isPending,
                   pin: pin.isPending,
-                  subscription: leadSpace
+                  subscription: lead
                     ? spaceActions.pending.membership
                     : subscription.isPending,
                 },
@@ -785,9 +789,11 @@ export function ConversationPage(props: {
               onViewChange={onViewChange}
               rename={{
                 editing: renaming,
+                // A Lead's title is its Space's name.
+                maxLength: lead ? SPACE_NAME_MAX_CHARS : undefined,
                 onEditingChange: setRenaming,
                 onSave: (next) =>
-                  leadSpace ? spaceActions.rename(next) : rename.mutate(next),
+                  lead ? spaceActions.rename(next) : rename.mutate(next),
               }}
               privacy={
                 <ConversationPrivacyChip

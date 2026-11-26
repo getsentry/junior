@@ -94,15 +94,27 @@ export function useSpaceActions(space: SpaceReport | undefined) {
       if (space) membership.mutate({ join: true, spaceId: space.id });
     },
     leave,
-    pending: { archive: archive.isPending, membership: membership.isPending },
+    // Until the Space loads, its actions wait.
+    pending: {
+      archive: !space || archive.isPending,
+      membership: !space || membership.isPending,
+    },
     /** A Space and its Lead share one name. */
     rename: (name: string) => {
       if (!space) return;
-      update.mutate({
-        description: space.description,
-        name,
-        spaceId: space.id,
-      });
+      update.mutate(
+        { description: space.description, name, spaceId: space.id },
+        {
+          onError: (error) =>
+            toast.add({
+              description:
+                error instanceof DashboardApiError ? error.apiError : undefined,
+              priority: "high",
+              title: "Could not rename the Space",
+              type: "error",
+            }),
+        },
+      );
     },
     rows: space ? (
       <>
