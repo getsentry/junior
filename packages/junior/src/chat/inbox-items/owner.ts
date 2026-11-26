@@ -75,15 +75,26 @@ function ownerDestination(column: SQL): SQL {
   end)`;
 }
 
+// An Automation alert is as visible as its channel. A Conversation's item
+// is public only while both its Destination and the Conversation are: a
+// Conversation keeps its first visibility when its channel changes, and its
+// item must not show more than the Conversation does.
+function ownerVisibility(): SQL {
+  return sql`(case when ${isAutomationAlert}
+    then (select ${juniorDestinations.visibility} from ${juniorAutomations} join ${juniorDestinations} on ${juniorDestinations.provider} = 'slack' and ${juniorDestinations.providerTenantId} = ${juniorAutomations.teamId} and ${juniorDestinations.providerDestinationId} = ${juniorAutomations.channelId} where ${juniorAutomations.id} = ${item.subjectId})
+    else (select case when root.visibility = 'public' then ${juniorDestinations.visibility} end from ${juniorConversations} owner join ${juniorConversations} root on root.conversation_id = owner.root_conversation_id join ${juniorDestinations} on ${juniorDestinations.id} = root.destination_id where owner.conversation_id = ${inboxItemOwnerConversationId()})
+  end)`;
+}
+
 /**
- * SQL: `public` when the owner's Destination is public, else `private`.
- * It is live: when the Destination changes, the item follows. A To-do is
- * its assignee's own, so its item is always private.
+ * SQL: `public` when the owner is public, else `private`. It is live: when
+ * the owner's Destination or Conversation changes, the item follows. A
+ * To-do is its assignee's own, so its item is always private.
  */
 export function inboxItemVisibility(): SQL<"public" | "private"> {
   return sql<
     "public" | "private"
-  >`(case when ${item.subjectKind} <> ${INBOX_SUBJECT_KINDS.todo} and ${ownerDestination(sql`${juniorDestinations.visibility}`)} = 'public' then 'public' else 'private' end)`;
+  >`(case when ${item.subjectKind} <> ${INBOX_SUBJECT_KINDS.todo} and ${ownerVisibility()} = 'public' then 'public' else 'private' end)`;
 }
 
 /** SQL: the provider of the owner's tenant, null when it has none. */
