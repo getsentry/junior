@@ -179,17 +179,17 @@ export async function closeWaitingReplyNotice(
 /**
  * Close the User's open reply notices of the Conversations of an Inbox item
  * that they answered or dismissed. An item of a child Conversation closes
- * the notice of its root too.
+ * the notice of its root too. A dismissed reply notice is already closed,
+ * so it finds no open notice.
  */
 export async function closeHandledReplyNotices(
   db: JuniorDatabase,
   input: {
-    item: Pick<InboxItem, "conversationIds" | "dedupeKey" | "owner">;
+    item: Pick<InboxItem, "conversationIds" | "owner">;
     nowMs: number;
     userId: string;
   },
 ): Promise<void> {
-  if (input.item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)) return;
   const owner = ownerConversationId(input.item);
   const ids = [
     ...new Set([...input.item.conversationIds, ...(owner ? [owner] : [])]),
@@ -199,24 +199,20 @@ export async function closeHandledReplyNotices(
     .select({ id: juniorConversations.rootConversationId })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, ids));
-  const keys = [
-    ...new Set([...ids, ...roots.flatMap((root) => root.id ?? [])]),
-  ].map(replyNoticeKey);
-  const notices = await db
-    .select({ id: juniorInboxItems.id })
-    .from(juniorInboxItems)
-    .where(
-      and(
-        inArray(juniorInboxItems.dedupeKey, keys),
-        eq(juniorInboxItems.status, "open"),
-        inboxItemAssignedTo(input.userId),
-      ),
-    );
-  /* oxlint-disable no-await-in-loop -- Usually one notice. */
-  for (const notice of notices) {
+  const conversationIds = new Set([
+    ...ids,
+    ...roots.flatMap((root) => root.id ?? []),
+  ]);
+  /* oxlint-disable no-await-in-loop -- Usually one or two Conversations. */
+  for (const conversationId of conversationIds) {
+    const notice = await openReplyNoticeId(db, {
+      conversationId,
+      userId: input.userId,
+    });
+    if (!notice) continue;
     await closeInboxItem(db, {
       closedByUserId: input.userId,
-      id: notice.id,
+      id: notice,
       nowMs: input.nowMs,
       reason: "Item handled",
       status: "done",
