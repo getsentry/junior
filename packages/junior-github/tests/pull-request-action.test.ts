@@ -280,6 +280,32 @@ describe("next action item", () => {
     }
   });
 
+  it("asks for the review, not the merge, when a draft that GitHub can merge becomes ready", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["clean"],
+      merged: false,
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      await route(fixture, calls).handler(
+        pullRequestAction("ready_for_review"),
+      );
+      expect(requests).toContain("request Requester");
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("closes the merge conflict notice when the conflict is gone", async () => {
     const fixture = await createGitHubFixture();
     const github: GitHubState = {
