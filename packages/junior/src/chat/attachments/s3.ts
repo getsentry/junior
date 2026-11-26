@@ -1,7 +1,7 @@
 import { AwsClient } from "aws4fetch";
-import type { S3StorageConfig } from "./config";
 import { rangeHeader, type AttachmentStorage } from "./storage";
 import { mapBounded } from "@/chat/fan-out";
+import type { S3StorageConfig } from "@/config";
 
 // S3 objects that one delete removes at once.
 const S3_DELETE_CONCURRENCY = 8;

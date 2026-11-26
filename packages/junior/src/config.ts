@@ -1,15 +1,6 @@
 import * as z from "zod";
-import {
-  readAttachmentStorageConfig,
-  type AttachmentStorageConfig,
-} from "@/chat/attachments/config";
-import {
-  readEncryptionKeyring,
-  type EncryptionKeyring,
-} from "@/chat/encryption/keyring";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
-import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import {
   parseTurnReasoningLevel,
   TURN_REASONING_LEVELS,
@@ -55,6 +46,13 @@ export const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
 export const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
 const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 400_000;
 export const DEFAULT_SQL_STATEMENT_TIMEOUT_MS = 30_000;
+const DEFAULT_S3_REGION = "us-east-1";
+const ENCRYPTION_KEY_BYTES = 32;
+const ENCRYPTION_KEY_ID_PATTERN = /^[A-Za-z0-9._-]{1,32}$/;
+const ENCRYPTION_KEY_MATERIAL_PATTERN = /^[A-Za-z0-9+/_-]+={0,2}$/;
+const ENCRYPTION_KEYS_HINT =
+  "Generate a key with: " +
+  `node -e "console.log('k1:' + require('node:crypto').randomBytes(32).toString('base64url'))"`;
 /**
  * Buffer between the Vercel function timeout and the agent turn timeout so
  * Junior can abort, persist, and schedule continuation before host teardown.
@@ -110,11 +108,72 @@ export function resolveConversationWorkSoftYieldAfterMs(
   );
 }
 
-const modelId = z.string().trim().min(1);
+function isHttpUrl(value: string): boolean {
+  const protocol = URL.parse(value)?.protocol;
+  return protocol === "http:" || protocol === "https:";
+}
+
+// A key is 32 random bytes in base64 or base64url.
+function isEncryptionKeyMaterial(material: string): boolean {
+  return (
+    ENCRYPTION_KEY_MATERIAL_PATTERN.test(material) &&
+    Buffer.from(material, "base64").length === ENCRYPTION_KEY_BYTES
+  );
+}
+
+const nonEmptyString = z.string().trim().min(1);
 // `resolveGatewayModel` throws its own error for an unknown id, and that error
 // leaves `safeParse` unchanged.
-const gatewayModelId = modelId.refine((id) => Boolean(resolveGatewayModel(id)));
+const gatewayModelId = nonEmptyString.refine((id) =>
+  Boolean(resolveGatewayModel(id)),
+);
 const positiveInt = z.number().int().positive();
+
+const s3StorageSchema = z.strictObject({
+  accessKeyId: nonEmptyString,
+  bucket: nonEmptyString,
+  /** Base URL of the S3 API. Objects use path-style URLs under it. */
+  endpoint: nonEmptyString,
+  region: nonEmptyString.default(DEFAULT_S3_REGION),
+  secretAccessKey: nonEmptyString,
+});
+
+const attachmentStorageSchema = z.discriminatedUnion("provider", [
+  z.strictObject({ provider: z.literal("vercel-blob") }),
+  z.strictObject({ provider: z.literal("s3"), s3: s3StorageSchema }),
+  z.strictObject({ provider: z.literal("memory") }),
+]);
+
+const encryptionSchema = z
+  .strictObject({
+    /** Key for new values. */
+    activeKeyId: z.string(),
+    /** Every key that decrypts, as base64 key material. */
+    keys: z
+      .array(
+        z.strictObject({
+          id: z.string().regex(ENCRYPTION_KEY_ID_PATTERN),
+          key: z
+            .string()
+            .refine(
+              isEncryptionKeyMaterial,
+              `must be ${ENCRYPTION_KEY_BYTES} bytes in base64`,
+            ),
+        }),
+      )
+      .min(1),
+  })
+  .refine(
+    ({ keys }) => new Set(keys.map(({ id }) => id)).size === keys.length,
+    { message: "must not repeat a key id", path: ["keys"] },
+  )
+  .refine(
+    ({ activeKeyId, keys }) => keys.some(({ id }) => id === activeKeyId),
+    {
+      message: "must name a listed key",
+      path: ["activeKeyId"],
+    },
+  );
 
 const botSchema = z.strictObject({
   modelId: gatewayModelId.default(DEFAULT_MODEL_ID),
@@ -124,11 +183,13 @@ const botSchema = z.strictObject({
   refusalFallbackModelId: gatewayModelId.optional(),
   // Null turns vision off. Unset uses the default model.
   visionModelId: gatewayModelId.nullable().default(DEFAULT_VISION_MODEL_ID),
-  decisionModelId: modelId.default(DEFAULT_DECISION_MODEL_ID),
-  embeddingModelId: modelId.default(DEFAULT_EMBEDDING_MODEL_ID),
-  rerankingModelId: modelId.default(DEFAULT_RERANKING_MODEL_ID),
-  imageGenerationModelId: modelId.default(DEFAULT_IMAGE_GENERATION_MODEL_ID),
-  transcriptionModelId: modelId.default(DEFAULT_TRANSCRIPTION_MODEL_ID),
+  decisionModelId: nonEmptyString.default(DEFAULT_DECISION_MODEL_ID),
+  embeddingModelId: nonEmptyString.default(DEFAULT_EMBEDDING_MODEL_ID),
+  rerankingModelId: nonEmptyString.default(DEFAULT_RERANKING_MODEL_ID),
+  imageGenerationModelId: nonEmptyString.default(
+    DEFAULT_IMAGE_GENERATION_MODEL_ID,
+  ),
+  transcriptionModelId: nonEmptyString.default(DEFAULT_TRANSCRIPTION_MODEL_ID),
   userName: z.string().trim().min(1).default("junior"),
   contextWindowTokens: positiveInt.default(DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS),
   reasoningLevel: z.enum(TURN_REASONING_LEVELS).default("high"),
@@ -151,9 +212,20 @@ const botSchema = z.strictObject({
 });
 
 const configObjectSchema = z.strictObject({
-  attachmentStorage: z.custom<AttachmentStorageConfig>(),
+  /** Object storage for attachments and public artifacts. */
+  attachmentStorage: attachmentStorageSchema.default({
+    provider: "vercel-blob",
+  }),
   bot: botSchema.prefault({}),
-  queue: z.custom<QueueConfig>(),
+  queue: z
+    .strictObject({
+      /** Vercel Queues API base URL, for a local queue server. */
+      apiUrl: z
+        .string()
+        .refine(isHttpUrl, "must be an http or https URL")
+        .optional(),
+    })
+    .prefault({}),
   functionMaxDurationSeconds: z
     .number()
     .default(DEFAULT_FUNCTION_MAX_DURATION_SECONDS),
@@ -166,8 +238,11 @@ const configObjectSchema = z.strictObject({
    */
   idleCompactionEnabled: z.boolean().default(true),
   conversationWorkEnabled: z.boolean().default(true),
-  /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
-  encryption: z.custom<EncryptionKeyring>(),
+  /**
+   * Keys for secrets at rest, as plain data. `createEncryptionKeyring` builds
+   * the keyring. Startup fails when they are missing or invalid.
+   */
+  encryption: encryptionSchema,
   // No prefault: the database URL has no default.
   sql: z.strictObject({
     databaseUrl: z.string().trim().min(1),
@@ -256,6 +331,15 @@ type DeepPartial<T> = T extends readonly unknown[]
 export type JuniorConfig = z.output<typeof configSchema>;
 /** Config values a host passes in code. Unset values come from env, then defaults. */
 export type ConfigInput = DeepPartial<z.input<typeof configSchema>>;
+/** Object storage for attachments and public artifacts. */
+export type AttachmentStorageConfig = JuniorConfig["attachmentStorage"];
+/** Settings for an S3-compatible object store. */
+export type S3StorageConfig = Extract<
+  AttachmentStorageConfig,
+  { provider: "s3" }
+>["s3"];
+/** Encryption keys as plain data. */
+export type EncryptionConfig = JuniorConfig["encryption"];
 
 /** Env var that sets each config field, for error messages. */
 const ENV_NAMES: Record<string, string> = {
@@ -276,11 +360,17 @@ const ENV_NAMES: Record<string, string> = {
   "bot.loadingMessages": "JUNIOR_LOADING_MESSAGES",
   "bot.turnTimeoutMs": "AGENT_TURN_TIMEOUT_MS",
   attachmentStorage: "JUNIOR_ATTACHMENT_STORAGE_PROVIDER",
-  queue: "JUNIOR_QUEUE_API_URL",
+  "attachmentStorage.s3.accessKeyId": "JUNIOR_S3_ACCESS_KEY_ID",
+  "attachmentStorage.s3.bucket": "JUNIOR_S3_BUCKET",
+  "attachmentStorage.s3.endpoint": "JUNIOR_S3_ENDPOINT",
+  "attachmentStorage.s3.region": "JUNIOR_S3_REGION",
+  "attachmentStorage.s3.secretAccessKey": "JUNIOR_S3_SECRET_ACCESS_KEY",
+  "queue.apiUrl": "JUNIOR_QUEUE_API_URL",
   cacheWarmingEnabled: "JUNIOR_CACHE_WARMING_ENABLED",
   idleCompactionEnabled: "JUNIOR_IDLE_COMPACTION_ENABLED",
   conversationWorkEnabled: "JUNIOR_CONVERSATION_WORK_ENABLED",
   encryption: "JUNIOR_ENCRYPTION_KEYS",
+  "encryption.activeKeyId": "JUNIOR_ENCRYPTION_KEY_ID",
   "sql.databaseUrl": "DATABASE_URL",
   "sql.driver": "JUNIOR_DATABASE_DRIVER",
   "sql.statementTimeoutMs": "JUNIOR_SQL_STATEMENT_TIMEOUT_MS",
@@ -386,12 +476,109 @@ function parseVisionModelId(rawValue: string | undefined) {
   return toOptionalTrimmed(rawValue) ?? null;
 }
 
+function readS3Setting(env: Env, name: string): string {
+  const value = toOptionalTrimmed(env[name]);
+  if (value === undefined) {
+    throw new Error(
+      `${name} is required when JUNIOR_ATTACHMENT_STORAGE_PROVIDER is s3`,
+    );
+  }
+  return value;
+}
+
+function readAttachmentStorage(env: Env): ConfigInput["attachmentStorage"] {
+  const provider = toOptionalTrimmed(env["JUNIOR_ATTACHMENT_STORAGE_PROVIDER"]);
+  switch (provider) {
+    case undefined:
+      return undefined;
+    case "vercel-blob":
+    case "memory":
+      return { provider };
+    case "s3":
+      return {
+        provider,
+        s3: {
+          accessKeyId: readS3Setting(env, "JUNIOR_S3_ACCESS_KEY_ID"),
+          bucket: readS3Setting(env, "JUNIOR_S3_BUCKET"),
+          endpoint: readS3Setting(env, "JUNIOR_S3_ENDPOINT"),
+          region: toOptionalTrimmed(env["JUNIOR_S3_REGION"]),
+          secretAccessKey: readS3Setting(env, "JUNIOR_S3_SECRET_ACCESS_KEY"),
+        },
+      };
+    default:
+      throw new Error(
+        "JUNIOR_ATTACHMENT_STORAGE_PROVIDER must be vercel-blob, s3, or memory",
+      );
+  }
+}
+
+function parseQueueApiUrl(rawValue: string | undefined): string | undefined {
+  const value = toOptionalTrimmed(rawValue);
+  if (value === undefined || isHttpUrl(value)) {
+    return value;
+  }
+  throw new Error("JUNIOR_QUEUE_API_URL must be an http or https URL");
+}
+
+function parseEncryptionKey(entry: string, index: number) {
+  const separator = entry.indexOf(":");
+  const id = entry.slice(0, separator).trim();
+  const key = entry.slice(separator + 1).trim();
+  // Errors name the entry, never the key material.
+  if (separator < 0 || !ENCRYPTION_KEY_ID_PATTERN.test(id)) {
+    throw new Error(
+      `JUNIOR_ENCRYPTION_KEYS entry ${index + 1} must be <id>:<key> with an id of letters, digits, ".", "_", or "-"`,
+    );
+  }
+  if (!isEncryptionKeyMaterial(key)) {
+    throw new Error(
+      `JUNIOR_ENCRYPTION_KEYS key "${id}" must be ${ENCRYPTION_KEY_BYTES} bytes in base64`,
+    );
+  }
+  return { id, key };
+}
+
+/**
+ * `JUNIOR_ENCRYPTION_KEYS` lists `<id>:<key>` entries, comma-separated.
+ * `JUNIOR_ENCRYPTION_KEY_ID` names the key for new values; it is optional
+ * when there is one key. All listed keys decrypt.
+ */
+function readEncryption(env: Env): ConfigInput["encryption"] {
+  const entries = (env["JUNIOR_ENCRYPTION_KEYS"] ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  // No default key, not even for local development: each deployment must
+  // generate its own. The schema reports the missing keys.
+  if (entries.length === 0) {
+    return undefined;
+  }
+  const keys = entries.map(parseEncryptionKey);
+  if (new Set(keys.map(({ id }) => id)).size !== keys.length) {
+    throw new Error("JUNIOR_ENCRYPTION_KEYS must not repeat a key id");
+  }
+  const activeKeyId =
+    env["JUNIOR_ENCRYPTION_KEY_ID"]?.trim() ||
+    (keys.length === 1 ? keys[0]?.id : undefined);
+  if (!activeKeyId) {
+    throw new Error(
+      "JUNIOR_ENCRYPTION_KEY_ID is required when JUNIOR_ENCRYPTION_KEYS has more than one key",
+    );
+  }
+  if (!keys.some(({ id }) => id === activeKeyId)) {
+    throw new Error(
+      `JUNIOR_ENCRYPTION_KEY_ID "${activeKeyId}" is not in JUNIOR_ENCRYPTION_KEYS`,
+    );
+  }
+  return { activeKeyId, keys };
+}
+
 // Maps env vars onto config fields and parses their strings. Errors name the
 // env var.
 function readEnv(env: Env): ConfigInput {
   const reasoningLevel = toOptionalTrimmed(env["AI_REASONING_LEVEL"]);
   return {
-    attachmentStorage: readAttachmentStorageConfig(env),
+    attachmentStorage: readAttachmentStorage(env),
     bot: {
       modelId: toOptionalTrimmed(env["AI_MODEL"]),
       // An empty AI_FAST_MODEL does not fall back to AI_MODEL.
@@ -419,7 +606,7 @@ function readEnv(env: Env): ConfigInput {
       loadingMessages: parseLoadingMessages(env["JUNIOR_LOADING_MESSAGES"]),
       turnTimeoutMs: parseTurnTimeoutMs(env["AGENT_TURN_TIMEOUT_MS"]),
     },
-    queue: readQueueConfig(env),
+    queue: { apiUrl: parseQueueApiUrl(env["JUNIOR_QUEUE_API_URL"]) },
     cacheWarmingEnabled: parseKillSwitch(
       "JUNIOR_CACHE_WARMING_ENABLED",
       env["JUNIOR_CACHE_WARMING_ENABLED"],
@@ -432,7 +619,7 @@ function readEnv(env: Env): ConfigInput {
       "JUNIOR_CONVERSATION_WORK_ENABLED",
       env["JUNIOR_CONVERSATION_WORK_ENABLED"],
     ),
-    encryption: readEncryptionKeyring(env),
+    encryption: readEncryption(env),
     sql: {
       databaseUrl: toOptionalTrimmed(env["DATABASE_URL"]),
       driver: parseSqlDriver(env["JUNIOR_DATABASE_DRIVER"]),
@@ -504,14 +691,29 @@ function valueAt(input: unknown, path: readonly PropertyKey[]): unknown {
   return value;
 }
 
+// The env var of the field, or of its nearest group that has one.
+function envNameFor(path: readonly PropertyKey[]): string | undefined {
+  const keys = path.filter((key) => typeof key === "string");
+  for (let length = keys.length; length > 0; length--) {
+    const envName = ENV_NAMES[keys.slice(0, length).join(".")];
+    if (envName) {
+      return envName;
+    }
+  }
+  return undefined;
+}
+
 function formatIssue(input: unknown, issue: z.core.$ZodIssue): string {
-  const path = issue.path.filter((key) => typeof key === "string").join(".");
-  const envName = ENV_NAMES[path];
+  const path = issue.path.map(String).join(".");
+  const envName = envNameFor(issue.path);
   if (
     issue.code === "invalid_type" &&
     valueAt(input, issue.path) === undefined
   ) {
-    return `${envName ?? path} is required`;
+    const required = `${envName ?? path} is required`;
+    return path === "encryption"
+      ? `${required}. ${ENCRYPTION_KEYS_HINT}`
+      : required;
   }
   return `${envName ? `${path} (${envName})` : path}: ${issue.message}`;
 }

@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
-import { readEncryptionKeyring } from "@/chat/encryption/keyring";
+import { createEncryptionKeyring } from "@/chat/encryption/keyring";
 import { encryptSecret } from "@/chat/encryption/secret";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
+import { loadConfig } from "@/config";
 
 describe("StateAdapterTokenStore", () => {
   function createAdapter(overrides: Partial<StateAdapter> = {}) {
@@ -121,10 +122,11 @@ describe("StateAdapterTokenStore", () => {
     const state = createMemoryState();
     await state.connect();
     const tokens = { accessToken: "access-token", refreshToken: "refresh" };
-    const oldKeyOnly = readEncryptionKeyring({
-      JUNIOR_ENCRYPTION_KEYS: process.env["JUNIOR_ENCRYPTION_KEYS"],
-      JUNIOR_ENCRYPTION_KEY_ID: "test-old",
-    });
+    const oldKeyOnly = createEncryptionKeyring(
+      loadConfig({
+        env: { ...process.env, JUNIOR_ENCRYPTION_KEY_ID: "test-old" },
+      }).encryption,
+    );
     await state.set(
       "oauth-token:U123:notion",
       encryptSecret(
