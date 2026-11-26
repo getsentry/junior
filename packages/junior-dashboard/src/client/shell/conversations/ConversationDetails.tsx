@@ -168,7 +168,10 @@ export function ConversationDetails(props: {
           canEdit={props.isParticipant}
           conversationId={props.conversationId}
         />
-        {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
+        {threads.length > 0 ? (
+          // A key per Conversation resets which groups are open.
+          <ConversationThreads key={props.conversationId} threads={threads} />
+        ) : null}
         <ConversationLinkedWorkCard
           canCancelWatches={props.isParticipant}
           conversationId={props.conversationId}

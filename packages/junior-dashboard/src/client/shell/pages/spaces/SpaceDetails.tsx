@@ -90,7 +90,9 @@ export function SpaceOverview(props: {
 function LeadThreads(props: { leadId: string }) {
   const agents = useConversationChildAgents(props.leadId).data?.agents;
   const threads = agents?.filter((agent) => agent.kind === "thread") ?? [];
-  return threads.length > 0 ? <ConversationThreads threads={threads} /> : null;
+  return threads.length > 0 ? (
+    <ConversationThreads key={props.leadId} threads={threads} />
+  ) : null;
 }
 
 function SpaceMembers(props: { space: SpaceReport }) {
