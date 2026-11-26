@@ -169,8 +169,9 @@ describe("turnBehavior", () => {
     ).toThrow("A task Conversation cannot have a person's input");
   });
 
-  // A Lead keeps one system prompt and one tool list on every Turn.
-  it("gives every Turn of a Lead the same behavior", () => {
+  // A Lead keeps one system prompt and one tool list on every Turn, but only
+  // a person's Turn changes settings, such as the Space of a Conversation.
+  it("gives every Turn of a Lead the same tools, and settings only to a person's", () => {
     const personTurn = turnBehavior({
       kind: "lead",
       hasParent: false,
@@ -178,7 +179,10 @@ describe("turnBehavior", () => {
     });
     expect(
       turnBehavior({ kind: "lead", hasParent: false, personInput: false }),
-    ).toEqual(personTurn);
+    ).toEqual({
+      ...personTurn,
+      tools: { ...personTurn.tools, settings: false },
+    });
     expect(personTurn.promptMode).toBe("lead");
     expect(promptModeTurnTools("lead")).toEqual(personTurn.tools);
   });
