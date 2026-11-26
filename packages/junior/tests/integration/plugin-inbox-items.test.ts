@@ -368,20 +368,21 @@ describe("plugin inbox items", () => {
       status: "done",
     });
 
-    // Two first asks at once both find no open item. Both people join the
-    // one item that the first insert adds.
+    // Events that add the item at once all keep their asks.
+    const dee = await person("dee@example.com");
+    await participant("slack:C1:1.000001", dee.user);
+    const all = [ana.identityId, bo.identityId, dee.identityId];
     await Promise.all(
-      [ana, bo].map(
-        async (asked) =>
-          await items.upsert({
-            ...NOTICE,
-            askedIdentityIds: [asked.identityId],
-            assigneeIdentityIds: both,
-          }),
+      [ana, bo, dee].map((asked) =>
+        items.upsert({
+          ...NOTICE,
+          askedIdentityIds: [asked.identityId],
+          assigneeIdentityIds: all,
+        }),
       ),
     );
     expect((await assignees()).sort()).toEqual(
-      [ana.user.id, bo.user.id].sort(),
+      [ana.user.id, bo.user.id, dee.user.id].sort(),
     );
   });
 
