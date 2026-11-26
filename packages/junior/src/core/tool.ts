@@ -47,7 +47,7 @@ export type ToolExecutionContext = {
  */
 export type StepTools = {
   definitions: ToolDefinition[];
-  hooks?: ToolBatchHooks;
+  hooks?: ToolExecutionHooks;
   close(): void;
 };
 
@@ -61,7 +61,7 @@ export type StepTools = {
  * for that step, so the host can keep what a hook learns about a call by its
  * call id, for `execute` or `afterCall` to use.
  */
-export type ToolBatchHooks = {
+export type ToolExecutionHooks = {
   /** Per call. A result means the call does not run, and the model sees it. */
   beforeCall?(
     call: ToolCall,

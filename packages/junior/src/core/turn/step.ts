@@ -14,7 +14,11 @@ import {
 import type { ModelClient, ModelSettings } from "@/core/model/client";
 import type { ModelFailure } from "@/core/model/failure";
 import { withSpan } from "@/core/telemetry";
-import type { ToolBatchHooks, ToolDefinition, ToolResult } from "@/core/tool";
+import type {
+  ToolExecutionHooks,
+  ToolDefinition,
+  ToolResult,
+} from "@/core/tool";
 
 /**
  * The model request of a step: the system prompt, the messages with the new
@@ -37,7 +41,7 @@ export type StepInput<T> = {
    */
   request: () => Promise<StepRequest<T>>;
   tools: ToolDefinition[];
-  hooks?: ToolBatchHooks;
+  hooks?: ToolExecutionHooks;
   client: ModelClient;
   /** The Conversation id, which keeps its model requests in one session. */
   session: string;
@@ -252,7 +256,7 @@ function replaced(
 
 function runToolCall(
   check: CheckedToolCall,
-  { afterCall }: ToolBatchHooks,
+  { afterCall }: ToolExecutionHooks,
   input: StepInput<unknown>,
 ): Promise<ToolCallOutcome> {
   const { call } = check;
