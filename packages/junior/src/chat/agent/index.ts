@@ -708,6 +708,7 @@ async function executeAgentRunInPrivacyContext(
       context: createPromptHookContext({ actor, run }),
       currentActor: actor,
       existingTurnMessages: currentTurnMessages,
+      priorPiMessages,
       promptSaved,
       resumedFromSessionRecord,
       turnId,

@@ -16,7 +16,7 @@ import {
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { getRegistrations } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
 import { apiRoutePrefix } from "@/chat/plugins/core-registrations";
 
 /** Admin pages are hidden from everyone except Junior admins. */

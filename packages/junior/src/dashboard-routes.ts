@@ -8,7 +8,7 @@ import type { SignInAuth } from "@/chat/sign-in/auth";
 import type {
   PluginApiRouteRegistration,
   PluginRouteRegistration,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/routes";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 export interface JuniorDashboardOptions {

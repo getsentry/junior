@@ -386,8 +386,8 @@ describe("static tool registry", () => {
     );
   });
 
-  // A Lead finds, starts, and steers work, and never does it. A person's
-  // Turn and a Watch Turn send the same tools and system prompt.
+  // A Lead finds, starts, steers, and moves work, and never does it. A
+  // person's Turn and a Watch Turn send the same tools and system prompt.
   it("sends a Lead only the tools that steer work", async () => {
     const conversationId = "local:web:lead";
     const [person, watch] = await Promise.all(
@@ -411,8 +411,10 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
+        "listSpaces",
         "listWatches",
         "messageAgent",
+        "moveConversationToSpace",
         "noReply",
         "readConversationEvent",
         "searchConversationEvents",
@@ -431,6 +433,15 @@ describe("static tool registry", () => {
     // This Lead has no Slack channel and no Space, so it has no
     // configuration to change.
     expect(person.disabled).toEqual(["setConfiguration"]);
+    // Only a person's request moves a Conversation or changes configuration.
+    expect(watch.disabled).toEqual(
+      expect.arrayContaining(["moveConversationToSpace", "setConfiguration"]),
+    );
+    await expect(
+      callTool(watch, "moveConversationToSpace", {
+        conversation_id: "local:web:other",
+      }),
+    ).rejects.toThrow("moveConversationToSpace is disabled in this Turn.");
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(

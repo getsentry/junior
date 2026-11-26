@@ -19,18 +19,12 @@ import {
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
 } from "@/chat/prompt";
-import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
+import { getPluginUserPromptContributions } from "@/chat/plugins/hooks/prompt";
+import { pluginPromptHistoryMessages } from "@/chat/plugins/prompt-history-messages";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
-import { getDb, getSqlExecutor } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import {
-  latestSeenTodosVersion,
-  renderTodoDelta,
-  renderTodosReview,
-} from "@/chat/todos/prompt";
-import { listTodos } from "@/chat/todos/store";
-import type { Todo } from "@/chat/todos/types";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import { systemSectionsUpdate } from "@/chat/pi/agent-history";
@@ -118,8 +112,6 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
-  /** Every To-do of the Conversation, for the `<todo-delta>`. */
-  todos?: Todo[];
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
   /** IANA timezone of the person who asked, from `findActorTimezone`. */
@@ -567,22 +559,29 @@ export async function loadPromptTurnContext(
   args: PromptReplayArgs & {
     context: PromptHookContext;
     currentActor?: Actor | undefined;
+    /** The saved history, as `assemblePrompt` gets it. */
+    priorPiMessages?: PiMessage[] | undefined;
     turnId: string;
   },
 ): Promise<PromptTurnContext> {
   if (!planPromptReplay(args).loadsTurnContext) {
     return { pluginUserPromptContributions: [] };
   }
+  const history = withoutTrailingUncheckpointedUserPrompt(
+    args.priorPiMessages,
+    args.userContentParts,
+  ).messages;
   const [
     pluginUserPromptContributions,
     conversationNotes,
     userCustomization,
     workspaces,
-    todos,
     askerTimezone,
   ] = await Promise.all([
     getPluginUserPromptContributions({
       context: args.context,
+      historyMessages: (pluginName) =>
+        pluginPromptHistoryMessages(history, pluginName),
       turnId: args.turnId,
     }),
     loadTurnConversationNotes({
@@ -593,13 +592,11 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
-    listTodos(getSqlExecutor(), args.context.conversationId),
     loadAskerTimezone(args.currentActor, args.context),
   ]);
   return {
     askerTimezone,
     conversationNotes,
-    todos,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -700,7 +697,6 @@ export async function assemblePrompt(args: {
   const {
     askerTimezone,
     conversationNotes,
-    todos,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -729,16 +725,6 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        // Changes that others made after the To-do version that history
-        // shows, else every open To-do when history has not shown the
-        // To-dos for a while. The model's own changes are in its tool
-        // results.
-        todos: todos
-          ? (renderTodoDelta(
-              todos,
-              latestSeenTodosVersion(promptHistoryMessages),
-            ) ?? renderTodosReview(todos, promptHistoryMessages))
-          : null,
         pluginPromptContributions: pluginUserPromptContributions,
         ...(args.sender ? { turnInput: args.sender } : undefined),
         userCustomization,

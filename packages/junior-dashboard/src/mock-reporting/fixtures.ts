@@ -39,6 +39,10 @@ import {
   activityPreviewText,
   IDLE_CHANGE_DAYS,
 } from "@sentry/junior/api/schema";
+import {
+  mockReceivedAgentMessage,
+  mockSentAgentMessage,
+} from "./agent-messages";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./question-conversations";
@@ -1247,8 +1251,77 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         title: "Compare sidebar badges",
         status: "completed",
       }),
+      // Messages to and from child agents show as message rows: one that
+      // started a Task again, its reply, a long one to a blocked Task, and
+      // one that no agent got.
+      ...dashboardQaAgentMessages(startedAt, 25),
     ],
   });
+}
+
+function dashboardQaAgentMessages(
+  startedAt: string,
+  firstSeq: number,
+): ConversationReportEvent[] {
+  const at = (offsetMs: number) => iso(Date.parse(startedAt), offsetMs);
+  const [plannerSending, plannerSent] = mockSentAgentMessage({
+    toolCallId: "qa-message-planner",
+    startedAt: at(94_000),
+    startedSeq: firstSeq,
+    to: "planner",
+    text: "Also check that the plan keeps the pinned row order after a hard reload.",
+    result: { conversationId: DASHBOARD_QA_PLAN_ID, delivery: "started" },
+  });
+  const plannerReply = mockReceivedAgentMessage({
+    messageId: "qa-planner-message",
+    sender: {
+      conversationId: DASHBOARD_QA_PLAN_ID,
+      name: "planner",
+      source: "child_agent",
+      title: "Review the dashboard plan",
+    },
+    text: "The plan keeps the order after a hard reload. One pinned row moved once while the feed loaded again, and I could not make it happen again.",
+  });
+  const [reviewerSending, reviewerSent] = mockSentAgentMessage({
+    toolCallId: "qa-message-reviewer",
+    startedAt: at(100_000),
+    startedSeq: firstSeq + 3,
+    to: "reviewer",
+    text: [
+      "You now have read access to getsentry/junior-dashboard. Review the plan again with these limits:",
+      "",
+      "- Keep the sidebar order exactly as it is today.",
+      "- Do not change the pinned row styles.",
+      "- Check the empty, loading, and failed transcript states on a phone and on a desktop.",
+      "- Report each state that does not match the design, with a screenshot.",
+      "",
+      "Tell me when the review is done, or if you get blocked again.",
+    ].join("\n"),
+    result: { conversationId: DASHBOARD_QA_REVIEW_ID, delivery: "started" },
+  });
+  const [unknownSending, unknownRefused] = mockSentAgentMessage({
+    toolCallId: "qa-message-unknown",
+    startedAt: at(104_000),
+    startedSeq: firstSeq + 5,
+    to: "designer",
+    text: "Share the latest sidebar mockups with the reviewer.",
+    result: {
+      error:
+        '"designer" is not "parent", a child agent of this conversation, or a top-level agent that you can message. Use listAgents to find an agent.',
+    },
+  });
+  const events: [number, ConversationReportEvent["data"]][] = [
+    [94_000, plannerSending],
+    [95_000, plannerSent],
+    [98_000, plannerReply],
+    [100_000, reviewerSending],
+    [101_000, reviewerSent],
+    [104_000, unknownSending],
+    [104_500, unknownRefused],
+  ];
+  return events.map(([offsetMs, data], index) =>
+    reportEvent(firstSeq + index, at(offsetMs), data),
+  );
 }
 
 function advisorConversation(

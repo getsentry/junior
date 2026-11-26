@@ -9,7 +9,6 @@ import {
 } from "@/chat/current-instruction";
 import { isRuntimeInputText, renderDataTag } from "@/chat/input-tags";
 import { instructionTextForProjection } from "@/chat/pi/transcript";
-import { renderTodosSnapshot } from "@/chat/todos/prompt";
 import { buildTurnContextPrompt } from "@/chat/prompt";
 import { buildConversationContext } from "@/chat/services/conversation-memory";
 import type { ThreadConversationState } from "@/chat/state/conversation";
@@ -111,20 +110,6 @@ describe("prompt tag fencing", () => {
           filename: payload("attachment"),
           mediaType: "text/plain",
         }),
-      ],
-      [
-        "todos",
-        renderTodosSnapshot([
-          {
-            id: 1,
-            status: "open",
-            title: payload("todos"),
-            version: 1,
-            assignee: { kind: "self" },
-            createdAtMs: 0,
-            updatedAtMs: 0,
-          },
-        ])!,
       ],
       [
         "thread-context",

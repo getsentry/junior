@@ -246,6 +246,8 @@ const LEAD_TOOLS = [
   "systemTime",
   "updateUserCustomization",
   "setConfiguration",
+  "listSpaces",
+  "moveConversationToSpace",
   "noReply",
 ] as const satisfies readonly StaticToolName[];
 
@@ -275,6 +277,14 @@ const LEAD: TurnBehavior = {
   },
 };
 
+// A Lead Turn that no person sent, such as a Watch Event or another agent's
+// message. It lists the Lead's tools, so the Lead keeps one tool list, but
+// it changes no settings: only a person's request does.
+const LEAD_RUNTIME_TURN: TurnBehavior = {
+  ...LEAD,
+  tools: { ...LEAD.tools, settings: false },
+};
+
 /**
  * Return the behavior of one Turn. A `thread` with a parent runs like a
  * top-level `thread`, and also reports to its parent.
@@ -297,7 +307,7 @@ export function turnBehavior(args: {
       // Only an agent writes input to a task.
       throw new Error("A task Conversation cannot have a person's input");
     case "lead":
-      return LEAD;
+      return args.personInput ? LEAD : LEAD_RUNTIME_TURN;
   }
 }
 

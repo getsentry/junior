@@ -1,7 +1,11 @@
 import { describe, expect } from "vitest";
 import { webMessage } from "@junior-evals/fixture/inputs";
-import { completedToolCalls } from "@junior-evals/fixture/results";
+import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
+import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
+
+const CRON_WORK =
+  "draft three steps for moving our billing cron jobs off Heroku Scheduler onto GitHub Actions";
 
 describe("Lead", () => {
   // The Lead could write a short draft in its own reply. The case measures
@@ -47,11 +51,7 @@ describe("Lead", () => {
   test("when a person asks their Lead about work they started, it searches their Conversations", async ({
     run,
   }) => {
-    await run(
-      webMessage(
-        "draft three steps for moving our billing cron jobs off Heroku Scheduler onto GitHub Actions",
-      ),
-    );
+    await run(webMessage(CRON_WORK));
 
     const conversation = await run(
       webMessage(
@@ -64,5 +64,86 @@ describe("Lead", () => {
       completedToolCalls("searchConversations", conversation).length,
     ).toBeGreaterThan(0);
     expect(conversation.replies.length).toBeGreaterThan(0);
+    // A question about outside work does not ask to move it.
+    expect(toolCallsOf("moveConversationToSpace", conversation)).toEqual([]);
+  });
+
+  // Before the Lead could move Conversations, it started a Conversation to
+  // do the move. The case measures whether it moves the work itself.
+  test("when a person asks their Lead to move work into its Space, it moves the Conversation", async ({
+    agent,
+  }) => {
+    const { readConversationSpace, run } = await agent();
+    const work = await run(webMessage(CRON_WORK));
+
+    const conversation = await run(
+      webMessage(
+        "the billing cron migration I started earlier belongs here. move it into this space",
+        { lead: true },
+      ),
+    );
+
+    expect(await readConversationSpace(work.conversationId)).toMatchObject({
+      name: "Eval work",
+    });
+    expect(toolCallsOf("startConversation", conversation)).toEqual([]);
+  });
+
+  // Only a member of a Space moves work into it. The case measures whether
+  // the Lead tells the person, instead of moving the work another way.
+  test("when a person asks their Lead to move work into a Space they are not in, it tells them and moves nothing", async ({
+    agent,
+  }) => {
+    const { createOtherSpace, run } = await agent();
+    const other = await createOtherSpace("Payments platform");
+    await run(webMessage(CRON_WORK));
+
+    const conversation = await run(
+      webMessage(
+        `move the billing cron migration I started earlier into the payments platform space: https://junior.example.com/spaces/${other.id}`,
+        { lead: true },
+      ),
+    );
+
+    expect(completedToolCalls("moveConversationToSpace", conversation)).toEqual(
+      [],
+    );
+    expect(toolCallsOf("startConversation", conversation)).toEqual([]);
+    expect(toolCallsOf("messageAgent", conversation)).toEqual([]);
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply says the conversation was not moved because the person must join the Payments platform Space first, or asks them to join it.",
+        ],
+        fail: ["The reply says the conversation was moved."],
+      }),
+    );
+  });
+
+  // Space names are not unique, so the move takes an ID. The case measures
+  // whether the Lead finds the named Space, sees that the person is not a
+  // member, and moves nothing.
+  test("when a person names a Space without a link, their Lead finds it and moves nothing into a Space they are not in", async ({
+    agent,
+  }) => {
+    const { createOtherSpace, run } = await agent();
+    await createOtherSpace("Payments platform");
+    await run(webMessage(CRON_WORK));
+
+    const conversation = await run(
+      webMessage(
+        "move the billing cron migration I started earlier into the payments platform space",
+        { lead: true },
+      ),
+    );
+
+    expect(
+      completedToolCalls("listSpaces", conversation).length,
+    ).toBeGreaterThan(0);
+    expect(completedToolCalls("moveConversationToSpace", conversation)).toEqual(
+      [],
+    );
+    expect(toolCallsOf("startConversation", conversation)).toEqual([]);
   });
 });

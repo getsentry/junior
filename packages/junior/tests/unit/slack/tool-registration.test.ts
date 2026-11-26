@@ -11,7 +11,7 @@ import {
 import { createTools } from "@/chat/tool-support/create-tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createApp } from "@/app";
 
 const rootTurnTools = turnBehavior({

@@ -9,7 +9,7 @@ import {
   automationVersionListSchema,
 } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   getEventAutomation,
   saveEventAutomation,

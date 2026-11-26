@@ -3,7 +3,7 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { logWarn } from "@/chat/logging";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { pluginConfigValues } from "@/chat/plugins/hook-context";
 import { createPluginLogger } from "@/chat/plugins/logging";
 

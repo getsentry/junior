@@ -68,7 +68,9 @@ export function ConversationSidePanelLayout(props: {
             // A panel that opens while its column still resizes converts its
             // chosen width to a share of that column, rounded, so it can end
             // a fraction of a px off. Size it again against the new column.
-            sidePanel.current?.resize(readDetailsWidth());
+            sidePanel.current?.resize(
+              readDetailsWidth(groupRef.current?.offsetWidth ?? 0),
+            );
             return;
           }
           const percent = layout[sidePanelId] ?? 0;
@@ -93,7 +95,7 @@ export function ConversationSidePanelLayout(props: {
             <ResizablePanel
               className="grid min-h-0"
               data-testid={SIDE_PANEL_ID}
-              defaultSize={readDetailsWidth()}
+              defaultSize={readDetailsWidth(groupRef.current?.offsetWidth ?? 0)}
               groupResizeBehavior="preserve-pixel-size"
               id={sidePanelId}
               panelRef={sidePanel}
