@@ -8,7 +8,6 @@ import {
   actorProfileReportSchema,
   conversationDetailReportSchema,
   conversationFeedSchema,
-  leadSchema,
   spaceSchema,
 } from "@/api/schema";
 import {
@@ -51,17 +50,17 @@ async function createSpace(
   return spaceSchema.parse(await response.json()).id;
 }
 
-function leadPath(spaceId: string): string {
-  return `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/lead`;
+function spacePath(spaceId: string): string {
+  return `http://localhost/api/spaces/${encodeURIComponent(spaceId)}`;
 }
 
 async function readLeadId(
   app: Hono<JuniorApiEnv>,
   spaceId: string,
 ): Promise<string> {
-  const response = await app.request(leadPath(spaceId));
+  const response = await app.request(spacePath(spaceId));
   expect(response.status).toBe(200);
-  return leadSchema.parse(await response.json()).conversationId;
+  return spaceSchema.parse(await response.json()).leadConversationId;
 }
 
 async function postMessage(
@@ -89,7 +88,7 @@ describe("Lead API", () => {
     const bo = apiFor("lead-api-bo@example.com");
     const spaceId = await createSpace(ana, "Billing migration");
 
-    expect((await apiFor().request(leadPath(spaceId))).status).toBe(401);
+    expect((await apiFor().request(spacePath(spaceId))).status).toBe(401);
     const leadId = await readLeadId(ana, spaceId);
     expect(await readLeadId(ana, spaceId)).toBe(leadId);
     // The Lead is public like the Space, so anyone reads the same one.

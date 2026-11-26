@@ -126,12 +126,14 @@ test("the Lead's own link shows the Conversation header", async ({
   dashboard,
 }) => {
   await page.setViewportSize(desktop);
-  const lead = await page.request.get(
-    `${dashboard.baseURL}/api/spaces/${BILLING_ID}/lead`,
+  const space = await page.request.get(
+    `${dashboard.baseURL}/api/spaces/${BILLING_ID}`,
   );
-  const { conversationId } = (await lead.json()) as { conversationId: string };
+  const { leadConversationId } = (await space.json()) as {
+    leadConversationId: string;
+  };
   await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(leadConversationId)}`,
   );
   await expect(
     page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
@@ -191,28 +193,6 @@ test("a non-member reads the Lead", async ({ page, dashboard }) => {
     page.getByText("Join Docs refresh to message its Lead."),
   ).toBeVisible();
   await screenshot(page, "space-lead-non-member");
-});
-
-test("a non-member sees a Space whose Lead no member has talked to", async ({
-  page,
-  dashboard,
-}) => {
-  await page.route("**/api/spaces/*/lead", (route) =>
-    route.fulfill({
-      json: { error: "This Space has no Lead yet." },
-      status: 404,
-    }),
-  );
-  await page.setViewportSize(desktop);
-  await page.goto(`${dashboard.baseURL}${DOCS}`);
-  await expect(
-    page.getByText("No member has talked to this Space's Lead yet."),
-  ).toBeVisible();
-  // The Space's Threads are its Lead's, so it has none to list.
-  await expect(
-    page.getByRole("region", { exact: true, name: "Threads" }),
-  ).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });
 
 test.describe("on a touch screen", () => {
