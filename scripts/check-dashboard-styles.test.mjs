@@ -11,6 +11,7 @@ import {
   findNewUiEllipsis,
   findNonstandardNeutralTextColors,
   findPxBreakpoints,
+  findTileGlyphTextSizes,
   findUndersizedHardcodedFontSizes,
   findUnknownDashboardColorTokens,
 } from "./check-dashboard-styles.mjs";
@@ -115,6 +116,25 @@ test("reports absolute arbitrary text sizes and allows relative em", () => {
     [
       'src/example.tsx:1: const tooSmall = "font-mono text-[0.54rem] uppercase";',
       'src/example.tsx:2: const responsive = "sm:text-[12px] text-dashboard-text";',
+    ],
+  );
+});
+
+test("reports the Space tile glyph size outside the Space tile", () => {
+  const contents = 'const glyph = "text-3xs tracking-tighter";';
+  assert.deepEqual(
+    findTileGlyphTextSizes([
+      {
+        path: "packages/junior-dashboard/src/client/spaces/SpaceTile.tsx",
+        contents,
+      },
+      { path: "src/example.tsx", contents },
+      { path: "src/badge.tsx", contents: 'const badge = "md:text-3xs";' },
+      { path: "src/named.tsx", contents: 'const label = "text-2xs";' },
+    ]),
+    [
+      'src/example.tsx:1: const glyph = "text-3xs tracking-tighter";',
+      'src/badge.tsx:1: const badge = "md:text-3xs";',
     ],
   );
 });

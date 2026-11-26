@@ -65,6 +65,11 @@ export function executionIsActive(executionStatus: string): boolean {
   return ACTIVE_EXECUTION_STATUSES.includes(executionStatus);
 }
 
+const turnAfterFailure = alias(
+  juniorConversationEvents,
+  "status_turn_after_failure",
+);
+
 /**
  * SQL: the latest Turn of the Conversation failed with no newer input.
  * Execution is `failed`, or the newest Turn lifecycle Event is
@@ -77,15 +82,25 @@ export function conversationTurnFailedSql(
     "conversationId" | "executionStatus"
   >,
 ): SQL<boolean> {
-  // One max per type, so each reads the end of
+  // Each read is one end of
   // `junior_conversation_events_type_idx (conversation_id, type, seq)`.
-  const newestSeq = (type: string) =>
-    sql`(select max(${juniorConversationEvents.seq}) from ${juniorConversationEvents} where ${and(
+  // Most Conversations have no failed Turn, so the read of the newest one
+  // finds nothing, and the check for a later Turn does not run.
+  return sql<boolean>`(${conversation.executionStatus} = 'failed' or coalesce((
+    select not exists (
+      select 1 from ${juniorConversationEvents} as ${turnAfterFailure}
+      where ${turnAfterFailure.conversationId} = ${juniorConversationEvents.conversationId}
+        and ${turnAfterFailure.type} in ('turn_started', 'turn_completed')
+        and ${turnAfterFailure.seq} > ${juniorConversationEvents.seq}
+    )
+    from ${juniorConversationEvents}
+    where ${and(
       eq(juniorConversationEvents.conversationId, conversation.conversationId),
-      eq(juniorConversationEvents.type, type),
-    )})`;
-  // greatest() skips nulls; a Conversation with no started Turn reads -1.
-  return sql<boolean>`(${conversation.executionStatus} = 'failed' or ${newestSeq("turn_failed")} > coalesce(greatest(${newestSeq("turn_started")}, ${newestSeq("turn_completed")}), -1))`;
+      eq(juniorConversationEvents.type, "turn_failed"),
+    )}
+    order by ${desc(juniorConversationEvents.seq)}
+    limit 1
+  ), false))`;
 }
 
 /**
@@ -152,15 +167,16 @@ function conversationWaitsOnStarterSql(
   const replySeq = sql`${reply}.seq`;
   const replyInSlack = sql`${reply}.in_slack`;
   // Transcript order, the order of read positions, is `seq`, not time.
-  // Reads `junior_conversation_events_message_role_idx` and sorts the
-  // Conversation's assistant Messages by `seq`.
+  // Reads the newest entry of `junior_conversation_events_message_role_seq_idx`.
+  // The type is a literal: a generic plan can use the partial index only
+  // when the query states its predicate.
   // A reply has source `slack` only when Slack accepted it. A reply that a
   // delivery pause held back has no source and no other mark. Pauses started
   // with #3050, so a reply with no source from before then reached Slack.
   // TODO(dcramer): Drop the date once no root's latest reply predates it.
   const latestReply = sql`(select ${juniorConversationEvents.seq} as seq, coalesce(${juniorConversationEvents.payload}->'meta'->>'source' = 'slack', ${juniorConversationEvents.createdAt} < ${DELIVERY_PAUSE_START}) as in_slack from ${juniorConversationEvents} where ${and(
     eq(juniorConversationEvents.conversationId, id),
-    eq(juniorConversationEvents.type, "message"),
+    sql`${juniorConversationEvents.type} = 'message'`,
     sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
   )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
   const readByStarter = or(

@@ -205,11 +205,13 @@ export type {
 export {
   conversationInviteBodySchema,
   conversationInviteResponseSchema,
+  conversationLeaveResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
   ConversationInviteResponse,
+  ConversationLeaveResponse,
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
@@ -391,18 +393,38 @@ export {
   spaceParamsSchema,
   spaceRefSchema,
   spaceSchema,
+  spaceVisibilitySchema,
   updateSpaceBodySchema,
 } from "./schema/space";
 export type {
   SpaceListReport,
   SpaceRefReport,
   SpaceReport,
+  SpaceVisibilityReport,
 } from "./schema/space";
 export {
+  addSpaceMemberBodySchema,
   spaceMemberListSchema,
   spaceMemberSchema,
 } from "./schema/space-member";
 export type { SpaceMemberListReport } from "./schema/space-member";
+export {
+  USER_SEARCH_DEFAULT_LIMIT,
+  USER_SEARCH_MAX_LIMIT,
+  userSearchQuerySchema,
+  userSearchReportSchema,
+  userSearchResultSchema,
+} from "./schema/user-search";
+export type {
+  UserSearchQuery,
+  UserSearchReport,
+  UserSearchResult,
+} from "./schema/user-search";
+export {
+  spaceConfigEntrySchema,
+  spaceConfigurationSchema,
+} from "./schema/space-configuration";
+export type { SpaceConfigurationReport } from "./schema/space-configuration";
 export {
   setConversationSpaceBodySchema,
   setConversationSpaceResponseSchema,

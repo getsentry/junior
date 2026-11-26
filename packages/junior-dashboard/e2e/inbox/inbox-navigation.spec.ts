@@ -10,6 +10,8 @@ import {
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
+import { mockConversationDetail, mockFeedPage } from "../mock-reports";
+import { scrollListUntil } from "./scroll-until";
 
 test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
@@ -165,8 +167,10 @@ test.describe("new UI", () => {
       const url = new URL(route.request().url());
       if (url.searchParams.get("cursor") === "older") {
         olderPage += 1;
-        const response = await route.fetch({ url: url.origin + url.pathname });
-        const feed = await response.json();
+        const feed = await mockFeedPage(
+          route,
+          new URL(url.origin + url.pathname),
+        );
         const template = feed.conversations.at(-1);
         return route.fulfill({
           json: {
@@ -186,10 +190,8 @@ test.describe("new UI", () => {
         });
       }
       firstPage += 1;
-      const response = await route.fetch();
       return route.fulfill({
-        response,
-        json: { ...(await response.json()), nextCursor: "older" },
+        json: { ...(await mockFeedPage(route)), nextCursor: "older" },
       });
     });
     await mockInboxItems(page);
@@ -199,13 +201,17 @@ test.describe("new UI", () => {
     expect(olderPage).toBe(0);
     const list = page.getByRole("region", { name: "Conversations" });
     // The list shows its loaded rows first, then reads the next page.
-    await expect(async () => {
-      await list
-        .locator(".overflow-y-auto")
-        .first()
-        .evaluate((node) => (node.scrollTop = node.scrollHeight));
-      await expect(older).toBeVisible({ timeout: 1_000 });
-    }).toPass();
+    await scrollListUntil(
+      () =>
+        list
+          .locator(".overflow-y-auto")
+          .first()
+          .evaluate((node) => {
+            node.scrollTop = node.scrollHeight;
+          }),
+      list.getByRole("link"),
+      older,
+    );
     expect(olderPage).toBe(1);
     expect(firstPage).toBeGreaterThan(0);
 
@@ -443,8 +449,7 @@ test.describe("new UI", () => {
     // Newer Conversations fill the first rows the list shows, so the linked
     // Conversation renders only after the list shows more.
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const linked = feed.conversations.find(
         (conversation: { conversationId: string }) =>
           conversation.conversationId === rollout.owner.id,
@@ -457,7 +462,6 @@ test.describe("new UI", () => {
         status: "done",
       }));
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: [
@@ -501,8 +505,10 @@ test.describe("new UI", () => {
         }
       }
       if (cursor) {
-        const response = await route.fetch({ url: url.origin + url.pathname });
-        const feed = await response.json();
+        const feed = await mockFeedPage(
+          route,
+          new URL(url.origin + url.pathname),
+        );
         const template = feed.conversations.at(-1);
         const row = (id: string, title: string, day: number) => ({
           ...template,
@@ -531,27 +537,31 @@ test.describe("new UI", () => {
                 },
         });
       }
-      const response = await route.fetch();
       return route.fulfill({
-        response,
-        json: { ...(await response.json()), nextCursor: "older" },
+        json: { ...(await mockFeedPage(route)), nextCursor: "older" },
       });
     });
     await mockInboxItems(page);
     const retry = page.getByRole("button", { name: "Try again" });
+    const conversationRows = page
+      .getByRole("region", { name: "Conversations" })
+      .getByRole("link");
     const scrollToEnd = (name: string) =>
       page
         .getByRole("region", { name })
         .locator(".overflow-y-auto")
         .first()
-        .evaluate((node) => (node.scrollTop = node.scrollHeight));
+        .evaluate((node) => {
+          node.scrollTop = node.scrollHeight;
+        });
 
     // Conversations loads every page it can, until one fails.
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-    await expect(async () => {
-      await scrollToEnd("Conversations");
-      await expect(retry).toBeVisible({ timeout: 1000 });
-    }).toPass();
+    await scrollListUntil(
+      () => scrollToEnd("Conversations"),
+      conversationRows,
+      retry,
+    );
     expect(oldestAttempts).toBe(1);
 
     // The Inbox lists no Conversations, so it reads no older page, and the
@@ -566,10 +576,11 @@ test.describe("new UI", () => {
 
     // Back in Conversations, Try again loads the failed page.
     await nav.getByRole("link", { name: /^Conversations\b/ }).click();
-    await expect(async () => {
-      await scrollToEnd("Conversations");
-      await expect(retry).toBeVisible({ timeout: 1000 });
-    }).toPass();
+    await scrollListUntil(
+      () => scrollToEnd("Conversations"),
+      conversationRows,
+      retry,
+    );
     await retry.click();
     await expect(
       page.getByRole("link", { name: /The oldest conversation/ }),
@@ -781,10 +792,8 @@ test.describe("new UI", () => {
         url.pathname ===
         `/api/conversations/${encodeURIComponent(conversationId)}`,
       async (route) => {
-        const response = await route.fetch();
-        const report = await response.json();
-        if (!Array.isArray(report.events)) return route.fulfill({ response });
-        const last = report.events.at(-1);
+        const report = await mockConversationDetail(route);
+        const last = report.events.at(-1)!;
         const later = Array.from({ length: 40 }, (_, index) => ({
           createdAt: last.createdAt,
           data: {
@@ -797,7 +806,6 @@ test.describe("new UI", () => {
         }));
         // The reader has read them all, so the transcript opens at the latest.
         await route.fulfill({
-          response,
           json: {
             ...report,
             events: [...report.events, ...later],

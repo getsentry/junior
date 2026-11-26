@@ -23,7 +23,6 @@ import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorDestinations,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
@@ -105,7 +104,6 @@ export function inboxItemOwnedByConversation(
 
 const todoOwner = alias(juniorConversations, "todo_owner");
 const todoRoot = alias(juniorConversations, "todo_root");
-const todoDestination = alias(juniorDestinations, "todo_destination");
 
 /** SQL: the User is a Participant of this root Conversation. */
 function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
@@ -149,7 +147,6 @@ function ownerConversationOpenTo(userId: string): SQL {
           ),
         ),
       )
-      .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
       .where(
         and(
           eq(todoOwner.conversationId, juniorInboxItems.ownerId),
@@ -161,7 +158,7 @@ function ownerConversationOpenTo(userId: string): SQL {
             and(
               isNotNull(todoRoot.conversationId),
               or(
-                eq(todoDestination.visibility, "public"),
+                eq(todoRoot.visibility, "public"),
                 participantOf(userId, todoRoot.conversationId),
               ),
             ),
@@ -371,9 +368,11 @@ export async function inboxItemReaderForUserInConversation(
 export interface InboxItemAgentScope {
   /**
    * Whether the Actor of the Turn is a person. A system Actor, such as the
-   * Actor of an event Turn, is not.
+   * Actor of an event Turn, is not, and an app Actor is not.
    */
   actorIsPerson: boolean;
+  /** User of an app Actor. An app is not a person, so it gets no item. */
+  appUserId?: string;
   /** Whether the current Conversation is not public. */
   inPrivateConversation: boolean;
   reader: InboxItemReader;
@@ -390,11 +389,14 @@ export interface InboxItemAgentScope {
 export async function readInboxItemAgentScope(
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "resolveActorIdentity" | "source"
+    "actorIsApp" | "conversationId" | "resolveActorIdentity" | "source"
   >,
 ): Promise<InboxItemAgentScope> {
-  // Only a user Identity resolves, so a system Actor has none.
-  const actor = await context.resolveActorIdentity?.();
+  // Only a user Identity resolves, so a system Actor has none. An app can
+  // have a user Identity and a User, but it is not a person.
+  const resolved = await context.resolveActorIdentity?.();
+  const actor = context.actorIsApp ? undefined : resolved;
+  const appUserId = context.actorIsApp ? resolved?.user?.id : undefined;
   const user = actor?.user;
   const automationId =
     context.source.kind === "scheduled_automation" ||
@@ -407,6 +409,7 @@ export async function readInboxItemAgentScope(
   const tenant = current?.tenant;
   return {
     actorIsPerson: actor !== undefined,
+    ...(appUserId ? { appUserId } : undefined),
     inPrivateConversation: current?.visibility !== "public",
     reader: {
       conversationId: context.conversationId,

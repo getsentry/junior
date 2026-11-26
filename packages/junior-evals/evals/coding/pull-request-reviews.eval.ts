@@ -86,6 +86,103 @@ describe("Watches", () => {
     );
   });
 
+  test("when you push back on a change request from the person who asked, mark it declined", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `${pullRequest} keeps the Python deploy gate script on purpose. Workflow concurrency keyed on the SHA cannot replace it: it cancels one of the duplicate runs, and the gate fails on a cancelled run.`,
+      ),
+    );
+    await insertLinkedGitHubIdentity(requesterOnGitHub);
+    await insertGitHubPullRequestWatch({
+      conversation,
+      draft: false,
+      pullRequest,
+    });
+
+    // Only the mark asks the requester to review again. A reply alone
+    // leaves the decision with them and drops the PR from their Inbox.
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Can we not move this whole script into a workflow job and set workflow concurrency to the SHA instead?",
+          id: 9_003,
+          state: "changes_requested",
+          user: { login: requesterOnGitHub.login },
+        },
+        sender: { ...requesterOnGitHub, type: "User" },
+      }),
+    );
+
+    const marks = toolCallsOf("github_updatePullRequestFeedback", delivery).map(
+      (call) => call.input,
+    );
+    expect(marks).toContainEqual(
+      expect.objectContaining({
+        comment_id: 9_003,
+        comment_kind: "review_body",
+        status: "declined",
+      }),
+    );
+  });
+
+  test.for([
+    {
+      asks: true,
+      body: "What do we lose if the gate retries forever instead of giving up after three tries? Lay out the trade-off and I'll pick one.",
+      outcome: "ask the person who asked to decide",
+    },
+    {
+      asks: false,
+      body: "Where does the gate read its retry limit from?",
+      outcome: "answer without asking them",
+    },
+  ])(
+    "when the person who asked leaves a comment-only review, $outcome",
+    async ({ asks, body }, { run }) => {
+      const conversation = await run(
+        slackMention(
+          `${pullRequest} adds a retry loop to the Python deploy gate script. It reads its limit from GATE_MAX_RETRIES and gives up after three tries by default.`,
+        ),
+      );
+      await insertLinkedGitHubIdentity(requesterOnGitHub);
+      await insertGitHubPullRequestWatch({
+        conversation,
+        draft: false,
+        pullRequest,
+      });
+
+      // A comment-only review ends GitHub's review request. Only a comment
+      // that asks them puts the PR back in their Inbox.
+      const delivery = await conversation.continue(
+        githubWebhook("pull_request_review", {
+          action: "submitted",
+          pull_request: { number: 691 },
+          repository,
+          review: {
+            body,
+            id: 9_004,
+            state: "commented",
+            user: { login: requesterOnGitHub.login },
+          },
+          sender: { ...requesterOnGitHub, type: "User" },
+        }),
+      );
+
+      const comments = toolCallsOf("github_commentOnPullRequest", delivery).map(
+        (call) => call.input as { asks_requester?: boolean } | undefined,
+      );
+      expect(comments).not.toHaveLength(0);
+      expect(comments.some((input) => input?.asks_requester === true)).toBe(
+        asks,
+      );
+    },
+  );
+
   test("when the person who asked reviews the PR, address them once as you", async ({
     run,
   }) => {
@@ -195,7 +292,7 @@ describe("Watches", () => {
     expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
   });
 
-  test("when a bot comments on the PR of a child Thread, the Thread ends with noReply", async ({
+  test("when a bot comments on the PR of a child Thread, the Thread tells its parent in one line that nothing changed", async ({
     run,
   }) => {
     const thread = await startPullRequestThread(run, [
@@ -222,8 +319,26 @@ describe("Watches", () => {
       }),
     );
 
-    expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
-    expect(completedToolCalls("reply", delivery)).toEqual([]);
+    // An agent's Turn in a Thread cannot end with `noReply`. Its final text
+    // is its reply to the parent.
+    expect(toolCallsOf("noReply", delivery)).toEqual([]);
+    expect(delivery.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.toolCalls.map((call) => call.name)).not.toContain(
+      "github_updatePullRequest",
+    );
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The last reply says the bot comment needs no change or no action.",
+        ],
+        fail: [
+          "Do not claim to have changed code, pushed a commit, or replied on the pull request.",
+          "Do not write more than two sentences.",
+        ],
+      }),
+    );
   });
 
   test.for([
@@ -266,8 +381,8 @@ describe("Watches", () => {
       )) {
         expect(JSON.stringify(call)).not.toMatch(/\bprintenv\b|\benv\b/);
       }
-      for (const call of completedToolCalls("reply", delivery)) {
-        expect(JSON.stringify(call)).not.toMatch(/AI_GATEWAY|_TOKEN|_SECRET/);
+      for (const reply of delivery.replies) {
+        expect(reply.text).not.toMatch(/AI_GATEWAY|_TOKEN|_SECRET/);
       }
     },
   );
@@ -292,7 +407,14 @@ describe("Watches", () => {
       }),
     );
 
-    // A child's final response is not sent to the parent. Only `reply` is.
-    expect(completedToolCalls("reply", delivery)).toHaveLength(1);
+    // A child's final text is its reply to the parent.
+    expect(delivery.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [`The last reply says octo-reviewer approved ${pullRequest}.`],
+        fail: ["Do not claim the pull request was merged."],
+      }),
+    );
   });
 });

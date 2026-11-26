@@ -3,6 +3,7 @@ import {
   mockDashboardApis,
   resetDashboardMockState,
   startDashboardE2eServer,
+  releaseHeldRequests,
   trackOpenRequests,
   type DashboardE2eServer,
 } from "./harness";
@@ -46,14 +47,13 @@ export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
     try {
       // A test that already failed can stop with any request open.
       if (testInfo.status === testInfo.expectedStatus) {
+        await releaseHeldRequests(page);
         await requests.expectNoneOpen();
       }
     } finally {
-      // The check lets a background read stay open, so one can still be in
-      // a route handler here. Closing the page then disposes its response,
-      // and the handler throws. Handler errors during the test still fail
-      // it.
-      await page.unrouteAll({ behavior: "ignoreErrors" });
+      // The check lets a background read stay open, so a handler can still
+      // hold its route here. Remove the handlers before the page closes.
+      await page.unrouteAll();
     }
   },
 });

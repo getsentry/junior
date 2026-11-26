@@ -1,4 +1,5 @@
-import { eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   purgeConversation,
@@ -14,7 +15,6 @@ import {
   juniorConversationEvents,
   juniorConversationEmbeddings,
   juniorConversations,
-  juniorDestinations,
   juniorAgentBindings,
   juniorAutomations,
   juniorIdentities,
@@ -22,8 +22,10 @@ import {
   juniorInboxItemConversations,
   juniorInboxItems,
   juniorUsers,
+  juniorTurnInbox,
+  juniorTurnOutbox,
+  juniorTurns,
 } from "@/db/schema";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { storeConversationMetadataFixture } from "../../fixtures/conversation-metadata";
 import {
@@ -71,16 +73,70 @@ async function readConversation(
   return rows[0]!;
 }
 
+/** Set the visibility of the roots at a Destination, for test setup. */
 async function setVisibility(
   executor: JuniorSqlDatabase,
   destinationId: string,
-  visibility: JuniorDestinationVisibility,
+  visibility: "public" | "private",
 ): Promise<void> {
   await executor
     .db()
-    .update(juniorDestinations)
+    .update(juniorConversations)
     .set({ visibility })
-    .where(eq(juniorDestinations.id, destinationId));
+    .where(
+      and(
+        eq(juniorConversations.destinationId, destinationId),
+        isNull(juniorConversations.parentConversationId),
+      ),
+    );
+}
+
+/** Add a Turn that took one input, as the Turn engine writes them. */
+async function seedTurn(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<string> {
+  await executor
+    .db()
+    .insert(juniorIdentities)
+    .values({
+      createdAt: new Date(BASE_MS),
+      id: "identity:turn-actor",
+      kind: "user",
+      provider: "slack",
+      providerSubjectId: "U-turn",
+      providerTenantId: "T1",
+      updatedAt: new Date(BASE_MS),
+    })
+    .onConflictDoNothing();
+  const turnId = randomUUID();
+  await executor.db().insert(juniorTurns).values({
+    id: turnId,
+    conversationId,
+    state: "queued",
+    priority: 0,
+  });
+  await executor
+    .db()
+    .insert(juniorTurnInbox)
+    .values({
+      id: randomUUID(),
+      conversationId,
+      actorIdentityId: "identity:turn-actor",
+      groupKey: "group:turn-actor",
+      source: {
+        kind: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        visibility: "public",
+      },
+      destination: null,
+      payload: { text: "private input" },
+      idempotencyKey: `slack-event:${conversationId}`,
+      turnId,
+      sentAt: new Date(BASE_MS),
+    });
+  return turnId;
 }
 
 describe("retention purge job", () => {
@@ -372,6 +428,23 @@ describe("retention purge job", () => {
       parentConversationId: "child",
       lastActivityAtMs: BASE_MS,
     });
+    const childTurnId = await seedTurn(fixture.sql, "child");
+    await fixture.sql
+      .db()
+      .insert(juniorTurnOutbox)
+      .values({
+        id: randomUUID(),
+        conversationId: "child",
+        turnId: childTurnId,
+        eventSeq: 0,
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        state: "pending",
+      });
+
     // The child is never a purge candidate on its own: it rides the root.
     const result = await runRetentionPurge(fixture.sql, {
       nowMs: BASE_MS + 30 * DAY_MS,
@@ -387,6 +460,15 @@ describe("retention purge job", () => {
     expect(await eventCount(fixture.sql, "root")).toBe(0);
     expect(await eventCount(fixture.sql, "child")).toBe(0);
     expect(await eventCount(fixture.sql, "grandchild")).toBe(0);
+    await expect(
+      fixture.sql.db().select().from(juniorTurnOutbox),
+    ).resolves.toEqual([]);
+    await expect(
+      fixture.sql.db().select().from(juniorTurnInbox),
+    ).resolves.toEqual([]);
+    await expect(fixture.sql.db().select().from(juniorTurns)).resolves.toEqual(
+      [],
+    );
   });
 
   it("uses the freshest activity in the tree for selection and destructive recheck", async () => {
@@ -504,6 +586,29 @@ describe("retention purge job", () => {
 
     expect(result.purged).toBe(1);
     expect(await eventCount(fixture.sql, "remaining-child")).toBe(0);
+  });
+
+  it("selects and purges a tree whose remaining content is only a Turn input", async () => {
+    const dest = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "turn-root",
+      destinationId: dest,
+      lastActivityAtMs: BASE_MS,
+      withContent: false,
+    });
+    await seedTurn(fixture.sql, "turn-root");
+
+    const result = await runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 91 * DAY_MS,
+    });
+
+    expect(result.purged).toBe(1);
+    await expect(
+      fixture.sql.db().select().from(juniorTurnInbox),
+    ).resolves.toEqual([]);
+    await expect(fixture.sql.db().select().from(juniorTurns)).resolves.toEqual(
+      [],
+    );
   });
 
   it("selects and purges a tree whose remaining content is only an agent binding", async () => {

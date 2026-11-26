@@ -6,6 +6,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
   actorProfileReportSchema,
+  conversationDetailReportSchema,
   conversationFeedSchema,
   leadSchema,
   spaceSchema,
@@ -104,6 +105,24 @@ describe("Lead API", () => {
       await readLeadId(ana, await createSpace(ana, "Mobile app")),
     ).not.toBe(leadId);
 
+    // A rename renames the Lead too.
+    const renamed = await ana.request(
+      `http://localhost/api/spaces/${encodeURIComponent(spaceId)}`,
+      {
+        body: JSON.stringify({ name: "Billing cutover" }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      },
+    );
+    expect(renamed.status).toBe(200);
+    const leadDetail = await ana.request(
+      `http://localhost/api/conversations/${encodeURIComponent(leadId)}`,
+    );
+    expect(
+      conversationDetailReportSchema.parse(await leadDetail.json())
+        .displayTitle,
+    ).toBe("Billing cutover");
+
     const sent = await postMessage(ana, leadId, "lead-api-ana-message");
     expect(sent.status).toBe(200);
     expect(
@@ -164,7 +183,7 @@ describe("Lead API", () => {
       identifier: "slack:C1:1.0",
       label: "Conversation Checkout latency",
       namespace: "junior",
-      resourceType: "conversation",
+      resourceType: "agent",
     });
     // A Watch on another kind of resource is not a watched Conversation.
     await createWatch({

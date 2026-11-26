@@ -25,6 +25,7 @@ import {
   setConversationSpaceResponseSchema,
 } from "../schema/conversation-space";
 import {
+  conversationLeaveResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
@@ -39,7 +40,7 @@ import { pinConversation } from "./pin";
 import { renameConversation } from "./rename";
 import { setConversationSpaceForViewer } from "./space";
 import { stopConversationTurnForViewer } from "./stop";
-import { setConversationSubscription } from "./subscription";
+import { leaveConversation, setConversationSubscription } from "./subscription";
 
 // The route param, which MCP takes as an input field.
 const conversationIdInput = { conversationId: mcpConversationIdSchema };
@@ -133,6 +134,20 @@ export const setConversationAutoArchiveOperation = defineApiOperation({
     setConversationAutoArchive(viewer, conversationId, autoArchive),
 });
 
+/** The viewer leaves a Conversation. Nobody removes another person. */
+export const leaveConversationOperation = defineApiOperation({
+  name: "leaveConversation",
+  title: "Leave conversation",
+  description:
+    "Leave one of your conversations. It leaves your feed and clears your pin. In a private conversation you also lose access, and only another participant can invite you back. A public one stays readable, and you can subscribe again. When nobody else is subscribed, it archives the conversation for everyone.",
+  scope: "conversations:manage",
+  input: z.object(conversationIdInput).strict(),
+  output: conversationLeaveResponseSchema,
+  annotations: { ...writeAnnotations, destructiveHint: true },
+  run: (viewer, { conversationId }) =>
+    leaveConversation(viewer, conversationId),
+});
+
 /** Subscribe or unsubscribe the viewer. It never changes another person. */
 export const setConversationSubscriptionOperation = defineApiOperation({
   name: "setConversationSubscription",
@@ -181,6 +196,7 @@ export const conversationOperations = [
   cancelQueuedMessagesOperation,
   archiveConversationOperation,
   archiveDoneConversationsOperation,
+  leaveConversationOperation,
   pinConversationOperation,
   renameConversationOperation,
   setConversationAutoArchiveOperation,

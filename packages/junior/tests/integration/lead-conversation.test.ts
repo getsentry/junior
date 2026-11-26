@@ -39,7 +39,6 @@ import { createWatch } from "@/chat/events/store";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorDestinations,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -79,6 +78,7 @@ async function spaceLead(member: User, name = "Deploys") {
   const space = await createSpace({
     creatorUserId: member.id,
     description: null,
+    visibility: "public",
     name,
   });
   return { lead: await getSpaceLead({ member, space }), space };
@@ -115,6 +115,7 @@ describe("Lead", () => {
     const space = await createSpace({
       creatorUserId: ana.id,
       description: null,
+      visibility: "public",
       name: "Billing migration",
     });
 
@@ -169,7 +170,7 @@ describe("Lead", () => {
     expect(
       await getConversationStore().get({ conversationId: started }),
     ).toMatchObject({
-      kind: "root",
+      kind: "thread",
       spaceId: space.id,
       title: "Image cleanup",
       visibility: "public",
@@ -198,6 +199,55 @@ describe("Lead", () => {
       conversationId: started,
     });
     expect(root.messages).toEqual([{ author: "user", text: LEAD_TASK }]);
+  });
+
+  it("keeps the Lead and roots of a private Space private, and finds them only inside it", async () => {
+    const runner = readRunsAgentRunner();
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const ana = await signedInViewer("lead-private@example.com");
+    const space = await createSpace({
+      creatorUserId: ana.id,
+      description: null,
+      visibility: "private",
+      name: "Payroll audit",
+    });
+    const lead = await getSpaceLead({ member: ana, space });
+    expect(lead.visibility).toBe("private");
+
+    const { conversation_id: started } = (await startTool({
+      leadConversationId: lead.conversationId,
+      person: ana,
+      queue: harness.queue,
+      turnId: "lead-private-turn",
+    }).execute!(
+      { task: "Check the payroll export.", title: "Payroll export" },
+      { toolCallId: "call-private" },
+    )) as { conversation_id: string };
+    expect(
+      await getConversationStore().get({ conversationId: started }),
+    ).toMatchObject({ spaceId: space.id, visibility: "private" });
+
+    const outside = (
+      await createAndEnqueueConversation(
+        {
+          actor: webActorFromUser(ana),
+          idempotencyKey: "lead-private-outside",
+          message: "Check the deploy.",
+        },
+        { queue: harness.queue, state: harness.state },
+      )
+    ).conversationId;
+    const search = async (conversationId: string) =>
+      (
+        (await createSearchConversationsTool({
+          conversationId,
+          resolveUserId: async () => ana.id,
+        }).execute!({}, { toolCallId: "call-search" })) as {
+          conversations: { conversation_id: string }[];
+        }
+      ).conversations.map((match) => match.conversation_id);
+    expect(await search(lead.conversationId)).toContain(started);
+    expect(await search(outside)).not.toContain(started);
   });
 
   it("steers its Space's roots, and outside roots only for a member who takes part", async () => {
@@ -506,14 +556,10 @@ describe("Lead", () => {
 
     // Delivery checks access again and fails closed: once the root is
     // private, no other tree hears it.
-    const [root] = await getDb()
-      .select({ destinationId: juniorConversations.destinationId })
-      .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, started.conversation_id));
     await getDb()
-      .update(juniorDestinations)
+      .update(juniorConversations)
       .set({ visibility: "private" })
-      .where(eq(juniorDestinations.id, root!.destinationId!));
+      .where(eq(juniorConversations.conversationId, started.conversation_id));
     await endTurn("root-turn-4", ["person-message-4"]);
     expect(await heard(lead.conversationId)).toEqual(statuses);
     expect(await heard(boWork.conversationId)).toHaveLength(7);
@@ -552,18 +598,16 @@ describe("Lead", () => {
       },
       { toolCallId: "call-watch-deploy" },
     );
-    // A Watch made before agent updates names the old Event type. It hears
-    // the same update until it expires.
     await createWatch(
       {
         conversationId: lead.conversationId,
-        events: ["conversation.completed"],
+        events: ["agent.update"],
         expiresAtMs: Date.now() + 3_600_000,
         identifier: images,
         intent: "Tell the person how the image cleanup ends.",
         label: "Image cleanup",
         namespace: "junior",
-        resourceType: "conversation",
+        resourceType: "agent",
       },
       { state: harness.state },
     );

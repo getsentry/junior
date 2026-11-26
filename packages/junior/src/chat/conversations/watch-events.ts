@@ -26,16 +26,9 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 export const AGENT_RESOURCE_TYPE = "agent";
 
-// The resource type of these Watches before `agent`. Watches made before
-// the rename still name it.
-const LEGACY_AGENT_RESOURCE_TYPE = "conversation";
-
-/** True when a Watch's resource type names an agent, also by its old name. */
+/** True when a Watch's resource type names an agent. */
 export function isAgentResourceType(resourceType: string): boolean {
-  return (
-    resourceType === AGENT_RESOURCE_TYPE ||
-    resourceType === LEGACY_AGENT_RESOURCE_TYPE
-  );
+  return resourceType === AGENT_RESOURCE_TYPE;
 }
 
 const AGENT_EVENTS = [AGENT_UPDATE_EVENT_TYPE];
@@ -47,15 +40,6 @@ const AGENT_EVENTS = [AGENT_UPDATE_EVENT_TYPE];
 export function starterWatchId(childConversationId: string): string {
   return `starter:${childConversationId}`;
 }
-
-// TODO(dcramer): Remove 30 days after agent updates ship, when every Watch
-// made before them has expired. Those Watches name these Event types.
-const LEGACY_EVENT_TYPES: Record<UpdateKey["type"], string> = {
-  stopped: "conversation.stopped",
-  turn: "conversation.completed",
-  turn_failed: "conversation.failed",
-  waiting: "conversation.waiting",
-};
 
 /** Core catalog entry for the agent updates of a Conversation. */
 export function agentEvents(): EventRegistrationInput {
@@ -101,10 +85,8 @@ export type UpdateKey =
   | { type: "stopped"; stoppedAtMs: number };
 
 /** The Event key of one update, so a retry delivers it once. */
-export function updateEventKey(conversationId: string, key: UpdateKey): string {
-  // The key keeps the legacy resource type, so a retry across the rename
-  // still delivers the update once.
-  const prefix = `${CORE_EVENT_NAMESPACE}:${LEGACY_AGENT_RESOURCE_TYPE}:${conversationId}`;
+function updateEventKey(conversationId: string, key: UpdateKey): string {
+  const prefix = `${CORE_EVENT_NAMESPACE}:${AGENT_RESOURCE_TYPE}:${conversationId}`;
   switch (key.type) {
     case "turn":
     case "turn_failed":
@@ -121,27 +103,20 @@ export type MatchedWatch = { eventType: string; watch: Watch };
 
 async function findUpdateWatches(
   conversationId: string,
-  key: UpdateKey,
   nowMs: number,
   state: StateAdapter | undefined,
 ): Promise<MatchedWatch[]> {
-  const matched = new Map<string, MatchedWatch>();
-  for (const eventType of [
-    AGENT_UPDATE_EVENT_TYPE,
-    LEGACY_EVENT_TYPES[key.type],
-  ]) {
-    // oxlint-disable-next-line no-await-in-loop -- Two index reads; the legacy one goes away with LEGACY_EVENT_TYPES.
-    for (const watch of await findMatchingWatches({
-      eventType,
-      identifier: conversationId,
-      namespace: CORE_EVENT_NAMESPACE,
-      nowMs,
-      state,
-    })) {
-      if (!matched.has(watch.id)) matched.set(watch.id, { eventType, watch });
-    }
-  }
-  return [...matched.values()];
+  const watches = await findMatchingWatches({
+    eventType: AGENT_UPDATE_EVENT_TYPE,
+    identifier: conversationId,
+    namespace: CORE_EVENT_NAMESPACE,
+    nowMs,
+    state,
+  });
+  return watches.map((watch) => ({
+    eventType: AGENT_UPDATE_EVENT_TYPE,
+    watch,
+  }));
 }
 
 /**
@@ -184,7 +159,6 @@ export async function publishAgentUpdate(
     await deliverToStarter({
       actor: options.starter,
       conversationId,
-      eventKey,
       key,
       nowMs,
       queue: options.queue,
@@ -195,7 +169,6 @@ export async function publishAgentUpdate(
   try {
     const watches = await findUpdateWatches(
       conversationId,
-      key,
       nowMs,
       options.state,
     );

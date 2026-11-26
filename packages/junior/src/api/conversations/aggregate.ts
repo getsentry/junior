@@ -78,6 +78,11 @@ export function conversationAggregateColumns(sources?: {
   const conversationCount = sources
     ? sql`COUNT(DISTINCT ${roots.conversationId})`
     : sql`COUNT(*)`;
+  // A root is one of its own tree rows, so with sources only that row reads
+  // the root's failed Turn, once per root instead of once per tree row.
+  const rootRow = sources
+    ? sql`${metrics.conversationId} = ${roots.conversationId} AND `
+    : sql``;
   return {
     active: sql<number>`${conversationCount} FILTER (
       WHERE ${conversationIsActiveSql(roots)}
@@ -92,7 +97,7 @@ export function conversationAggregateColumns(sources?: {
     costUsd: sql<number | null>`SUM(${costValue(metrics)})::double precision`,
     durationMs: sql<number>`COALESCE(SUM(${metrics.durationMs}), 0)::double precision`,
     failed: sql<number>`${conversationCount} FILTER (
-      WHERE ${conversationTurnFailedSql(roots)} AND ${roots.stoppedAt} IS NULL
+      WHERE ${rootRow}${roots.stoppedAt} IS NULL AND ${conversationTurnFailedSql(roots)}
     )::integer`,
     inputTokens: sql<
       number | null

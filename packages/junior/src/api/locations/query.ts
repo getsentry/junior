@@ -41,6 +41,7 @@ import type {
   LocationDirectoryReport,
   LocationSummaryReport,
 } from "../schema/location";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 const RECENT_LIMIT = 25;
 const ACTIVITY_DAYS = 90;
@@ -135,7 +136,7 @@ function publicLocationWhere(locationId: string) {
           eq(juniorDestinations.id, locationId),
           ne(juniorDestinations.provider, "local"),
         ),
-    eq(juniorDestinations.visibility, "public"),
+    isPublicConversation(juniorConversations),
   );
 }
 
@@ -147,6 +148,9 @@ function locationColumns() {
     destinationProvider: juniorDestinations.provider,
     destinationProviderId: juniorDestinations.providerDestinationId,
     destinationVisibility: juniorDestinations.visibility,
+    // A root keeps the visibility it was created with, even after its
+    // Destination changes, so a public Location can hold private roots.
+    rootVisibility: juniorConversations.visibility,
   };
 }
 
@@ -158,6 +162,7 @@ function locationGroupBy() {
     juniorDestinations.provider,
     juniorDestinations.providerDestinationId,
     juniorDestinations.visibility,
+    juniorConversations.visibility,
   ] as const;
 }
 
@@ -171,14 +176,19 @@ type LocationAggregateRow = AggregateRow & {
     | (typeof juniorDestinations.$inferSelect)["visibility"]
     | null;
   firstSeenAt: Date;
+  rootVisibility: (typeof juniorConversations.$inferSelect)["visibility"];
   lastSeenAt: Date;
 };
 
-/** Admit only complete persisted-public destinations as named locations. */
+/**
+ * Admit only public roots at complete persisted-public destinations as named
+ * locations.
+ */
 function locationFromAggregate(
   row: LocationAggregateRow,
 ): LocationSummaryReport | undefined {
   if (
+    row.rootVisibility !== "public" ||
     row.destinationVisibility !== "public" ||
     !row.destinationId ||
     !row.destinationProvider ||
@@ -271,34 +281,26 @@ async function directoryActivityRows(
   )`;
   const select = {
     conversations: sql<number>`COUNT(*)::integer`,
-    visibility: juniorDestinations.visibility,
+    visibility: juniorConversations.visibility,
   };
   const [dayRows, hourRows] = await Promise.all([
     db
       .select({ ...select, date: day })
       .from(juniorConversations)
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
       .where(
         and(topLevelWhere(), gte(juniorConversations.lastActivityAt, start)),
       )
-      .groupBy(day, juniorDestinations.visibility),
+      .groupBy(day, juniorConversations.visibility),
     db
       .select({ ...select, date: hour })
       .from(juniorConversations)
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
       .where(
         and(
           topLevelWhere(),
           gte(juniorConversations.lastActivityAt, hourStart),
         ),
       )
-      .groupBy(hour, juniorDestinations.visibility),
+      .groupBy(hour, juniorConversations.visibility),
   ]);
   return { dayRows, hourRows };
 }

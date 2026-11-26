@@ -45,10 +45,12 @@ const STACK_CONFLICT_STEPS =
 /**
  * Every comment on a pull request gets the same feedback status: a
  * conversation comment, an inline review comment, and a review body. A review
- * sets comment_id only when it has a body.
+ * sets comment_id only when it has a body. A reply that hands the decision
+ * back to the reviewer reaches their Inbox only through the mark
+ * (`pull-request-review-again.ts`).
  */
 const PULL_REQUEST_FEEDBACK =
-  'When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback or answering a question, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".';
+  "When Verified details include comment_id, call github_updatePullRequestFeedback after you act on the comment or reply to it, with the exact repo, pull_request, comment_id, and comment_kind from Verified details. Also mark a comment that you push back on, defer, or answer with a question: a change request asks its reviewer to review again only when each of its comments is marked, so an unmarked comment drops the pull request from their Inbox.";
 
 const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
@@ -129,12 +131,25 @@ export function gitHubPullRequestSubscription(
  * Watch of a draft also gets them. Marking the pull request ready sends the
  * review request. GitHub also asks the code owners then, so a draft with code
  * owners waits for the person who asked for it, unless they said otherwise.
- * A repository's AGENTS.md can also ask that drafts wait for a person.
+ * A repository's AGENTS.md can also ask that drafts wait for a person. A
+ * draft that waits asks only that person to review it on GitHub, and the
+ * Inbox item follows from that request, so the thread gets no message.
  * Each passing suite wakes the Watch, so a suite that leaves the required
  * checks unfinished must stay silent, or every suite posts.
  */
 const DRAFT_CHECKS_RECOVERED_GUIDANCE =
-  "If the pull request is still a draft, call github_getPullRequest and read its `checks`, `code_owners`, and `agents_md`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open inbox item that waits on the person who asked for it: mark it ready with github_updatePullRequest and draft false, when the person who asked for it said to mark it ready, or when `code_owners` is empty and `agents_md` does not ask for draft pull requests or say that a person marks them ready. Otherwise keep it a draft: marking it ready would ask the code owners to review, or break the AGENTS.md rule. Tell the person who asked for it in the originating thread that the checks pass and the draft waits for their review, and name why: the code owners that marking it ready asks, or the AGENTS.md rule. If you already told them for this head commit, stay silent. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
+  "If the pull request is still a draft, call github_getPullRequest and read its `checks`, `code_owners`, and `agents_md`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open inbox item that waits on the person who asked for it: mark it ready with github_updatePullRequest and draft false, when the person who asked for it said to mark it ready, or when `code_owners` is empty and `agents_md` does not ask for draft pull requests or say that a person marks them ready. Otherwise keep it a draft, because marking it ready would ask the code owners to review or break the AGENTS.md rule, and call github_updatePullRequest with request_review true, so GitHub asks the person who asked for it to review it. Their Inbox then asks them to review it and mark it ready, so stay silent in the thread. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
+
+/**
+ * The requester's approval is the review that a held draft waits for. Marking
+ * it ready then asks the code owners after the requester has looked. A draft
+ * that the requester asked to keep, or that AGENTS.md leaves for a person to
+ * mark ready, stays a draft, and its Inbox item asks the requester to mark it
+ * ready (`webhooks/pull-request-action.ts`). Whether Junior held the draft, or the requester
+ * asked to keep it, is in the Conversation, so the agent decides.
+ */
+const DRAFT_APPROVED_GUIDANCE =
+  "If the pull request is still a draft and `sender_login` in Verified details is `opener_username`, the person who asked for it approved it. Call github_getPullRequest and read its `agents_md`. Mark it ready with github_updatePullRequest and draft false, so GitHub asks its code owners now that this person has looked. Keep it a draft when this person asked to keep it a draft, or when `agents_md` says that a person marks drafts ready: their Inbox then asks them to mark it ready. Stay silent in the thread.";
 
 /**
  * State changes that need no action but that a later Turn must know, so that
@@ -163,7 +178,12 @@ export function gitHubPullRequestCreateWatch(
   quietEvents?: GitHubPullRequestEvent[];
 } {
   const quietEvents = [
-    ...QUIET_PULL_REQUEST_EVENTS,
+    // The requester's approval of a draft can mark it ready, so it starts a
+    // Turn.
+    ...QUIET_PULL_REQUEST_EVENTS.filter(
+      (eventType) =>
+        !pullRequest.draft || eventType !== "pull_request.review.approved",
+    ),
     // A draft can leave draft state without Junior, such as when a person
     // marks it ready. A ready pull request has no such change to learn.
     ...(pullRequest.draft ? ["pull_request.ready_for_review" as const] : []),
@@ -176,7 +196,10 @@ export function gitHubPullRequestCreateWatch(
         // request ready to merge even when the app config omits this event.
         "pull_request.merge_conflict" as const,
         ...(pullRequest.draft
-          ? ["pull_request.checks.recovered" as const]
+          ? [
+              "pull_request.checks.recovered" as const,
+              "pull_request.review.approved" as const,
+            ]
           : []),
         ...quietEvents,
       ]),
@@ -186,6 +209,7 @@ export function gitHubPullRequestCreateWatch(
       ? {
           guidance: {
             "pull_request.checks.recovered": DRAFT_CHECKS_RECOVERED_GUIDANCE,
+            "pull_request.review.approved": DRAFT_APPROVED_GUIDANCE,
           },
         }
       : undefined),

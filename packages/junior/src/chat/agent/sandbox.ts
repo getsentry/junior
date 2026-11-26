@@ -7,7 +7,6 @@
  */
 import type { FileUpload } from "chat";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
-import { isUserActor, type Actor } from "@/chat/actor";
 import { withArtifactNote, type ArtifactSync } from "@/chat/artifacts/sync";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
@@ -24,7 +23,7 @@ import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import type { Workspace } from "@/chat/workspaces/types";
 import { writeSandboxGeneratedFiles } from "@/chat/sandbox/generated-files";
 import type { GeneratedFileRef } from "@/chat/sandbox/file-uploads";
@@ -42,12 +41,9 @@ export interface AgentSandboxOptions {
   conversationId?: string;
   credentialEgress?: CredentialContext | undefined;
   credentialAuditSource?: CredentialAuditSource;
-  actor?: Actor | undefined;
   /** Saves and restores the Conversation's artifacts. Unset without attachment storage. */
   artifacts?: ArtifactSync | undefined;
   locationConfiguration?: LocationConfigurationService | undefined;
-  configurationValues: Record<string, unknown>;
-  getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;
   prepareWorkspace?(
     workspace: SandboxWorkspace,
@@ -201,18 +197,8 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
           params.toolName === "bash" ? bashCommand(params.input) : undefined;
         if (command) {
           const result = await maybeExecuteJrRpcCustomCommand(command, {
-            activeSkill: options.getActiveSkill(),
             locationConfiguration: options.locationConfiguration,
-            actorId: isUserActor(options.actor)
-              ? options.actor.userId
-              : undefined,
-            onConfigurationValueChanged: (key, value) => {
-              if (value === undefined) {
-                delete options.configurationValues[key];
-                return;
-              }
-              options.configurationValues[key] = value;
-            },
+            conversationId: options.conversationId,
           });
           if (result.handled) {
             return formatSandboxCommandResult(result.result);

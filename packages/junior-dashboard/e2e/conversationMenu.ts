@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { findMockConversationDetail, mockFeedPage } from "./mock-reports";
 
 /**
  * Find a row of the open conversation `⋯` menu: a menu item, or a button of
@@ -30,23 +31,23 @@ export async function viewAsParticipant(page: Page) {
     (url) => /^\/api\/conversations(?:\/[^/]+)?$/.test(url.pathname),
     async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
-      const response = await route.fetch();
-      if (response.status() !== 200) return route.fulfill({ response });
-      const body = await response.json();
-      const json = Array.isArray(body.conversations)
-        ? {
-            ...body,
-            conversations: body.conversations.map(
-              (conversation: Record<string, unknown>) => ({
-                ...conversation,
-                isParticipant: true,
-              }),
-            ),
-          }
-        : "isParticipant" in body
-          ? { ...body, isParticipant: true }
-          : body;
-      await route.fulfill({ json, response });
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/conversations") {
+        const feed = await mockFeedPage(route);
+        return route.fulfill({
+          json: {
+            ...feed,
+            conversations: feed.conversations.map((conversation) => ({
+              ...conversation,
+              isParticipant: true,
+            })),
+          },
+        });
+      }
+      const detail = await findMockConversationDetail(route);
+      // Not a Conversation, such as `/api/conversations/stats`.
+      if (!detail) return route.fallback();
+      await route.fulfill({ json: { ...detail, isParticipant: true } });
     },
   );
 }

@@ -2,7 +2,7 @@
 import { blockRunAutomation } from "@/chat/automations/block-run";
 import {
   isPersonInput,
-  isTopLevelKind,
+  isTopLevel,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/chat/agent-invocations/parent-message";
 import { parentResultActor } from "@/chat/agent-invocations/parent-result";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
+import { isChildAgentEvent } from "@/chat/agent-invocations/child-input";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -229,16 +230,19 @@ export function createConversationTurnWorker(
     let fromParent =
       resolved.kind === "mailbox" &&
       resolved.batch.every((entry) => readParentMessage(entry.message));
+    let fromChildAgent = false;
     let authorIdentityId: string | undefined;
     let webInputMessages: ConversationMessage[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
     });
-    const kind = storedConversation?.kind ?? "root";
+    const kind = storedConversation?.kind ?? "thread";
     // The parent's task can carry the root's private content, so a child
     // with missing visibility runs as private.
-    const visibility = isTopLevelKind(kind)
+    const visibility = isTopLevel({
+      parentConversationId: storedConversation?.parentConversationId,
+    })
       ? storedConversation?.visibility
       : (storedConversation?.visibility ?? "private");
     const mailboxDestination =
@@ -259,6 +263,7 @@ export function createConversationTurnWorker(
         resolved.batch,
         fromParent,
       ));
+      fromChildAgent = isChildAgentEvent(eventMeta);
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
       );
@@ -293,6 +298,7 @@ export function createConversationTurnWorker(
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
       fromParent = isParentMessageAuthor(userMessage.author);
+      fromChildAgent = isChildAgentEvent(userMessage.meta);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -382,6 +388,9 @@ export function createConversationTurnWorker(
     const postsToProvider = Boolean(conversationLocation) && isEventTurn;
     const behavior = turnBehavior({
       kind,
+      hasParent: !isTopLevel({
+        parentConversationId: storedConversation?.parentConversationId,
+      }),
       personInput: isPersonInput(source.kind),
     });
     const webActor = actor.platform === "web" ? actor : undefined;
@@ -607,7 +616,9 @@ export function createConversationTurnWorker(
             return await completeCancelledTurn();
           }
           const childTurn = await childAgentTurnOptions({
+            actor,
             conversationId: context.conversationId,
+            fromChildAgent,
             fromParent,
           });
           const history = await loadConversationProjection({

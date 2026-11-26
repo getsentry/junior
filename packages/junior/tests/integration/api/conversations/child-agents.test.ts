@@ -222,7 +222,7 @@ describe("conversation child agents API", () => {
     ).toEqual([
       {
         conversationId: slackParentConversationId,
-        kind: "root",
+        kind: "thread",
         label: root.displayTitle,
       },
       {
@@ -254,7 +254,7 @@ describe("conversation child agents API", () => {
       conversationDetailReportSchema.parse(await renamed.json()).agentTree?.[0],
     ).toEqual({
       conversationId: slackParentConversationId,
-      kind: "root",
+      kind: "thread",
       label: "Renamed plan",
     });
   });

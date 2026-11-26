@@ -296,6 +296,57 @@ test("allows user-level dashboard E2E specs and page script in shared helpers", 
   );
 });
 
+const DASHBOARD_HELPER_PATH = "packages/junior-dashboard/e2e/harness.ts";
+
+/** Check one dashboard E2E rule on a spec and a helper with the same text. */
+function dashboardE2eErrors(ruleId, contents) {
+  return checkAgentTestArchitecture(
+    [
+      integrationTest(contents, DASHBOARD_E2E_PATH),
+      integrationTest(contents, DASHBOARD_HELPER_PATH),
+    ],
+    {},
+    DASHBOARD_SPEC_RULES.filter((rule) => rule.id === ruleId),
+  ).map((error) => error.split(":")[0]);
+}
+
+test("rejects toPass retries and network idle waits in dashboard E2E specs and helpers", () => {
+  assert.deepEqual(
+    dashboardE2eErrors(
+      "dashboard-e2e-retry-loop",
+      "await expect(async () => { await item.hover(); }).toPass();",
+    ),
+    [DASHBOARD_E2E_PATH, DASHBOARD_HELPER_PATH],
+  );
+  assert.deepEqual(
+    dashboardE2eErrors(
+      "dashboard-e2e-network-idle",
+      'await page.goto(url, { waitUntil: "networkidle" });',
+    ),
+    [DASHBOARD_E2E_PATH, DASHBOARD_HELPER_PATH],
+  );
+});
+
+test("rejects forwarded routes in dashboard E2E specs and helpers", () => {
+  assert.deepEqual(
+    dashboardE2eErrors(
+      "dashboard-e2e-route-forward",
+      "const response = await route.fetch();",
+    ),
+    [DASHBOARD_E2E_PATH, DASHBOARD_HELPER_PATH],
+  );
+});
+
+test("rejects ignored route handler errors in dashboard E2E specs and helpers", () => {
+  assert.deepEqual(
+    dashboardE2eErrors(
+      "dashboard-e2e-ignore-route-errors",
+      'await page.unrouteAll({ behavior: "ignoreErrors" });',
+    ),
+    [DASHBOARD_E2E_PATH, DASHBOARD_HELPER_PATH],
+  );
+});
+
 const EVAL_PATH = "packages/junior-evals/evals/conversation/new.eval.ts";
 
 test("rejects agent test contract violations above the baseline", () => {

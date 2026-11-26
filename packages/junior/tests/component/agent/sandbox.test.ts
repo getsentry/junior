@@ -49,8 +49,6 @@ function options(
   return {
     skills: [],
     traceContext: {},
-    configurationValues: {},
-    getActiveSkill: () => null,
     prepareSandbox: vi.fn(),
     onSandboxRefChanged: vi.fn(),
     ...overrides,

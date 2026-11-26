@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { mobile, screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { holdTouch, rightClickCancelled } from "./browserMenu";
+import { mockFeedPage } from "../mock-reports";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -20,19 +21,16 @@ test.describe("new UI", { tag: "@new" }, () => {
       (url) => url.pathname === "/api/conversations",
       async (route) => {
         if (route.request().method() !== "GET") return route.fallback();
-        const response = await route.fetch().catch(() => undefined);
-        if (!response) return route.abort().catch(() => {});
-        const body = await response.json();
-        const conversations = body.conversations?.map(
-          (conversation: Record<string, unknown>) =>
-            conversation["displayTitle"] === TITLE
-              ? {
-                  ...conversation,
-                  summary: `Follow [the runbook](${RUNBOOK}) and [the Thread](${thread}).`,
-                }
-              : conversation,
+        const body = await mockFeedPage(route);
+        const conversations = body.conversations.map((conversation) =>
+          conversation.displayTitle === TITLE
+            ? {
+                ...conversation,
+                summary: `Follow [the runbook](${RUNBOOK}) and [the Thread](${thread}).`,
+              }
+            : conversation,
         );
-        await route.fulfill({ json: { ...body, conversations }, response });
+        await route.fulfill({ json: { ...body, conversations } });
       },
     );
   }
