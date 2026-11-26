@@ -1,15 +1,11 @@
 import { HTTPException } from "hono/http-exception";
 import * as z from "zod";
 import { setConversationSpaceForViewer } from "@/api/conversations/space";
+import { SPACES_TOOL_SOURCE } from "@/chat/spaces/tool-source";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-
-const SPACES_TOOL_SOURCE = {
-  id: "spaces",
-  description: "Move a conversation into, out of, or between Spaces.",
-} as const;
 
 export const moveConversationToSpaceToolDefinition = zodToolDefinition({
   exposure: "deferred",

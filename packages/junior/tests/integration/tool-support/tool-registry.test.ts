@@ -411,6 +411,7 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
+        "listSpaces",
         "listWatches",
         "messageAgent",
         "moveConversationToSpace",

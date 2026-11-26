@@ -30,6 +30,7 @@ import type {
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getSpaceLead } from "@/chat/lead/conversation";
+import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import {
@@ -374,7 +375,7 @@ describe("Spaces API", () => {
     ).toEqual([inSpace]);
   });
 
-  it("moves a Conversation into, between, and out of Spaces with the agent tool", async () => {
+  it("finds and moves Conversations into, between, and out of Spaces with the agent tools", async () => {
     const ana = apiFor("spaces-tool-ana@example.com");
     const bo = apiFor("spaces-tool-bo@example.com");
     const anaUser = await signedInViewer("spaces-tool-ana@example.com");
@@ -455,6 +456,34 @@ describe("Spaces API", () => {
     await expect(
       move({ conversation_id: conversationId, space: null }),
     ).rejects.toThrow("A conversation in a private Space stays in it.");
+
+    // The person finds every public Space, and a private one only from a
+    // conversation in it.
+    const list = (input: { membership?: "all" | "member" }, spaceId?: string) =>
+      createListSpacesTool({
+        resolveActorIdentity: async () => ({
+          identity: { id: `identity:${anaUser.id}` } as Identity,
+          user: anaUser,
+        }),
+        spaceId,
+      }).execute?.(input, {}) as Promise<{
+        spaces: { id: string; member: boolean }[];
+      }>;
+    expect((await list({})).spaces).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: first.id, member: true }),
+        expect.objectContaining({ id: others.id, member: false }),
+      ]),
+    );
+    expect((await list({})).spaces.map((space) => space.id)).not.toContain(
+      hidden.id,
+    );
+    expect(
+      (await list({ membership: "member" })).spaces.map((space) => space.id),
+    ).not.toContain(others.id);
+    expect(
+      (await list({}, hidden.id)).spaces.map((space) => space.id),
+    ).toContain(hidden.id);
   });
 
   it("keeps a private Space and its Conversations with its members", async () => {

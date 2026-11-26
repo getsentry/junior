@@ -127,4 +127,30 @@ describe("Lead", () => {
       }),
     );
   });
+
+  // Space names are not unique, so the move takes an ID. The case measures
+  // whether the Lead finds the named Space, sees that the person is not a
+  // member, and moves nothing.
+  test("when a person names a Space without a link, their Lead finds it and moves nothing into a Space they are not in", async ({
+    agent,
+  }) => {
+    const { createOtherSpace, run } = await agent();
+    await createOtherSpace("Payments platform");
+    await run(webMessage(CRON_WORK));
+
+    const conversation = await run(
+      webMessage(
+        "move the billing cron migration I started earlier into the payments platform space",
+        { lead: true },
+      ),
+    );
+
+    expect(
+      completedToolCalls("listSpaces", conversation).length,
+    ).toBeGreaterThan(0);
+    expect(completedToolCalls("moveConversationToSpace", conversation)).toEqual(
+      [],
+    );
+    expect(toolCallsOf("startConversation", conversation)).toEqual([]);
+  });
 });
