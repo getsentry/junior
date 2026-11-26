@@ -304,4 +304,32 @@ describe("Guardian action review", () => {
       guardianPrompt({ ...proposal, rootConversation: empty }),
     ).not.toContain("root_user_instructions");
   });
+
+  it("reads a member's concern as a request only for a Lead's startAgent", () => {
+    const withRoot: ToolActionProposal = {
+      ...proposal,
+      rootConversation: {
+        messages: [
+          { author: "user", text: "I'm worried the export is broken" },
+        ],
+        truncated: false,
+      },
+    };
+    const start = {
+      ...withRoot,
+      tool: { description: "Start a child agent.", name: "startAgent" },
+    };
+    const leadRule = "This action is startAgent in a Space's Lead";
+
+    expect(
+      guardianPrompt({ ...start, context: { ...start.context, lead: true } }),
+    ).toContain(leadRule);
+    expect(guardianPrompt(start)).not.toContain(leadRule);
+    expect(
+      guardianPrompt({
+        ...withRoot,
+        context: { ...withRoot.context, lead: true },
+      }),
+    ).not.toContain(leadRule);
+  });
 });

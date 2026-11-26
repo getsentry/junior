@@ -51,6 +51,11 @@ const RUN_RULES = [
   "The evidence in the planned action repeats messages without authors, in order with the tool calls and results. Use it for the order of events. Take the author of a message only from this section.",
 ].join("\n");
 
+// A Space's Lead turns what its members bring to it into work, so a
+// member's concern is a request for the Lead's start. Core sets `lead`.
+const LEAD_START_RULE =
+  "This action is startAgent in a Space's Lead, whose job is to turn what the Space's members bring to it into work. When the user tells the Lead about a problem, a worry, or something they do not understand, they ask it to deal with that, also when they put it as a concern or a question. That backs a task that investigates it and delivers the conventional result for review, such as an answer, or a pull request with a fix. It does not back effects beyond that, such as posts or messages to other people, merges, deletions, or changes to resources outside the fix.";
+
 // Rules for an action that a Code Mode script made. The script is agent
 // output, so it can show where data came from but cannot authorize.
 const SCRIPT_RULES = [
@@ -109,6 +114,9 @@ export function guardianPrompt(proposal: ToolActionProposal): string {
     ...(showRoot
       ? [
           RUN_RULES,
+          ...(action.context.lead && action.tool.name === "startAgent"
+            ? [LEAD_START_RULE]
+            : []),
           rootConversationSection(
             rootConversation,
             // A new key for each request, so no earlier text can know it.
