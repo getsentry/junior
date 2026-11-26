@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "../components/ui/button";
+import { cn } from "../styles";
 import {
   Tooltip,
   TooltipContent,
@@ -48,6 +49,24 @@ export function RowDismissButton(props: {
         {props.look === "icon" ? `${label}. ${props.note}` : props.note}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * A Dismiss note as text, for where tooltips are off
+ * (`TOOLTIP_MEDIA_QUERY`), such as on a phone. It hides where the tooltip
+ * shows it.
+ */
+export function DismissNote(props: { className?: string; note: string }) {
+  return (
+    <p
+      className={cn(
+        "m-0 text-xs text-dashboard-text-muted [@media(min-width:48rem)_and_(hover:hover)_and_(pointer:fine)]:hidden",
+        props.className,
+      )}
+    >
+      {props.note}
+    </p>
   );
 }
 

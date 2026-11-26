@@ -14,7 +14,7 @@ import type { Conversation } from "../types";
 import { INBOX_STACK_CLASS } from "./inboxRowStyles";
 import { onLinkOpen, openOnClick, useOpenPath } from "./rowClick";
 import { itemNeedsViewer, type InboxBundle } from "./inboxItemFormat";
-import { RowDismissButton } from "./RowDismissButton";
+import { DismissNote, RowDismissButton } from "./RowDismissButton";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 
@@ -130,6 +130,11 @@ export function InboxStack(props: {
           <span className="sr-only"> items</span>
         </span>
       </div>
+      {/* Where tooltips are off, the stack Dismiss's note shows under the
+          header. */}
+      {props.onDismiss && props.dismissNote ? (
+        <DismissNote className="pl-2.5" note={props.dismissNote} />
+      ) : null}
       <ul
         className={cn(
           // An open row stays inside the border.
