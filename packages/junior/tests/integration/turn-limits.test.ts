@@ -1,9 +1,11 @@
+import { eq, sql } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/conversation-events/lock";
 import { historyItemFromPiMessage } from "@/core/history/items";
 import { appendAgentHistory } from "@/core/history/write";
+import { juniorTurns } from "@/db/schema";
 import { turnTools } from "@/turn-steps/tools";
 import { setModelReplies } from "../fixtures/ai-emulator";
 import { useConfig } from "../fixtures/config";
@@ -63,6 +65,47 @@ describe("core Turn limits", () => {
       }),
     );
     expect(history).toContainEqual(wrapUpResult("call-2"));
+    expect(history.at(-1)).toEqual(storedReply(reply));
+  });
+
+  it("does not count the results it writes for an earlier Turn's pending calls", async () => {
+    useConfig({ limits: { maxToolCallsPerTurn: 1 } });
+    const harness = await startHarness();
+    const reply = createAssistantMessage({ type: "text", text: "It is noon." });
+    await setModelReplies([
+      createAssistantMessage({
+        type: "toolCalls",
+        calls: [
+          { name: "systemTime", arguments: { timezone: "UTC" }, id: "call-1" },
+          { name: "systemTime", arguments: { timezone: "UTC" }, id: "call-2" },
+        ],
+      }),
+      timeCall("call-3"),
+      reply,
+    ]);
+    const first = await harness.send({ text: "What time is it?" });
+    await harness.runStep();
+    // The Turn fails with its two tool calls pending, and a new Turn starts.
+    await harness.engineCtx.executor
+      .db()
+      .update(juniorTurns)
+      .set({ state: "failed", endedAt: sql`now()` })
+      .where(eq(juniorTurns.id, first.turnId));
+    const { turnId } = await harness.send({ text: "And now?" });
+
+    await harness.runUntilIdle();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    const history = await harness.history();
+    expect(history).toContainEqual(
+      expect.objectContaining({
+        role: "toolResult",
+        toolCallId: "call-3",
+        isError: false,
+      }),
+    );
     expect(history.at(-1)).toEqual(storedReply(reply));
   });
 

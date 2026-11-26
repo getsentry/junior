@@ -36,14 +36,15 @@ export async function checkTurnLimits(
   calls: ToolCall[],
 ): Promise<Map<string, ToolResult> | undefined> {
   const history = await loadTurnAgentHistory(ctx, turnId);
+  const replies = history.filter((message) => message.role === "assistant");
+  // The tool calls of the Turn's own model replies, this batch's included:
+  // its reply is the Turn's latest. Results that the Turn wrote for an
+  // earlier Turn's pending calls are not its calls, so they do not count.
+  const toolCallCount = replies
+    .flatMap((reply) => reply.content)
+    .filter((part) => part.type === "toolCall").length;
   const results = history.filter((message) => message.role === "toolResult");
-  const toolCallCount = results.length + calls.length;
-  const costUsd =
-    agentTurnCostUsd(
-      extractGenAiUsageSummary(
-        ...history.filter((message) => message.role === "assistant"),
-      ),
-    ) ?? 0;
+  const costUsd = agentTurnCostUsd(extractGenAiUsageSummary(...replies)) ?? 0;
   const overBudget = costUsd >= botConfig.maxTurnCostUsd;
   const overToolCalls = toolCallCount > botConfig.maxToolCallsPerTurn;
   const attributes = {
