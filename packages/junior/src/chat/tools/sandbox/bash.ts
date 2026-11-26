@@ -1,4 +1,8 @@
 import * as z from "zod";
+import {
+  hasLongSleep,
+  LONG_SLEEP_MESSAGE,
+} from "@/chat/tool-support/sandbox/long-sleep";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 
@@ -18,6 +22,7 @@ export const bashToolDefinition = zodToolDefinition({
     command: z
       .string()
       .min(1)
+      .refine((command) => !hasLongSleep(command), LONG_SLEEP_MESSAGE)
       .describe("Bash command to run inside the sandbox."),
     cwd: z
       .string()

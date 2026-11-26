@@ -759,6 +759,20 @@ describe("Pi tool adapter", () => {
     expect(bashTool?.executionMode).toBe("sequential");
   });
 
+  it("rejects a long fixed sleep in bash before review and execution", () => {
+    const sandbox = new SkillSandbox([], []);
+    const [bashTool] = createPiAgentTools({ bash: createBashTool() }, sandbox, {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+    });
+
+    expect(() =>
+      bashTool!.prepareArguments!({
+        command: "sleep 240; gh pr checks 4435",
+      }),
+    ).toThrow(/sleep over 30 seconds is not allowed.*watchEvents/);
+  });
+
   it("rethrows plugin auth pauses without reporting a tool failure", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const pluginAuthOrchestration = {
