@@ -1,236 +1,224 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadConfig as resolveConfig } from "@/config";
+import { afterEach, describe, expect, it } from "vitest";
+import { getChatConfig, setSlackReactionConfig } from "@/chat/config";
+import { loadConfig } from "@/config";
 
-const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
-
-async function loadConfig() {
-  vi.resetModules();
-  return import("@/chat/config");
-}
+const ENCRYPTION_ENV = {
+  JUNIOR_ENCRYPTION_KEYS: `k1:${Buffer.alloc(32, 1).toString("base64")}`,
+};
+/** The env every case needs. Each case adds only the vars it sets. */
+const BASE_ENV = { ...ENCRYPTION_ENV, DATABASE_URL: TEST_DATABASE_URL };
 
 describe("chat config", () => {
-  beforeEach(() => {
-    process.env["DATABASE_URL"] = TEST_DATABASE_URL;
-    delete process.env["JUNIOR_DATABASE_DRIVER"];
-    delete process.env["JUNIOR_SQL_STATEMENT_TIMEOUT_MS"];
-    for (const name of Object.keys(process.env)) {
-      if (
-        name === "JUNIOR_ATTACHMENT_STORAGE_PROVIDER" ||
-        name.startsWith("JUNIOR_S3_") ||
-        name.startsWith("JUNIOR_QUEUE_")
-      ) {
-        delete process.env[name];
-      }
-    }
-  });
-
-  afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
-    vi.resetModules();
-  });
-
-  it("uses AI_MODEL for fastModelId when AI_FAST_MODEL is unset", async () => {
-    process.env["AI_MODEL"] = "anthropic/claude-opus-4.6";
-    delete process.env["AI_FAST_MODEL"];
-
-    const { botConfig } = await loadConfig();
+  it("uses AI_MODEL for fastModelId when AI_FAST_MODEL is unset", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_MODEL: "anthropic/claude-opus-4.6" },
+    }).bot;
     expect(botConfig.modelId).toBe("anthropic/claude-opus-4.6");
     expect(botConfig.fastModelId).toBe("anthropic/claude-opus-4.6");
   });
 
-  it("prefers AI_FAST_MODEL over AI_MODEL for fastModelId", async () => {
-    process.env["AI_MODEL"] = "anthropic/claude-opus-4.6";
-    process.env["AI_FAST_MODEL"] = "anthropic/claude-haiku-4.5";
-
-    const { botConfig } = await loadConfig();
+  it("prefers AI_FAST_MODEL over AI_MODEL for fastModelId", () => {
+    const botConfig = loadConfig({
+      env: {
+        ...BASE_ENV,
+        AI_MODEL: "anthropic/claude-opus-4.6",
+        AI_FAST_MODEL: "anthropic/claude-haiku-4.5",
+      },
+    }).bot;
     expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
   });
 
-  it("uses Luna as the default fast model when AI_MODEL and AI_FAST_MODEL are unset", async () => {
-    delete process.env["AI_MODEL"];
-    delete process.env["AI_FAST_MODEL"];
-
-    const { botConfig } = await loadConfig();
+  it("uses Luna as the default fast model when AI_MODEL and AI_FAST_MODEL are unset", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.fastModelId).toBe("openai/gpt-6-luna");
   });
 
-  it("uses Luna for Guardian when no override is configured", async () => {
-    process.env["AI_MODEL"] = "anthropic/claude-opus-4.6";
-    process.env["AI_FAST_MODEL"] = "anthropic/claude-haiku-4.5";
-    delete process.env["AI_GUARDIAN_MODEL"];
-
-    const { botConfig } = await loadConfig();
+  it("uses Luna for Guardian when no override is configured", () => {
+    const botConfig = loadConfig({
+      env: {
+        ...BASE_ENV,
+        AI_MODEL: "anthropic/claude-opus-4.6",
+        AI_FAST_MODEL: "anthropic/claude-haiku-4.5",
+      },
+    }).bot;
     expect(botConfig.guardianModelId).toBe("openai/gpt-6-luna");
   });
 
-  it("uses the configured Guardian model override", async () => {
-    process.env["AI_FAST_MODEL"] = "anthropic/claude-haiku-4.5";
-    process.env["AI_GUARDIAN_MODEL"] = "openai/gpt-5.4";
-
-    const { botConfig } = await loadConfig();
+  it("uses the configured Guardian model override", () => {
+    const botConfig = loadConfig({
+      env: {
+        ...BASE_ENV,
+        AI_FAST_MODEL: "anthropic/claude-haiku-4.5",
+        AI_GUARDIAN_MODEL: "openai/gpt-5.4",
+      },
+    }).bot;
     expect(botConfig.guardianModelId).toBe("openai/gpt-5.4");
   });
 
-  it("uses the default main model when AI_MODEL is unset", async () => {
-    delete process.env["AI_MODEL"];
-
-    const { botConfig } = await loadConfig();
+  it("uses the default main model when AI_MODEL is unset", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.modelId).toBe("anthropic/claude-opus-5.5");
   });
 
-  it("uses high reasoning by default", async () => {
-    delete process.env["AI_REASONING_LEVEL"];
-
-    const { botConfig } = await loadConfig();
+  it("uses high reasoning by default", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.reasoningLevel).toBe("high");
   });
 
-  it("uses an explicitly configured reasoning level", async () => {
-    process.env["AI_REASONING_LEVEL"] = "xhigh";
-
-    const { botConfig } = await loadConfig();
+  it("uses an explicitly configured reasoning level", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_REASONING_LEVEL: "xhigh" },
+    }).bot;
     expect(botConfig.reasoningLevel).toBe("xhigh");
   });
 
-  it("trims an explicitly configured reasoning level", async () => {
-    process.env["AI_REASONING_LEVEL"] = "  xhigh  ";
-
-    const { botConfig } = await loadConfig();
+  it("trims an explicitly configured reasoning level", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_REASONING_LEVEL: "  xhigh  " },
+    }).bot;
     expect(botConfig.reasoningLevel).toBe("xhigh");
   });
 
-  it("rejects an invalid configured reasoning level", async () => {
-    process.env["AI_REASONING_LEVEL"] = "adaptive";
-
-    await expect(loadConfig()).rejects.toThrow("Invalid option");
+  it("rejects an invalid configured reasoning level", () => {
+    expect(() =>
+      loadConfig({ env: { ...BASE_ENV, AI_REASONING_LEVEL: "adaptive" } }),
+    ).toThrow("Invalid option");
   });
 
-  it("uses the default embedding model when AI_EMBEDDING_MODEL is unset", async () => {
-    delete process.env["AI_EMBEDDING_MODEL"];
-
-    const { botConfig } = await loadConfig();
+  it("uses the default embedding model when AI_EMBEDDING_MODEL is unset", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.embeddingModelId).toBe("openai/text-embedding-3-small");
   });
 
-  it("uses AI_EMBEDDING_MODEL when configured", async () => {
-    process.env["AI_EMBEDDING_MODEL"] = "openai/text-embedding-3-large";
-
-    const { botConfig } = await loadConfig();
+  it("uses AI_EMBEDDING_MODEL when configured", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_EMBEDDING_MODEL: "openai/text-embedding-3-large" },
+    }).bot;
     expect(botConfig.embeddingModelId).toBe("openai/text-embedding-3-large");
   });
 
-  it("uses Luna as the default web search model when AI_WEB_SEARCH_MODEL is blank", async () => {
-    process.env["AI_WEB_SEARCH_MODEL"] = "   ";
-
-    const { botConfig } = await loadConfig();
+  it("uses Luna as the default web search model when AI_WEB_SEARCH_MODEL is blank", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_WEB_SEARCH_MODEL: "   " },
+    }).bot;
     expect(botConfig.webSearchModelId).toBe("openai/gpt-6-luna");
   });
 
-  it("uses AI_WEB_SEARCH_MODEL when configured", async () => {
-    process.env["AI_WEB_SEARCH_MODEL"] = " anthropic/claude-sonnet-4.6 ";
-
-    const { botConfig } = await loadConfig();
+  it("uses AI_WEB_SEARCH_MODEL when configured", () => {
+    const botConfig = loadConfig({
+      env: {
+        ...BASE_ENV,
+        AI_WEB_SEARCH_MODEL: " anthropic/claude-sonnet-4.6 ",
+      },
+    }).bot;
     expect(botConfig.webSearchModelId).toBe("anthropic/claude-sonnet-4.6");
   });
 
-  it("leaves the refusal fallback model unset by default", async () => {
-    const { botConfig } = await loadConfig();
+  it("leaves the refusal fallback model unset by default", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.refusalFallbackModelId).toBeUndefined();
   });
 
-  it("uses AI_REFUSAL_FALLBACK_MODEL when configured", async () => {
-    process.env["AI_REFUSAL_FALLBACK_MODEL"] = " openai/gpt-6-astra ";
-
-    const { botConfig } = await loadConfig();
+  it("uses AI_REFUSAL_FALLBACK_MODEL when configured", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_REFUSAL_FALLBACK_MODEL: " openai/gpt-6-astra " },
+    }).bot;
     expect(botConfig.refusalFallbackModelId).toBe("openai/gpt-6-astra");
   });
 
-  it("throws when AI_WEB_SEARCH_MODEL is not a registered gateway model id", async () => {
-    process.env["AI_WEB_SEARCH_MODEL"] = "openai/search-model-not-real";
-
-    await expect(loadConfig()).rejects.toThrow(/Unknown AI Gateway model id/);
+  it("throws when AI_WEB_SEARCH_MODEL is not a registered gateway model id", () => {
+    expect(() =>
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          AI_WEB_SEARCH_MODEL: "openai/search-model-not-real",
+        },
+      }),
+    ).toThrow(/Unknown AI Gateway model id/);
   });
 
-  it("uses the default image generation model when AI_IMAGE_MODEL is blank", async () => {
-    process.env["AI_IMAGE_MODEL"] = "   ";
-
-    const { botConfig } = await loadConfig();
+  it("uses the default image generation model when AI_IMAGE_MODEL is blank", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_IMAGE_MODEL: "   " },
+    }).bot;
     expect(botConfig.imageGenerationModelId).toBe("openai/gpt-image-2");
   });
 
-  it("uses AI_IMAGE_MODEL when configured", async () => {
-    process.env["AI_IMAGE_MODEL"] = " openai/dall-e-3 ";
-
-    const { botConfig } = await loadConfig();
+  it("uses AI_IMAGE_MODEL when configured", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_IMAGE_MODEL: " openai/dall-e-3 " },
+    }).bot;
     expect(botConfig.imageGenerationModelId).toBe("openai/dall-e-3");
   });
 
-  it("reads the standard database URL", async () => {
-    process.env["DATABASE_URL"] =
-      "postgres://user:pass@pooled.example.test/neon";
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.databaseUrl).toBe(
+  it("reads the standard database URL", () => {
+    const config = loadConfig({
+      env: {
+        ...BASE_ENV,
+        DATABASE_URL: "postgres://user:pass@pooled.example.test/neon",
+      },
+    });
+    expect(config.sql.databaseUrl).toBe(
       "postgres://user:pass@pooled.example.test/neon",
     );
   });
 
-  it("uses Neon as the default SQL driver", async () => {
-    delete process.env["JUNIOR_DATABASE_DRIVER"];
-    process.env["DATABASE_URL"] = TEST_DATABASE_URL;
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.driver).toBe("neon");
+  it("uses Neon as the default SQL driver", () => {
+    const config = loadConfig({
+      env: { ...BASE_ENV, DATABASE_URL: TEST_DATABASE_URL },
+    });
+    expect(config.sql.driver).toBe("neon");
   });
 
-  it("throws when no SQL database URL is configured", async () => {
-    delete process.env["DATABASE_URL"];
-
-    await expect(loadConfig()).rejects.toThrow("DATABASE_URL is required");
-  });
-
-  it("defaults localhost database URLs to the node-postgres SQL driver", async () => {
-    delete process.env["JUNIOR_DATABASE_DRIVER"];
-    process.env["DATABASE_URL"] =
-      "postgres://junior:junior@localhost:54322/junior";
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.driver).toBe("postgres");
-  });
-
-  it("reads the optional node-postgres SQL driver override", async () => {
-    process.env["JUNIOR_DATABASE_DRIVER"] = " postgres ";
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.driver).toBe("postgres");
-  });
-
-  it("throws when the SQL driver is invalid", async () => {
-    process.env["DATABASE_URL"] = TEST_DATABASE_URL;
-    process.env["JUNIOR_DATABASE_DRIVER"] = "sqlite";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_DATABASE_DRIVER must be postgres or neon",
+  it("throws when no SQL database URL is configured", () => {
+    expect(() => loadConfig({ env: ENCRYPTION_ENV })).toThrow(
+      "DATABASE_URL is required",
     );
   });
 
-  it("uses Vercel Blob attachment storage by default", async () => {
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().attachmentStorage).toEqual({
+  it("defaults localhost database URLs to the node-postgres SQL driver", () => {
+    const config = loadConfig({
+      env: {
+        ...BASE_ENV,
+        DATABASE_URL: "postgres://junior:junior@localhost:54322/junior",
+      },
+    });
+    expect(config.sql.driver).toBe("postgres");
+  });
+
+  it("reads the optional node-postgres SQL driver override", () => {
+    const config = loadConfig({
+      env: { ...BASE_ENV, JUNIOR_DATABASE_DRIVER: " postgres " },
+    });
+    expect(config.sql.driver).toBe("postgres");
+  });
+
+  it("throws when the SQL driver is invalid", () => {
+    expect(() =>
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_DATABASE_DRIVER: "sqlite" } }),
+    ).toThrow("JUNIOR_DATABASE_DRIVER must be postgres or neon");
+  });
+
+  it("uses Vercel Blob attachment storage by default", () => {
+    const config = loadConfig({ env: BASE_ENV });
+    expect(config.attachmentStorage).toEqual({
       provider: "vercel-blob",
     });
   });
 
-  it("reads S3 attachment storage settings", async () => {
-    process.env["JUNIOR_ATTACHMENT_STORAGE_PROVIDER"] = " s3 ";
-    process.env["JUNIOR_S3_ENDPOINT"] = "http://localhost:7070";
-    process.env["JUNIOR_S3_BUCKET"] = "junior-attachments";
-    process.env["JUNIOR_S3_ACCESS_KEY_ID"] = "junior";
-    process.env["JUNIOR_S3_SECRET_ACCESS_KEY"] = "secret";
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().attachmentStorage).toEqual({
+  it("reads S3 attachment storage settings", () => {
+    const config = loadConfig({
+      env: {
+        ...BASE_ENV,
+        JUNIOR_ATTACHMENT_STORAGE_PROVIDER: " s3 ",
+        JUNIOR_S3_ENDPOINT: "http://localhost:7070",
+        JUNIOR_S3_BUCKET: "junior-attachments",
+        JUNIOR_S3_ACCESS_KEY_ID: "junior",
+        JUNIOR_S3_SECRET_ACCESS_KEY: "secret",
+      },
+    });
+    expect(config.attachmentStorage).toEqual({
       provider: "s3",
       s3: {
         accessKeyId: "junior",
@@ -242,262 +230,288 @@ describe("chat config", () => {
     });
   });
 
-  it("throws when S3 attachment storage is missing a setting", async () => {
-    process.env["JUNIOR_ATTACHMENT_STORAGE_PROVIDER"] = "s3";
-    process.env["JUNIOR_S3_ENDPOINT"] = "http://localhost:7070";
-    process.env["JUNIOR_S3_ACCESS_KEY_ID"] = "junior";
-    process.env["JUNIOR_S3_SECRET_ACCESS_KEY"] = "secret";
-
-    await expect(loadConfig()).rejects.toThrow(
+  it("throws when S3 attachment storage is missing a setting", () => {
+    expect(() =>
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          JUNIOR_ATTACHMENT_STORAGE_PROVIDER: "s3",
+          JUNIOR_S3_ENDPOINT: "http://localhost:7070",
+          JUNIOR_S3_ACCESS_KEY_ID: "junior",
+          JUNIOR_S3_SECRET_ACCESS_KEY: "secret",
+        },
+      }),
+    ).toThrow(
       "JUNIOR_S3_BUCKET is required when JUNIOR_ATTACHMENT_STORAGE_PROVIDER is s3",
     );
   });
 
-  it("throws when the attachment storage provider is invalid", async () => {
-    process.env["JUNIOR_ATTACHMENT_STORAGE_PROVIDER"] = "gcs";
-
-    await expect(loadConfig()).rejects.toThrow(
+  it("throws when the attachment storage provider is invalid", () => {
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_ATTACHMENT_STORAGE_PROVIDER: "gcs" },
+      }),
+    ).toThrow(
       "JUNIOR_ATTACHMENT_STORAGE_PROVIDER must be vercel-blob, s3, or memory",
     );
   });
 
-  it("reads a Vercel Queues API URL for a local queue server", async () => {
-    expect((await loadConfig()).getChatConfig().queue).toEqual({});
+  it("reads a Vercel Queues API URL for a local queue server", () => {
+    expect(loadConfig({ env: BASE_ENV }).queue).toEqual({});
 
-    process.env["JUNIOR_QUEUE_API_URL"] = "http://127.0.0.1:3100";
-    expect((await loadConfig()).getChatConfig().queue).toEqual({
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_QUEUE_API_URL: "http://127.0.0.1:3100" },
+      }).queue,
+    ).toEqual({
       apiUrl: "http://127.0.0.1:3100",
     });
 
-    process.env["JUNIOR_QUEUE_API_URL"] = "localhost:3100";
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_QUEUE_API_URL must be an http or https URL",
-    );
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_QUEUE_API_URL: "localhost:3100" },
+      }),
+    ).toThrow("JUNIOR_QUEUE_API_URL must be an http or https URL");
   });
 
-  it("enables conversation work by default", async () => {
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().conversationWorkEnabled).toBe(true);
+  it("enables conversation work by default", () => {
+    const config = loadConfig({ env: BASE_ENV });
+    expect(config.conversationWorkEnabled).toBe(true);
   });
 
-  it("disables conversation work when configured", async () => {
-    process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] = "false";
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().conversationWorkEnabled).toBe(false);
+  it("disables conversation work when configured", () => {
+    const config = loadConfig({
+      env: { ...BASE_ENV, JUNIOR_CONVERSATION_WORK_ENABLED: "false" },
+    });
+    expect(config.conversationWorkEnabled).toBe(false);
   });
 
-  it("enables cache warming and compaction on idle unless their kill switches are off", async () => {
-    delete process.env["JUNIOR_CACHE_WARMING_ENABLED"];
-    delete process.env["JUNIOR_IDLE_COMPACTION_ENABLED"];
-    expect((await loadConfig()).getChatConfig()).toMatchObject({
+  it("enables cache warming and compaction on idle unless their kill switches are off", () => {
+    expect(loadConfig({ env: BASE_ENV })).toMatchObject({
       cacheWarmingEnabled: true,
       idleCompactionEnabled: true,
     });
-    process.env["JUNIOR_CACHE_WARMING_ENABLED"] = "false";
-    process.env["JUNIOR_IDLE_COMPACTION_ENABLED"] = "false";
-    expect((await loadConfig()).getChatConfig()).toMatchObject({
+    expect(
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          JUNIOR_CACHE_WARMING_ENABLED: "false",
+          JUNIOR_IDLE_COMPACTION_ENABLED: "false",
+        },
+      }),
+    ).toMatchObject({
       cacheWarmingEnabled: false,
       idleCompactionEnabled: false,
     });
   });
 
-  it("rejects an invalid conversation work switch", async () => {
-    process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] = "sometimes";
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_CONVERSATION_WORK_ENABLED must be true or false",
-    );
+  it("rejects an invalid conversation work switch", () => {
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_CONVERSATION_WORK_ENABLED: "sometimes" },
+      }),
+    ).toThrow("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
   });
 
-  it("uses a 30 second SQL statement timeout by default", async () => {
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.statementTimeoutMs).toBe(30_000);
+  it("uses a 30 second SQL statement timeout by default", () => {
+    const config = loadConfig({ env: BASE_ENV });
+    expect(config.sql.statementTimeoutMs).toBe(30_000);
   });
 
-  it("reads the configured SQL statement timeout", async () => {
-    process.env["JUNIOR_SQL_STATEMENT_TIMEOUT_MS"] = "15000";
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.statementTimeoutMs).toBe(15_000);
+  it("reads the configured SQL statement timeout", () => {
+    const config = loadConfig({
+      env: { ...BASE_ENV, JUNIOR_SQL_STATEMENT_TIMEOUT_MS: "15000" },
+    });
+    expect(config.sql.statementTimeoutMs).toBe(15_000);
   });
 
-  it("allows the SQL statement timeout to be disabled", async () => {
-    process.env["JUNIOR_SQL_STATEMENT_TIMEOUT_MS"] = "0";
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.statementTimeoutMs).toBe(false);
+  it("allows the SQL statement timeout to be disabled", () => {
+    const config = loadConfig({
+      env: { ...BASE_ENV, JUNIOR_SQL_STATEMENT_TIMEOUT_MS: "0" },
+    });
+    expect(config.sql.statementTimeoutMs).toBe(false);
   });
 
-  it("throws when the SQL statement timeout is invalid", async () => {
-    process.env["JUNIOR_SQL_STATEMENT_TIMEOUT_MS"] = "15 seconds";
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_SQL_STATEMENT_TIMEOUT_MS must be a non-negative integer",
-    );
+  it("throws when the SQL statement timeout is invalid", () => {
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_SQL_STATEMENT_TIMEOUT_MS: "15 seconds" },
+      }),
+    ).toThrow("JUNIOR_SQL_STATEMENT_TIMEOUT_MS must be a non-negative integer");
   });
 
-  it("ignores AI_LIGHT_MODEL and keeps using AI_FAST_MODEL", async () => {
-    process.env["AI_MODEL"] = "anthropic/claude-opus-4.6";
-    process.env["AI_FAST_MODEL"] = "anthropic/claude-haiku-4.5";
-    process.env["AI_LIGHT_MODEL"] = "openai/gpt-5.4-mini";
-
-    const { botConfig } = await loadConfig();
+  it("ignores AI_LIGHT_MODEL and keeps using AI_FAST_MODEL", () => {
+    const botConfig = loadConfig({
+      env: {
+        ...BASE_ENV,
+        AI_MODEL: "anthropic/claude-opus-4.6",
+        AI_FAST_MODEL: "anthropic/claude-haiku-4.5",
+        AI_LIGHT_MODEL: "openai/gpt-5.4-mini",
+      },
+    }).bot;
     expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
   });
 
-  it("uses the shared vision default when AI_VISION_MODEL is absent", async () => {
-    process.env["AI_MODEL"] = "anthropic/claude-opus-4.6";
-    delete process.env["AI_VISION_MODEL"];
-
-    const { botConfig } = await loadConfig();
+  it("uses the shared vision default when AI_VISION_MODEL is absent", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_MODEL: "anthropic/claude-opus-4.6" },
+    }).bot;
     expect(botConfig.visionModelId).toBe("openai/gpt-5.6-sol");
   });
 
-  it("disables vision when AI_VISION_MODEL is explicitly empty", async () => {
-    process.env["AI_VISION_MODEL"] = "";
-
-    const { botConfig } = await loadConfig();
+  it("disables vision when AI_VISION_MODEL is explicitly empty", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_VISION_MODEL: "" },
+    }).bot;
     expect(botConfig.visionModelId).toBeUndefined();
   });
 
-  it("uses AI_VISION_MODEL without falling back to AI_MODEL", async () => {
-    process.env["AI_MODEL"] = "anthropic/claude-opus-4.6";
-    process.env["AI_VISION_MODEL"] = "openai/gpt-5.4";
-
-    const { botConfig } = await loadConfig();
+  it("uses AI_VISION_MODEL without falling back to AI_MODEL", () => {
+    const botConfig = loadConfig({
+      env: {
+        ...BASE_ENV,
+        AI_MODEL: "anthropic/claude-opus-4.6",
+        AI_VISION_MODEL: "openai/gpt-5.4",
+      },
+    }).bot;
     expect(botConfig.modelId).toBe("anthropic/claude-opus-4.6");
     expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
   });
 
-  it("uses a 400k model context window cap by default", async () => {
-    delete process.env["AI_MODEL_CONTEXT_WINDOW_TOKENS"];
-
-    const { botConfig } = await loadConfig();
+  it("uses a 400k model context window cap by default", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.contextWindowTokens).toBe(400_000);
   });
 
-  it("reads model context window cap overrides", async () => {
-    process.env["AI_MODEL_CONTEXT_WINDOW_TOKENS"] = "200000";
-
-    const { botConfig } = await loadConfig();
+  it("reads model context window cap overrides", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AI_MODEL_CONTEXT_WINDOW_TOKENS: "200000" },
+    }).bot;
     expect(botConfig.contextWindowTokens).toBe(200000);
   });
 
-  it("throws when model context window overrides are invalid", async () => {
-    process.env["AI_MODEL_CONTEXT_WINDOW_TOKENS"] = "0";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "AI_MODEL_CONTEXT_WINDOW_TOKENS must be a positive integer",
-    );
+  it("throws when model context window overrides are invalid", () => {
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, AI_MODEL_CONTEXT_WINDOW_TOKENS: "0" },
+      }),
+    ).toThrow("AI_MODEL_CONTEXT_WINDOW_TOKENS must be a positive integer");
   });
 
-  it("throws at config load when AI_MODEL is not a registered gateway model id", async () => {
-    process.env["AI_MODEL"] = "openai/gpt-definitely-not-real";
-
-    await expect(loadConfig()).rejects.toThrow(/Unknown AI Gateway model id/);
+  it("throws at config load when AI_MODEL is not a registered gateway model id", () => {
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, AI_MODEL: "openai/gpt-definitely-not-real" },
+      }),
+    ).toThrow(/Unknown AI Gateway model id/);
   });
 
-  it("uses the default assistant loading messages when unset", async () => {
-    delete process.env["JUNIOR_LOADING_MESSAGES"];
-    const { botConfig } = await loadConfig();
+  it("uses the default assistant loading messages when unset", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.loadingMessages.length).toBeGreaterThan(0);
   });
 
-  it("uses JUNIOR_LOADING_MESSAGES when configured", async () => {
-    process.env["JUNIOR_LOADING_MESSAGES"] = JSON.stringify([
-      "Consulting the orb",
-      "Bribing the gremlins",
-    ]);
-
-    const { botConfig } = await loadConfig();
+  it("uses JUNIOR_LOADING_MESSAGES when configured", () => {
+    const botConfig = loadConfig({
+      env: {
+        ...BASE_ENV,
+        JUNIOR_LOADING_MESSAGES: JSON.stringify([
+          "Consulting the orb",
+          "Bribing the gremlins",
+        ]),
+      },
+    }).bot;
     expect(botConfig.loadingMessages).toEqual([
       "Consulting the orb",
       "Bribing the gremlins",
     ]);
   });
 
-  it("throws when JUNIOR_LOADING_MESSAGES is not a JSON string array", async () => {
-    process.env["JUNIOR_LOADING_MESSAGES"] = '{"nope":true}';
-
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_LOADING_MESSAGES must be a JSON array of strings",
-    );
+  it("throws when JUNIOR_LOADING_MESSAGES is not a JSON string array", () => {
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_LOADING_MESSAGES: '{"nope":true}' },
+      }),
+    ).toThrow("JUNIOR_LOADING_MESSAGES must be a JSON array of strings");
   });
 
-  it("uses default reaction emojis", async () => {
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().slack.processingReactionEmoji).toBe("eyes");
-    expect(getChatConfig().slack.completedReactionEmoji).toBe(
-      "white_check_mark",
-    );
+  it("uses default reaction emojis", () => {
+    const config = loadConfig({ env: BASE_ENV });
+    expect(config.slack.processingReactionEmoji).toBe("eyes");
+    expect(config.slack.completedReactionEmoji).toBe("white_check_mark");
   });
 
-  it("sets max slices per turn from core config", async () => {
-    const { botConfig } = await loadConfig();
+  it("sets max slices per turn from core config", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.maxSlicesPerTurn).toBe(100);
   });
 
-  it("sets max tool calls per turn from core config", async () => {
-    const { botConfig } = await loadConfig();
+  it("sets max tool calls per turn from core config", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.maxToolCallsPerTurn).toBe(1000);
   });
 
-  it("sets max turn cost from core config", async () => {
-    const { botConfig } = await loadConfig();
+  it("sets max turn cost from core config", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.maxTurnCostUsd).toBe(100);
   });
 
-  it("sets max consecutive automated turns from core config", async () => {
-    const { botConfig } = await loadConfig();
+  it("sets max consecutive automated turns from core config", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.maxConsecutiveAutomatedTurns).toBe(25);
   });
 
-  it("sets the event automation run limit from core config", async () => {
-    const { botConfig } = await loadConfig();
+  it("sets the event automation run limit from core config", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.maxEventAutomationRuns).toBe(10);
     expect(botConfig.eventAutomationRunWindowMs).toBe(60_000);
   });
 
-  it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
-    delete process.env["AGENT_TURN_TIMEOUT_MS"];
-    const { botConfig } = await loadConfig();
+  it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", () => {
+    const botConfig = loadConfig({ env: BASE_ENV }).bot;
     expect(botConfig.turnTimeoutMs).toBe(280000);
   });
 
-  it("uses AGENT_TURN_TIMEOUT_MS from env var when valid", async () => {
-    process.env["AGENT_TURN_TIMEOUT_MS"] = "240000";
-    const { botConfig } = await loadConfig();
+  it("uses AGENT_TURN_TIMEOUT_MS from env var when valid", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AGENT_TURN_TIMEOUT_MS: "240000" },
+    }).bot;
     expect(botConfig.turnTimeoutMs).toBe(240000);
   });
 
-  it("falls back to default AGENT_TURN_TIMEOUT_MS when env var is invalid", async () => {
-    process.env["AGENT_TURN_TIMEOUT_MS"] = "not-a-number";
-    const { botConfig } = await loadConfig();
+  it("falls back to default AGENT_TURN_TIMEOUT_MS when env var is invalid", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AGENT_TURN_TIMEOUT_MS: "not-a-number" },
+    }).bot;
     expect(botConfig.turnTimeoutMs).toBe(280000);
   });
 
-  it("caps AGENT_TURN_TIMEOUT_MS to configured max", async () => {
-    process.env["AGENT_TURN_TIMEOUT_MS"] = "999999";
-    const { botConfig } = await loadConfig();
+  it("caps AGENT_TURN_TIMEOUT_MS to configured max", () => {
+    const botConfig = loadConfig({
+      env: { ...BASE_ENV, AGENT_TURN_TIMEOUT_MS: "999999" },
+    }).bot;
     expect(botConfig.turnTimeoutMs).toBe(280000);
   });
 
-  it("ignores legacy host duration environment variables", async () => {
-    process.env["FUNCTION_MAX_DURATION_SECONDS"] = "500";
-    process.env["QUEUE_CALLBACK_MAX_DURATION_SECONDS"] = "600";
-    process.env["AGENT_TURN_TIMEOUT_MS"] = "999999";
-    const { botConfig } = await loadConfig();
+  it("ignores legacy host duration environment variables", () => {
+    const botConfig = loadConfig({
+      env: {
+        ...BASE_ENV,
+        FUNCTION_MAX_DURATION_SECONDS: "500",
+        QUEUE_CALLBACK_MAX_DURATION_SECONDS: "600",
+        AGENT_TURN_TIMEOUT_MS: "999999",
+      },
+    }).bot;
     expect(botConfig.turnTimeoutMs).toBe(280000);
   });
 });
 
 describe("loadConfig", () => {
-  const encryptionEnv = {
-    JUNIOR_ENCRYPTION_KEYS: `k1:${Buffer.alloc(32, 1).toString("base64")}`,
-  };
-
   it("prefers host options over env", () => {
-    const config = resolveConfig({
+    const config = loadConfig({
       env: {
-        ...encryptionEnv,
+        ...BASE_ENV,
         AI_MODEL: "anthropic/claude-opus-4.6",
-        DATABASE_URL: TEST_DATABASE_URL,
         JUNIOR_SQL_STATEMENT_TIMEOUT_MS: "15000",
       },
       options: {
@@ -513,10 +527,9 @@ describe("loadConfig", () => {
   });
 
   it("replaces env attachment storage when options pick another provider", () => {
-    const config = resolveConfig({
+    const config = loadConfig({
       env: {
-        ...encryptionEnv,
-        DATABASE_URL: TEST_DATABASE_URL,
+        ...BASE_ENV,
         JUNIOR_ATTACHMENT_STORAGE_PROVIDER: "s3",
         JUNIOR_S3_ACCESS_KEY_ID: "junior",
         JUNIOR_S3_BUCKET: "junior-attachments",
@@ -530,13 +543,13 @@ describe("loadConfig", () => {
   });
 
   it("reads no env by default and requires only the encryption keys and database URL", () => {
-    expect(() => resolveConfig()).toThrow("JUNIOR_ENCRYPTION_KEYS is required");
-    expect(() => resolveConfig({ env: encryptionEnv })).toThrow(
+    expect(() => loadConfig()).toThrow("JUNIOR_ENCRYPTION_KEYS is required");
+    expect(() => loadConfig({ env: ENCRYPTION_ENV })).toThrow(
       /^DATABASE_URL is required$/,
     );
     expect(
-      resolveConfig({
-        env: encryptionEnv,
+      loadConfig({
+        env: ENCRYPTION_ENV,
         options: { sql: { databaseUrl: TEST_DATABASE_URL } },
       }).bot.modelId,
     ).toBe("anthropic/claude-opus-5.5");
@@ -544,46 +557,46 @@ describe("loadConfig", () => {
 
   it("names the field and its env var in a schema error", () => {
     expect(() =>
-      resolveConfig({
-        env: { ...encryptionEnv, DATABASE_URL: TEST_DATABASE_URL },
+      loadConfig({
+        env: BASE_ENV,
         options: { bot: { contextWindowTokens: 0 } },
       }),
     ).toThrow(/^bot\.contextWindowTokens \(AI_MODEL_CONTEXT_WINDOW_TOKENS\): /);
   });
 });
 
+// `setSlackReactionConfig` changes the module's config, so these cases use
+// the module and put the defaults back after each one.
 describe("setSlackReactionConfig", () => {
   afterEach(() => {
-    vi.resetModules();
+    setSlackReactionConfig({
+      completedReactionEmoji: "white_check_mark",
+      processingReactionEmoji: "eyes",
+    });
   });
 
-  it("overrides processingReactionEmoji when provided", async () => {
-    const { getChatConfig, setSlackReactionConfig } = await loadConfig();
+  it("overrides processingReactionEmoji when provided", () => {
     setSlackReactionConfig({ processingReactionEmoji: "jr-thinking" });
     expect(getChatConfig().slack.processingReactionEmoji).toBe("jr-thinking");
   });
 
-  it("overrides completedReactionEmoji when provided", async () => {
-    const { getChatConfig, setSlackReactionConfig } = await loadConfig();
+  it("overrides completedReactionEmoji when provided", () => {
     setSlackReactionConfig({ completedReactionEmoji: "jr-done" });
     expect(getChatConfig().slack.completedReactionEmoji).toBe("jr-done");
   });
 
-  it("normalizes colon-wrapped emoji names", async () => {
-    const { getChatConfig, setSlackReactionConfig } = await loadConfig();
+  it("normalizes colon-wrapped emoji names", () => {
     setSlackReactionConfig({ processingReactionEmoji: ":tada:" });
     expect(getChatConfig().slack.processingReactionEmoji).toBe("tada");
   });
 
-  it("throws when override emoji name is invalid", async () => {
-    const { setSlackReactionConfig } = await loadConfig();
+  it("throws when override emoji name is invalid", () => {
     expect(() =>
       setSlackReactionConfig({ processingReactionEmoji: "not valid emoji!" }),
     ).toThrow("processingReactionEmoji must be a valid Slack emoji name");
   });
 
-  it("leaves unspecified fields unchanged", async () => {
-    const { getChatConfig, setSlackReactionConfig } = await loadConfig();
+  it("leaves unspecified fields unchanged", () => {
     const original = getChatConfig().slack.completedReactionEmoji;
     setSlackReactionConfig({ processingReactionEmoji: "jr-thinking" });
     expect(getChatConfig().slack.completedReactionEmoji).toBe(original);
