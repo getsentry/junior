@@ -1,25 +1,26 @@
 import { Hono } from "hono";
 import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import {
-  addSpaceMemberBodySchema,
   archiveSpaceBodySchema,
+  conversationLeaveResponseSchema,
+  conversationSubscriptionBodySchema,
+  conversationSubscriptionResponseSchema,
   conversationParamsSchema,
   createSpaceBodySchema,
   setConversationSpaceBodySchema,
   setConversationSpaceResponseSchema,
   spaceListQuerySchema,
   spaceListSchema,
-  spaceMemberListSchema,
   spaceParamsSchema,
   spaceSchema,
   updateSpaceBodySchema,
+  type ActorIdentity,
   type ConversationDetailReport,
   type ConversationFeed,
   type SpaceRefReport,
   type SpaceReport,
   type SpaceVisibilityReport,
 } from "@sentry/junior/api/schema";
-import type { User } from "@sentry/junior-plugin-api";
 import { errorResponse } from "./errors";
 import {
   NOW_MS,
@@ -61,16 +62,6 @@ export const RILEY: MockMember = {
   displayName: "Riley Park",
   email: "riley@sentry.io",
 };
-
-/** A person who is in no seeded Space, whom a member can add. */
-const CASEY: MockMember = {
-  avatarUrl: null,
-  displayName: "Casey Nguyen",
-  email: "casey@example.com",
-};
-
-/** The people whom a member can add by email, other than the viewer. */
-const MOCK_PEOPLE = [AVERY, RILEY, CASEY];
 
 /**
  * The seeded Spaces. The viewer is a member of all but Docs refresh. Pricing
@@ -226,23 +217,70 @@ export function withMockSpace<T extends ConversationDetailReport>(
   const rootId = detail.agentTree?.[0]?.conversationId ?? detail.conversationId;
   const leadSpaceId = mockLeadSpaceId(detail.conversationId);
   const leadSpace = leadSpaceId ? readMockSpace(leadSpaceId) : undefined;
+  const rootSpace = mockSpaces.get(mockLeadSpaceId(rootId) ?? "");
   return {
     ...detail,
-    // A Lead has its Space's name, its Participants are the Space's
-    // members, and a Space archive archives it.
+    // A Lead has its Space's name, and a Space archive archives it.
     ...(leadSpace
-      ? {
-          archivedAt: leadSpace.archivedAt,
-          displayTitle: leadSpace.name,
-          isParticipant: leadSpace.viewerMember,
-          subscribed: leadSpace.viewerMember ? true : undefined,
-        }
+      ? { archivedAt: leadSpace.archivedAt, displayTitle: leadSpace.name }
       : undefined),
     space: spaceRef(
       mockConversationSpaces.get(rootId) ?? mockLeadSpaceId(rootId),
     ),
     visibility: visibilityOf(detail.conversationId, detail.visibility),
+    ...(rootSpace ? leadParticipation(rootSpace, detail) : undefined),
   };
+}
+
+/**
+ * The Participants of a mock Lead: its Space's members, as in the API. Its
+ * first Actor is the viewer, a member while they have not left.
+ */
+function leadParticipation(
+  space: MockSpace,
+  detail: ConversationDetailReport,
+): Partial<ConversationDetailReport> {
+  const member = space.viewerMember;
+  const participants: ActorIdentity[] = [
+    ...(member && detail.actorIdentity ? [detail.actorIdentity] : []),
+    ...space.others.map((other) => ({
+      email: other.email,
+      fullName: other.displayName,
+    })),
+  ];
+  return {
+    ...(space.visibility === "public" || member
+      ? { canInvite: true as const }
+      : undefined),
+    isParticipant: member,
+    participants,
+    subscribed: member,
+    visibility: space.visibility,
+    ...(space.visibility === "private" && member
+      ? { leaveEndsAccess: true as const }
+      : undefined),
+  };
+}
+
+/**
+ * Add a person to a mock Lead's Participants, the members of its Space.
+ * Returns undefined for a Conversation that is not a Lead.
+ */
+export function addMockLeadParticipant(
+  conversationId: string,
+  person: { email: string; fullName: string },
+): { added: boolean } | undefined {
+  const space = mockSpaces.get(mockLeadSpaceId(conversationId) ?? "");
+  if (!space) return undefined;
+  if (space.others.some((other) => other.email === person.email)) {
+    return { added: false };
+  }
+  space.others.push({
+    avatarUrl: null,
+    displayName: person.fullName,
+    email: person.email,
+  });
+  return { added: true };
 }
 
 /**
@@ -287,11 +325,39 @@ export function startMockConversationInSpace(
 
 /**
  * Add `PUT /conversations/:conversationId/space`, which moves a root into a
- * Space, or into none with null, with the API's rules.
+ * Space, or into none with null, with the API's rules, and Leave and
+ * Subscribe of a Lead, which change its Space's membership.
  */
-export function addMockConversationSpaceRoute(
+export function addMockConversationSpaceRoutes(
   app: Hono<{ Variables: JuniorApiVariables }>,
 ): void {
+  app.post("/conversations/:conversationId/leave", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) return errorResponse("Invalid route parameters.", 400);
+    const space = mockSpaces.get(
+      mockLeadSpaceId(params.data.conversationId) ?? "",
+    );
+    if (!space?.viewerMember)
+      return errorResponse("Conversation not found.", 404);
+    space.viewerMember = false;
+    return jsonResponse(conversationLeaveResponseSchema, { archivedAt: null });
+  });
+  app.patch("/conversations/:conversationId/subscription", async (c, next) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    const space = params.success
+      ? mockSpaces.get(mockLeadSpaceId(params.data.conversationId) ?? "")
+      : undefined;
+    if (!space) return next();
+    const body = conversationSubscriptionBodySchema.safeParse(
+      await c.req.json(),
+    );
+    if (!body.success) return errorResponse("Invalid request body.", 400);
+    space.viewerMember = body.data.subscribed;
+    return jsonResponse(conversationSubscriptionResponseSchema, {
+      archivedAt: null,
+      subscribed: body.data.subscribed,
+    });
+  });
   app.put("/conversations/:conversationId/space", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
     const body = setConversationSpaceBodySchema.safeParse(await c.req.json());
@@ -376,24 +442,6 @@ function view(space: MockSpace): SpaceReport {
     viewerIsMember: space.viewerMember,
     visibility: space.visibility,
   };
-}
-
-function members(space: MockSpace, viewer: User) {
-  const others = space.others.map((member) => ({
-    ...member,
-    userId: `mock-user:${member.email}`,
-  }));
-  return space.viewerMember
-    ? [
-        {
-          avatarUrl: null,
-          displayName: viewer.displayName ?? null,
-          email: viewer.email,
-          userId: viewer.id,
-        },
-        ...others,
-      ]
-    : others;
 }
 
 /**
@@ -495,14 +543,6 @@ export function createMockSpaceRoutes(): Hono<{
       ? space
       : jsonResponse(spaceSchema, view(space));
   });
-  app.get("/:spaceId/members", (c) => {
-    const space = findSpace(c.req.param());
-    return space instanceof Response
-      ? space
-      : jsonResponse(spaceMemberListSchema, {
-          members: members(space, c.get("viewer")!),
-        });
-  });
   app.patch("/:spaceId", async (c) => {
     const space = findSpace(c.req.param());
     if (space instanceof Response) return space;
@@ -518,42 +558,6 @@ export function createMockSpaceRoutes(): Hono<{
       );
     if (name !== undefined) space.name = name;
     if (description !== undefined) space.description = description;
-    return jsonResponse(spaceSchema, view(space));
-  });
-  // A person cannot find a private Space to join it, so a member adds them.
-  app.post("/:spaceId/members", async (c) => {
-    const space = findSpace(c.req.param());
-    if (space instanceof Response) return space;
-    if (!space.viewerMember)
-      return errorResponse("Join the Space to change it.", 403);
-    const body = addSpaceMemberBodySchema.safeParse(await c.req.json());
-    if (!body.success) return errorResponse("Invalid request body.", 400);
-    const email = body.data.email.toLowerCase();
-    const viewer = c.get("viewer")!;
-    const person = MOCK_PEOPLE.find((member) => member.email === email);
-    if (!person && email !== viewer.email.toLowerCase())
-      return errorResponse("No person has that email.", 404);
-    if (person && !space.others.includes(person)) space.others.push(person);
-    return jsonResponse(spaceSchema, view(space));
-  });
-  // An archived Space can be joined too, as in the API.
-  app.put("/:spaceId/members/me", (c) => {
-    const space = findSpace(c.req.param());
-    if (space instanceof Response) return space;
-    space.viewerMember = true;
-    return jsonResponse(spaceSchema, view(space));
-  });
-  app.delete("/:spaceId/members/me", (c) => {
-    const space = findSpace(c.req.param());
-    if (space instanceof Response) return space;
-    // Nobody could read a private Space with no members.
-    if (
-      space.visibility === "private" &&
-      space.viewerMember &&
-      space.others.length === 0
-    )
-      return errorResponse("The last member can't leave a private Space.", 409);
-    space.viewerMember = false;
     return jsonResponse(spaceSchema, view(space));
   });
   app.patch("/:spaceId/archive", async (c) => {

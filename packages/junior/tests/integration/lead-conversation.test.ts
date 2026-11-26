@@ -2,6 +2,7 @@ import { createWebSource, type User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { canReadConversation } from "@/api/conversations/access";
 import { readConversationFeed } from "@/api/conversations/list";
+import { updateConversationSubscription } from "@/api/conversations/subscription";
 import { bindMessageAgent } from "@/chat/child-agents/message";
 import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import type { AgentRun } from "@/chat/agent/types";
@@ -251,6 +252,18 @@ describe("Lead", () => {
     expect(
       feed.conversations.map((conversation) => conversation.conversationId),
     ).toEqual([conversationId]);
+
+    // A member's active feed shows the Lead's children until they
+    // unsubscribe from the Lead, as from any root. The Lead stays active.
+    const activeIds = async () =>
+      (await readConversationFeed({ viewer: ana })).conversations.map(
+        (conversation) => conversation.conversationId,
+      );
+    expect(await activeIds()).toContain(conversationId);
+    expect(
+      await updateConversationSubscription(ana, lead.conversationId, false),
+    ).toEqual({ archivedAt: null, subscribed: false });
+    expect(await activeIds()).not.toContain(conversationId);
   });
 
   it("moves a Conversation and its child agents into, between, and out of Spaces", async () => {
@@ -491,7 +504,7 @@ describe("Lead", () => {
     expect(await listed(bo)).toEqual([]);
   });
 
-  it("steers its children, and outside roots only for a member who takes part", async () => {
+  it("steers its children and other public roots, as any root", async () => {
     const runner = readRunsAgentRunner();
     const { queue, state } = await createConversationWorkHarness(
       runner.agentRunner,
@@ -531,13 +544,13 @@ describe("Lead", () => {
     await expect(send(boInSpace, "call-space")).resolves.toMatchObject({
       conversation_id: boInSpace,
     });
-    // Outside the Space, only a root of the member who asked.
+    // Outside the Space, any public root, as from any public root.
     await expect(send(anaOutside, "call-ana")).resolves.toMatchObject({
       conversation_id: anaOutside,
     });
-    await expect(send(boOutside, "call-bo")).rejects.toThrow(
-      "is outside this Space",
-    );
+    await expect(send(boOutside, "call-bo")).resolves.toMatchObject({
+      conversation_id: boOutside,
+    });
   });
 
   it("rolls up its children, and stops them with the Lead", async () => {

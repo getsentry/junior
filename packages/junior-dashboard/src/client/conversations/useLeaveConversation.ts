@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { conversationLeaveResponseSchema } from "@sentry/junior/api/schema";
 
 import { post } from "../http";
+import { invalidateMemberSpaces } from "../spaces/queries";
 import { invalidateConversationFeeds } from "./conversationFeedCache";
 import { conversationDetailQueryKey } from "./queries";
 
@@ -28,6 +29,11 @@ export function useLeaveConversation(
         queryKey: conversationDetailQueryKey(conversationId),
       });
     },
-    onSettled: () => invalidateConversationFeeds(queryClient),
+    // A Lead's subscribed Participants are its Space's members.
+    onSettled: () =>
+      Promise.all([
+        invalidateConversationFeeds(queryClient),
+        invalidateMemberSpaces(queryClient),
+      ]),
   });
 }

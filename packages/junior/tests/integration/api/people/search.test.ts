@@ -6,6 +6,7 @@ import { peopleSearchReportSchema, userSearchReportSchema } from "@/api/schema";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { createSpace } from "@/chat/spaces/store";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 
@@ -166,6 +167,7 @@ describe("user search API", () => {
       name: "Launch",
       visibility: "private",
     });
+    const { conversationId: lead } = await getSpaceLead(space.id);
     await slackUser({
       email: "lucas@example.com",
       fullName: "Bob Lucase",
@@ -191,12 +193,12 @@ describe("user search API", () => {
     // In Slack but not a User: the picker cannot add them.
     await slackPerson({ fullName: "Casey Nobody", userId: "UNOBODY" });
     const search = (q: string, extra: Record<string, string> = {}) =>
-      viewer.users({ q, spaceId: space.id, ...extra });
+      viewer.users({ q, conversationId: lead, ...extra });
 
     const ranked = await expectSqlBudget(() => search("case"), {
-      // Space access, the search, and photos.
+      // Conversation access, the search, and photos.
       statements: 4,
-      serialRounds: 3,
+      serialRounds: 4,
     });
     expect(ranked.map((user) => user.fullName)).toEqual([
       // Handle is exactly `case`.
@@ -228,7 +230,8 @@ describe("user search API", () => {
     expect((await search("zed ca")).map((user) => user.fullName)).toEqual([
       "Zed Case",
     ]);
-    // The viewer is already a Member.
+    // The viewer is already a Participant. A User with no Slack account is
+    // found too.
     expect(await search("ana")).toEqual([
       expect.objectContaining({ email: "ana@example.com", isMember: true }),
     ]);
@@ -242,6 +245,7 @@ describe("user search API", () => {
       name: "Launch",
       visibility: "public",
     });
+    const { conversationId: lead } = await getSpaceLead(space.id);
     await Promise.all(
       Array.from({ length: 12 }, (_, index) =>
         slackUser({
@@ -252,13 +256,13 @@ describe("user search API", () => {
       ),
     );
 
-    expect(await viewer.users({ q: "team", spaceId: space.id })).toHaveLength(
-      10,
-    );
+    expect(
+      await viewer.users({ q: "team", conversationId: lead }),
+    ).toHaveLength(10);
     const three = await viewer.users({
       limit: "3",
       q: "team",
-      spaceId: space.id,
+      conversationId: lead,
     });
     expect(three.map((user) => user.fullName)).toEqual([
       "Team 00",
@@ -268,14 +272,14 @@ describe("user search API", () => {
     const tooMany = await viewer.request({
       limit: "26",
       q: "team",
-      spaceId: space.id,
+      conversationId: lead,
     });
     expect(tooMany.status).toBe(400);
     // A search names exactly one place to add people to.
     expect((await viewer.request({ q: "team" })).status).toBe(400);
   });
 
-  it("finds only Users for a place the viewer can read, in its Slack workspace", async () => {
+  it("finds Users for any place the viewer can read, with or without Slack", async () => {
     const owner = await userSearch("ana@example.com");
     const outsider = await userSearch("ben@example.com");
     const space = await createSpace({
@@ -284,6 +288,7 @@ describe("user search API", () => {
       name: "Secret",
       visibility: "private",
     });
+    const { conversationId: lead } = await getSpaceLead(space.id);
     await slackUser({
       email: "casey@example.com",
       fullName: "Casey Nguyen",
@@ -317,42 +322,50 @@ describe("user search API", () => {
       visibility: "private",
     });
 
-    // A private Space or Conversation that the viewer cannot read looks
-    // missing, so its members do not leak.
+    // A private Conversation that the viewer cannot read, such as a private
+    // Space's Lead, looks missing, so its members do not leak.
     expect(
-      (await outsider.request({ q: "ca", spaceId: space.id })).status,
+      (await outsider.request({ q: "ca", conversationId: lead })).status,
     ).toBe(404);
     expect(
       (await owner.request({ conversationId: "slack:C3:1.0", q: "ca" })).status,
     ).toBe(404);
-    // Only people of the Conversation's workspace, with their Slack id there.
-    const invited = await owner.app.request(
-      "http://localhost/api/conversations/slack:C2:1.0/invites",
-      {
-        body: JSON.stringify({ slackUserId: "UCASEY2" }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      },
-    );
-    expect(invited.status).toBe(200);
-    expect(
-      await owner.users({ conversationId: "slack:C2:1.0", q: "ca" }),
-    ).toEqual([
-      {
-        email: "casey@example.com",
-        fullName: "Casey Nguyen",
-        isMember: true,
-        slackUserId: "UCASEY2",
-        userId: expect.any(String),
-      },
+    // A Slack-workspace Conversation finds every User too: one who is only
+    // in another workspace, and one with no Slack account. Invite adds the
+    // User that the search found.
+    await resolveViewerUser("carla@example.com");
+    const found = await owner.users({
+      conversationId: "slack:C2:1.0",
+      q: "ca",
+    });
+    expect(found.map((user) => user.email).sort()).toEqual([
+      "cam@example.com",
+      "carla@example.com",
+      "casey@example.com",
     ]);
+    for (const user of found) {
+      const invited = await owner.app.request(
+        "http://localhost/api/conversations/slack:C2:1.0/invites",
+        {
+          body: JSON.stringify({ userId: user.userId }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(await invited.json()).toEqual({ added: true });
+    }
+    expect(
+      (await owner.users({ conversationId: "slack:C2:1.0", q: "ca" })).every(
+        (user) => user.isMember,
+      ),
+    ).toBe(true);
   });
 
   it("requires a signed-in viewer", async () => {
     const app = new Hono<JuniorApiEnv>();
     app.route("/", createJuniorApi());
     const response = await app.request(
-      "http://localhost/api/people/user-search?q=ca&spaceId=6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21",
+      "http://localhost/api/people/user-search?q=ca&conversationId=local:web:missing",
     );
     expect(response.status).toBe(401);
   });

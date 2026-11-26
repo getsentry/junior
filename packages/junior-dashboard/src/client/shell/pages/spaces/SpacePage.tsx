@@ -9,7 +9,6 @@ import { DashboardApiError } from "../../../http";
 import { UnsentAnswersProvider } from "../../../inbox/UnsentAnswers";
 import { useSpaceLead } from "../../../lead/Lead";
 import { useSpaceData } from "../../../spaces/queries";
-import { JoinSpaceButton } from "../../../spaces/SpaceActions";
 import { SpaceTile } from "../../../spaces/SpaceTile";
 import { ConversationPage } from "../../conversations/ConversationPage";
 import { ConversationDetailLoading } from "../../conversations/ConversationWorkspaceLoading";
@@ -64,7 +63,6 @@ function SpaceWithoutLead(props: { space: SpaceReport }) {
   const { space } = props;
   return (
     <PageFrame
-      actions={<JoinSpaceButton space={space} />}
       icon={<SpaceTile size="md" space={space} />}
       phoneTitle={space.name}
       title={space.name}

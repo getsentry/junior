@@ -1,27 +1,15 @@
-import type { SpaceReport } from "@sentry/junior/api/schema";
-
 /**
- * Show a Lead's menu from its Space's archive and membership. The menu's
- * Archive, Join, and Leave act on the Space, and the Space actions write
- * its state to the cache at once, before the Lead's detail reads again.
+ * Show a Lead's menu with its Space's archive. The menu's Archive acts on
+ * the Space, and the Space actions write its state to the cache at once,
+ * before the Lead's detail reads again.
  */
-export function leadMenuState<
-  C extends { archivedAt?: string | null },
-  D extends { isParticipant?: boolean; subscribed?: boolean },
->(
+export function leadMenuState<C extends { archivedAt?: string | null }, D>(
   menu: { conversation: C | undefined; detail: D | undefined },
-  space: SpaceReport | undefined,
+  space: { archivedAt?: string | null } | undefined,
 ): { conversation: C | undefined; detail: D | undefined } {
-  if (!space) return menu;
+  if (!space || !menu.conversation) return menu;
   return {
-    conversation: menu.conversation && {
-      ...menu.conversation,
-      archivedAt: space.archivedAt,
-    },
-    detail: menu.detail && {
-      ...menu.detail,
-      isParticipant: space.viewerIsMember,
-      subscribed: space.viewerIsMember,
-    },
+    ...menu,
+    conversation: { ...menu.conversation, archivedAt: space.archivedAt },
   };
 }
