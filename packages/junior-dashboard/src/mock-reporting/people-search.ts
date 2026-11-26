@@ -8,6 +8,7 @@ import {
   peopleSearchReportSchema,
   userSearchQuerySchema,
   userSearchReportSchema,
+  type ConversationInviteBody,
   type ConversationInviteResponse,
   type MentionablePerson,
   type PeopleSearchReport,
@@ -16,7 +17,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { errorResponse } from "./errors";
 import { readMockConversationDetail } from "./fixtures";
-import { readMockSpace } from "./spaces";
+import { addMockLeadParticipant, withMockSpace } from "./spaces";
 
 // The API returns at most this many people per search.
 const MOCK_PEOPLE_SEARCH_LIMIT = 8;
@@ -71,15 +72,19 @@ const MOCK_USERS: UserSearchResult[] = MOCK_MENTIONABLE_PEOPLE.flatMap(
             ...(person.avatarUrl ? { avatarUrl: person.avatarUrl } : undefined),
             email: person.email,
             ...(person.fullName ? { fullName: person.fullName } : undefined),
-            slackUserId: person.slackUserId,
             ...(person.slackUserName
               ? { slackUserName: person.slackUserName }
               : undefined),
-            userId: `mock-user-${person.slackUserId}`,
+            userId: mockUserId(person.slackUserId),
           },
         ]
       : [],
 );
+
+/** The mock User id of a mock person. */
+function mockUserId(slackUserId: string): string {
+  return `mock-user-${slackUserId}`;
+}
 
 /** Mount the mock `@` people search, people picker, and Invite routes. */
 export function registerMockPeopleSearchRoutes(
@@ -88,13 +93,8 @@ export function registerMockPeopleSearchRoutes(
   app.get("/people/user-search", (c) => {
     const query = userSearchQuerySchema.safeParse(c.req.query());
     if (!query.success) return errorResponse("Invalid search query.", 400);
-    const members = readMockMemberEmails(query.data, c.get("viewer")?.email);
-    if (!members) {
-      return errorResponse(
-        query.data.spaceId ? "Space was not found." : "Conversation not found.",
-        404,
-      );
-    }
+    const members = readMockMemberEmails(query.data);
+    if (!members) return errorResponse("Conversation not found.", 404);
     return jsonResponse(userSearchReportSchema, {
       users: searchMockUsers(query.data, members),
     });
@@ -118,10 +118,7 @@ export function registerMockPeopleSearchRoutes(
     if (!body.success) {
       return errorResponse("Invalid request body.", 400);
     }
-    const result = inviteMockPerson(
-      params.data.conversationId,
-      body.data.slackUserId,
-    );
+    const result = inviteMockPerson(params.data.conversationId, body.data);
     if (result === "conversation") {
       return errorResponse("Conversation not found.", 404);
     }
@@ -154,37 +151,40 @@ function searchMockPeople(query: string): PeopleSearchReport {
  */
 function inviteMockPerson(
   conversationId: string,
-  slackUserId: string,
+  body: ConversationInviteBody,
 ): ConversationInviteResponse | "conversation" | "person" {
-  const detail = readMockConversationDetail(conversationId);
+  const detail = readMockDetail(conversationId);
   if (!detail?.canInvite) return "conversation";
   const person = MOCK_MENTIONABLE_PEOPLE.find(
-    (candidate) => candidate.slackUserId === slackUserId,
+    (candidate) => mockUserId(candidate.slackUserId) === body.userId,
   );
   if (!person?.hasUser) return "person";
+  const lead =
+    person.email && person.fullName
+      ? addMockLeadParticipant(conversationId, {
+          email: person.email,
+          fullName: person.fullName,
+        })
+      : undefined;
+  if (lead) return lead;
   const added = !detail.participants?.some(
-    (participant) => participant.slackUserId === slackUserId,
+    (participant) => participant.slackUserId === person.slackUserId,
   );
   return { added };
 }
 
+/** A mock detail with its Space, as the detail route answers it. */
+function readMockDetail(conversationId: string) {
+  const detail = readMockConversationDetail(conversationId);
+  return detail ? withMockSpace(detail) : undefined;
+}
+
 /**
- * The emails of the people who already belong to the searched Space or
- * Conversation, or nothing when the viewer cannot read it.
+ * The emails of the people who already belong to the searched Conversation,
+ * or nothing when the viewer cannot read it.
  */
-function readMockMemberEmails(
-  query: UserSearchQuery,
-  viewerEmail: string | undefined,
-): Set<string> | undefined {
-  if (query.spaceId) {
-    const space = readMockSpace(query.spaceId);
-    if (!space) return undefined;
-    return new Set([
-      ...space.others.map((member) => member.email),
-      ...(space.viewerMember && viewerEmail ? [viewerEmail] : []),
-    ]);
-  }
-  const detail = readMockConversationDetail(query.conversationId!);
+function readMockMemberEmails(query: UserSearchQuery): Set<string> | undefined {
+  const detail = readMockDetail(query.conversationId);
   if (!detail) return undefined;
   return new Set(
     (detail.participants ?? []).flatMap((person) =>
@@ -227,9 +227,8 @@ function searchMockUsers(
         (left.fullName ?? "").localeCompare(right.fullName ?? ""),
     )
     .slice(0, query.limit)
-    .map(({ slackUserId, ...user }) => ({
+    .map((user) => ({
       ...user,
-      ...(query.conversationId ? { slackUserId } : undefined),
       ...(members.has(user.email) ? { isMember: true as const } : undefined),
     }));
 }

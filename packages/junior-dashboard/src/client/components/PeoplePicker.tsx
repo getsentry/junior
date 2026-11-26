@@ -37,10 +37,8 @@ const SEARCH_LIMIT = 5;
 const FLOATING_CLASS =
   "absolute inset-x-0 top-full z-10 mt-1 rounded-md border border-input bg-secondary shadow-lg";
 
-/** The Space or Conversation that the picker adds people to. */
-export type PeoplePickerTarget =
-  | { spaceId: string }
-  | { conversationId: string };
+/** The Conversation that the picker adds people to. */
+export type PeoplePickerTarget = { conversationId: string };
 
 /** Query key of the people picker searches for one target. */
 function userSearchKey(target: PeoplePickerTarget) {

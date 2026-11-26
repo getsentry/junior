@@ -10,8 +10,8 @@ Visibility and Destination are the only boundaries between Conversations.
 - Private is isolated. No data goes into or out of a private Conversation,
   except through the people who look at it, or to another Conversation with
   the same audience. Every Conversation at one Destination, such as one
-  private Slack channel or DM, has the same audience. Every Conversation in
-  one Space is in its Lead's tree, so it has the tree's audience.
+  private Slack channel or DM, has the same audience. A Space is one tree,
+  so all of its Conversations have the audience of its Lead.
 
 One rule decides when a Conversation may read, find, or act on the data of
 another Conversation. A new feature uses this rule. It does not add its own
@@ -40,9 +40,8 @@ Check the rows in this order. The first match decides.
 | 3   | Public                                          | Allow  |
 | 4   | Private, in another tree and Destination        | Deny   |
 
-- In a Space, the Lead is the root, so row 1 covers the whole Space, and
-  the Lead's own Destination keeps row 2 inside it. A private Space's tree
-  holds only private work that its members read.
+- In a Space, the Lead is the root, so row 1 covers the whole Space. Each
+  Lead has its own Destination, so row 2 adds nothing outside its tree.
 - Row 2 compares only the Destination ids of the two roots.
   It has no provider or surface check. It is safe because of one invariant:
   Conversations share a Destination only when they have the same audience.
@@ -59,11 +58,9 @@ Check the rows in this order. The first match decides.
 - A write needs read access first.
 - A private requester never writes into a public Conversation, such as
   with `messageAgent`. With row 4, a private Conversation writes only into
-  its own tree and Conversations at its own Destination.
+  Conversations in its own tree or at its own Destination.
 - A Lead writes into the Conversations of its Space as their parent, with
-  `messageAgent`. Outside its Space, it may write only into a public root
-  where the member who asked is a Participant, as the member could. The
-  Lead of a private Space writes only inside its Space.
+  `messageAgent`, and into other roots by the rule above, as any root does.
 - A Lead starts work in its Space with `startAgent`, as a child with the
   Space's visibility. Action review judges its task as a child's task, with the
   `lead-member` rule in `design/guardian.md`.
@@ -91,9 +88,9 @@ person, and each person may only Leave on their own. A Slack-backed one
 follows its channel instead. This rule never lets one Conversation read
 another.
 
-A Space follows the same rule. It is its Lead, the root of every
-Conversation in it, so its members are the Lead's Participants. Only
-members post in its Conversations on the web.
+A Space's members are the Participants of its Lead, and every Conversation
+in it inherits them, as in any tree. A person who is not a member of a
+private Space gets "not found" for the Space.
 
 ## Surfaces
 
@@ -102,7 +99,7 @@ members post in its Conversations on the web.
   `canAccessConversation`.
   A Conversation Watch checks again at each delivery and fails closed,
   before any text from the target reaches the watcher.
-- A Lead's `searchConversations` finds roots that are public, at the
+- A Lead's `searchConversations` finds roots that are public or at the
   Destination of the requester's root. It finds
   child agents only when asked, and never the requester's own tree. Results
   include the summary and outcome status. `participating` keeps only roots

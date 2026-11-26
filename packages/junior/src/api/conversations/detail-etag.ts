@@ -401,7 +401,7 @@ async function readDetailState(
       ...(row?.lastReadSeq != null
         ? { readPosition: { lastReadSeq: row.lastReadSeq } }
         : undefined),
-      // Only members may learn a private Space's name.
+      // Only a reader of a private Space may learn its name.
       space:
         row?.spaceId && row.spaceName && access?.canViewPrivateContent
           ? { id: row.spaceId, name: row.spaceName }

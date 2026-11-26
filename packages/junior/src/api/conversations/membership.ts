@@ -9,7 +9,6 @@ import {
   or,
   sql,
   type SQL,
-  type SQLWrapper,
 } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -25,20 +24,21 @@ export type ConversationMember = { userId: string } | { email: string };
 
 /**
  * Select the person's participant row on the outer `juniorConversations`
- * root, with an optional extra condition. `rootId` names the root to probe,
- * the outer row itself by default.
+ * root, with an optional extra condition.
  */
 function memberParticipantRow(
   member: ConversationMember,
   condition?: SQL,
-  rootId: SQLWrapper = juniorConversations.conversationId,
+  onRoot: SQL = eq(
+    juniorConversationParticipants.rootConversationId,
+    juniorConversations.conversationId,
+  ),
 ) {
   const rows = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
     })
     .from(juniorConversationParticipants);
-  const onRoot = eq(juniorConversationParticipants.rootConversationId, rootId);
   return "userId" in member
     ? rows.where(
         and(
@@ -62,64 +62,36 @@ function memberParticipantRow(
 }
 
 /**
- * True when the outer conversation is in a tree that the person is a
- * Participant of. In a Space the Lead is the root, so this holds for every
- * Conversation of each Space that the person is a member of.
- */
-function inParticipantTree(member: ConversationMember): SQL {
-  const rows = getDb()
-    .select({ id: juniorConversationParticipants.rootConversationId })
-    .from(juniorConversationParticipants);
-  const roots =
-    "userId" in member
-      ? rows.where(eq(juniorConversationParticipants.userId, member.userId))
-      : rows
-          .innerJoin(
-            juniorUsers,
-            eq(juniorUsers.id, juniorConversationParticipants.userId),
-          )
-          .where(eq(juniorUsers.primaryEmailNormalized, member.email));
-  return sql`${juniorConversations.rootConversationId} = any(array(${roots}))`;
-}
-
-/**
- * True when the person may read the outer conversation: it is public, or
- * they are a Participant of its tree. A Participant row on a Conversation
- * that has a parent grants nothing, the same as in `access.ts`, so a
- * Conversation moved into a Space does not stay readable to its old
- * Participants.
+ * True when the viewer may find the outer conversation by a link to it: it
+ * is public, or the viewer is a Participant of its root. A Space's Lead is
+ * the root of all of its work, so its Participants find all of it.
  */
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
-  if (!viewerUserId) return isPublicConversation(juniorConversations);
-  const member = { userId: viewerUserId };
   return or(
     isPublicConversation(juniorConversations),
-    and(
-      isNull(juniorConversations.parentConversationId),
-      exists(memberParticipantRow(member)),
-    ),
-    inParticipantTree(member),
+    viewerUserId ? inParticipantRoot(viewerUserId) : undefined,
   )!;
 }
 
 /**
- * `rootVisibleToViewer` for a feed row that `conversationIsMemberRoot`
- * already matched. A root that it matched has the person's Participant row,
- * so only a child needs the tree check.
+ * True when the person is a Participant of the outer conversation's root.
+ * The uncorrelated `array(...)` runs once as an InitPlan, which Postgres
+ * charges once, where a correlated check is charged on each row.
  */
-export function feedRowReadableBy(member: ConversationMember): SQL {
-  return or(
-    isPublicConversation(juniorConversations),
-    isNull(juniorConversations.parentConversationId),
-    inParticipantTree(member),
-  )!;
+function inParticipantRoot(userId: string): SQL {
+  const roots = getDb()
+    .select({ id: juniorConversationParticipants.rootConversationId })
+    .from(juniorConversationParticipants)
+    .where(eq(juniorConversationParticipants.userId, userId));
+  return sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId}) = any(array(${roots}))`;
 }
 
 /**
- * True when the person is a Participant of the conversation, or of the Lead
- * whose child it is, since a Lead's Participants are its Space's members.
- * Feeds filter with this id set instead of a per-row membership check, so
- * Postgres reads only that person's conversations, not every root.
+ * True when the person is a Participant of the root conversation, or of the
+ * root whose child it is, such as a Lead's Thread that top-level lists
+ * show. Participant rows belong to roots, so a child never matches its own
+ * id. Feeds filter with this id set instead of a per-row membership check,
+ * so Postgres reads only that person's conversations, not every root.
  */
 export function conversationIsMemberRoot(member: ConversationMember): SQL {
   const participating = getDb()
@@ -140,16 +112,19 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
           .where(eq(juniorUsers.primaryEmailNormalized, member.email));
   // Top-level filters keep only a parent match whose parent is a Lead.
   return or(
-    inArray(juniorConversations.conversationId, memberRoots),
+    and(
+      isNull(juniorConversations.parentConversationId),
+      inArray(juniorConversations.conversationId, memberRoots),
+    ),
     inArray(juniorConversations.parentConversationId, memberRoots),
   )!;
 }
 
 /**
- * True when the person has not unsubscribed from the conversation's root.
- * The active feed uses it, so a conversation that someone else carries on
- * leaves the feed of a person who left it. A Lead's child in the feed
- * checks the Lead, where Unsubscribe writes.
+ * True when the person has not unsubscribed from the conversation, or from
+ * the root whose child it is. The active feed uses it, so a conversation
+ * that someone else carries on leaves the feed of a person who left it,
+ * with the Lead's Threads that top-level lists show.
  */
 export function conversationIsNotUnsubscribedRoot(
   member: ConversationMember,
@@ -162,7 +137,16 @@ export function conversationIsNotUnsubscribedRoot(
       memberParticipantRow(
         member,
         isNotNull(juniorConversationParticipants.unsubscribedAt),
-        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+        or(
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            juniorConversations.parentConversationId,
+          ),
+        ),
       ),
     ),
   );

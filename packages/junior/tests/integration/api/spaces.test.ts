@@ -5,10 +5,12 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
+  conversationInviteResponseSchema,
+  userSearchReportSchema,
+  leadSchema,
   setConversationSpaceResponseSchema,
   spaceListSchema,
   spaceConfigurationSchema,
-  spaceMemberListSchema,
   spaceSchema,
   versionsSchema,
 } from "@/api/schema";
@@ -82,6 +84,34 @@ async function moveTo(
   );
 }
 
+/** The id of a Space's Lead, whose Participants are its members. */
+async function leadOf(app: Hono<JuniorApiEnv>, spaceId: string) {
+  const response = await send(app, "GET", `/${spaceId}/lead`);
+  expect(response.status).toBe(200);
+  return leadSchema.parse(await response.json()).conversationId;
+}
+
+async function leave(app: Hono<JuniorApiEnv>, conversationId: string) {
+  return await request(
+    app,
+    "POST",
+    `/conversations/${encodeURIComponent(conversationId)}/leave`,
+  );
+}
+
+async function postMessage(
+  app: Hono<JuniorApiEnv>,
+  conversationId: string,
+  key: string,
+) {
+  return await request(
+    app,
+    "POST",
+    `/conversations/${encodeURIComponent(conversationId)}/messages`,
+    { idempotencyKey: key, message: "Hi" },
+  );
+}
+
 async function listNames(
   app: Hono<JuniorApiEnv>,
   query = "",
@@ -142,31 +172,7 @@ describe("Spaces API", () => {
     );
     expect(read).toMatchObject({ memberCount: 1, viewerIsMember: false });
 
-    const joined = await send(bo, "PUT", `/${space.id}/members/me`);
-    expect(joined.status).toBe(200);
-    expect(spaceSchema.parse(await joined.json())).toMatchObject({
-      memberCount: 2,
-      viewerIsMember: true,
-    });
-    // Joining again changes nothing.
-    await send(bo, "PUT", `/${space.id}/members/me`);
-    const members = spaceMemberListSchema.parse(
-      await (await send(ana, "GET", `/${space.id}/members`)).json(),
-    );
-    expect(members.members.map((member) => member.email)).toEqual([
-      "spaces-api-ana@example.com",
-      "spaces-api-bo@example.com",
-    ]);
-
-    const left = await send(bo, "DELETE", `/${space.id}/members/me`);
-    expect(spaceSchema.parse(await left.json())).toMatchObject({
-      memberCount: 1,
-      viewerIsMember: false,
-    });
-    expect(await listNames(bo)).not.toContain("Billing migration");
-
-    // A Space is its Lead, so a mention in its work adds them, as in any
-    // public root.
+    // A mention in the Space's work adds them, as in any public root.
     await resolveActorIdentityId(getSqlExecutor(), {
       email: "spaces-api-bo@example.com",
       platform: "slack",
@@ -177,9 +183,24 @@ describe("Spaces API", () => {
       message: "<@USPACESBO> look",
       spaceId: space.id,
     });
-    expect(
-      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
-    ).toMatchObject({ memberCount: 2, viewerIsMember: true });
+    const readByBo = async () =>
+      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json());
+    expect(await readByBo()).toMatchObject({
+      memberCount: 2,
+      viewerIsMember: true,
+    });
+
+    // Leave of the Lead leaves the Space.
+    const lead = await leadOf(bo, space.id);
+    expect((await leave(bo, lead)).status).toBe(200);
+    expect(await readByBo()).toMatchObject({
+      memberCount: 1,
+      viewerIsMember: false,
+    });
+    expect(await listNames(bo)).not.toContain("Billing migration");
+
+    // Anyone can still message the public Lead.
+    expect((await postMessage(bo, lead, "spaces-api-rejoin")).status).toBe(200);
   });
 
   it("lets only members rename or archive a Space", async () => {
@@ -216,13 +237,9 @@ describe("Spaces API", () => {
     expect(archived.archivedAt).not.toBeNull();
     expect(await listNames(ana)).not.toContain("Junior for iOS");
     expect(await listNames(ana, "?archived=true")).toContain("Junior for iOS");
-    // When every member leaves an archived Space, anyone can still join and
-    // restore it.
-    await send(ana, "DELETE", `/${space.id}/members/me`);
-    expect((await send(bo, "PUT", `/${space.id}/members/me`)).status).toBe(200);
     const restored = spaceSchema.parse(
       await (
-        await send(bo, "PATCH", `/${space.id}/archive`, { archived: false })
+        await send(ana, "PATCH", `/${space.id}/archive`, { archived: false })
       ).json(),
     );
     expect(restored.archivedAt).toBeNull();
@@ -267,17 +284,10 @@ describe("Spaces API", () => {
       spaceId: space.id,
     });
     const oneOff = await startConversation(ana, "one-off");
-    // Only members post in the Space's Conversations, too.
-    expect(
-      (
-        await request(
-          bo,
-          "POST",
-          `/conversations/${encodeURIComponent(inSpace)}/messages`,
-          { idempotencyKey: "bo-in-ledger-plan", message: "Hi" },
-        )
-      ).status,
-    ).toBe(403);
+    // Anyone posts in a public Space's Conversations, as in any public root.
+    expect((await postMessage(bo, inSpace, "bo-in-ledger-plan")).status).toBe(
+      200,
+    );
 
     // Anyone can read the public Space's list. Rows and the detail name the
     // Space.
@@ -314,7 +324,7 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId).sort(),
     ).toEqual([inSpace, oneOff].sort());
-    await send(ana, "DELETE", `/${other.id}/members/me`);
+    expect((await leave(ana, await leadOf(ana, other.id))).status).toBe(200);
     expect((await moveTo(ana, oneOff, other.id)).status).toBe(403);
     expect(
       setConversationSpaceResponseSchema.parse(
@@ -473,7 +483,8 @@ describe("Spaces API", () => {
       "Payroll audit",
     );
     expect((await send(bo, "GET", `/${space.id}`)).status).toBe(404);
-    expect((await send(bo, "PUT", `/${space.id}/members/me`)).status).toBe(404);
+    const lead = await leadOf(ana, space.id);
+    expect((await postMessage(bo, lead, "payroll-bo-join")).status).toBe(403);
 
     // Its Conversations take its visibility, and only members read them.
     expect(
@@ -496,25 +507,38 @@ describe("Spaces API", () => {
     expect(await detailVersion(bo, inSpace)).not.toContain("Payroll audit");
     expect(await spaceFeed(bo, space.id)).toEqual([]);
 
-    // A member adds people, and every member reads every Conversation.
-    expect(
-      (
-        await send(bo, "POST", `/${space.id}/members`, {
-          email: "spaces-private-bo@example.com",
-        })
-      ).status,
-    ).toBe(404);
-    expect(
-      (
-        await send(ana, "POST", `/${space.id}/members`, {
-          email: "nobody@example.com",
-        })
-      ).status,
-    ).toBe(404);
-    const added = await send(ana, "POST", `/${space.id}/members`, {
-      email: "spaces-private-bo@example.com",
+    // A member finds a User, who may have no Slack account, and invites
+    // them to the Lead. Then every member reads every Conversation.
+    const invite = (app: Hono<JuniorApiEnv>, userId: string) =>
+      request(
+        app,
+        "POST",
+        `/conversations/${encodeURIComponent(lead)}/invites`,
+        { userId },
+      );
+    const found = userSearchReportSchema.parse(
+      await (
+        await request(
+          ana,
+          "GET",
+          `/people/user-search?${new URLSearchParams({ conversationId: lead, q: "spaces-private-bo" })}`,
+        )
+      ).json(),
+    ).users;
+    expect(found).toEqual([
+      expect.objectContaining({ email: "spaces-private-bo@example.com" }),
+    ]);
+    const boUserId = found[0]!.userId;
+    expect((await invite(bo, boUserId)).status).toBe(404);
+    expect((await invite(ana, "missing-user")).status).toBe(404);
+    const added = await invite(ana, boUserId);
+    expect(conversationInviteResponseSchema.parse(await added.json())).toEqual({
+      added: true,
     });
-    expect(spaceSchema.parse(await added.json()).memberCount).toBe(2);
+    expect(
+      spaceSchema.parse(await (await send(ana, "GET", `/${space.id}`)).json())
+        .memberCount,
+    ).toBe(2);
     expect(await detail(bo, inSpace)).toMatchObject({
       space: spaceRef,
       visibility: "private",
@@ -540,68 +564,15 @@ describe("Spaces API", () => {
     ).toBe(400);
     expect(await detailSpace(cy, inSpace)).toBeNull();
 
-    // Invite in its work adds a member, as in any private root.
-    await resolveActorIdentityId(getSqlExecutor(), {
-      email: "spaces-private-cy@example.com",
-      platform: "slack",
-      teamId: "T1",
-      userId: "USPACESCY",
-    });
-    const invited = await request(
-      ana,
-      "POST",
-      `/conversations/${inSpace}/invites`,
-      { slackUserId: "USPACESCY" },
-    );
-    expect(await invited.json()).toEqual({ added: true });
-    expect(await detailSpace(cy, inSpace)).toEqual(spaceRef);
-    expect((await send(cy, "DELETE", `/${space.id}/members/me`)).status).toBe(
-      200,
-    );
-    expect(await detailSpace(cy, inSpace)).toBeNull();
-
-    // A participant who leaves no longer finds its Conversations.
-    await getDb()
-      .insert(juniorConversationParticipants)
-      .values({
-        lastMessageAt: new Date(1_000),
-        rootConversationId: inSpace,
-        userId: (await signedInViewer("spaces-private-bo@example.com")).id,
-      });
+    // A member who leaves the Lead no longer finds its Conversations.
     const inbox = async () =>
       conversationFeedSchema
         .parse(await (await request(bo, "GET", "/conversations")).json())
         .conversations.map((row) => row.conversationId);
     expect(await inbox()).toContain(inSpace);
-    expect((await send(bo, "DELETE", `/${space.id}/members/me`)).status).toBe(
-      200,
-    );
+    expect((await leave(bo, lead)).status).toBe(200);
     expect(await inbox()).not.toContain(inSpace);
-
-    // The last member stays, so somebody can always read it, even when the
-    // last two leave at once.
-    await send(ana, "POST", `/${space.id}/members`, {
-      email: "spaces-private-bo@example.com",
-    });
-    const leaves = await Promise.all(
-      [ana, bo].map((app) => send(app, "DELETE", `/${space.id}/members/me`)),
-    );
-    expect(leaves.map((response) => response.status).sort()).toEqual([
-      200, 409,
-    ]);
-    // Leave on its work keeps the last member too.
-    const conversationLeaves = await Promise.all(
-      [ana, bo].map((app) =>
-        request(
-          app,
-          "POST",
-          `/conversations/${encodeURIComponent(inSpace)}/leave`,
-        ),
-      ),
-    );
-    expect(
-      conversationLeaves.map((response) => response.status).sort(),
-    ).toEqual([404, 409]);
+    expect(await detailSpace(bo, inSpace)).toBeNull();
   });
 
   it("keeps a Slack Conversation out of a private Space", async () => {

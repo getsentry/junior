@@ -276,8 +276,8 @@ export type ConversationReach = Pick<
  * person of the Turn does not change the result. A public Conversation is
  * reachable from any Conversation, on any surface and in any provider tenant.
  * A private Conversation is reachable only from its own tree and from
- * Conversations with the same audience: the same Destination. Every
- * Conversation in a Space is in its Lead's tree.
+ * Conversations with the same audience: the same Destination. A Space's Lead
+ * is the root of all of its work, so the tree covers the whole Space.
  */
 export function canAccessConversation(args: {
   requester: ConversationReach;

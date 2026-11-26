@@ -129,7 +129,7 @@ export async function readMentionedUserIds(
   return [...new Set(rows.flatMap((row) => (row.userId ? [row.userId] : [])))];
 }
 
-/** Return whether a Conversation is a Space's Lead, whose Participants are its members. */
+/** Return whether a Conversation is a Space's Lead. */
 export async function isLeadConversation(
   db: JuniorDatabase,
   conversationId: string,

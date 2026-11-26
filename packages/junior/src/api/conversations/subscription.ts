@@ -13,6 +13,7 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorUsers,
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type {
@@ -62,19 +63,21 @@ import {
  *   MCP tool act only on the signed-in person or the Turn actor. No argument
  *   of theirs names a person.
  * - Given a public Conversation that a person can add Messages to, when
- *   they Invite a person they mention, or send a dashboard or Slack Message
+ *   they Invite a person, or send a dashboard or Slack Message
  *   that mentions them, then that person becomes a subscribed Participant.
  *   A dashboard Message adds them when it is accepted. Any Message adds them
  *   when it starts or joins a Turn, like its author. This is the only way to
  *   subscribe another person. It gives no access: anyone can already read a
  *   public Conversation and join it by posting.
+ * - Invite names a User of this install, the one that user search finds,
+ *   so it works the same in every Conversation, with or without Slack. A
+ *   Slack mention names the User of that Slack account.
  * - Given a private Conversation, when a Participant Invites a person, then
  *   that person becomes a Participant and can read it. Only Invite does
  *   this: a mention in a Message adds nobody, so sharing private content
- *   is always an explicit act. In a private Space the root is its Lead, so
- *   Invite adds a member, as a member can on the Space. A Slack-backed
- *   private Conversation follows its Slack channel, so it refuses Invite,
- *   with the same error as a missing Conversation.
+ *   is always an explicit act. A Slack-backed private Conversation follows
+ *   its Slack channel, so it refuses Invite, with the same error as a
+ *   missing Conversation.
  * - Given a Participant, when they Leave, then they unsubscribe. In a
  *   private Conversation with its own Participant list, their row is also
  *   deleted, so they lose access until someone Invites them again.
@@ -312,7 +315,7 @@ async function archiveWithoutSubscribers(
 }
 
 /**
- * Invite a mentioned person into a Conversation's feed, for the HTTP API. The contract is in the comment above. `added` is false when the
+ * Invite a User into a Conversation's feed, for the HTTP API. The contract is in the comment above. `added` is false when the
  * person was already a Participant.
  */
 export async function inviteToConversation(
@@ -322,15 +325,15 @@ export async function inviteToConversation(
 ): Promise<ConversationInviteResponse> {
   const conversation = await readInvitableConversation(viewer, conversationId);
   if (!conversation) throwApiError(404, "Conversation not found.");
-  const [userId] = await readMentionedUserIds(
-    getSqlExecutor(),
-    [body.slackUserId],
-    conversation.slackTeamId,
-  );
-  if (!userId) throwApiError(404, "Person not found.");
+  const [user] = await getDb()
+    .select({ id: juniorUsers.id })
+    .from(juniorUsers)
+    .where(eq(juniorUsers.id, body.userId))
+    .limit(1);
+  if (!user) throwApiError(404, "Person not found.");
   const added = await addInvitedParticipants(
     conversation.rootConversationId,
-    [userId],
+    [user.id],
     { refuseArchived: true },
   );
   return { added: added > 0 };
