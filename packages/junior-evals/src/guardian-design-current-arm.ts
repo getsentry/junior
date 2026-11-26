@@ -1,11 +1,12 @@
 /**
  * The current Guardian as a `GuardianArm`.
  *
- * It sends each proposal to the production reviewer, as the gate does today,
- * and reports what today's runtime does with the result. It reads none of
+ * It sends each proposal that the gate reviews to the production reviewer, as
+ * the gate does today, and reports what today's runtime does with the result. It reads none of
  * the design facts of a request, because today's core does not send them.
  */
 import { completeObject } from "@/chat/core-model";
+import { mapBounded } from "@/chat/fan-out";
 import { guardianPluginFacts } from "@/chat/guardian/policy";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -15,6 +16,7 @@ import type {
   GuardianDesignResult,
 } from "./guardian-design-harness";
 import { reviewGuardianProposal } from "./guardian-harness";
+import { gateReviews } from "./guardian-tools";
 
 // A model that the AI Gateway does not serve, so each review call fails as
 // it does in a provider outage.
@@ -32,12 +34,18 @@ export const currentGuardianArm: GuardianArm = async (request, { signal }) => {
         modelId: UNAVAILABLE_MODEL_ID,
       })
     : undefined;
+  // A call that the gate does not send to Guardian runs.
+  const reviewed = await mapBounded(request.actions, (proposal) =>
+    gateReviews(proposal.tool, proposal.input),
+  );
   // The gate reviews the calls of a batch at once, then settles them in order.
   const reviews = await Promise.allSettled(
-    request.actions.map((proposal) =>
-      reviewer
-        ? reviewer.review(proposal, { signal })
-        : reviewGuardianProposal(proposal, { destinationFacts, signal }),
+    request.actions.map((proposal, index) =>
+      !reviewed[index]
+        ? Promise.resolve(undefined)
+        : reviewer
+          ? reviewer.review(proposal, { signal })
+          : reviewGuardianProposal(proposal, { destinationFacts, signal }),
     ),
   );
   const actions: GuardianDesignResult["actions"] = [];
@@ -58,6 +66,10 @@ export const currentGuardianArm: GuardianArm = async (request, { signal }) => {
       return { actions, inboxItems: 0 };
     }
     const decision = review.value;
+    if (!decision) {
+      actions.push({ decidedBy: "rule", outcome: "allow" });
+      continue;
+    }
     actions.push({
       decidedBy: "guardian",
       outcome: decision.decision,

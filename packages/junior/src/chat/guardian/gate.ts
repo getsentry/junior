@@ -435,6 +435,18 @@ function mayNeedReview(tool: AnyToolDefinition): boolean {
   return tool.approvalMode !== undefined && tool.approvalMode !== "approve";
 }
 
+/** Whether the gate sends a call of `tool` to Guardian, given its resolved metadata. */
+export function toolActionNeedsReview(
+  tool: AnyToolDefinition,
+  resolved: ToolApprovalResolution | undefined,
+): boolean {
+  if (!mayNeedReview(tool)) {
+    return false;
+  }
+  // Each mode other than `auto`, also one that is not known, needs review.
+  return tool.approvalMode !== "auto" || autoActionNeedsReview(tool, resolved);
+}
+
 /** Prepare the exact action that Guardian must review, when review is required. */
 async function prepareToolActionReview(
   action: ToolAction,
@@ -446,8 +458,7 @@ async function prepareToolActionReview(
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  // Each mode other than `auto`, also one that is not known, needs review.
-  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool, resolved)) {
+  if (!toolActionNeedsReview(tool, resolved)) {
     return;
   }
   assertAuthoritativeContext(context);
