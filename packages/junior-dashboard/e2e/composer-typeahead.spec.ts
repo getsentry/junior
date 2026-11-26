@@ -145,6 +145,34 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   expect(new Set(searches)).toEqual(new Set([PUBLIC_CONVERSATION_ID]));
 });
 
+test("@ searches a name with a space until two spaces end it", async ({
+  page,
+  dashboard,
+}) => {
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+
+  // A space keeps the menu open, and the next word narrows it.
+  await typeMention(composer, "Hi @avery ", /Avery Chen/);
+  await typeMention(composer, "ch", /Avery Chen/);
+  await expect(
+    mentions.getByRole("group", { name: "People" }).getByRole("option"),
+  ).toHaveText([/Avery Chen/]);
+  await composer.press("Enter");
+  await expect(composer).toHaveText("Hi @Avery Chen ");
+  await expect(
+    composer.getByRole("button", { name: "@Avery Chen" }),
+  ).toBeVisible();
+
+  await typeMention(composer, "and @casey ", /Casey Nguyen/);
+  await composer.pressSequentially(" ");
+  await expect(mentions).toBeHidden();
+});
+
 test("an earlier row cannot be inserted while the next search loads", async ({
   page,
   dashboard,
@@ -277,4 +305,54 @@ test("$ suggests skills and inserts the skill name", async ({
   await composer.press("Tab");
   await expect(skills).toBeHidden();
   await expect(composer).toHaveText("use $triage-incident ");
+});
+
+test("$ finds a skill by its words, and the words after it are text", async ({
+  page,
+  dashboard,
+}) => {
+  await page.route("**/api/skills", (route) =>
+    route.fulfill({
+      json: [
+        {
+          name: "triage-incident",
+          description: "Triage a live incident into a suspects-first note.",
+        },
+        {
+          name: "tpm",
+          description: "Run the TPM bug digest from Linear.",
+        },
+      ],
+    }),
+  );
+  const sent: string[] = [];
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    if (route.request().method() === "POST") {
+      sent.push(route.request().postDataJSON().message);
+    }
+    await route.fallback();
+  });
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  const skills = page.getByRole("grid", { name: "Skills" });
+
+  await composer.pressSequentially("use $triage inc");
+  await expect(skills.getByRole("gridcell", { name: /^\$/ })).toHaveText([
+    /\$triage-incident/,
+  ]);
+  await composer.press("Tab");
+  await expect(composer).toHaveText("use $triage-incident ");
+
+  // `in` matches the inserted name, but the reference is complete. In the
+  // next one, `ix` matches no skill, so the menu stays closed even when
+  // `ixci` would match `incident` as a typo.
+  await composer.pressSequentially("in tpm, then $triage ixci");
+  await expect(skills).toBeHidden();
+  await composer.press("Enter");
+  await expect
+    .poll(() => sent)
+    .toEqual(["use $triage-incident in tpm, then $triage ixci"]);
 });

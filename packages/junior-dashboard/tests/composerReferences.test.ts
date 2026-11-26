@@ -32,6 +32,11 @@ it("finds the # reference at the caret", () => {
   // An empty query has a reference, but the menu opens only with a name.
   expect(at("# |heading")).toBeUndefined();
   expect(at("#|")).toEqual({ start: 0, end: 1, query: "" });
+  expect(at("see #link pull|")).toEqual({
+    start: 4,
+    end: 14,
+    query: "link pull",
+  });
 });
 
 it("skips a # in a word, a URL, an entity, or a heading", () => {
@@ -41,7 +46,7 @@ it("skips a # in a word, a URL, an entity, or a heading", () => {
   expect(at("https://x.com/#top|")).toBeUndefined();
   expect(at("&#39|")).toBeUndefined();
   expect(at("##x|")).toBeUndefined();
-  expect(at("#x |")).toBeUndefined();
+  expect(at("#x  |")).toBeUndefined();
 });
 
 it("splits mentions and references out of message text", () => {

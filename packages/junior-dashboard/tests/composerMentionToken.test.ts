@@ -16,10 +16,21 @@ it("finds the people reference at the caret", () => {
   expect(at("(@ri|ley) now")).toEqual({ start: 1, end: 7, query: "ri" });
 });
 
-it("skips an at sign in an email address or after a space", () => {
+it("finds a name with one space between words", () => {
+  expect(at("hi @avery |")).toEqual({ start: 3, end: 10, query: "avery " });
+  expect(at("hi @avery c|hen now")).toEqual({
+    start: 3,
+    end: 14,
+    query: "avery c",
+  });
+});
+
+it("skips an at sign in an email address or before a second space", () => {
   expect(at("me@exa|")).toBeUndefined();
   expect(at("müller@exa|")).toBeUndefined();
   expect(at("田中@exa|")).toBeUndefined();
   expect(at("@@x|")).toBeUndefined();
-  expect(at("@riley |")).toBeUndefined();
+  expect(at("@ |")).toBeUndefined();
+  expect(at("@riley  |")).toBeUndefined();
+  expect(at("@riley  park|")).toBeUndefined();
 });

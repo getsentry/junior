@@ -1,7 +1,7 @@
 import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 
-import type { ComposerToken } from "./skillReferences";
+import { composerTokenFinder } from "./composerTypeaheadToken";
 import { CONVERSATION_PATH } from "./conversationRoutes";
 
 /**
@@ -51,22 +51,17 @@ export const composerReferenceSchema = z.discriminatedUnion("kind", [
 
 export type ComposerReference = z.output<typeof composerReferenceSchema>;
 
-// Like `@`: a letter, digit, `_` or `#` before the `#` makes it part of a
-// word, and a `/` or `&` makes it part of a URL or an entity, so `a#b`,
-// `https://x.com/#top` and `&#39;` open no menu.
-const HASH_BEFORE_CARET = /(?<![\p{L}\p{N}_#/&])#([\p{L}\p{N}._/-]*)$/u;
-const HASH_NAME_AFTER_CARET = /^[\p{L}\p{N}._/-]*/u;
-
-/** Find the `#name` reference that a caret at `caret` is in, if any. */
-export function hashTokenAt(
-  text: string,
-  caret: number,
-): ComposerToken | undefined {
-  const match = HASH_BEFORE_CARET.exec(text.slice(0, caret));
-  if (!match) return undefined;
-  const rest = HASH_NAME_AFTER_CARET.exec(text.slice(caret))?.[0] ?? "";
-  return { start: match.index, end: caret + rest.length, query: match[1]! };
-}
+/**
+ * Find the `#name` reference that a caret is in, if any. Like `@`, a
+ * letter, digit, `_` or `#` before the `#` makes it part of a word, and a
+ * `/` or `&` makes it part of a URL or an entity, so `a#b`,
+ * `https://x.com/#top` and `&#39;` open no menu.
+ */
+export const hashTokenAt = composerTokenFinder(
+  String.raw`(?<![\p{L}\p{N}_#/&])#`,
+  String.raw`[\p{L}\p{N}._/-]`,
+  "u",
+);
 
 /**
  * The message text of a reference: a Slack link or channel token that the
