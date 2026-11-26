@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { StoredSlackActor } from "@/chat/actor";
 import { recordCodeChange } from "@/chat/code/store";
+import { readPersonSpendDays } from "@/api/conversations/person-spend-days";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -9,13 +10,14 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { cacheKeyPrefix } from "@/chat/state/cache";
-import { juniorConversations } from "@/db/schema";
+import { juniorConversationMetrics, juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
 import {
   expectNoFullScan,
+  expectPlanCost,
   expectSqlBudget,
   measureSql,
 } from "../../../fixtures/sql-budget";
@@ -279,8 +281,14 @@ describe("conversation stats API", () => {
         ]);
       }
 
-      // Three people on one day, so the mean and the median per person differ.
-      for (const [index, costUsd] of [0.01, 0.002, 0.003].entries()) {
+      // Four people on one day, so the mean and the median per person differ.
+      // One Turn has no cost, so its person counts with zero spend.
+      for (const [index, costUsd] of [
+        0.01,
+        0.002,
+        0.003,
+        undefined,
+      ].entries()) {
         const actor = {
           email: `person-${index}@example.com`,
           platform: "slack",
@@ -296,14 +304,17 @@ describe("conversation stats API", () => {
           nowMs: atMs,
           source: "slack",
         });
-        await recordTurn(fixture, {
+        const turn = {
           actor,
           atMs,
           conversationId,
-          costUsd,
+          ...(costUsd === undefined ? undefined : { costUsd }),
           durationMs: 100,
           runId: `turn-person-${index}`,
-        });
+        };
+        await recordTurn(fixture, turn);
+        // A Turn written again replaces its metric rows, so it counts once.
+        await recordTurn(fixture, turn);
       }
 
       // Two merged code changes split the cost of their conversation tree.
@@ -440,8 +451,8 @@ describe("conversation stats API", () => {
         report.personSpendDays.find((day) => day.date === "2026-06-01"),
       ).toEqual({
         date: "2026-06-01",
-        medianPersonCostUsd: 0.003,
-        people: 3,
+        medianPersonCostUsd: 0.0025,
+        people: 4,
         personCostUsd: 0.015,
         unattributedCostUsd: 0,
       });
@@ -586,6 +597,35 @@ describe("conversation stats API", () => {
           ),
         );
 
+      // One Turn each, with no Actor Identity.
+      await fixture.sql
+        .db()
+        .insert(juniorConversationMetrics)
+        .values(
+          Array.from({ length: 5_001 }, (_, index) =>
+            (["duration_ms", "cost_micro_usd"] as const).map((metric) => ({
+              conversationId: `internal:stats-cap:${index}`,
+              metric,
+              occurredAt: now,
+              runId: "turn-1",
+              updatedAt: now,
+              value: 2,
+            })),
+          ).flat(),
+        );
+
+      // Daily spend reads one row per Identity and day, not one per Turn.
+      // Plan costs follow table statistics, so gather them first.
+      await fixture.sql.query("analyze");
+      await expectPlanCost(
+        () =>
+          readPersonSpendDays(fixture.sql.db(), {
+            start: new Date("2026-03-18T00:00:00.000Z"),
+            end: new Date(),
+          }),
+        14,
+      );
+
       const response = await createJuniorApi().request(
         "http://localhost/api/conversations/stats",
       );
@@ -593,6 +633,10 @@ describe("conversation stats API", () => {
       const report = conversationStatsReportSchema.parse(await response.json());
 
       expect(report.metricDays.at(-1)?.conversations).toBe(5_001);
+      expect(report.personSpendDays.at(-1)).toMatchObject({
+        people: 0,
+        unattributedCostUsd: 0.010002,
+      });
     } finally {
       vi.useRealTimers();
       await fixture.close();

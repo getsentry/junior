@@ -13,7 +13,10 @@ import { juniorCodeChanges, juniorCodeRepositories } from "./schema/code";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
-import { juniorConversationMetrics } from "./schema/conversation-metrics";
+import {
+  juniorConversationMetricDays,
+  juniorConversationMetrics,
+} from "./schema/conversation-metrics";
 import { juniorConversationEmbeddings } from "./schema/conversation-embeddings";
 import { juniorConversationEventEmbeddings } from "./schema/conversation-event-embeddings";
 import { juniorConversationEventLexemes } from "./schema/conversation-event-lexemes";
@@ -65,6 +68,7 @@ export {
   juniorApiTokens,
   juniorAgentBindings,
   juniorConversationEvents,
+  juniorConversationMetricDays,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
   juniorConversationEventEmbeddings,
@@ -116,6 +120,7 @@ export const juniorSqlSchema = {
   juniorApiTokens,
   juniorAgentBindings,
   juniorConversationEvents,
+  juniorConversationMetricDays,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
   juniorConversationEventEmbeddings,

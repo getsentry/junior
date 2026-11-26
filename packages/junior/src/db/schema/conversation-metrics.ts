@@ -1,11 +1,15 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
+  date,
   doublePrecision,
   foreignKey,
   index,
+  integer,
   pgTable,
   primaryKey,
   text,
+  unique,
 } from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
@@ -76,5 +80,31 @@ export const juniorConversationMetrics = pgTable(
       .where(
         sql`${table.metric} IN ('duration_ms', 'total_tokens', 'cost_micro_usd')`,
       ),
+  ],
+);
+
+/**
+ * Turn `duration_ms` and `cost_micro_usd` rows summed per UTC day and Actor
+ * Identity, so a read of daily spend per person reads one row per Identity
+ * and day, not one per Turn. A trigger on `junior_conversation_metrics` adds
+ * each write to its row in the same transaction. Drizzle cannot declare
+ * triggers, so `junior_conversation_metric_days_apply` lives only in its
+ * migration.
+ */
+export const juniorConversationMetricDays = pgTable(
+  "junior_conversation_metric_days",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    // Null for Turns with no resolved Actor Identity.
+    actorIdentityId: text("actor_identity_id"),
+    // `duration_ms` and `cost_micro_usd` rows. Zero after every Turn of the
+    // day is deleted, so a read skips the row.
+    metricRows: integer("metric_rows").notNull(),
+    costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    unique("junior_conversation_metric_days_day_actor_unique")
+      .on(table.day, table.actorIdentityId)
+      .nullsNotDistinct(),
   ],
 );

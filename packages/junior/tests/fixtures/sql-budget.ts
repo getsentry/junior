@@ -214,6 +214,7 @@ async function explainPlans(
 const BIG_TABLES = [
   "junior_automations",
   "junior_code_changes",
+  "junior_conversation_metric_days",
   "junior_conversation_metrics",
   "junior_inbox_items",
   "junior_memory_embeddings",
