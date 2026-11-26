@@ -16,7 +16,8 @@
  * page with a pull request that a webhook was checking runs again, because
  * that webhook does not ask a requester who acted before the last push. Bump
  * `VERSION` when a new derivation rule must reach pull requests that went
- * quiet before it.
+ * quiet before it, and set `ASK_AFTER_REQUESTER_ACTED` to whether the rule
+ * needs that ask.
  */
 import type {
   PluginStartedTaskDefinition,
@@ -33,8 +34,11 @@ import {
 export const GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK =
   "backfillPullRequestActions";
 
-// v2: a requester without write access gets no merge ask.
 const VERSION = "v2";
+// v1 brought limbo asks to quiet pull requests, also where the requester
+// acted before the last push. v2 brings only the merge access rule, so it
+// asks in limbo as a webhook does.
+const ASK_AFTER_REQUESTER_ACTED = false;
 const CURSOR_KEY = `pull-request-action-backfill:${VERSION}:cursor`;
 const DONE_KEY = `pull-request-action-backfill:${VERSION}:done`;
 // How often a page ran again, so its next run has a new task key.
@@ -85,7 +89,7 @@ export function githubPullRequestActionBackfillTask(args: {
         .sort((a, b) => a.id - b.id)
         .slice(0, PAGE_SIZE);
       const busy = await syncGitHubPullRequestActions({
-        askAfterRequesterActed: true,
+        askAfterRequesterActed: ASK_AFTER_REQUESTER_ACTED,
         ...startedTaskSyncContext(ctx, {
           botEmail: args.botEmail(),
           env: args.env,
