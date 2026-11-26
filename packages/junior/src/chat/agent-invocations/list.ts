@@ -33,6 +33,7 @@ const childConversationKindSchema = z.enum(["thread", "task"]);
 // How a child's newest finished Turn ended, as its result.
 const TURN_OUTCOME_RESULTS: Partial<Record<string, ChildAgentResult>> = {
   blocked: "blocked",
+  failed: "failed",
   no_reply: "completed",
   success: "completed",
 };
@@ -47,8 +48,8 @@ const CHILD_AGENT_LIST_LIMIT = 200;
  * children of a parent, such as ones that a removed feature created, are not
  * listed. A child is `running` while a Turn or mailbox input that answers its
  * parent is open, and is `failed` when its last Turn failed, also when the
- * Turn ended with a model error and execution went back to idle. Otherwise
- * `lastResult` is how the child's newest finished Turn ended.
+ * Turn ended with a model error and execution went back to idle.
+ * `lastResult` is how its newest finished Turn that was not stopped ended.
  */
 export async function listChildAgents(
   parentConversationId: string,
@@ -108,10 +109,7 @@ export async function listChildAgents(
             mailboxTurnSources.get(row.conversationId) ?? [],
           ),
         ));
-      const lastResult =
-        row.turnFailed && !running
-          ? "failed"
-          : TURN_OUTCOME_RESULTS[row.lastTurnOutcome ?? ""];
+      const lastResult = TURN_OUTCOME_RESULTS[row.lastTurnOutcome ?? ""];
       return {
         ...(row.agentName ? { agentName: row.agentName } : undefined),
         ...(row.archivedAt

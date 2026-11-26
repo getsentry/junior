@@ -716,10 +716,39 @@ describe("child Turns on the Conversation loop", () => {
             .filter((text) => text.includes("stop after reading the run")),
         ).toEqual([expect.stringMatching(/status="failed"/)]);
         // The failure wins over the completed Turn before it.
-        const { agents } = (await createListAgentsTool({
-          conversationId: slackParentConversationId,
-        }).execute!({}, {})) as { agents: Array<{ last_result?: string }> };
-        expect(agents[0]?.last_result).toBe("failed");
+        const listLastResult = async () =>
+          (
+            (await createListAgentsTool({
+              conversationId: slackParentConversationId,
+            }).execute!({}, {})) as { agents: Array<{ last_result?: string }> }
+          ).agents[0]?.last_result;
+        await expect(listLastResult()).resolves.toBe("failed");
+
+        // A stopped Turn after the failure is not a result, so the failure
+        // stays the child's result.
+        harness.onRun(async (run) => {
+          await storeConversationStop(run.conversationId);
+          await run.durability?.checkStop?.();
+          run.signal?.throwIfAborted();
+          throw new Error("The stored stop did not abort the run");
+        });
+        await sendHelperReply(
+          harness,
+          await createHelper(harness, childId, {
+            idempotencyKey: "helper-after-failure",
+            parentToolCallId: "helper-after-failure",
+          }),
+        );
+        await harness.processUntilRun(childId);
+        await expect(loadTurnEvents(childId)).resolves.toContainEqual(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              outcome: "cancelled",
+              type: "turn_completed",
+            }),
+          }),
+        );
+        await expect(listLastResult()).resolves.toBe("failed");
       } finally {
         await harness.close();
       }
