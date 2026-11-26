@@ -356,6 +356,7 @@ async function readConversationDetailFromSql(
     { name: "Project conversation detail", op: "function" },
     () => projectConversationDetail(detail),
   );
+  const isRoot = access?.rootConversationId === conversationId;
   return {
     ...report,
     ...state.forks,
@@ -364,8 +365,13 @@ async function readConversationDetailFromSql(
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }
       : undefined),
-    ...(report.isParticipant && state.subscribed !== undefined
-      ? { subscribed: state.subscribed }
+    // Only a root is joined or left. A child follows its root. A person who
+    // is not a Participant of a public root can Join it.
+    ...(isRoot &&
+    (report.isParticipant
+      ? state.subscribed !== undefined
+      : access?.visibility === "public")
+      ? { subscribed: report.isParticipant && state.subscribed === true }
       : undefined),
     ...(canContinueInSlack(record.conversation, access)
       ? { canContinueInSlack: true as const }
@@ -373,7 +379,7 @@ async function readConversationDetailFromSql(
     ...(canInviteToConversation(access)
       ? { canInvite: true as const }
       : undefined),
-    ...(leaveEndsAccess(access)
+    ...(isRoot && leaveEndsAccess(access)
       ? { leaveEndsAccess: true as const }
       : undefined),
     ...(report.isParticipant &&
