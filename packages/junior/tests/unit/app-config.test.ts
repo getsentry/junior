@@ -6,12 +6,8 @@ import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { botConfig } from "@/chat/config";
-import {
-  getConfigDefaults,
-  setConfigDefaults,
-} from "@/chat/configuration/defaults";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { getPlugins, setPlugins } from "@/chat/plugins/hooks/registry";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { validatePluginRegistrations } from "@/chat/plugins/validation";
 import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
@@ -62,8 +58,6 @@ afterEach(async () => {
   process.chdir(originalCwd);
   setPlugins([]);
   pluginCatalogRuntime.setConfig(undefined);
-  setConfigDefaults(undefined);
-  setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
   vi.doUnmock("#junior/system-prompts");
   if (originalPluginPackages === undefined) {

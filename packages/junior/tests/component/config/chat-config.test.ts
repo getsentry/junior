@@ -346,13 +346,13 @@ describe("chat config", () => {
         ...BASE_ENV,
         GOOGLE_CLIENT_ID: " client-id ",
         GOOGLE_CLIENT_SECRET: "client-secret",
-        JUNIOR_ALLOWED_DOMAINS: "[1]",
+        JUNIOR_ALLOWED_DOMAINS: " Sentry.io ",
         JUNIOR_DASHBOARD_TRUSTED_ORIGINS: " https://a.example.com ",
       },
     });
 
     expect(signIn).toMatchObject({
-      allowedDomains: "[1]",
+      allowedDomains: " Sentry.io ",
       googleClientId: " client-id ",
       googleClientSecret: "client-secret",
       trustedOrigins: " https://a.example.com ",
@@ -902,5 +902,27 @@ describe("misc config", () => {
         env: { ...BASE_ENV, JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC: " " },
       }).queue.conversationWorkTopic,
     ).toBeUndefined();
+  });
+});
+
+describe("createApp option groups", () => {
+  it("resolves the memory model: trimmed option, then AI_MEMORY_MODEL", () => {
+    const env = { ...BASE_ENV, AI_MEMORY_MODEL: " openai/env " };
+    const memory = (modelId?: string) =>
+      loadConfig({ env, options: { memory: { modelId } } }).memory.modelId;
+    expect(memory("openai/option")).toBe("openai/option");
+    expect(memory()).toBe("openai/env");
+    expect(
+      loadConfig({ env: { ...BASE_ENV, AI_MEMORY_MODEL: " " } }).memory.modelId,
+    ).toBeUndefined();
+  });
+
+  it("leaves the optional groups off until createApp sets them", () => {
+    const config = loadConfig({ env: BASE_ENV });
+    expect(config.dashboard).toBeUndefined();
+    expect(config.eventEmbeddings.enabled).toBeUndefined();
+    expect(config.experimental).toEqual({});
+    expect(config.configDefaults).toEqual({});
+    expect(config.trust).toEqual({ allowedBotUserIds: [], allowedDomains: [] });
   });
 });

@@ -1,6 +1,5 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { closeDb } from "@/chat/db";
 import {
   cardNode,
@@ -19,21 +18,21 @@ import {
 } from "../../fixtures/github-objects";
 import { createPluginTaskQueueTestAdapter } from "../../fixtures/plugin-task-queue";
 import { mswServer } from "../../msw/server";
+import { patchConfig } from "../../fixtures/config";
 
 const DASHBOARD = "https://junior.example.com";
 const BOT_EMAIL = "41898282+junior-test[bot]@users.noreply.github.com";
 
 describe("GitHub pull request cache refresh", () => {
-  let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
-
   beforeEach(() => {
-    previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: DASHBOARD,
+    patchConfig({
+      dashboard: {
+        baseURL: DASHBOARD,
+      },
     });
   });
 
   afterEach(async () => {
-    setDashboardConversationLinkOptions(previousDashboard);
     vi.useRealTimers();
     vi.unstubAllEnvs();
     await closeDb();
@@ -72,7 +71,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -179,7 +178,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const urls = [35, 34].map((number) => `${GITHUB_REPO}/pull/${number}`);
@@ -232,7 +231,7 @@ describe("GitHub pull request cache refresh", () => {
     );
     const queries = stubGraphql({ cards: [34, 35, 36].map(cardNode) });
     const app = await createGitHubApp();
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const urls = [34, 35, 36].map((number) => `${GITHUB_REPO}/pull/${number}`);
@@ -294,7 +293,7 @@ describe("GitHub pull request cache refresh", () => {
       cards: (asked) => (asked.length > 13 ? 502 : nodes),
     });
     await createGitHubApp();
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const urls = numbers.map((number) => `${GITHUB_REPO}/pull/${number}`);
@@ -355,7 +354,7 @@ describe("GitHub pull request cache refresh", () => {
       }),
     );
     const app = await createGitHubApp();
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -399,7 +398,7 @@ describe("GitHub pull request cache refresh", () => {
     );
     stubGraphql({});
     await createGitHubApp();
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -455,7 +454,7 @@ describe("GitHub pull request cache refresh", () => {
     const queries = stubGraphql({ patches: [patch] });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -503,7 +502,7 @@ describe("GitHub pull request cache refresh", () => {
     );
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -546,7 +545,7 @@ describe("GitHub pull request cache refresh", () => {
     stubGraphql({});
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -605,7 +604,7 @@ describe("GitHub pull request cache refresh", () => {
     const queries = stubGraphql({ cards: () => [answers.shift()!] });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -674,7 +673,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -730,7 +729,7 @@ describe("GitHub pull request cache refresh", () => {
     );
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -790,7 +789,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -832,7 +831,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -881,7 +880,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
@@ -940,7 +939,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     const url = `${GITHUB_REPO}/pull/34`;
