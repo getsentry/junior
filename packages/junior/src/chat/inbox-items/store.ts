@@ -21,6 +21,7 @@ import { touchConversationDetail } from "@/chat/conversations/sql/detail-version
 import { inboxItemSnoozedBy } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  InboxItemOwnerMismatchError,
   inboxItemOwnerConversationId,
   inboxItemOwnerId,
   inboxItemOwnerKind,
@@ -525,7 +526,7 @@ export async function insertInboxItem(
       .from(juniorInboxItems)
       .where(eq(juniorInboxItems.id, inserted[0].id));
     if (owned?.ownerId !== input.owner.id) {
-      throw new Error(
+      throw new InboxItemOwnerMismatchError(
         `Inbox item subject ${input.subject.kind}:${input.subject.id} does not belong to ${input.owner.kind} ${input.owner.id}`,
       );
     }

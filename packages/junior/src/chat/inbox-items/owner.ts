@@ -117,3 +117,11 @@ export function inboxItemTenantId(): SQL<string | null> {
     string | null
   >`${ownerDestination(sql`nullif(${juniorDestinations.providerTenantId}, '')`)}`;
 }
+
+/** An insert whose subject names another owner than the one given. */
+export class InboxItemOwnerMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InboxItemOwnerMismatchError";
+  }
+}

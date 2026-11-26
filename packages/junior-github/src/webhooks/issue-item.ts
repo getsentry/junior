@@ -159,7 +159,14 @@ export async function syncGitHubIssueItem(
   try {
     await showIssueItem(args);
   } catch (error) {
-    if (!(error instanceof PluginInboxItemOwnerError)) throw error;
+    // Core can load another copy of the plugin API, so its class can
+    // differ. The name stays the same.
+    if (
+      !(error instanceof PluginInboxItemOwnerError) &&
+      !(error instanceof Error && error.name === "PluginInboxItemOwnerError")
+    ) {
+      throw error;
+    }
     args.log?.warn("GitHub issue footer does not name its item's owner", {
       "app.github.issue_id": args.event.issueId,
     });

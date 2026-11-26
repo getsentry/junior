@@ -25,6 +25,7 @@ import {
   type InboxItemContent,
 } from "./store";
 import { leaveInboxItem, resetInboxItemPushes } from "./deliveries";
+import { InboxItemOwnerMismatchError } from "./owner";
 import { hasAssigneeRoles } from "./plugin-dismiss";
 import {
   pluginSubjectKind,
@@ -251,6 +252,11 @@ export function createPluginInboxItems(args: {
         ...content,
         owner: { id: conversationId, kind: "conversation" },
         nowMs: Date.now(),
+      }).catch((error: unknown) => {
+        // The subject names another owner, as `requireOwner` checks for an
+        // item that exists.
+        if (!(error instanceof InboxItemOwnerMismatchError)) throw error;
+        throw new PluginInboxItemOwnerError(error.message);
       });
       // Undefined means another writer added the item first.
       if (!item) return undefined;
