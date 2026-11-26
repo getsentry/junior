@@ -56,6 +56,7 @@ function closeReason(
 const REVIEW_AGAIN_TEXT: Record<GitHubReviewAskReason, string> = {
   checks: "Checks now pass, and every comment is handled.",
   handled: "Every comment on your change request is handled.",
+  question: "A comment asks you a question.",
 };
 
 /** The item text that gives the requester their action. */

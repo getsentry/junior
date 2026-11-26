@@ -2,6 +2,10 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 import { waitForOutlineRead, waitForReadPosition } from "./harness";
+import {
+  mockConversationDetail,
+  mockConversationOutline,
+} from "./mock-reports";
 
 const conversationId = "slack:CQA123:1770003600.000200";
 
@@ -80,17 +84,24 @@ async function serveQuickQuestionFork(
     async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
       const url = new URL(route.request().url());
-      const response = await route.fetch({
-        url: url.toString().replace(fork, source),
-      });
-      if (url.pathname !== fork) return route.fulfill({ response });
-      const detail = await response.json();
+      // The fork's page waits for its outline: answer it at the fork's URL.
+      if (url.pathname === `${fork}/outline`) {
+        return route.fulfill({
+          json: await mockConversationOutline(conversationId),
+        });
+      }
+      // The source answers the fork's other reads.
+      if (url.pathname !== fork) {
+        return route.fallback({ url: url.toString().replace(fork, source) });
+      }
+      const detail = await mockConversationDetail(route, conversationId);
       const reply = detail.events.findIndex(
-        (event: { data: { messageId?: string } }) =>
-          event.data.messageId === forks[0].messageId,
+        (event) =>
+          "messageId" in event.data &&
+          event.data.messageId === forks[0]!.messageId,
       );
       detail.events = detail.events.slice(0, reply + 1);
-      const last = detail.events.at(-1);
+      const last = detail.events.at(-1)!;
       detail.conversationId = forkId;
       detail.status = "done";
       detail.events.push(

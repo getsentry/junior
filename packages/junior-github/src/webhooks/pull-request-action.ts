@@ -47,6 +47,23 @@
  * the derived action, so it knows when the requester's action changes. A
  * merge conflict has its own item.
  *
+ * A pull request is in limbo when it waits on nobody: it is ready, the
+ * action is none, and no person or rule moves it on. Once its required
+ * checks pass, the sync asks for the requester's review on GitHub, as Junior
+ * does when a draft becomes ready, and the review request then shows the
+ * item. So each ready pull request that the requester has not seen has an
+ * item or a pending review request, also one opened before the requester
+ * linked GitHub. Pushes do not ask a requester who reviewed or commented
+ * again, so a webhook asks only one who has not. A comment-only review is
+ * not an answer: GitHub drops the ask on it, but the ask stays open
+ * (`askStaysOpen`), so the item keeps asking and Junior does not ask again
+ * on GitHub. A requester who removed their own review request is not asked
+ * again until someone else asks them.
+ *
+ * GitHub does not send a failed webhook again, so when GitHub fails the
+ * read for a while, such as when the installation is out of GraphQL rate
+ * limit, a started task syncs the pull request again later.
+ *
  * The item goes to the Conversation where a person asked Junior to open the
  * pull request. Each person is assigned only when they are in that
  * Conversation, and it waits on them. Junior maps a GitHub login to a
@@ -57,7 +74,10 @@ import type {
   PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
+  PluginStartedTaskContext,
+  PluginStartedTaskDefinition,
   PluginState,
+  PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
@@ -70,8 +90,17 @@ import {
   showPullRequestItem,
   type EndedState,
 } from "./pull-request-item.js";
-import type { GitHubDb } from "../db/database.js";
+import { GitHubRequestError } from "../credential-support.js";
+import { type GitHubDb, gitHubDbSchema } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
+import {
+  askStaysOpen,
+  inLimbo,
+  latestActivity,
+  nextAction,
+  sameLogin,
+  timeOf,
+} from "./pull-request-next-action.js";
 import {
   claimGitHubPullRequestReadySync,
   findGitHubPullRequest,
@@ -84,13 +113,16 @@ import {
   recordGitHubPullRequestOpenerId,
 } from "../pull-request-requesters/store.js";
 import {
-  dropGitHubReviewAsked,
   dropHeldGitHubReviewAsk,
   type GitHubReviewAskReason,
+  markGitHubReviewAsked,
   readGitHubReviewAsked,
+  type GitHubReviewAsked,
   readHeldGitHubReviewAsk,
+  readGitHubRequiredChecksPass,
   readReviewAgainReadiness,
 } from "../pull-request-review-again.js";
+import { linkedGitHubLogin } from "../tool-support/attribution.js";
 import { checkSuitePullRequests } from "./check-suite.js";
 import {
   dropGitHubReviewRequested,
@@ -98,12 +130,13 @@ import {
   readGitHubReviewRequested,
 } from "./review-requests.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
+import { GitHubGraphqlError } from "./graphql-request.js";
 import {
+  loadGraphqlRateLimitReset,
   loadPullRequestMergeState,
   loadReviewAgainReader,
   requestPullRequestReviewers,
   type GitHubInstallationEnv,
-  type GitHubPullRequestActivity,
   type GitHubPullRequestMergeState,
 } from "./installation-requests.js";
 import { botUserIdFromEmail } from "./ownership.js";
@@ -211,89 +244,6 @@ export function pullRequestActionTargets(
       ...(reviewer ? { reviewRequested: reviewer } : undefined),
     },
   ];
-}
-
-function sameLogin(a: string, b: string | undefined): boolean {
-  return b !== undefined && a.toLowerCase() === b.toLowerCase();
-}
-
-/**
- * When GitHub last asked the requester for a review, and when the requester
- * last commented or reviewed.
- */
-interface LatestActivity {
-  askedAt?: Date;
-  requesterAt?: Date;
-}
-
-function latestActivity(
-  activity: GitHubPullRequestActivity[],
-  requesterLogin: string | undefined,
-): LatestActivity {
-  const latest: LatestActivity = {};
-  for (const entry of activity) {
-    if (!sameLogin(entry.login, requesterLogin)) continue;
-    const key = entry.kind === "reviewRequest" ? "askedAt" : "requesterAt";
-    const saved = latest[key];
-    if (!saved || entry.at > saved) latest[key] = entry.at;
-  }
-  return latest;
-}
-
-// A missing time is older than every time.
-function timeOf(at: Date | undefined): number {
-  return at ? at.getTime() : Number.NEGATIVE_INFINITY;
-}
-
-/**
- * Derive the requester's next action. Return undefined when it cannot be
- * known yet, so a later event decides.
- */
-function nextAction(
-  state: GitHubPullRequestMergeState,
-  requester: {
-    actedLast: boolean;
-    askedAgain: boolean;
-    login: string | undefined;
-  },
-  saved: GitHubPullRequestAction | undefined,
-): { action?: GitHubPullRequestAction } | undefined {
-  if (state.state !== "open") return {};
-  // With auto-merge on, GitHub merges it, so no person needs to. A pending
-  // review request comes first, even where GitHub requires no review.
-  const canMerge = !state.draft && !state.autoMerge && !state.reviewPending;
-  if (
-    canMerge &&
-    state.mergeableState === "clean" &&
-    state.reviewOutcome !== "changesRequested"
-  ) {
-    return { action: "merge" };
-  }
-  // GitHub has not computed the merge state yet, such as after a push. The
-  // merge can still be the action, so it stays until a later event decides.
-  if (canMerge && !state.mergeableState && saved === "merge") return undefined;
-  const review = state.draft ? "review_draft" : "review";
-  if (requester.askedAgain) return { action: review };
-  const requested = isRequested(state, requester.login);
-  // A reply to the change request ends the review that Junior asked for,
-  // though GitHub still asks for it, because Junior acts next.
-  if (requested && (!requester.actedLast || !state.changesRequested)) {
-    return { action: review };
-  }
-  // The requester approved the draft, so the step left is to mark it ready.
-  if (state.draft && state.requesterApproved) return { action: "mark_ready" };
-  if (canMerge && !state.mergeableState) return undefined;
-  return {};
-}
-
-function isRequested(
-  state: GitHubPullRequestMergeState,
-  login: string | undefined,
-): boolean {
-  const lower = login?.toLowerCase();
-  return state.requestedReviewers.some(
-    (reviewer) => reviewer.toLowerCase() === lower,
-  );
 }
 
 /**
@@ -420,9 +370,9 @@ async function askHeldReview(
 }
 
 /**
- * Return why Junior asked the requester again, if it did: the reason of the
- * held ask that this sync released, or `handled` when the feedback tool
- * asked them and they have not acted since.
+ * Return why Junior asked the requester, if it did: the reason of the held
+ * ask that this sync released, or the reason of the mark that a Junior tool
+ * wrote when it asked them, if they have not acted since.
  */
 async function askReason(
   state: PluginState,
@@ -432,22 +382,30 @@ async function askReason(
     requesterAt: Date | undefined;
     requesterLogin: string | undefined;
   },
-): Promise<GitHubReviewAskReason | undefined> {
+): Promise<
+  { mark?: GitHubReviewAsked; reason: GitHubReviewAskReason } | undefined
+> {
   if (args.asked !== undefined) {
     return sameLogin(args.asked.reviewer, args.requesterLogin)
-      ? args.asked.reason
+      ? { reason: args.asked.reason }
       : undefined;
   }
   const asked = await readGitHubReviewAsked(state, target);
   return asked &&
     sameLogin(asked.reviewer, args.requesterLogin) &&
     timeOf(args.requesterAt) <= Date.parse(asked.at)
-    ? "handled"
+    ? { mark: asked, reason: asked.reason ?? "handled" }
     : undefined;
 }
 
-/** What one sync of a pull request's items needs. */
-interface GitHubPullRequestItemSync {
+/** What one sync of a pull request's items reads and writes. */
+interface PullRequestActionSyncContext {
+  /**
+   * Also ask in limbo when the requester reviewed or commented before the
+   * last push. Only the one-off backfill does: pushes do not ask the
+   * requester again.
+   */
+  askAfterRequesterActed?: boolean | undefined;
   botEmail: string | undefined;
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
@@ -467,9 +425,9 @@ interface GitHubPullRequestItemSync {
 
 /** Read one Junior pull request from GitHub and change its items. */
 async function syncOne(
-  args: GitHubPullRequestItemSync,
+  args: PullRequestActionSyncContext,
   target: GitHubPullRequestActionTarget,
-): Promise<void> {
+): Promise<"busy" | undefined> {
   const opener = (
     await listGitHubPullRequestOpeners(args.db, {
       numbers: [target.number],
@@ -511,6 +469,7 @@ async function syncOne(
     now: new Date(),
     staleMs: READY_SYNC_STALE_MS,
   });
+  if (claim === "held") return "busy";
   if (!claim) return;
   const { id } = claim;
   let saved = claim.action;
@@ -518,6 +477,9 @@ async function syncOne(
   // A failed check still checks the requests that came in during it. The
   // first failure is thrown after the last check.
   let failure: unknown;
+  // Ask the requester once per sync, so a request that GitHub takes but
+  // does not show yet cannot ask again.
+  let askedRequester = false;
   // One check: read GitHub, change the item, and return the saved action.
   const check = async (
     previous: GitHubPullRequestAction | undefined,
@@ -529,23 +491,56 @@ async function syncOne(
     );
     const activity = latestActivity(state.activity, requesterLogin);
     const asked = await askHeldReview(args, target, state);
-    const reason = await askReason(args.state, target, {
+    const ask = await askReason(args.state, target, {
       asked,
       requesterAt: activity.requesterAt,
       requesterLogin,
     });
+    const reason = ask?.reason;
     const next = nextAction(
       state,
       {
         actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
         askedAgain: asked !== undefined && reason !== undefined,
+        askOpen: askStaysOpen(activity),
         login: requesterLogin,
       },
       previous,
     );
+    if (
+      !askedRequester &&
+      requesterLogin &&
+      next !== undefined &&
+      next.action === undefined &&
+      inLimbo(state, activity, requesterLogin) &&
+      (args.askAfterRequesterActed || activity.actedAt === undefined)
+    ) {
+      // A pull request in limbo waits for the required checks, as a review
+      // ask again does. A later check suite webhook syncs again, and so
+      // does a check of this sync again, so only a sent ask counts.
+      const [owner = "", name = ""] = target.repositoryFullName.split("/");
+      const checksPass = await readGitHubRequiredChecksPass(
+        await loadReviewAgainReader(args.env, target.repositoryFullName),
+        { name, number: target.number, owner },
+      );
+      if (checksPass) {
+        askedRequester = true;
+        // The next read sees the request and shows its item.
+        if (await requestReviewAgain(args, target, requesterLogin)) {
+          return await check(previous);
+        }
+      }
+    }
     // When the action cannot be known yet, the saved one stays until a
-    // later event decides.
-    const changed = next !== undefined && next.action !== previous;
+    // later event decides. A new question from Junior is a change too: it
+    // can come while the review is already the action, and its mark is
+    // dropped once the item shows it. Only a review shows why Junior asked.
+    const showsAsk =
+      next?.action === "review" || next?.action === "review_draft";
+    const changed =
+      next !== undefined &&
+      (next.action !== previous ||
+        (reason === "question" && showsAsk && !ask?.mark?.shown));
     const action = next === undefined ? previous : next.action;
     // The item stays as it is too, because its text depends on what GitHub
     // has not computed yet, such as whether anyone approved.
@@ -599,8 +594,15 @@ async function syncOne(
           : ENDED_REASONS[state.state]),
       });
     }
-    if (changed && next.action !== "merge" && reason === "handled") {
-      await dropGitHubReviewAsked(args.state, target);
+    // Mark the ask shown once a review item shows it. A sync that closes
+    // the item, such as the one that GitHub's removal of a request starts,
+    // leaves it for the review request that follows. The mark stays, so
+    // each later sync keeps the item's text until the requester acts.
+    if (changed && showsAsk && ask?.mark && !ask.mark.shown) {
+      await markGitHubReviewAsked(args.state, target, {
+        ...ask.mark,
+        shown: true,
+      });
     }
     if (!changed) return previous;
     // Save after the item changes, so a failure leaves the old action and
@@ -622,36 +624,208 @@ async function syncOne(
     });
   }
   if (failure !== undefined) throw failure;
+  return undefined;
+}
+
+/** The task that syncs one pull request again after a webhook's sync failed. */
+export const GITHUB_PULL_REQUEST_ACTION_SYNC_TASK = "syncPullRequestAction";
+
+const syncTaskPayloadSchema = z
+  .object({
+    number: z.number().int().positive(),
+    repositoryFullName: z.string().min(1),
+    /** Tasks that ran before this one and hit the rate limit again. */
+    restarts: z.number().int().nonnegative(),
+  })
+  .strict();
+
+// A rate limit that lasts this many hours stops the restarts.
+const MAX_SYNC_TASK_RESTARTS = 3;
+
+// The queue can deliver a task a little before the rate limit resets.
+const RATE_LIMIT_RESET_MARGIN_SECONDS = 5;
+
+// A task message is signed when it starts, and the queue rejects a signature
+// older than 60 minutes. A task that runs before the reset fails again, and
+// the task backoff covers the rest of the hour.
+const MAX_SYNC_TASK_DELAY_SECONDS = 55 * 60;
+
+/**
+ * Return when to sync again after a failure that GitHub causes for a
+ * while: after the GraphQL rate limit resets, or after the task backoff
+ * for a GitHub outage. Return undefined for other failures, which a retry
+ * cannot fix.
+ */
+async function retryAfterFailure(
+  env: GitHubInstallationEnv,
+  target: GitHubPullRequestTarget,
+  error: unknown,
+): Promise<{ delaySeconds?: number } | undefined> {
+  if (error instanceof GitHubGraphqlError) {
+    // GitHub sends `RATE_LIMIT`, and its docs name `RATE_LIMITED`.
+    if (
+      !error.types.some(
+        (type) => type === "RATE_LIMIT" || type === "RATE_LIMITED",
+      )
+    ) {
+      // GitHub's own failures, such as a query timeout, have no type.
+      return error.types.length === 0 ? {} : undefined;
+    }
+    // Without the reset time, the task backoff still retries.
+    const reset = await loadGraphqlRateLimitReset(
+      env,
+      target.repositoryFullName,
+    ).catch(() => undefined);
+    if (!reset) return {};
+    const seconds = Math.ceil((reset.getTime() - Date.now()) / 1000);
+    return {
+      delaySeconds: Math.min(
+        Math.max(seconds, 0) + RATE_LIMIT_RESET_MARGIN_SECONDS,
+        MAX_SYNC_TASK_DELAY_SECONDS,
+      ),
+    };
+  }
+  return error instanceof GitHubRequestError && error.status >= 500
+    ? {}
+    : undefined;
 }
 
 /**
- * Add, change, or close the item of each Junior pull request that a webhook
- * delivery can change. The item is optional, so a failure is logged and
- * does not fail the delivery.
+ * Add, change, or close the item of each Junior pull request that
+ * a webhook delivery can change. The item is optional, so a failure does not
+ * fail the delivery. A failure that GitHub causes for a while starts a task
+ * that syncs the pull request again, when `tasks` is given. Other failures
+ * are logged. Return the pull requests that another webhook was checking.
+ * That webhook checks them again, but without `askAfterRequesterActed`.
  */
 export async function syncGitHubPullRequestActions(
-  args: GitHubPullRequestItemSync & {
+  args: PullRequestActionSyncContext & {
     deliveryId: string;
     targets: GitHubPullRequestActionTarget[];
+    tasks?: PluginTaskStarter | undefined;
   },
-): Promise<void> {
+): Promise<GitHubPullRequestActionTarget[]> {
+  const busy: GitHubPullRequestActionTarget[] = [];
   await pLimit(PULL_REQUEST_SYNC_CONCURRENCY).map(
     args.targets,
     async (target) => {
       try {
-        await syncOne(args, target);
+        if ((await syncOne(args, target)) === "busy") busy.push(target);
       } catch (error) {
-        logFailOpenFailure(
-          args.log,
-          "GitHub pull request action failed",
-          error,
+        const metadata = {
+          deliveryId: args.deliveryId,
+          number: target.number,
+          repository: target.repositoryFullName,
+        };
+        const retry = args.tasks
+          ? await retryAfterFailure(args.env, target, error)
+          : undefined;
+        if (!args.tasks || !retry) {
+          logFailOpenFailure(
+            args.log,
+            "GitHub pull request action failed",
+            error,
+            metadata,
+          );
+          return;
+        }
+        args.log?.warn(
+          "GitHub pull request action failed; retrying in a task",
           {
-            deliveryId: args.deliveryId,
-            number: target.number,
-            repository: target.repositoryFullName,
+            ...metadata,
+            errorType: error instanceof Error ? error.name : "UnknownError",
           },
         );
+        await startSyncTask(args.tasks, target, retry, 0);
       }
     },
   );
+  return busy;
+}
+
+async function startSyncTask(
+  tasks: PluginTaskStarter,
+  target: GitHubPullRequestTarget,
+  retry: { delaySeconds?: number },
+  restarts: number,
+): Promise<void> {
+  // Failures that start their task in the same minute share it, so a burst
+  // of webhooks during a rate limit syncs again once.
+  const startsAt = Date.now() + (retry.delaySeconds ?? 0) * 1000;
+  await tasks.start({
+    ...retry,
+    key: `pull-request-action-sync:${`${target.repositoryFullName}#${target.number}`.toLowerCase()}:${Math.floor(startsAt / 60_000)}:${restarts}`,
+    name: GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
+    payload: {
+      number: target.number,
+      repositoryFullName: target.repositoryFullName,
+      restarts,
+    },
+  });
+}
+
+/** The sync context of a started task, with fresh installation tokens. */
+export function startedTaskSyncContext(
+  ctx: PluginStartedTaskContext,
+  options: {
+    botEmail: string | undefined;
+    env: Omit<GitHubInstallationEnv, "responses" | "tokens">;
+  },
+): PullRequestActionSyncContext {
+  return {
+    botEmail: options.botEmail,
+    codeChanges: ctx.codeChanges,
+    db: gitHubDbSchema.parse(ctx.db),
+    env: { ...options.env, responses: ctx.state, tokens: new Map() },
+    findLinkedIdentityIds: async (logins) =>
+      await ctx.users.findLinkedIdentityIds(logins),
+    loadGitHubLogin: async (identityId) =>
+      linkedGitHubLogin((await ctx.users.readIdentity(identityId))?.user),
+    log: ctx.log,
+    inboxItems: ctx.inboxItems,
+    state: ctx.state,
+  };
+}
+
+/**
+ * Sync the next action of one pull request again. A rate limit starts a new
+ * task that waits for the reset: the queue rejects a task message an hour
+ * after it starts, so the backoff of this one can end before the reset.
+ * Other failures throw, so the task queue runs it again after its backoff,
+ * a bounded number of times.
+ */
+export function githubPullRequestActionSyncTask(options: {
+  botEmail: () => string | undefined;
+  env: Omit<GitHubInstallationEnv, "responses" | "tokens">;
+}): PluginStartedTaskDefinition<typeof syncTaskPayloadSchema> {
+  return {
+    payload: syncTaskPayloadSchema,
+    async run(ctx) {
+      const context = startedTaskSyncContext(ctx, {
+        botEmail: options.botEmail(),
+        env: options.env,
+      });
+      const { restarts } = ctx.payload;
+      try {
+        await syncOne(context, ctx.payload);
+      } catch (error) {
+        const retry = await retryAfterFailure(context.env, ctx.payload, error);
+        if (
+          retry?.delaySeconds === undefined ||
+          restarts >= MAX_SYNC_TASK_RESTARTS
+        ) {
+          throw error;
+        }
+        ctx.log.warn(
+          "GitHub pull request action sync task hit the rate limit",
+          {
+            number: ctx.payload.number,
+            repository: ctx.payload.repositoryFullName,
+            restarts,
+          },
+        );
+        await startSyncTask(ctx.tasks, ctx.payload, retry, restarts + 1);
+      }
+    },
+  };
 }

@@ -14,6 +14,8 @@ import type {
 } from "./conversation-events";
 import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
 import type { EventPublisher } from "./events";
+import type { PluginConversationInboxItems } from "./inbox-items";
+import type { RouteRegistrationHookContext } from "./operations";
 import {
   destinationSchema,
   actorSchema,
@@ -125,6 +127,8 @@ export interface PluginStartedTaskContext<
   conversationChanges: PluginConversationChanges;
   /** Publishes the plugin's Events, as the heartbeat and routes do. */
   events: EventPublisher;
+  /** Inbox items, as from a plugin route. */
+  inboxItems: PluginConversationInboxItems;
   /**
    * True on the last delivery that Junior makes. An attempt that throws
    * now is not run again, so a task that waits for a provider can write
@@ -135,6 +139,13 @@ export interface PluginStartedTaskContext<
   /** The payload from `tasks.start`, parsed with the task's `payload` schema. */
   payload: Payload;
   state: PluginState;
+  /**
+   * Starts this plugin's tasks, as from a plugin route. A task that must
+   * wait longer than its retries cover can start itself again.
+   */
+  tasks: PluginTaskStarter;
+  /** Stored identities and their users, as from a plugin route. */
+  users: RouteRegistrationHookContext["users"];
 }
 
 /**

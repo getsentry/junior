@@ -1,14 +1,11 @@
-import {
-  CONVERSATION_DETAIL_VERSION_HEADER,
-  MAX_INPUT_ATTACHMENTS,
-  webMessageId,
-} from "@sentry/junior/api/schema";
+import { MAX_INPUT_ATTACHMENTS, webMessageId } from "@sentry/junior/api/schema";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
 import { withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
+import { mockConversationDetail } from "./mock-reports";
 
 test("stops the active Turn and returns queued text to the composer", async ({
   page,
@@ -65,15 +62,8 @@ test("stops the active Turn and returns queued text to the composer", async ({
     });
   });
   await page.route(`${path}*`, async (route) => {
-    const response = await route.fetch({
-      headers: {
-        ...route.request().headers(),
-        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-      },
-    });
-    const detail = await response.json();
+    const detail = await mockConversationDetail(route);
     await route.fulfill({
-      response,
       json: withRequestedMailbox(
         route,
         {
@@ -191,15 +181,8 @@ test("edits a queued message back into the composer", async ({
     });
   });
   await page.route(`${path}*`, async (route) => {
-    const response = await route.fetch({
-      headers: {
-        ...route.request().headers(),
-        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-      },
-    });
-    const detail = await response.json();
+    const detail = await mockConversationDetail(route);
     await route.fulfill({
-      response,
       json: withRequestedMailbox(
         route,
         { ...detail, isParticipant: true, status: "working", turnActive: true },
@@ -346,15 +329,8 @@ test("moves queued text to the composer before the cancel lands", async ({
     });
   });
   await page.route(`${path}*`, async (route) => {
-    const response = await route.fetch({
-      headers: {
-        ...route.request().headers(),
-        [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-      },
-    });
-    const detail = await response.json();
+    const detail = await mockConversationDetail(route);
     await route.fulfill({
-      response,
       json: withRequestedMailbox(
         route,
         { ...detail, isParticipant: true, status: "working", turnActive: true },

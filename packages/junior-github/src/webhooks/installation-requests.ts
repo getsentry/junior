@@ -97,6 +97,33 @@ export async function loadPullRequest(
   );
 }
 
+const rateLimitSchema = z.object({
+  resources: z.object({ graphql: z.object({ reset: z.number().int() }) }),
+});
+
+/**
+ * Read when the installation's GraphQL rate limit resets, with the same
+ * read-only token as the pull request reads. GitHub does not count this
+ * read against the rate limit.
+ */
+export async function loadGraphqlRateLimitReset(
+  env: GitHubInstallationEnv,
+  repositoryFullName: string,
+): Promise<Date> {
+  const { name } = splitRepository(repositoryFullName, "rate limit");
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  const response = rateLimitSchema.parse(
+    await githubRequest("https://api.github.com", "/rate_limit", {
+      token: token.token,
+    }),
+  );
+  return new Date(response.resources.graphql.reset * 1000);
+}
+
 /**
  * Return a reader of repository full names by repository id, with one
  * metadata-only token for every repository of the installation. The reader
@@ -475,6 +502,11 @@ const nextActionSchema = z.object({
     repository: z.object({
       pullRequest: z.object({
         autoMergeRequest: z.object({}).nullable(),
+        commits: z.object({
+          nodes: nodesSchema(
+            z.object({ commit: z.object({ committedDate: timestampSchema }) }),
+          ),
+        }),
         isDraft: z.boolean(),
         mergeStateStatus: z.string(),
         reviewRequests: z.object({
@@ -492,6 +524,12 @@ const nextActionSchema = z.object({
               }),
               z.object({
                 __typename: z.literal("ReviewRequestedEvent"),
+                createdAt: timestampSchema,
+                requestedReviewer: userLoginSchema,
+              }),
+              z.object({
+                __typename: z.literal("ReviewRequestRemovedEvent"),
+                actor: actorSchema,
                 createdAt: timestampSchema,
                 requestedReviewer: userLoginSchema,
               }),
@@ -520,8 +558,15 @@ const reviewsPageSchema = z.object({
  */
 export interface GitHubPullRequestActivity {
   at: Date;
-  kind: "author" | "reviewRequest";
+  /**
+   * `author`: a comment or a review by `login`. `reviewRequest`: GitHub
+   * asked `login` for a review. `reviewRequestRemoved`: `login` removed
+   * their own review request.
+   */
+  kind: "author" | "reviewRequest" | "reviewRequestRemoved";
   login: string;
+  /** The state of an `author` review, such as `COMMENTED`. */
+  review?: string;
 }
 
 /** The pull request facts that decide its next action. */
@@ -539,6 +584,8 @@ export interface GitHubPullRequestMergeState {
    */
   changesRequested: boolean;
   draft: boolean;
+  /** When the head commit was made, as the time of the last push. */
+  headCommittedAt?: Date;
   /**
    * The requester's latest review that approves or requests changes
    * approves it. Read for drafts too, from the last 100 reviews, because the
@@ -567,8 +614,8 @@ export interface GitHubPullRequestMergeState {
   /**
    * `approved` with at least one approval and no reviewer who still
    * requests changes. `changesRequested` while a reviewer still requests
-   * changes. Undefined with neither. Read only when GitHub says the pull
-   * request can merge cleanly and auto-merge is off.
+   * changes. Undefined with neither. Read only when the pull request is
+   * open and not a draft.
    */
   reviewOutcome?: "approved" | "changesRequested";
   state: "closed" | "merged" | "open";
@@ -653,6 +700,18 @@ export async function loadPullRequestMergeState(
         kind: "reviewRequest",
         login: item.requestedReviewer.login,
       });
+    } else if (
+      item.__typename === "ReviewRequestRemovedEvent" &&
+      item.requestedReviewer?.login &&
+      item.actor &&
+      restLogin(item.actor).toLowerCase() ===
+        item.requestedReviewer.login.toLowerCase()
+    ) {
+      activity.push({
+        at: new Date(item.createdAt),
+        kind: "reviewRequestRemoved",
+        login: item.requestedReviewer.login,
+      });
     }
   }
   for (const review of reviews) {
@@ -661,6 +720,7 @@ export async function loadPullRequestMergeState(
         at: new Date(review.submittedAt),
         kind: "author",
         login: restLogin(review.author),
+        review: review.state,
       });
     }
   }
@@ -668,11 +728,15 @@ export async function loadPullRequestMergeState(
   const mergeableState = unknown(pull.mergeStateStatus)
     ? undefined
     : pull.mergeStateStatus.toLowerCase();
+  const headCommittedAt = pull.commits.nodes[0]?.commit.committedDate;
   const state: GitHubPullRequestMergeState = {
     activity,
     autoMerge: Boolean(pull.autoMergeRequest),
     changesRequested: false,
     draft: pull.isDraft,
+    ...(headCommittedAt
+      ? { headCommittedAt: new Date(headCommittedAt) }
+      : undefined),
     ...(mergeableState ? { mergeableState } : undefined),
     requesterApproved: false,
     requestedReviewers: pull.reviewRequests.nodes.flatMap((request) =>
@@ -720,12 +784,10 @@ export async function loadPullRequestMergeState(
     reviewState === "DISMISSED" ? [] : [login],
   );
   const reviewStates = [...latest.values()].map((review) => review.state);
-  if (!state.autoMerge && state.mergeableState === "clean") {
-    if (reviewStates.includes("CHANGES_REQUESTED")) {
-      state.reviewOutcome = "changesRequested";
-    } else if (reviewStates.includes("APPROVED")) {
-      state.reviewOutcome = "approved";
-    }
+  if (reviewStates.includes("CHANGES_REQUESTED")) {
+    state.reviewOutcome = "changesRequested";
+  } else if (reviewStates.includes("APPROVED")) {
+    state.reviewOutcome = "approved";
   }
   state.changesRequested = requesterReview?.state === "CHANGES_REQUESTED";
   return state;

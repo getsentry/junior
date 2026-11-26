@@ -2,8 +2,10 @@ import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import type { PluginWorkOwner } from "@sentry/junior-plugin-api";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { readGitHubReviewAsked } from "../src/pull-request-review-again";
 import { gitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
+import { memoryState } from "./plugin-harness";
 
 let dbFixture: GitHubFixture;
 
@@ -44,15 +46,28 @@ function toolContext(
   replyTarget: { in_reply_to_id: number | null } = { in_reply_to_id: null },
   resolveWorkOwner: () => Promise<PluginWorkOwner | undefined> = async () =>
     requester,
+  // The logins that GitHub already asks for a review.
+  requested: string[] = [],
+  // The statuses of the review requests, in order. Later ones get 201.
+  requestStatuses: number[] = [],
 ) {
   const fetch = vi.fn(async ({ request }: { request: Request }) => {
+    if (
+      request.method === "GET" &&
+      request.url.endsWith("/requested_reviewers")
+    ) {
+      const users = requested.map((login) => ({ login }));
+      return new Response(JSON.stringify({ users }), { status: 200 });
+    }
     if (request.method === "GET") {
       return new Response(JSON.stringify({ id: 42, ...replyTarget }), {
         status: 200,
       });
     }
     if (request.url.endsWith("/requested_reviewers")) {
-      return new Response(JSON.stringify({}), { status: 201 });
+      const status =
+        request.method === "POST" ? (requestStatuses.shift() ?? 201) : 200;
+      return new Response(JSON.stringify({}), { status });
     }
     return (
       response ??
@@ -66,15 +81,28 @@ function toolContext(
       )
     );
   });
+  const state = memoryState();
   return {
     fetch,
+    state,
     tool: bindPluginTool(gitHubCommentOnPullRequestTool, {
       db: dbFixture.db(),
       egress: { fetch },
       log: { error() {}, info() {}, warn() {} },
       resolveWorkOwner,
+      state,
     }),
   };
+}
+
+/** The methods of the tool's calls to the requested reviewers endpoint. */
+function reviewerCalls(
+  fetch: ReturnType<typeof toolContext>["fetch"],
+): string[] {
+  return fetch.mock.calls
+    .map(([{ request }]) => request)
+    .filter((request) => request.url.endsWith("/requested_reviewers"))
+    .map((request) => request.method);
 }
 
 /**
@@ -172,7 +200,7 @@ describe("commentOnPullRequest", () => {
 
   it("asks the requester for a review when the comment asks them", async () => {
     await seedOpener(701);
-    const { fetch, tool } = toolContext();
+    const { fetch, state, tool } = toolContext();
 
     await expect(
       tool.execute(
@@ -186,14 +214,71 @@ describe("commentOnPullRequest", () => {
       ),
     ).resolves.toMatchObject({ comment_id: 88, requester_asked: true });
 
-    const ask = fetch.mock.calls[1]?.[0];
-    expect(ask?.request.method).toBe("POST");
+    expect(reviewerCalls(fetch)).toEqual(["GET", "POST"]);
+    const ask = fetch.mock.calls[2]?.[0];
     expect(ask?.request.url).toBe(
       "https://api.github.com/repos/getsentry/junior-comment-tests/pulls/701/requested_reviewers",
     );
     await expect(ask?.request.clone().json()).resolves.toEqual({
       reviewers: ["Requester"],
     });
+    // GitHub's review request webhook reads this to say why it asks.
+    await expect(
+      readGitHubReviewAsked(state, {
+        number: 701,
+        repositoryFullName: "getsentry/junior-comment-tests",
+      }),
+    ).resolves.toMatchObject({ reason: "question", reviewer: "Requester" });
+  });
+
+  it("asks again a requester that GitHub already asks, so GitHub records a new ask", async () => {
+    await seedOpener(706);
+    const { fetch, tool } = toolContext(
+      undefined,
+      undefined,
+      async () => requester,
+      ["requester"],
+    );
+
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: 706,
+          body: "Which option do you want?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).resolves.toMatchObject({ requester_asked: true });
+    expect(reviewerCalls(fetch)).toEqual(["GET", "DELETE", "POST"]);
+    await expect(
+      fetch.mock.calls[2]?.[0]?.request.clone().json(),
+    ).resolves.toEqual({ reviewers: ["Requester"] });
+  });
+
+  it("tries the request once more when it fails after the removal, so the requester stays asked", async () => {
+    await seedOpener(707);
+    const { fetch, tool } = toolContext(
+      undefined,
+      undefined,
+      async () => requester,
+      ["requester"],
+      [502],
+    );
+
+    await expect(
+      tool.execute(
+        {
+          repo: "getsentry/junior-comment-tests",
+          pull_request: 707,
+          body: "Which option do you want?",
+          asks_requester: true,
+        },
+        { toolCallId: "ask" },
+      ),
+    ).resolves.toMatchObject({ requester_asked: true });
+    expect(reviewerCalls(fetch)).toEqual(["GET", "DELETE", "POST", "POST"]);
   });
 
   it.for([

@@ -438,6 +438,26 @@ function findSpace(param: Record<string, string>): MockSpace | Response {
   );
 }
 
+/** Build what `GET /spaces` answers for its query, or nothing for a bad one. */
+export function readMockSpaceList(query: Record<string, string>) {
+  const parsed = spaceListQuerySchema.safeParse(query);
+  if (!parsed.success) return undefined;
+  const spaces = [...mockSpaces.values()]
+    .filter(
+      (space) =>
+        (parsed.data.membership === "all" || space.viewerMember) &&
+        readable(space) &&
+        Boolean(space.archivedAt) === parsed.data.archived,
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
+  return {
+    spaces: spaces.map((space) => ({
+      ...view(space),
+      ...spaceState(space.id),
+    })),
+  };
+}
+
 /**
  * Create the mock `/api/spaces` routes. A private Space is missing to a
  * person who is not a member.
@@ -451,22 +471,9 @@ export function createMockSpaceRoutes(): Hono<{
     return next();
   });
   app.get("/", (c) => {
-    const query = spaceListQuerySchema.safeParse(c.req.query());
-    if (!query.success) return errorResponse("Invalid query parameters.", 400);
-    const spaces = [...mockSpaces.values()]
-      .filter(
-        (space) =>
-          (query.data.membership === "all" || space.viewerMember) &&
-          readable(space) &&
-          Boolean(space.archivedAt) === query.data.archived,
-      )
-      .sort((left, right) => left.name.localeCompare(right.name));
-    return jsonResponse(spaceListSchema, {
-      spaces: spaces.map((space) => ({
-        ...view(space),
-        ...spaceState(space.id),
-      })),
-    });
+    const list = readMockSpaceList(c.req.query());
+    if (!list) return errorResponse("Invalid query parameters.", 400);
+    return jsonResponse(spaceListSchema, list);
   });
   app.post("/", async (c) => {
     const body = createSpaceBodySchema.safeParse(await c.req.json());

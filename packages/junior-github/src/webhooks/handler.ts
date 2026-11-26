@@ -486,6 +486,7 @@ export function createGitHubWebhookRoute(args: {
         inboxItems: args.inboxItems,
         state: args.state,
         targets: pullRequestActionTargets(eventName, body),
+        tasks: args.tasks,
       });
       await requestGitHubReviewersWhenReady({
         body,

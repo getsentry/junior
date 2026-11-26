@@ -38,11 +38,24 @@ also wake a Conversation or run an Event automation.
   each comment of that change request addressed or declined and the
   required checks pass. A comment that Junior pushes back on or defers is
   declined. Pushes, merges of the base branch, and replies do not ask.
-  When the requester comments or reviews, Junior acts next, and the Inbox
-  stops asking. A requester who approved since is not asked. The Inbox
-  item says why it asks: every comment is handled, or the checks now pass.
+  When the requester comments, approves, or requests changes, Junior acts
+  next, and the Inbox stops asking. A requester who approved since is not
+  asked. The Inbox item says why it asks: every comment is handled, or the
+  checks now pass.
+- A comment-only review is not an answer to a review ask. The ask stays
+  open: the PR keeps asking the requester to review in the Inbox, and
+  Junior does not ask again on GitHub.
+- A ready Junior PR always has an Inbox ask or a pending GitHub review
+  request for its requester. When it asks nothing of the requester, Junior
+  asks for the requester's review on GitHub once the required checks pass.
+  A push does not ask a requester who has already reviewed or commented.
+- When the requester removes their own review request, Junior does not ask
+  them again until someone asks them again on GitHub.
 - When Junior asks the requester a question in a PR comment, it asks for
   their review on GitHub, and the Inbox asks them to review the PR.
+- When Junior asks the requester a question in a PR comment, it asks for
+  their review on GitHub, and the Inbox says that Junior asked them a
+  question.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
@@ -62,6 +75,9 @@ also wake a Conversation or run an Event automation.
   it too, and the item tells the requester to review it before they merge.
   When a review is requested and still pending, the PR asks for that review
   instead, even where the repo allows merging without one.
+- When GitHub fails the next-action read for a while (rate limit or
+  outage), Junior syncs the pull request again later, after the rate limit
+  resets. A failed webhook never leaves a stale action in place.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 - GitHub is the source of truth for GitHub state. When GitHub is down,

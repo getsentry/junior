@@ -12,12 +12,14 @@ import type {
 import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { getDb } from "@/chat/db";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import { logException, withSpan } from "@/chat/logging";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
+import { createPluginUsers } from "@/chat/plugins/viewer";
 import {
   type AppEventPublisher,
   createPluginEventPublisher,
@@ -27,13 +29,16 @@ import {
   PLUGIN_TASK_MAX_DELIVERIES,
   type StartedPluginTaskMessage,
 } from "./task-queue";
-import { startedTaskDefinition } from "./task-start";
+import type { SendPluginTask } from "./task-runner";
+import { createPluginTaskStarter, startedTaskDefinition } from "./task-start";
 
 interface StartedTaskOptions {
   /** Queue delivery of this message, when the queue reports it. */
   deliveryCount?: number | undefined;
   /** Core event publisher, which the queue consumer of the app supplies. */
   events: AppEventPublisher;
+  /** Sends the tasks that this task starts. */
+  sendPluginTask: SendPluginTask;
   showInboxItem?: ShowInboxItem | undefined;
 }
 
@@ -61,12 +66,26 @@ function startedTaskContext(
     }),
     db: getDb(),
     events: createPluginEventPublisher(plugin, options.events),
+    inboxItems: {
+      forConversation: (conversationId) =>
+        createPluginInboxItems({
+          conversationId,
+          plugin: pluginName,
+          show: options.showInboxItem ?? (async () => {}),
+        }),
+    },
     lastDelivery: (options.deliveryCount ?? 0) >= PLUGIN_TASK_MAX_DELIVERIES,
     log: createPluginLogger(pluginName),
     name,
     payload,
     plugin: { name: pluginName },
     state: createPluginState(pluginName),
+    tasks: createPluginTaskStarter({
+      plugin: pluginName,
+      send: options.sendPluginTask,
+      tasks: plugin.tasks,
+    }),
+    users: createPluginUsers(pluginName),
   };
 }
 
