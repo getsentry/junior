@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getSpaceLead } from "@/chat/lead/conversation";
+import { writeLegacySpaceArchive } from "@/chat/spaces/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { archiveConversation } from "../conversations/archive";
+import { setConversationArchive } from "../conversations/archive";
 import type { JuniorApiEnv } from "../route";
 import { archiveSpaceBodySchema } from "../schema/space";
 import { validateRequest } from "../validation";
@@ -37,11 +38,26 @@ export function createSpaceArchiveRoutes(options: {
       // A repeat archive keeps the Lead's time. A restore of an active Space
       // would still turn off the viewer's auto-archive, so it does nothing.
       if (archived || space.archivedAt) {
-        await archiveConversation(viewer, lead.conversationId, {
-          applyToChildren: true,
-          archived,
-          lastSeenAt: new Date(lead.lastActivityAtMs).toISOString(),
-        });
+        // A Space archive applies whatever the Lead did since the page read
+        // it, so it does not check the Lead's activity.
+        const result = await setConversationArchive(
+          archived
+            ? {
+                applyToChildren: true,
+                archived: true,
+                conversationId: lead.conversationId,
+              }
+            : {
+                applyToChildren: true,
+                archived: false,
+                conversationId: lead.conversationId,
+                userId: viewer.id,
+              },
+        );
+        await writeLegacySpaceArchive(
+          spaceId,
+          result.status === "archived" ? new Date(result.archivedAt) : null,
+        );
       }
       // A retry stops what an earlier try left running.
       if (archived) {

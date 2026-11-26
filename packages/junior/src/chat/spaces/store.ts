@@ -182,7 +182,9 @@ export async function createSpace(args: {
   const now = new Date();
   await executor.db().insert(juniorSpaces).values({
     id,
+    name: args.name,
     description: args.description,
+    visibility: args.visibility,
     createdByUserId: args.creator.id,
     createdAt: now,
     updatedAt: now,
@@ -231,6 +233,7 @@ export async function updateSpace(
       ...(changes.description !== undefined
         ? { description: changes.description }
         : undefined),
+      ...(changes.name !== undefined ? { name: changes.name } : undefined),
       updatedAt: new Date(),
     })
     .where(eq(juniorSpaces.id, spaceId));
@@ -247,6 +250,20 @@ export async function updateSpace(
     )
     .limit(1);
   if (lead) await setConversationTitle(executor, lead.id, changes.name);
+}
+
+/**
+ * Keep the archive time that 0.316.0 reads, so a rollback to it sees the
+ * Space's archive. The Lead's archive time is the one this release reads.
+ */
+export async function writeLegacySpaceArchive(
+  spaceId: string,
+  archivedAt: Date | null,
+): Promise<void> {
+  await getDb()
+    .update(juniorSpaces)
+    .set({ archivedAt })
+    .where(eq(juniorSpaces.id, spaceId));
 }
 
 /**

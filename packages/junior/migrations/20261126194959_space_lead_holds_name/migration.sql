@@ -1,12 +1,9 @@
 -- A Space's name, visibility, and archive are now its Lead's title,
--- visibility, and archive time. The snapshot no longer has
--- junior_spaces.name, visibility, and archived_at, or junior_space_members.
--- They stay in the database for one release, because 0.316.0 still reads
--- and writes them while this migration runs. The next release drops them
--- with DROP ... IF EXISTS.
-
--- New Spaces store no name. 0.316.0 still writes one.
-ALTER TABLE "junior_spaces" ALTER COLUMN "name" SET DEFAULT '';--> statement-breakpoint
+-- visibility, and archive time. junior_spaces.name, visibility, and
+-- archived_at stay, written and never read, because a rollback to 0.316.0
+-- reads them. The snapshot no longer has junior_space_members, but it stays
+-- in the database for one release, because 0.316.0 still reads it while this
+-- migration runs. The release that drops these uses DROP ... IF EXISTS.
 
 -- The Space's name wins where a Lead's title differs from it.
 -- junior:bounded-backfill: runs once, on the one Lead of each Space. Spaces are new and few.
