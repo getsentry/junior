@@ -161,7 +161,8 @@ async function sentTurn(
     { writeGeneratedFiles: () => [] },
     {
       ...fullContext("slack", behavior.promptMode),
-      ...bindTurnTools(run, behavior),
+      // No Turn here is a Lead's child.
+      ...bindTurnTools(run, behavior, false),
     },
   );
   return {
