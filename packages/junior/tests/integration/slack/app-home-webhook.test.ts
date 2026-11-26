@@ -412,8 +412,8 @@ describe("Slack webhook: App Home events", () => {
   });
 
   it("sends a new authorization link when a blocked automation notice asks to connect", async () => {
-    process.env.GITHUB_APP_CLIENT_ID = "github-client-id";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    process.env["GITHUB_APP_CLIENT_ID"] = "github-client-id";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const state = createMemoryState();
     const client = createSlackWebhookTestClient({
@@ -450,8 +450,8 @@ describe("Slack webhook: App Home events", () => {
     expect(queue.sentRecords()).toEqual([]);
     expect(
       slackApiOutbox.messages().map(({ params }) => ({
-        channel: params.channel,
-        text: params.text,
+        channel: params["channel"],
+        text: params["text"],
       })),
     ).toEqual([
       {
@@ -460,7 +460,7 @@ describe("Slack webhook: App Home events", () => {
       },
     ]);
     const link = /<(https:\/\/github\.com[^|>]+)/.exec(
-      String(slackApiOutbox.messages()[0]!.params.text),
+      String(slackApiOutbox.messages()[0]!.params["text"]),
     )?.[1];
     expect(link).toContain("client_id=github-client-id");
     // The callback links the GitHub account to this Slack person and posts
