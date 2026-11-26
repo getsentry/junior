@@ -592,7 +592,7 @@ export async function completeDecision<
 }> {
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
-  const privacy = getCurrentConversationPrivacy() ?? "private";
+  const content = getCurrentConversationPrivacy() === "public";
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
@@ -611,23 +611,20 @@ export async function completeDecision<
           params.modelId,
           result.usage.inputTokens,
         );
+        const answers = JSON.stringify(result.answers);
         setSpanAttributes({
           ...extractGenAiUsageAttributes(result.usage, {
             cost: { input: costUsd, total: costUsd },
           }),
-          // Criteria keys from code and numbers, safe in every Conversation.
-          "app.decision.answers": JSON.stringify(result.answers),
-          "gen_ai.output.messages":
-            privacy === "public"
-              ? serializeGenAiAttribute([
-                  {
-                    role: "assistant",
-                    parts: [
-                      { type: "text", content: JSON.stringify(result.answers) },
-                    ],
-                  },
-                ])
-              : undefined,
+          "app.decision.answers": answers,
+          "gen_ai.output.messages": content
+            ? serializeGenAiAttribute([
+                {
+                  role: "assistant",
+                  parts: [{ type: "text", content: answers }],
+                },
+              ])
+            : undefined,
         });
         return { answers: result.answers, costUsd };
       },
@@ -638,21 +635,19 @@ export async function completeDecision<
         "gen_ai.prompt.name": params.promptName,
         "server.address": GEN_AI_SERVER_ADDRESS,
         "gen_ai.provider.auth_mode": credential.mode,
-        "app.conversation.privacy": privacy,
-        // Questions can quote Conversation content, so they are content too.
-        ...(privacy === "public"
-          ? {
-              "gen_ai.system_instructions": serializeGenAiAttribute([
-                { type: "text", content: JSON.stringify(params.questions) },
-              ]),
-              "gen_ai.input.messages": serializeGenAiAttribute([
-                {
-                  role: "user",
-                  parts: [{ type: "text", content: params.state }],
-                },
-              ]),
-            }
-          : undefined),
+        "gen_ai.input.messages": content
+          ? serializeGenAiAttribute([
+              {
+                role: "user",
+                parts: [{ type: "text", content: params.state }],
+              },
+            ])
+          : undefined,
+        "gen_ai.system_instructions": content
+          ? serializeGenAiAttribute([
+              { type: "text", content: JSON.stringify(params.questions) },
+            ])
+          : undefined,
       },
     );
     return {

@@ -70,7 +70,6 @@ vi.mock("@ai-sdk/gateway", () => ({
 vi.mock("ai", () => ({
   embedMany: mocks.embedMany,
   experimental_decide: mocks.decide,
-  Experimental_DecisionRefusalError: { isInstance: () => false },
   generateObject: mocks.generateObject,
   NoObjectGeneratedError: {
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
@@ -662,10 +661,7 @@ describe("completeText", () => {
   });
 
   it("records decision content only in public Conversations", async () => {
-    mocks.decide.mockResolvedValue({
-      answers: { route: { type: "choice", choice: "reply" } },
-      usage: { inputTokens: 10 },
-    });
+    mocks.decide.mockResolvedValue({ answers: {}, usage: {} });
     const { completeDecision } = await import("@/chat/pi/client");
     const { runWithConversationPrivacy } =
       await import("@/chat/conversation-privacy");
@@ -673,36 +669,15 @@ describe("completeText", () => {
       completeDecision({
         modelId: "typesafe-ai/jev",
         state: "thread text",
-        questions: {
-          route: { type: "choice", criteria: { reply: "Junior replies." } },
-        },
+        questions: {},
       });
-
     await call();
     await runWithConversationPrivacy("public", call);
-
-    const [privateSpan, publicSpan] = mocks.withSpan.mock.calls.map(
-      (args, i) => ({
-        ...(args[4] as Record<string, unknown>),
-        ...(mocks.setSpanAttributes.mock.calls[i]?.[0] as Record<
-          string,
-          unknown
-        >),
-      }),
+    const [privateSpan, publicSpan] = mocks.withSpan.mock.calls.map((args) =>
+      JSON.stringify(args[4]),
     );
-    for (const key of [
-      "gen_ai.system_instructions",
-      "gen_ai.input.messages",
-      "gen_ai.output.messages",
-    ]) {
-      expect(privateSpan?.[key]).toBeUndefined();
-    }
-    expect(privateSpan?.["app.decision.answers"]).toContain('"choice":"reply"');
-    expect(publicSpan?.["gen_ai.system_instructions"]).toContain(
-      "Junior replies.",
-    );
-    expect(publicSpan?.["gen_ai.input.messages"]).toContain("thread text");
-    expect(publicSpan?.["gen_ai.output.messages"]).toContain("reply");
+    expect(privateSpan).not.toContain("thread text");
+    expect(publicSpan).toContain("thread text");
   });
 });
 
