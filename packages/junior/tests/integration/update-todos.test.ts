@@ -255,6 +255,33 @@ describe("updateTodos", () => {
       await harness.close();
     }
   });
+  it("rejects a change that makes the open To-dos too long", async () => {
+    const harness = await createHarness();
+    try {
+      const notes = "n".repeat(1_900);
+      const big = Array.from({ length: 5 }, (_, index) => ({
+        title: `Review part ${index}`,
+        notes,
+      }));
+      await expect(harness.updateTodos({ add: big })).rejects.toThrow(
+        /^The open To-dos would take \d+ characters, over the limit of 8000\. Close, remove, or shorten To-dos, then try again\.$/,
+      );
+      expect(await listTodos(getSqlExecutor(), parentConversationId)).toEqual(
+        [],
+      );
+
+      const { todos } = await harness.updateTodos({ add: big.slice(0, 4) });
+      await expect(
+        harness.updateTodos({ add: [{ title: "One more", notes }] }),
+      ).rejects.toThrow(ToolInputError);
+      await expect(
+        harness.updateTodos({ update: [{ id: todos[0]!.id, status: "done" }] }),
+      ).resolves.toMatchObject({ todos: [{ status: "done" }] });
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("lets a child close only its own To-dos of the parent", async () => {
     const harness = await createHarness();
     try {

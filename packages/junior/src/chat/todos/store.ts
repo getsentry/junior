@@ -23,6 +23,7 @@ import { mapBounded } from "@/chat/fan-out";
 import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { syncTodoInboxItems } from "./inbox-items";
+import { renderTodosSnapshot } from "./prompt";
 import { todoRef } from "./tool-output";
 import {
   isOpenTodoStatus,
@@ -96,6 +97,26 @@ function validateChange(rows: Map<number, TodoRow>, change: TodoChange) {
   }
 }
 
+// The most characters of open To-do text. Each Turn context can show every
+// open To-do, and plugins share one budget for Turn contexts.
+const MAX_OPEN_TODOS_CHARS = 8_000;
+
+function openTodosChars(todos: readonly Todo[]): number {
+  return renderTodosSnapshot(todos)?.length ?? 0;
+}
+
+// A change that closes or shortens To-dos always applies, so a list that a
+// person pushed over the limit can shrink.
+function requireOpenTodosFit(before: readonly Todo[], after: readonly Todo[]) {
+  const chars = openTodosChars(after);
+  if (chars <= MAX_OPEN_TODOS_CHARS || chars <= openTodosChars(before)) {
+    return;
+  }
+  throw new ToolInputError(
+    `The open To-dos would take ${chars} characters, over the limit of ${MAX_OPEN_TODOS_CHARS}. Close, remove, or shorten To-dos, then try again.`,
+  );
+}
+
 // A Drizzle transaction, not `executor.transaction`: the Inbox item writes
 // of `syncTodoInboxItems` open their own transactions, which nest as
 // savepoints only inside a Drizzle one. Call it outside an executor
@@ -127,7 +148,8 @@ async function withTodosLock<T>(
  * Apply one batch of changes from the list's own agent. Return the To-dos it
  * added or updated, and the To-dos whose status a person set last and the
  * change replaced, as they were before it. Throws `ToolInputError` for an
- * unknown id or an id that changes twice.
+ * unknown id, an id that changes twice, or a change that makes the open
+ * To-dos too long.
  */
 export async function changeTodos(
   executor: JuniorSqlDatabase,
@@ -158,12 +180,10 @@ export async function changeTodos(
         );
       })
       .map((update) => update.id);
-    const replacedPersonChanges =
-      replacedIds.length > 0
-        ? (await readTodos(db, conversationId)).filter((todo) =>
-            replacedIds.includes(todo.id),
-          )
-        : [];
+    const before = await readTodos(db, conversationId);
+    const replacedPersonChanges = before.filter((todo) =>
+      replacedIds.includes(todo.id),
+    );
     if (change.remove.length > 0) {
       await db
         .delete(juniorTodos)
@@ -218,10 +238,12 @@ export async function changeTodos(
       changedIds.push(inserted!.id);
     }
     /* oxlint-enable no-await-in-loop */
+    const todos = await readTodos(db, conversationId);
+    // Throwing rolls the transaction back.
+    requireOpenTodosFit(before, todos);
     await sync(args.nowMs);
     // Open detail views of the Conversation reload the To-dos on this bump.
     await touchConversationDetail(db, [conversationId]);
-    const todos = await readTodos(db, conversationId);
     return {
       todos: changedIds.flatMap(
         (id) => todos.find((todo) => todo.id === id) ?? [],
