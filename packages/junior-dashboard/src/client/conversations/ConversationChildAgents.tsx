@@ -23,8 +23,10 @@ import { formatConversationCostTotal, formatUsageTotal } from "../format";
 import { revalidatedJsonQuery } from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
+import { ConversationStateIcon } from "./ConversationStateIcon";
 import { FeedThreads } from "./feedThreads";
 import { cn } from "../styles";
+import { attentionSort, type Attention } from "./conversationSections";
 import {
   DetailsCard,
   DetailsList,
@@ -38,6 +40,7 @@ const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",
   blocked: "warning",
   completed: "success",
+  done: "success",
   error: "danger",
   failed: "danger",
   needs_input: "warning",
@@ -50,10 +53,17 @@ export function subagentStatusTone(status: string): StatusChipTone {
   return statusTones[status] ?? "neutral";
 }
 
-const errorToneClass: Partial<Record<StatusChipTone, string>> = {
-  danger: "text-rose-200/85",
-  warning: "text-amber-200/85",
-};
+/**
+ * Name what a child agent does now. Once it is idle, its last result says
+ * more, such as `blocked`.
+ */
+export function childAgentStatusLabel(
+  agent: Pick<ConversationChildAgent, "lastResult" | "status">,
+): string {
+  return agent.status === "idle"
+    ? (agent.lastResult ?? agent.status)
+    : agent.status;
+}
 
 /** Load the child agents of one Conversation with runtime status. */
 export function useConversationChildAgents(
@@ -72,14 +82,42 @@ export function useConversationChildAgents(
 }
 
 /**
- * List the Threads of one Conversation. Each row opens the Thread page.
- * Archived Threads stay hidden until the reader asks for them.
+ * Read a child's attention from its tree state, run status, and last result.
+ * A failed or blocked child needs the viewer, like a failed latest Turn on a
+ * feed row. An archived child needs nothing.
+ */
+function childAgentAttention(agent: ConversationChildAgent): Attention {
+  const { treeState } = agent;
+  const status = childAgentStatusLabel(agent);
+  return {
+    group: agent.archivedAt
+      ? "done"
+      : treeState === "needs_you" || status === "failed" || status === "blocked"
+        ? "needs_you"
+        : treeState === "working" ||
+            status === "running" ||
+            status === "pending"
+          ? "working"
+          : agent.watching || status === "paused"
+            ? "waiting"
+            : "done",
+    time: Date.parse(agent.updatedAt),
+  };
+}
+
+/**
+ * List the Threads of one Conversation in `attentionSort` order, with no
+ * group headings. Each row opens the Thread page. Archived Threads stay
+ * hidden until the reader asks for them.
  */
 export function ConversationThreads(props: {
   threads: readonly ConversationChildAgent[];
 }) {
-  const feedThreads = useContext(FeedThreads);
-  const { action, items: threads } = useShowArchived(props.threads);
+  const {
+    action,
+    items: threads,
+    showArchived,
+  } = useShowArchived(props.threads);
   return (
     <DetailsCard
       action={action}
@@ -88,23 +126,39 @@ export function ConversationThreads(props: {
       title="Threads"
     >
       {threads.length > 0 ? (
-        <DetailsList
-          itemKey={(thread) => thread.conversationId}
-          items={threads}
-          renderItem={(thread) => (
-            <ChildAgentRow
-              agent={thread}
-              // The report title is the invocation title, so the Thread's
-              // own title wins. Archived Threads are not in the feed.
-              title={feedThreads.get(thread.conversationId)?.displayTitle}
-              to={conversationPath(thread.conversationId)}
-            />
-          )}
+        // Archived Threads sort last, so showing them shows every row.
+        <ThreadRows
+          expanded={showArchived}
+          key={String(showArchived)}
+          threads={attentionSort(threads, childAgentAttention)}
         />
       ) : (
         <p className="m-0">Every Thread is archived.</p>
       )}
     </DetailsCard>
+  );
+}
+
+function ThreadRows(props: {
+  expanded: boolean;
+  threads: readonly ConversationChildAgent[];
+}) {
+  const feedThreads = useContext(FeedThreads);
+  return (
+    <DetailsList
+      defaultExpanded={props.expanded}
+      itemKey={(thread) => thread.conversationId}
+      items={props.threads}
+      renderItem={(thread) => (
+        <ChildAgentRow
+          agent={thread}
+          // The report title is the task title, so the Thread's
+          // own title wins. Archived Threads are not in the feed.
+          title={feedThreads.get(thread.conversationId)?.displayTitle}
+          to={conversationPath(thread.conversationId)}
+        />
+      )}
+    />
   );
 }
 
@@ -140,7 +194,7 @@ export function ConversationTasks(props: {
                         ...(task.name ? { agentName: task.name } : undefined),
                         label: task.title ?? task.name,
                       }),
-                  status: task.status,
+                  status: childAgentStatusLabel(task),
                 })
               }
             />
@@ -172,6 +226,7 @@ function useShowArchived(children: readonly ConversationChildAgent[]) {
     items: showArchived
       ? children
       : children.filter((child) => !child.archivedAt),
+    showArchived,
   };
 }
 
@@ -179,6 +234,7 @@ const statusIcons: Partial<Record<string, LucideIcon>> = {
   active: CircleDot,
   blocked: CircleAlert,
   completed: CircleCheck,
+  done: CircleCheck,
   error: CircleX,
   failed: CircleX,
   paused: CirclePause,
@@ -193,36 +249,52 @@ const statusIconToneClass: Record<StatusChipTone, string> = {
   warning: "text-amber-300",
 };
 
-/** Mark a child agent status with one icon and an audible label. */
-function ChildAgentStatusIcon(props: { archived: boolean; status: string }) {
-  const Icon = props.archived
+/**
+ * Mark a child agent with one icon and an audible label. A wait on the
+ * viewer, work in its tree, or a Watch outranks how its own run ended, as
+ * in its group.
+ */
+function ChildAgentStatusIcon(props: { agent: ConversationChildAgent }) {
+  const { archivedAt, treeState, watching } = props.agent;
+  const status = childAgentStatusLabel(props.agent);
+  if (!archivedAt && treeState === "needs_you") {
+    return <ConversationStateIcon state="needs_you" />;
+  }
+  const settled = !archivedAt && status !== "failed" && status !== "blocked";
+  // A nested child can still work after this child's own run ended.
+  if (settled && treeState === "working" && status !== "running") {
+    return <ConversationStateIcon state="working" />;
+  }
+  if (settled && treeState === "done" && watching) {
+    return <ConversationStateIcon state="watching" />;
+  }
+  const archived = Boolean(archivedAt);
+  const Icon = archived
     ? Archive
-    : props.status === "running"
+    : status === "running"
       ? Spinner
-      : (statusIcons[props.status] ?? Circle);
+      : (statusIcons[status] ?? Circle);
   return (
     <>
       <Icon
         aria-hidden="true"
         className={cn(
           "size-3.5",
-          props.archived
+          archived
             ? "text-dashboard-text-faint"
-            : statusIconToneClass[subagentStatusTone(props.status)],
+            : statusIconToneClass[subagentStatusTone(status)],
         )}
       />
-      <span className="sr-only">
-        {props.archived ? "archived" : props.status}
-      </span>
+      <span className="sr-only">{archived ? "archived" : status}</span>
     </>
   );
 }
 
 /**
  * Show one child agent as a dense row: status, title, and run time first,
- * then agent name and cost. The row text is the accessible name, so status,
- * title, and error stay audible. A Thread row links to its page; a Task row
- * opens its transcript.
+ * then agent name and cost. The row text is the accessible name, so status
+ * and title stay audible. A Thread row links to its page; a Task row opens
+ * its transcript.
  */
 function ChildAgentRow(props: {
   agent: ConversationChildAgent;
@@ -232,9 +304,7 @@ function ChildAgentRow(props: {
   to?: string;
 }) {
   const { agent } = props;
-  const tone = subagentStatusTone(agent.status);
-  const task = agent.task?.trim();
-  const headline = props.title ?? agent.title ?? task;
+  const headline = props.title ?? agent.title;
   const kindLabel = agent.kind === "thread" ? "Thread" : "Task";
   const name = agent.redacted
     ? `Private ${kindLabel.toLowerCase()}`
@@ -251,25 +321,15 @@ function ChildAgentRow(props: {
 
   return (
     <DetailsRow
-      icon={
-        <ChildAgentStatusIcon
-          archived={Boolean(agent.archivedAt)}
-          status={agent.status}
-        />
-      }
+      icon={<ChildAgentStatusIcon agent={agent} />}
       meta={formatRuntime(agent.cumulativeDurationMs)}
       onClick={props.onOpen}
       title={headline ?? name ?? kindLabel}
       to={props.to}
-      tooltip={[
-        task && task !== headline ? task : "",
-        `Updated ${formatTime(agent.updatedAt, {
-          dateStyle: "medium",
-          timeStyle: "short",
-        })}`,
-      ]
-        .filter(Boolean)
-        .join("\n")}
+      tooltip={`Updated ${formatTime(agent.updatedAt, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}`}
     >
       {meta.length > 0 || agent.redacted ? (
         <DetailsRowLine className="flex items-center gap-1.5">
@@ -277,16 +337,6 @@ function ChildAgentRow(props: {
             <LockKeyhole aria-hidden="true" className="size-3 shrink-0" />
           ) : null}
           <span className="min-w-0 truncate">{meta.join(" · ")}</span>
-        </DetailsRowLine>
-      ) : null}
-      {agent.error ? (
-        <DetailsRowLine
-          className={cn(
-            "line-clamp-2 whitespace-pre-wrap break-words",
-            errorToneClass[tone],
-          )}
-        >
-          {agent.error}
         </DetailsRowLine>
       ) : null}
     </DetailsRow>

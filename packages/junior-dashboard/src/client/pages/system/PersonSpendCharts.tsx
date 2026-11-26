@@ -1,4 +1,5 @@
 import type { PersonSpendDay } from "@sentry/junior/api/schema";
+import { useState } from "react";
 import { Area, Bar, CartesianGrid, ComposedChart, Line, YAxis } from "recharts";
 
 import { ChartHeader } from "../../components/charts/ChartHeader";
@@ -12,6 +13,7 @@ import {
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 
 // One person runs few Turns in an hour, so a per-person ratio below a day is
@@ -28,7 +30,21 @@ const BY_ACTOR = {
   unattributed: { color: "var(--color-slate-400)", label: "Overhead" },
 } as const;
 
-type Point = PersonSpendDay & { mean: number | null };
+type Point = PersonSpendDay & {
+  mean: number | null;
+  personShare: number | null;
+  unattributedShare: number | null;
+};
+
+// Share of a day's spend, or null on a day with no spend so the percent
+// chart shows a gap instead of a drop to zero.
+function share(value: number, total: number): number | null {
+  return total ? (value / total) * 100 : null;
+}
+
+function formatShare(value: number | null): string {
+  return value === null ? "—" : `${Math.round(value)}%`;
+}
 
 function formatCost(value: number | null | undefined): string {
   return value === null || value === undefined
@@ -52,12 +68,18 @@ export function PersonSpendCharts(props: {
   days: readonly PersonSpendDay[];
   range: TimeRangeDays;
 }) {
+  const [mode, setMode] = useState<"dollars" | "share">("dollars");
   const data: Point[] = props.days
     .slice(-Math.max(props.range, MIN_DAYS))
-    .map((day) => ({
-      ...day,
-      mean: day.people ? day.personCostUsd / day.people : null,
-    }));
+    .map((day) => {
+      const total = day.personCostUsd + day.unattributedCostUsd;
+      return {
+        ...day,
+        mean: day.people ? day.personCostUsd / day.people : null,
+        personShare: share(day.personCostUsd, total),
+        unattributedShare: share(day.unattributedCostUsd, total),
+      };
+    });
   const keys = data.map((day) => day.date);
   const totals = data.reduce(
     (total, day) => ({
@@ -78,6 +100,10 @@ export function PersonSpendCharts(props: {
   const spendMaximum = Math.max(
     Number.EPSILON,
     ...data.map((day) => day.personCostUsd + day.unattributedCostUsd),
+  );
+  const unattributedShare = share(
+    totals.unattributedCostUsd,
+    totals.personCostUsd + totals.unattributedCostUsd,
   );
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -162,50 +188,77 @@ export function PersonSpendCharts(props: {
           description="Overhead is spend with no verified person, such as Automation runs."
           title="Spend by Actor"
           trailing={
-            <ChartLegend
-              ariaLabel="Spend by Actor series"
-              inline
-              items={[
-                {
-                  ...BY_ACTOR.people,
-                  key: "people",
-                  value: formatCost(totals.personCostUsd),
-                },
-                {
-                  ...BY_ACTOR.unattributed,
-                  key: "unattributed",
-                  value: formatCost(totals.unattributedCostUsd),
-                },
-              ]}
-            />
+            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+              <ChartLegend
+                ariaLabel="Spend by Actor series"
+                inline
+                items={[
+                  {
+                    ...BY_ACTOR.people,
+                    key: "people",
+                    value: formatCost(totals.personCostUsd),
+                  },
+                  {
+                    ...BY_ACTOR.unattributed,
+                    key: "unattributed",
+                    value: `${formatCost(totals.unattributedCostUsd)} · ${formatShare(unattributedShare)}`,
+                  },
+                ]}
+              />
+              {/* The negative margin keeps this header as tall as the one
+                  beside it, so both plots start at the same height. */}
+              <ToggleGroup
+                aria-label="Spend by Actor display"
+                className="-my-1.5"
+                onValueChange={([next]) => {
+                  if (next) setMode(next);
+                }}
+                value={[mode]}
+              >
+                <ToggleGroupItem value="dollars">Dollars</ToggleGroupItem>
+                <ToggleGroupItem value="share">Percent</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
           }
         />
         <div className="px-2 py-2">
           <ChartContainer className="aspect-auto h-38 w-full" config={BY_ACTOR}>
             <ComposedChart
-              aria-label="Daily model spend by Actor"
+              aria-label={
+                mode === "share"
+                  ? "Daily share of model spend by Actor"
+                  : "Daily model spend by Actor"
+              }
               data={data}
               margin={activityChartMargin}
               role="img"
             >
               <CartesianGrid strokeDasharray="3 5" vertical={false} />
               <ActivityChartYAxis
-                format={formatAxisCost}
-                maximum={spendMaximum}
+                format={
+                  mode === "share" ? (value) => `${value}%` : formatAxisCost
+                }
+                maximum={mode === "share" ? 100 : spendMaximum}
               />
               <ActivityChartXAxis keys={keys} />
               <ChartTooltip
                 content={
                   <ActivityChartTooltipContent
                     rows={(day: Point) => [
-                      ["People", formatCost(day.personCostUsd)],
-                      ["Overhead", formatCost(day.unattributedCostUsd)],
+                      [
+                        "People",
+                        `${formatCost(day.personCostUsd)} · ${formatShare(day.personShare)}`,
+                      ],
+                      [
+                        "Overhead",
+                        `${formatCost(day.unattributedCostUsd)} · ${formatShare(day.unattributedShare)}`,
+                      ],
                     ]}
                   />
                 }
               />
               <Area
-                dataKey="personCostUsd"
+                dataKey={mode === "share" ? "personShare" : "personCostUsd"}
                 fill="var(--color-people)"
                 fillOpacity={0.2}
                 isAnimationActive={false}
@@ -215,7 +268,9 @@ export function PersonSpendCharts(props: {
                 type="linear"
               />
               <Area
-                dataKey="unattributedCostUsd"
+                dataKey={
+                  mode === "share" ? "unattributedShare" : "unattributedCostUsd"
+                }
                 fill="var(--color-unattributed)"
                 fillOpacity={0.2}
                 isAnimationActive={false}

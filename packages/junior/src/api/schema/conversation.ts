@@ -11,7 +11,7 @@ import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
-import { agentTypeSchema } from "@/chat/agent-invocations/agent-types";
+import { agentTypeSchema } from "@/chat/child-agents/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
@@ -325,8 +325,8 @@ const conversationReportMessageEventDataSchema = z
     actorIdentity: actorIdentitySchema.optional(),
     /** Identity id of the author. Detail `authors` maps it to the person. */
     actorIdentityId: z.string().min(1).optional(),
-    /** Set on input that an earlier release's agent wrote, not a person. */
-    agentInvocationId: z.string().min(1).optional(),
+    /** Set on input that a parent agent wrote, not a person. */
+    fromParentAgent: z.literal(true).optional(),
     eventType: z.string().min(1).optional(),
     /** Namespace of the first Event, such as `github`. */
     eventNamespace: z.string().min(1).optional(),
@@ -396,8 +396,6 @@ const conversationReportToolCallSchema = z
     startedSeq: z.number().int().nonnegative().optional(),
     input: z.unknown().optional(),
     output: z.unknown().optional(),
-    /** The Conversation that a completed `startConversation` call started. */
-    startedConversationId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((call, context) => {
@@ -849,6 +847,10 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     canFork: z.boolean().optional(),
     /** The viewer can move this dashboard conversation to a Slack thread. */
     canContinueInSlack: z.literal(true).optional(),
+    /** The viewer can Invite a person to this conversation. */
+    canInvite: z.literal(true).optional(),
+    /** Leave removes the viewer from this private conversation's access. */
+    leaveEndsAccess: z.literal(true).optional(),
     /**
      * Event Turn replies stay out of the Location. Set only for a root with
      * a Location, when the viewer is a participant, who can change it.

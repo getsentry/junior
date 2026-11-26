@@ -1,8 +1,8 @@
 import { eq, sql } from "drizzle-orm";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { encodeHistoryPayload } from "@/chat/conversations/history-payload";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { encodeEventPayload } from "@/chat/conversations/sql/history";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { slackIdFromText } from "./slack/factories/ids";
@@ -22,7 +22,7 @@ export async function insertLegacyEvent(
   conversationId: string,
   args: {
     createdAtMs: number;
-    data: Parameters<typeof encodeHistoryPayload>[0];
+    data: Parameters<typeof encodeEventPayload>[0];
     replacesHistory?: boolean;
   },
 ): Promise<void> {
@@ -37,7 +37,7 @@ export async function insertLegacyEvent(
     .from(juniorConversationEvents)
     .where(eq(juniorConversationEvents.conversationId, conversationId));
   const historyVersion = cursor?.historyVersion ?? 0;
-  const encoded = encodeHistoryPayload(args.data);
+  const encoded = encodeEventPayload(args.data);
   await getDb()
     .insert(juniorConversationEvents)
     .values({
@@ -271,14 +271,17 @@ export async function appendVisibleHistory(
 /** Create a child conversation under a recorded root for reporting tests. */
 export async function createChild(args: {
   childConversationId: string;
-  /** Defaults to a Task. */
+  /** Defaults to a Task. `thread` makes a Thread. */
   kind?: "task" | "thread";
   parentConversationId: string;
 }): Promise<void> {
   const { getConversationEventStore, getDb } = await import("@/chat/db");
   const at = new Date(3);
   const [parent] = await getDb()
-    .select({ rootConversationId: juniorConversations.rootConversationId })
+    .select({
+      rootConversationId: juniorConversations.rootConversationId,
+      visibility: juniorConversations.visibility,
+    })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, args.parentConversationId));
   if (!parent?.rootConversationId) throw new Error("Missing conversation root");
@@ -289,6 +292,8 @@ export async function createChild(args: {
       kind: args.kind ?? "task",
       parentConversationId: args.parentConversationId,
       rootConversationId: parent.rootConversationId,
+      // A child copies its root's visibility, as the store does.
+      visibility: parent.visibility,
       createdAt: at,
       lastActivityAt: at,
       updatedAt: at,

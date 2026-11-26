@@ -1,6 +1,7 @@
 import { Hono } from "hono";
+import { getDb } from "@/chat/db";
 import { createSpace, listSpaces, updateSpace } from "@/chat/spaces/store";
-import { jsonResponse } from "../http";
+import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   createSpaceBodySchema,
@@ -17,6 +18,7 @@ import {
   spaceReport,
   spaceResponse,
 } from "./access";
+import { readSpaceStates } from "./state";
 
 /** Create the routes that list, create, read, and change Spaces. */
 export function createSpaceRoutes(): Hono<JuniorApiEnv> {
@@ -27,11 +29,19 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
     requireViewer,
     validateRequest("query", spaceListQuerySchema, "Invalid query parameters."),
     async (context) => {
-      const spaces = await listSpaces(
-        context.get("viewer").id,
-        context.req.valid("query"),
+      const viewerUserId = context.get("viewer").id;
+      const spaces = await listSpaces(viewerUserId, context.req.valid("query"));
+      const states = await readSpaceStates(
+        getDb(),
+        spaces.map((space) => space.id),
+        viewerUserId,
       );
-      return jsonResponse(spaceListSchema, { spaces: spaces.map(spaceReport) });
+      return jsonResponse(spaceListSchema, {
+        spaces: spaces.map((space) => ({
+          ...spaceReport(space),
+          ...states.get(space.id),
+        })),
+      });
     },
   );
 
@@ -42,9 +52,10 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const body = context.req.valid("json");
       const space = await createSpace({
-        creatorUserId: context.get("viewer").id,
+        creator: context.get("viewer"),
         name: body.name,
         description: body.description ?? null,
+        visibility: body.visibility,
       });
       return jsonResponse(spaceSchema, spaceReport(space), { status: 201 });
     },
@@ -62,8 +73,17 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
+      const { visibility, ...changes } = context.req.valid("json");
+      // A Space keeps the visibility it was created with. A different
+      // audience needs a new Space.
+      if (visibility !== undefined) {
+        throwApiError(
+          400,
+          "A Space's visibility is set when it is created. Create a new Space for a different audience.",
+        );
+      }
       await requireMemberSpace(viewerUserId, spaceId);
-      await updateSpace(spaceId, context.req.valid("json"));
+      await updateSpace(spaceId, changes);
       return await spaceResponse(viewerUserId, spaceId);
     },
   );

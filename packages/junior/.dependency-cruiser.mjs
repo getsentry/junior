@@ -129,6 +129,10 @@ export default {
     },
     includeOnly: "^src/",
     moduleSystems: ["es6"],
+    // Read imports from the TypeScript AST. The default transpiles each file
+    // to JavaScript first, which takes about two thirds of the run. The AST
+    // also has `import type` edges, so the rules check those too.
+    parser: "tsc",
     tsConfig: {
       fileName: "./tsconfig.json",
     },

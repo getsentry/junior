@@ -396,8 +396,9 @@ describe("conversation auto-archive API", () => {
     const lead = await getSpaceLead({
       member: viewer,
       space: await createSpace({
-        creatorUserId: viewer.id,
+        creator: viewer,
         description: null,
+        visibility: "public",
         name: "Follow-ups",
       }),
     });

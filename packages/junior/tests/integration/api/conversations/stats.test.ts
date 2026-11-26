@@ -654,9 +654,9 @@ describe("conversation stats API", () => {
       expect(fresh.result).toEqual(first);
       expect(background.pendingCount()).toBe(0);
 
-      // A stale report is served at once. Concurrent requests start one
-      // refresh between them.
-      vi.setSystemTime(new Date("2026-06-15T12:06:00.000Z"));
+      // A report from days ago is still served at once. Concurrent requests
+      // start one refresh between them.
+      vi.setSystemTime(new Date("2026-06-18T09:00:00.000Z"));
       const stale = await measureSql(async () => {
         const reports = await Promise.all([readStats(), readStats()]);
         expect(background.pendingCount()).toBe(2);
@@ -667,8 +667,11 @@ describe("conversation stats API", () => {
       expect(stale.sql.statements).toBe(5);
 
       const refreshed = await readStats();
-      expect(refreshed.generatedAt).toBe("2026-06-15T12:06:00.000Z");
-      expect(refreshed.metricDays.at(-1)?.conversations).toBe(2);
+      expect(refreshed.generatedAt).toBe("2026-06-18T09:00:00.000Z");
+      expect(
+        refreshed.metricDays.find((day) => day.date === "2026-06-15")
+          ?.conversations,
+      ).toBe(2);
     } finally {
       vi.useRealTimers();
       await fixture.close();

@@ -6,7 +6,6 @@ import {
 } from "../fixtures/anthropic-stream";
 import { connectedState } from "@/chat/cache-warming/request";
 import { loadSnapshot, saveSnapshot } from "@/chat/cache-warming/snapshot";
-import { botConfig } from "@/chat/config";
 import { commitMessages } from "@/chat/conversations/projection";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createAgent } from "../fixtures/agent";
@@ -23,8 +22,6 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { juniorConversationParticipants } from "@/db/schema";
 import { changeTodos, setTodoStatusByUser } from "@/chat/todos/store";
 
-const originalBotConfig = { ...botConfig };
-
 /** The dashboard API as one signed-in person. */
 function personApi(viewer: User) {
   const app = new Hono<JuniorApiEnv>();
@@ -38,7 +35,6 @@ function personApi(viewer: User) {
 
 describe("model message history", () => {
   afterEach(async () => {
-    Object.assign(botConfig, originalBotConfig);
     await closeConversationFixture();
   });
   it("preserves native messages and provider request prefixes across Turns", async () => {
@@ -249,7 +245,9 @@ describe("model message history", () => {
       before: { messages: unknown[] },
       after: { messages: unknown[] },
     ) => JSON.stringify(after.messages.slice(before.messages.length));
-    const deltas = (text: string) => text.split("<todo-delta>").length - 1;
+    const deltas = (text: string) =>
+      text.split('<plugin-contribution plugin=\\"todos\\" id=\\"userPrompt:')
+        .length - 1;
 
     await agent.run("first");
     const first = agent.snapshot();
@@ -364,7 +362,11 @@ describe("model message history", () => {
     // The review is a To-do block, so it waits for the next interval.
     expect(
       [...turnText]
-        .filter(([, text]) => text.includes("<todos>"))
+        .filter(([, text]) =>
+          text.includes(
+            '<plugin-contribution plugin=\\"todos\\" id=\\"userPrompt:',
+          ),
+        )
         .map(([input]) => input),
     ).toEqual(["fourth"]);
     expect(turnText.get("fourth")).toContain(

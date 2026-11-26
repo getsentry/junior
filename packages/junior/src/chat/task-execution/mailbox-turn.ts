@@ -27,16 +27,14 @@ import {
   EVENT_MESSAGE_AUTHOR,
   EVENT_SYSTEM_ACTOR,
 } from "@/chat/events/actor";
-import {
-  EVENT_WAIT_MS,
-  isEventMailboxMetadata,
-} from "@/chat/events/notification";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
+import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import {
   isParentMessageAuthor,
   parentMessageAuthor,
-} from "@/chat/agent-invocations/parent-message";
-import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
+} from "@/chat/child-agents/parent-message";
+import { readParentMessage } from "@/chat/child-agents/parent-message-input";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 

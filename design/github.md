@@ -38,38 +38,63 @@ also wake a Conversation or run an Event automation.
   each comment of that change request addressed or declined and the
   required checks pass. A comment that Junior pushes back on or defers is
   declined. Pushes, merges of the base branch, and replies do not ask.
-  When the requester comments or reviews, Junior acts next, and the Inbox
-  stops asking. A requester who approved since is not asked. The Inbox
-  item says why it asks: every comment is handled, or the checks now pass.
+  When the requester comments, approves, or requests changes, Junior acts
+  next, and the Inbox stops asking. A requester who approved since is not
+  asked. The Inbox item says why it asks: every comment is handled, or the
+  checks now pass.
+- A comment-only review is not an answer to a review ask. Junior handles
+  it like a change request: the ask closes while Junior works, and once
+  Junior answers and the checks pass, Junior asks the requester to review
+  again.
+- A ready Junior PR always has an Inbox ask (review or merge) or a pending
+  GitHub review request for its requester. When it asks nothing of the
+  requester, Junior asks for the requester's review on GitHub once the
+  required checks pass.
+  A push does not ask a requester who has already reviewed or commented.
+- When the requester removes their own review request, Junior does not ask
+  them again until someone asks them again on GitHub.
 - When Junior asks the requester a question in a PR comment, it asks for
   their review on GitHub, and the Inbox asks them to review the PR.
+- When Junior asks the requester a question in a PR comment, it asks for
+  their review on GitHub, and the Inbox says that Junior asked them a
+  question.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
+- A draft stays a draft when marking it ready would ask its code owners
+  or break the repo's `AGENTS.md`, unless the requester said to mark it
+  ready. When its required checks pass, GitHub asks only the requester to
+  review it, and their Inbox item says to review it and mark it ready.
+  Junior posts no message about the draft. When the requester approves a
+  draft that Junior held, Junior marks it ready, so GitHub asks its code
+  owners only after the requester has looked.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
-  replies in that Conversation know it. When GitHub says that it can merge
-  and no reviewer requests changes, the requester gets a "Ready to merge"
-  Inbox item. Where GitHub requires no review, a PR with no approval gets
-  it too, and the item tells the requester to review it before they merge.
+  replies in that Conversation know it. When GitHub says that it can merge,
+  no reviewer requests changes, and the requester has write access to the
+  repo, the requester gets a "Ready to merge" Inbox item. A requester
+  without write access gets no merge ask, because a person with write
+  access merges the PR. Where GitHub requires no review, a PR with no
+  approval gets it too, and the item tells the requester to review it
+  before they merge.
   When a review is requested and still pending, the PR asks for that review
   instead, even where the repo allows merging without one.
+- When GitHub fails the next-action read for a while (rate limit or
+  outage), Junior syncs the pull request again later, after the rate limit
+  resets. A failed webhook never leaves a stale action in place.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
-- GitHub is the source of truth for GitHub state. Junior reads that state
-  from GitHub through a cache, and the cache keeps the last good value for
-  when GitHub is down. Junior does not copy GitHub state into its tables,
-  unless the value is too expensive to get from GitHub.
+- GitHub is the source of truth for GitHub state. When GitHub is down,
+  Junior shows the last state that it read.
 
 ## Gaps
 
 - A pull request that Junior opens ready for review asks for a review at
   once, before the required checks pass. This breaks "asks for a review
   only when the required checks pass".
-- Some asks are only a Slack message: a draft PR that waits for the
-  requester's review, and a decision on a watched issue. They add no Inbox
-  item. This breaks "there is one way to ask a person"
+- A decision on a watched issue is only a reply in the Conversation. It
+  adds no Inbox item. This breaks "there is one way to ask a person"
   ([Inbox](./inbox.md)).
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior

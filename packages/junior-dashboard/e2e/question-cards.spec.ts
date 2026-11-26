@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
+import { mockInboxItemList } from "./mock-reports";
 
 // Mock Conversations with open Inbox items that wait on the viewer.
 const ONE_QUESTION_ID = "internal:question-qa";
@@ -172,16 +173,16 @@ test("the questions pill skips an Everyone question the viewer has not taken", a
       await route.fallback();
       return;
     }
-    const response = await route.fetch();
-    const body = (await response.json()) as {
-      items: Array<{ assignedToEveryone?: boolean; title: string }>;
-    };
-    for (const item of body.items) {
-      if (item.title === "Pick the billing migration window") {
-        item.assignedToEveryone = true;
-      }
-    }
-    await route.fulfill({ json: body, response });
+    const body = await mockInboxItemList(route);
+    await route.fulfill({
+      json: {
+        items: body.items.map((item) =>
+          item.title === "Pick the billing migration window"
+            ? { ...item, assignedToEveryone: true }
+            : item,
+        ),
+      },
+    });
   });
   await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
   await expect(

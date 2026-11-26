@@ -252,24 +252,25 @@ test("holds read events, so a near jump reads only the events it lacks", async (
   await expect(
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
-  // The outline list follows the transcript while the rows settle, so each
-  // click waits until the preview shows its item.
-  const pickOutlineItem = async (seq: number) => {
+  // The outline list scrolls to its active item once the transcript marks
+  // it. A hover before that scroll lands on another item.
+  const pickOutlineItem = async (from: number, seq: number) => {
+    const active = outline.getByRole("button", {
+      name: `Transcript message ${from} with`,
+    });
+    await expect(active).toHaveAttribute("aria-current", "location");
+    await expect(active).toBeInViewport();
     const item = outline.getByRole("button", {
       name: `Transcript message ${seq} with`,
     });
-    await expect(async () => {
-      await item.hover();
-      await expect(
-        page.locator('[data-slot="message-outline-preview-title"]'),
-      ).toHaveText(new RegExp(`^Transcript message ${seq} `), {
-        timeout: 1_000,
-      });
-    }).toPass();
+    await item.hover();
+    await expect(
+      page.locator('[data-slot="message-outline-preview-title"]'),
+    ).toHaveText(new RegExp(`^Transcript message ${seq} `));
     await item.click();
   };
 
-  await pickOutlineItem(400);
+  await pickOutlineItem(1992, 400);
   await expect(row(transcript, 400)).toBeInViewport({ ratio: 1 });
   // The row it lands on shows a mark for a moment.
   await expect.poll(rowMarks).toContain(400);
@@ -282,8 +283,11 @@ test("holds read events, so a near jump reads only the events it lacks", async (
   // A jump near the held events reads on from them, and a jump back to
   // them reads at most the events past their ends. No read serves a seq
   // that an earlier read served.
-  for (const seq of [600, 420]) {
-    await pickOutlineItem(seq);
+  for (const [from, seq] of [
+    [400, 600],
+    [600, 420],
+  ] as const) {
+    await pickOutlineItem(from, seq);
     await expect(row(transcript, seq)).toBeInViewport({ ratio: 1 });
     await expect.poll(rowMarks).toContain(seq);
   }

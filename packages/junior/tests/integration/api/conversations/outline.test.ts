@@ -97,7 +97,7 @@ describe("conversation outline API", () => {
     expect(outline.items[0]?.seq).toBeLessThan(outline.items[1]!.seq);
     expect(outline.items[0]?.createdAt).toBe(new Date(1).toISOString());
     expect(outline.items[0]?.actorIdentityId).toBe(askerIdentityId);
-    expect(outline.items[1]?.agentInvocationId).toBe("invocation-1");
+    expect(outline.items[1]?.fromParentAgent).toBe(true);
   });
 
   it("lists no items for a viewer who cannot see the transcript", async () => {

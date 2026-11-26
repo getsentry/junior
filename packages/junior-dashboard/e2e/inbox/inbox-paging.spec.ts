@@ -1,6 +1,7 @@
 /** The Inbox lists' pages: next pages, To do's own paging, and failed pages. */
 import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { holdRequests } from "../harness";
 import {
   answered,
   license,
@@ -12,6 +13,8 @@ import {
   rowHead,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
+import { scrollListUntil } from "./scroll-until";
 
 test.describe("new UI", () => {
   test("the asks and Done load their next pages at the end of the list", async ({
@@ -122,7 +125,7 @@ test.describe("new UI", () => {
     await expect(row).toBeVisible();
     // A count that never answers does the same.
     await page.unroute("**/api/inbox-items/count**");
-    await page.route("**/api/inbox-items/count**", () => undefined);
+    await holdRequests(page, "**/api/inbox-items/count**");
     await page.reload();
     await expect(row).toBeVisible();
   });
@@ -188,10 +191,8 @@ test.describe("new UI", () => {
       .locator("[data-inbox-row]");
     await expect(rows).toHaveCount(10);
     // Its end loads the next page while it shows fewer than its count.
-    await expect(async () => {
-      await scrollToTodoEnd(page);
-      await expect(rows).toHaveCount(30, { timeout: 1_000 });
-    }).toPass();
+    await scrollListUntil(() => scrollToTodoEnd(page), rows, rows.nth(29));
+    await expect(rows).toHaveCount(30);
   });
 
   /** 30 old notices, each in its own Conversation, and one new ask. */
@@ -221,7 +222,7 @@ test.describe("new UI", () => {
 
   /** Later pages of the Inbox item list never load. */
   async function holdLaterInboxItemPages(page: Page) {
-    await page.route(/\/api\/inbox-items\?.*cursor=/, () => undefined);
+    await holdRequests(page, /\/api\/inbox-items\?.*cursor=/);
   }
 
   test("To do's first page holds the new ask behind older notices", async ({
@@ -304,10 +305,8 @@ test.describe("new UI", () => {
       .getByRole("region", { name: "To do" })
       .locator("[data-inbox-row]");
     await expect(rows).toHaveCount(10);
-    await expect(async () => {
-      await scrollToTodoEnd(page);
-      await expect(rows).toHaveCount(30, { timeout: 1_000 });
-    }).toPass();
+    await scrollListUntil(() => scrollToTodoEnd(page), rows, rows.nth(29));
+    await expect(rows).toHaveCount(30);
   });
 
   test("Done shows Try again when its first read fails", async ({
@@ -432,10 +431,9 @@ test.describe("new UI", () => {
       if (new URL(route.request().url()).searchParams.has("cursor")) {
         olderReads += 1;
       }
-      const body = await (await route.fetch()).json();
+      const body = await mockFeedPage(route);
       const done = body.conversations.filter(
-        (conversation: { pinnedAt?: string; turnActive?: boolean }) =>
-          !conversation.pinnedAt && !conversation.turnActive,
+        (conversation) => !conversation.pinnedAt && !conversation.turnActive,
       );
       await route.fulfill({
         json: { ...body, conversations: done, nextCursor: "older" },
@@ -480,7 +478,7 @@ test.describe("new UI", () => {
       const older = url.searchParams.has("cursor");
       // Both pages split the mock's first page.
       url.searchParams.delete("cursor");
-      const body = await (await route.fetch({ url: url.toString() })).json();
+      const body = await mockFeedPage(route, url);
       const running = (conversation: {
         treeState?: string;
         turnActive?: boolean;

@@ -16,7 +16,7 @@ import {
 
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
@@ -128,7 +128,11 @@ describe("Event author trust", () => {
         channelId: "C123",
         visibility: "public",
       }),
-      turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
+      turnTools: turnBehavior({
+        kind: "thread",
+        hasParent: false,
+        personInput: true,
+      }).tools,
       workspace: {} as any,
     });
     await watches!.subscribe({

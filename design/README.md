@@ -32,13 +32,11 @@ Do not list behaviors. The verification map in
 
 ## Systems
 
-- [Agent teams](./agent-teams.md): how agents start, message, watch, and
-  report to each other, and how each one ends a Turn.
+- [Agent teams](./agent-teams.md): Threads and Tasks that an agent starts,
+  and how agents message, watch, stop, archive, and report to each other.
 - [Automations](./automations.md): saved instructions that Junior runs later.
 - [Cache warming](./cache-warming.md): keeping the prompt cache of an idle
   Conversation warm while a return is likely.
-- [Child agents](./child-agents.md): Threads and Tasks that an agent starts
-  to do work for it.
 - [Context compaction](./context-compaction.md): summaries that replace old
   history, and the prompt cache of an idle Conversation.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
@@ -55,4 +53,6 @@ Do not list behaviors. The verification map in
 - [Slack](./slack.md): requests in Slack, and who can start work there.
 - [Spaces](./spaces.md): named, shared homes for related work, each with a
   Lead that starts and steers the work in it.
+- [To-dos](./todos.md): durable work that outlives a Turn, and who it
+  waits on.
 - [Tools](./tools.md): what the model can call, and what each call returns.

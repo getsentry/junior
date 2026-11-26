@@ -22,10 +22,11 @@ how the dashboard groups and acts on its rows.
   as a reply or a blocked Automation, and says what to do. It never asks.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
-- Only an assignee answers a private item. Anyone who can see a public
-  question can answer it, but only an assignee dismisses or takes it. The
-  answer carries the authority of the person who gives it. Junior, an
-  Event, or a trigger never answers or approves for a person.
+- Only an assignee answers a private item that has assignees. Anyone who
+  can see a public question can answer it, but only an assignee dismisses
+  or takes it. The answer carries the authority of the person who gives
+  it. Junior, an Event, or a trigger never answers or approves for a
+  person.
 - "Needs you" means one thing on every surface: an ask or a Conversation
   tree that waits on you.
 
@@ -64,12 +65,13 @@ how the dashboard groups and acts on its rows.
   dismiss it, or wake it.
 - A card's actions read Dismiss, Snooze, then the main action, such as
   Send, last. Every card that shows an item uses this order.
-- Every item has at least one assignee: a User, or Everyone. When no
-  assignee is left, the item dismisses itself.
+- An item with no assignee is up for grabs. Anyone who can see it can take
+  it or answer it.
 - With no assignees named, the item goes to the person in the Turn, else
   the Automation creator, else the Conversation's active Participants.
-- An item from a private Conversation stays private and cannot go to
-  Everyone.
+- An item from a private Conversation stays private. Everyone means the
+  people who can see the Conversation: its members when it is private, and
+  anyone when it is public.
 - Making a Conversation public does not show its private items.
 - A Slack thread that its Conversation detached from gets no new item card.
 - Only the Conversation or the plugin that added an item can change it,
@@ -104,10 +106,12 @@ how the dashboard groups and acts on its rows.
   Only the person whose snooze woke sees it. It goes when they open the
   item from the Inbox, act on it, or snooze it again. A Wake that they
   pick, and a trigger that resolves the item, show nothing.
-- A reply in a dashboard Conversation is a notice for its starter. One
-  notice per Conversation holds the latest reply, and it closes when the
-  starter reads it. A Slack thread already tells people, so a Slack reply
-  adds no notice.
+- A reply in a dashboard Conversation is a notice for its starter,
+  unless an open action in that Conversation already waits on them or a
+  provider Event, such as a pull request review, started the Turn. The
+  notice closes when the starter reads the reply or answers an item in
+  that Conversation. A Slack thread already tells people, so a Slack
+  reply adds no notice.
 - Slack and the dashboard ask for the same things. The dashboard can show
   more detail, but not more asks.
 - A push goes to each User assigned to an open action, once per item. A
@@ -124,9 +128,6 @@ how the dashboard groups and acts on its rows.
 
 ## Gaps
 
-- An item can have no assignees, and then anyone who can see it can answer
-  it. It does not dismiss itself. This breaks "every item has at least one
-  assignee" and "only an assignee answers a private item".
 - An agent in any public Conversation can change, reassign, or close a
   public item that an agent added, and a new item with the same key
   overwrites it. This breaks "only the Conversation or the plugin that added
@@ -141,10 +142,18 @@ how the dashboard groups and acts on its rows.
 - A "To do for you" item has no Slack card. In Slack, the person learns of
   the To-do only from the reply. This breaks "its assignees see it in the
   Inbox and in its linked Slack threads".
-- Core adds a "To do for you" item only when its To-do changes. A person
+- Junior adds a "To do for you" item only when its To-do changes. A person
   who can see the Conversation only after that gets no item until the
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".
+- In a private Space, the Inbox lists and counts a "To do for you" item by
+  Participants and Destination, not by Space membership. A Participant who
+  is not a member sees it but cannot open it, and a member who is not a
+  Participant does not see it. This breaks "only while they can see the
+  Conversation's private content".
+- A typed message leaves a question for Everyone, or a question with no
+  assignees, open. Only its card or the Inbox answers it. This breaks "a
+  typed message still answers it".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "a notice … says what to do".
 - An Automation alert shows only in the dashboard Inbox. Slack shows no

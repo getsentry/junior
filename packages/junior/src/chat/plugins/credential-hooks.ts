@@ -17,7 +17,7 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { getDb } from "@/chat/db";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginLogger } from "@/chat/plugins/logging";
 
 interface SafeSchema<T> {
@@ -107,6 +107,7 @@ function parseCredentialResult(
 
 export interface EgressGrantInput {
   bodyText?: string;
+  conversationId?: string;
   gitPush?: PluginGitPush;
   graphql?: PluginGraphqlRequest;
   method: string;
@@ -131,6 +132,9 @@ export async function selectPluginGrant(
       ...(input.bodyText !== undefined
         ? { bodyText: input.bodyText }
         : undefined),
+      ...(input.conversationId
+        ? { conversationId: input.conversationId }
+        : undefined),
       ...(input.gitPush ? { gitPush: input.gitPush } : undefined),
       ...(input.graphql ? { graphql: input.graphql } : undefined),
       method: input.method,
@@ -145,6 +149,7 @@ export async function selectPluginGrant(
 }
 
 export interface EgressResponseInput {
+  conversationId?: string;
   grant: PluginGrant;
   method: string;
   operation?: string;
@@ -186,6 +191,9 @@ export async function onPluginEgressResponse(
       permissionDenied = { message: trimmed };
     },
     request: {
+      ...(input.conversationId
+        ? { conversationId: input.conversationId }
+        : undefined),
       method: input.method,
       ...(input.operation ? { operation: input.operation } : undefined),
       url: input.upstreamUrl.toString(),

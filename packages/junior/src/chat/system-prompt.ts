@@ -1,6 +1,6 @@
 import type { Platform } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { getRegistrations } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import {
   buildModeSections,

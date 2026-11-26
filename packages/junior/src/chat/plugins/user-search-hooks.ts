@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 
 const searchResultSchema = z.array(pluginProviderAccountSchema);

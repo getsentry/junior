@@ -5,7 +5,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { closeDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_ID,
@@ -43,7 +43,11 @@ describe("GitHub tool text", () => {
     });
     const sent: unknown[] = [];
     const tools = getPluginTools({
-      turnTools: turnBehavior({ kind: "root", personInput: true }).tools,
+      turnTools: turnBehavior({
+        kind: "thread",
+        hasParent: false,
+        personInput: true,
+      }).tools,
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
       egress: {

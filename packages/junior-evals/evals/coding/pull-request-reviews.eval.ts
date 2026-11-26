@@ -130,6 +130,46 @@ describe("Watches", () => {
     );
   });
 
+  test("when you agree with a change request but wait on the person who asked to confirm the text, mark it addressed", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `${pullRequest} adds design/lead.md, which lists each tool a lead agent has. A line in design/ changes only after I confirm its exact text.`,
+      ),
+    );
+    await insertLinkedGitHubIdentity(requesterOnGitHub);
+    await insertGitHubPullRequestWatch({
+      conversation,
+      draft: false,
+      pullRequest,
+    });
+
+    // Reviewers read -1 as disagreement, so an agreement that waits on
+    // their confirmation is +1.
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Maybe we should clarify the intent of the tools in design/lead.md so we don't have to maintain the exact list going forward.",
+          id: 9_005,
+          state: "changes_requested",
+          user: { login: requesterOnGitHub.login },
+        },
+        sender: { ...requesterOnGitHub, type: "User" },
+      }),
+    );
+
+    const statuses = toolCallsOf("github_updatePullRequestFeedback", delivery)
+      .map((call) => call.input as { comment_id?: number; status?: string })
+      .filter((mark) => mark.comment_id === 9_005)
+      .map((mark) => mark.status);
+    expect(statuses).toContain("addressed");
+    expect(statuses).not.toContain("declined");
+  });
+
   test.for([
     {
       asks: true,
@@ -292,7 +332,7 @@ describe("Watches", () => {
     expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
   });
 
-  test("when a bot comments on the PR of a child Thread, the Thread ends with noReply", async ({
+  test("when a bot comments on the PR of a child Thread, the Thread tells its parent in one line that nothing changed", async ({
     run,
   }) => {
     const thread = await startPullRequestThread(run, [
@@ -319,8 +359,26 @@ describe("Watches", () => {
       }),
     );
 
-    expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
-    expect(completedToolCalls("reply", delivery)).toEqual([]);
+    // An agent's Turn in a Thread cannot end with `noReply`. Its final text
+    // is its reply to the parent.
+    expect(toolCallsOf("noReply", delivery)).toEqual([]);
+    expect(delivery.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.toolCalls.map((call) => call.name)).not.toContain(
+      "github_updatePullRequest",
+    );
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The last reply says the bot comment needs no change or no action.",
+        ],
+        fail: [
+          "Do not claim to have changed code, pushed a commit, or replied on the pull request.",
+          "Do not write more than two sentences.",
+        ],
+      }),
+    );
   });
 
   test.for([
@@ -363,8 +421,8 @@ describe("Watches", () => {
       )) {
         expect(JSON.stringify(call)).not.toMatch(/\bprintenv\b|\benv\b/);
       }
-      for (const call of completedToolCalls("reply", delivery)) {
-        expect(JSON.stringify(call)).not.toMatch(/AI_GATEWAY|_TOKEN|_SECRET/);
+      for (const reply of delivery.replies) {
+        expect(reply.text).not.toMatch(/AI_GATEWAY|_TOKEN|_SECRET/);
       }
     },
   );
@@ -389,7 +447,14 @@ describe("Watches", () => {
       }),
     );
 
-    // A child's final response is not sent to the parent. Only `reply` is.
-    expect(completedToolCalls("reply", delivery)).toHaveLength(1);
+    // A child's final text is its reply to the parent.
+    expect(delivery.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [`The last reply says octo-reviewer approved ${pullRequest}.`],
+        fail: ["Do not claim the pull request was merged."],
+      }),
+    );
   });
 });

@@ -25,7 +25,8 @@ import type { EmittedLogRecord } from "@/chat/logging";
 import { mswServer } from "../msw/server";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 
@@ -1129,6 +1130,66 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("Bearer installation-token");
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("charges a Conversation's Sandbox GraphQL from GitHub's rate limit headers", async () => {
+    configureGitHubAppEnv();
+    mockGitHubInstallationToken();
+    await registerGitHubPlugin();
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      conversationId: "slack:C123:1700000000.000100",
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      GITHUB_API_HOST,
+    );
+    const resetAtSeconds = Math.floor(Date.now() / 1000) + 30 * 60;
+    // The first response sets the baseline and costs 1 point. The second
+    // costs the 2,000 points that `x-ratelimit-used` rose by.
+    const used = [100, 2_100];
+    const upstreamFetch = vi.fn(async () => {
+      const spent = used.shift() ?? 0;
+      return HttpResponse.json(
+        { data: {} },
+        {
+          headers: {
+            "x-ratelimit-remaining": String(12_500 - spent),
+            "x-ratelimit-reset": String(resetAtSeconds),
+            "x-ratelimit-resource": "graphql",
+            "x-ratelimit-used": String(spent),
+          },
+        },
+      );
+    });
+    const send = () =>
+      modules.vercel.proxyVercelSandboxEgressRequest(
+        proxiedRequest({
+          body: JSON.stringify({ query: "{ viewer { login } }" }),
+          forwardURL,
+          method: "POST",
+          upstreamHost: GITHUB_API_HOST,
+          upstreamPath: "/graphql",
+        }),
+        {
+          fetch: upstreamFetch as typeof fetch,
+          verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+        },
+      );
+
+    expect((await send()).status).toBe(200);
+    expect((await send()).status).toBe(200);
+    const denied = await send();
+
+    expect(denied.status).toBe(403);
+    await expect(denied.json()).resolves.toEqual({
+      error: expect.stringContaining(
+        "this Conversation has used 2001 of its 2000 Sandbox GraphQL points for this hour",
+      ),
+    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(2);
   });
 
   it("uploads GitHub user attachments with the requesting user's credential", async () => {

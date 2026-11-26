@@ -11,9 +11,10 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-import type {
-  ConversationFeed,
-  InboxItemPayload,
+import {
+  SPACE_NAME_MAX_CHARS,
+  type ConversationFeed,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "../../conversations/queries";
@@ -26,6 +27,8 @@ import {
 } from "../../conversations/conversationArchive";
 import { usePinConversation } from "../../conversations/usePinConversation";
 import { useConversationSubscription } from "../../conversations/useConversationSubscription";
+import { useLeaveConversation } from "../../conversations/useLeaveConversation";
+import { LeaveConversationDialog } from "../../conversations/LeaveConversationDialog";
 import { useConversationDelivery } from "../../conversations/useConversationDelivery";
 import { useRenameConversation } from "../../conversations/useRenameConversation";
 import {
@@ -41,8 +44,6 @@ import {
   CONVERSATION_ASK_PARAM,
   CONVERSATION_EVENT_PARAM,
   CONVERSATION_MESSAGE_PARAM,
-  CONVERSATION_REVIEW_OPEN,
-  CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
   parseTranscriptRowHash,
@@ -52,23 +53,17 @@ import {
 } from "../../conversations/conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
 import { eventDetailsTrigger, turnContextTrigger } from "./panelTriggers";
-import { useLeadPageKind } from "../../lead/Lead";
-import {
-  LEAD_REPLY_PLACEHOLDER,
-  LeadFirstRun,
-  useLeadFirstRun,
-} from "../../lead/LeadFirstRun";
 import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
 import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
+import { leadMenuState } from "../../spaces/leadMenuState";
+import { useSpaceActions } from "../../spaces/SpaceActions";
+import { useSpaceData } from "../../spaces/queries";
 import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
-import { SpaceDetailsPanel } from "../pages/spaces/SpaceDetails";
+import { useSpaceParticipants } from "../../spaces/useSpaceParticipants";
 import { ConversationDock } from "./ConversationDock";
-import {
-  saveDetailsOpen,
-  useDetailsStartOpen,
-} from "../../conversations/conversationSidebarLayout";
+import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
 import { useZenMode } from "../../components/layout/PaneNav";
 import { useReportEventLogShown } from "../../components/paletteEventLog";
 import {
@@ -189,34 +184,8 @@ export function ConversationPage(props: {
     searchParams.get(CONVERSATION_MESSAGE_PARAM) ?? undefined;
   const eventOpen =
     selectedEventSeq !== undefined || linkedTurnId !== undefined;
-  // Event details and turn context show over Conversation details. Closing
-  // them shows details again when details are open. A linked event starts
-  // with details closed, so closing it does not open a panel nobody chose.
-  const [detailsChoice, setDetailsChoice] = useState<boolean | undefined>(() =>
-    eventOpen ? false : undefined,
-  );
-  // A sidebar review chip links here with the review param. It opens
-  // details at its Inbox items, even below the width where details open alone.
-  const reviewOpen =
-    searchParams.get(CONVERSATION_REVIEW_PARAM) === CONVERSATION_REVIEW_OPEN;
-  useEffect(() => {
-    if (reviewOpen) setDetailsChoice(true);
-  }, [reviewOpen]);
-  const detailsDefault = useDetailsStartOpen();
-  const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefault);
-  const closeDetails = useCallback(() => {
-    setDetailsChoice(false);
-    saveDetailsOpen(false);
-    setSearchParams(
-      (current) => {
-        if (!current.has(CONVERSATION_REVIEW_PARAM)) return current;
-        const next = new URLSearchParams(current);
-        next.delete(CONVERSATION_REVIEW_PARAM);
-        return next;
-      },
-      { replace: true },
-    );
-  }, [setSearchParams]);
+  const { closeDetails, closedByReader, detailsOpen, openDetails, reviewOpen } =
+    useConversationDetailsOpen(eventOpen);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
   // A memory chosen in details waits here until its transcript row renders.
   const [memoryJumpSeq, setMemoryJumpSeq] = useState<number>();
@@ -242,16 +211,22 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
-  const { known: kindKnown, lead } = useLeadPageKind(props.detail.data);
+  const lead = props.detail.data?.kind === "lead";
   const spaceId = props.detail.data?.space?.id;
+  // A Lead's name, archive, and Participants are its Space's, so its menu
+  // and Participants card act on the Space.
+  const leadSpace = useSpaceData(lead ? spaceId : undefined).data;
+  const spaceActions = useSpaceActions(leadSpace);
+  const spaceParticipants = useSpaceParticipants(
+    lead ? spaceId : undefined,
+    leadSpace,
+  );
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   // Zen mode hides details without changing the choice, so leaving it
   // brings them back.
   const zen = useZenMode();
-  // A Lead's details are its Space's.
-  const detailsShown =
-    showDetails && !zen.active && kindKnown && (!lead || Boolean(spaceId));
+  const detailsShown = showDetails && !zen.active;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -333,6 +308,11 @@ export function ConversationPage(props: {
   };
   const pin = usePinConversation(conversationId);
   const subscription = useConversationSubscription(conversationId);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  // Leaving removes access, so go back to the list once it is done.
+  const leave = useLeaveConversation(conversationId, {
+    onSuccess: () => void navigate(props.listPath ?? "/", { replace: true }),
+  });
   const delivery = useConversationDelivery(conversationId);
   const rename = useRenameConversation(conversationId);
   const [renaming, setRenaming] = useState(false);
@@ -418,20 +398,31 @@ export function ConversationPage(props: {
     props.pendingArchiveUpdate,
   );
   const conversationDetail = detail.data;
+  const menuState = leadMenuState(
+    { conversation, detail: conversationDetail },
+    lead ? leadSpace : undefined,
+  );
   const displayState = conversation
     ? conversationDisplayState(conversation)
     : undefined;
   const links = conversationLinks(conversationDetail);
+  // A Lead's title is its Space's name, which a rename sets at once.
   const title =
+    (lead ? spaceActions.name : undefined) ??
     conversationDetailTitle(detail.data) ??
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   // A Task takes input only from its parent agent, and it runs without
   // interactive auth, so it has no approval to show. Anyone can join a public
-  // Conversation by posting in it (`canAddConversationMessages` in the API).
+  // Conversation by posting in it, and a member can join one in their private
+  // Space (`canAddConversationMessages` in the API). Only a member reads a
+  // private Space's Conversations, so a readable one with a Space is theirs.
   const canReply =
     view === "rich" &&
-    (detail.data?.isParticipant || detail.data?.visibility === "public") &&
+    detail.data !== undefined &&
+    (detail.data.isParticipant ||
+      detail.data.visibility === "public" ||
+      Boolean(detail.data.space)) &&
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
@@ -443,14 +434,6 @@ export function ConversationPage(props: {
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
-  const leadFirstRun = useLeadFirstRun(
-    lead &&
-      transcriptShown &&
-      !history.hasPreviousPage &&
-      transcript?.events.length === 0 &&
-      detail.inlineMessages.length === 0,
-    replyRef,
-  );
   useEffect(() => {
     if (transcriptShown) recordTranscriptShown();
   }, [conversationId, transcriptShown]);
@@ -646,9 +629,7 @@ export function ConversationPage(props: {
 
   const sidePanel = (
     <>
-      {detailsShown && lead && spaceId ? (
-        <SpaceDetailsPanel onClose={closeDetails} spaceId={spaceId} />
-      ) : detailsShown && !lead ? (
+      {detailsShown ? (
         <ConversationDetailsPanel
           conversation={conversation}
           conversationId={conversationId}
@@ -658,6 +639,7 @@ export function ConversationPage(props: {
           memoryList={memoryList}
           onClose={closeDetails}
           onOpenSubagent={setSubagentTarget}
+          participants={spaceParticipants}
           onSelectMemory={(entry) => {
             // Memory rows show only in the Conversation view, and search
             // can hide them.
@@ -718,9 +700,8 @@ export function ConversationPage(props: {
         <ChatLayout
           header={
             <ConversationHeader
-              lead={kindKnown ? lead : undefined}
-              spaceId={spaceId}
               agentTree={conversationDetail?.agentTree}
+              detailsClosedByReader={closedByReader}
               detailsOpen={showDetails}
               errors={[
                 // A refused restore names the archived ancestor to restore
@@ -733,6 +714,7 @@ export function ConversationPage(props: {
                 pin.error ? "Could not update pin." : "",
                 rename.error ? "Could not rename." : "",
                 subscription.error ? "Could not update subscription." : "",
+                leave.error ? "Could not leave." : "",
                 delivery.error ? "Could not change Slack updates." : "",
               ].filter(Boolean)}
               onDetailsClick={() => {
@@ -743,8 +725,7 @@ export function ConversationPage(props: {
                   closeDetails();
                 } else {
                   focusDetailsOnOpen.current = true;
-                  setDetailsChoice(true);
-                  saveDetailsOpen(true);
+                  openDetails();
                 }
               }}
               forks={
@@ -762,7 +743,9 @@ export function ConversationPage(props: {
               menu={{
                 actions: {
                   archive: () => {
-                    if (conversation?.archivedAt) {
+                    if (lead) {
+                      spaceActions.archive(!menuState.conversation?.archivedAt);
+                    } else if (conversation?.archivedAt) {
                       setArchived(false);
                     } else if (!conversation!.parentConversationId) {
                       setArchived(true);
@@ -773,14 +756,19 @@ export function ConversationPage(props: {
                   continueInSlack: () => setContinueInSlackOpen(true),
                   delivery: (paused) => delivery.mutate(paused),
                   eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
+                  leave: () => setConfirmLeave(true),
                   moveToSpace: () => setMovingToSpace(true),
                   pin: (pinned) => pin.mutate(pinned),
                   rename: () => setRenaming(true),
-                  subscription: (subscribed) => subscription.mutate(subscribed),
+                  subscription: (subscribed) => {
+                    if (!lead) subscription.mutate(subscribed);
+                    else if (subscribed) spaceActions.join();
+                    else spaceActions.leave();
+                  },
                 },
-                conversation,
+                conversation: menuState.conversation,
                 conversationId,
-                detail: conversationDetail,
+                detail: menuState.detail,
                 eventLogOpen: view === "raw",
                 getMarkdown: conversationDetail
                   ? async () =>
@@ -790,18 +778,25 @@ export function ConversationPage(props: {
                       )
                   : undefined,
                 pending: {
-                  archive: archive.isPending,
+                  archive: lead
+                    ? spaceActions.pending.archive
+                    : archive.isPending,
                   delivery: delivery.isPending,
                   pin: pin.isPending,
-                  subscription: subscription.isPending,
+                  subscription: lead
+                    ? spaceActions.pending.membership
+                    : subscription.isPending,
                 },
               }}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
               rename={{
                 editing: renaming,
+                // A Lead's title is its Space's name.
+                maxLength: lead ? SPACE_NAME_MAX_CHARS : undefined,
                 onEditingChange: setRenaming,
-                onSave: (next) => rename.mutate(next),
+                onSave: (next) =>
+                  lead ? spaceActions.rename(next) : rename.mutate(next),
               }}
               privacy={
                 <ConversationPrivacyChip
@@ -812,7 +807,8 @@ export function ConversationPage(props: {
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
               space={
-                conversation?.space ? (
+                // A Lead is its Space, so it links to no Space.
+                conversation?.space && !lead ? (
                   <SpaceChip className="shrink-0" space={conversation.space} />
                 ) : null
               }
@@ -831,7 +827,7 @@ export function ConversationPage(props: {
             />
           }
           overlay={
-            view === "rich" && !lead && !transcriptPending && outlineEvents ? (
+            view === "rich" && !transcriptPending && outlineEvents ? (
               <ConversationOutline
                 conversation={conversationDetail}
                 conversationId={conversationId}
@@ -849,9 +845,7 @@ export function ConversationPage(props: {
           }
           scroll={
             <TranscriptColumn full={view === "raw"}>
-              {leadFirstRun.shown ? (
-                <LeadFirstRun onTry={leadFirstRun.prefill} />
-              ) : transcriptPending ? (
+              {transcriptPending ? (
                 view === "raw" ? (
                   <ConversationEventLogLoading />
                 ) : (
@@ -862,12 +856,7 @@ export function ConversationPage(props: {
                   {detail.error.message}
                 </Card>
               ) : (
-                <LeadPageScope
-                  lastSeq={detail.data?.events.at(-1)?.seq}
-                  lead={lead}
-                  prefill={leadFirstRun.prefill}
-                  spaceId={spaceId}
-                >
+                <LeadPageScope lead={lead} spaceId={spaceId}>
                   {detail.error ? (
                     <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
                       Transcript refresh failed. Showing the latest available
@@ -938,7 +927,6 @@ export function ConversationPage(props: {
               onEngage={engageComposer}
               onFocusRequestDone={setReplyFocusDoneKey}
               onPinRequest={requestPin}
-              placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
               ref={replyRef}
               spaceId={spaceId}
               view={view}
@@ -953,6 +941,15 @@ export function ConversationPage(props: {
           onConfirm={() => {
             setConfirmChildArchive(false);
             setArchived(true);
+          }}
+        />
+      ) : null}
+      {confirmLeave ? (
+        <LeaveConversationDialog
+          onClose={() => setConfirmLeave(false)}
+          onConfirm={() => {
+            setConfirmLeave(false);
+            leave.mutate();
           }}
         />
       ) : null}
@@ -985,6 +982,7 @@ export function ConversationPage(props: {
           onClose={() => setContinueInSlackOpen(false)}
         />
       ) : null}
+      {spaceActions.dialogs}
       {movingToSpace ? (
         <MoveToSpaceDialog
           conversationId={conversationId}

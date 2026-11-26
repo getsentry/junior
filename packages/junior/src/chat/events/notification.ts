@@ -1,4 +1,4 @@
-import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
+import type { ObjectType } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import {
@@ -31,6 +31,10 @@ import {
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { addConversationNote } from "@/chat/conversations/notes";
 import { eventInboundMessageId } from "@/chat/events/inbound-message-id";
+import {
+  isEventMailboxMetadata,
+  type EventMailboxMetadata,
+} from "@/chat/events/mailbox-metadata";
 
 export const EVENT_WAIT_MS = 30_000;
 
@@ -113,62 +117,6 @@ export function eventTaskFacts(
       : undefined),
     ...(doneBy ? { doneBy } : undefined),
   };
-}
-
-/** Resource-event metadata stored on plain mailbox input. */
-export type EventMailboxMetadata = {
-  kind: "event";
-  event: {
-    eventKey: string;
-    eventType: string;
-    namespace: string;
-    identifier: string;
-    /** Watch that matched the Event. Core Events without a Watch omit it. */
-    subscriptionId?: string;
-    objectType?: ObjectType | undefined;
-    /** Omitted on mailbox input created before summaries were stored separately. */
-    trustedSummary?: string;
-    /** What an agent update says happened, such as `completed`. */
-    status?: string;
-  };
-  /** Signed timer creator subject. Verified before the Turn uses it. */
-  credentialSubject?: CredentialSubject;
-  /**
-   * Watch task facts. A batch of several Events uses them to write one
-   * message. Input without them keeps its own text.
-   */
-  task?: EventTaskFacts;
-} & Record<string, unknown>;
-
-/** Whether mailbox metadata is a plain event wake. */
-export function isEventMailboxMetadata(
-  value: unknown,
-): value is EventMailboxMetadata {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  if (record["kind"] !== "event") {
-    return false;
-  }
-  const event = record["event"];
-  if (!event || typeof event !== "object" || Array.isArray(event)) {
-    return false;
-  }
-  const fields = event as Record<string, unknown>;
-  return (
-    typeof fields["eventKey"] === "string" &&
-    typeof fields["eventType"] === "string" &&
-    typeof fields["namespace"] === "string" &&
-    typeof fields["identifier"] === "string" &&
-    (fields["subscriptionId"] === undefined ||
-      typeof fields["subscriptionId"] === "string") &&
-    (fields["objectType"] === undefined ||
-      objectTypeSchema.safeParse(fields["objectType"]).success) &&
-    (fields["trustedSummary"] === undefined ||
-      typeof fields["trustedSummary"] === "string") &&
-    (fields["status"] === undefined || typeof fields["status"] === "string")
-  );
 }
 
 /**
@@ -441,11 +389,6 @@ export function createEventInboundMessage(input: {
   };
 }
 
-/** Key of the note that a Watch adds for an Event it received quietly. */
-export function quietEventNoteKey(watchId: string, eventKey: string): string {
-  return `quiet_event:${watchId}:${eventKey}`;
-}
-
 /**
  * Deliver a Quiet Event as a Conversation note. It starts no Turn, so the
  * automated-turn limit does not apply. The next Turn sees the note as
@@ -460,7 +403,7 @@ export async function addQuietEventNote(args: {
   await addConversationNote({
     conversationId: subscription.conversationId,
     createdAtMs: event.occurredAtMs,
-    key: quietEventNoteKey(subscription.id, event.eventKey),
+    key: `quiet_event:${subscription.id}:${event.eventKey}`,
     text: `A Watch received this Event quietly: it started no Turn, and nobody was told. Use it as current state. Do not tell people about it unless they ask or your work needs it. ${subscription.label}, ${event.eventType}: ${event.trustedSummary}`,
   });
 }

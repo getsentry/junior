@@ -38,11 +38,12 @@ import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
+import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import {
   juniorConversationParticipants,
   juniorInboxItemDeliveries,
 } from "@/db/schema";
+import { useConfig } from "../fixtures/config";
 import { createConversationFixture } from "../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { useGitHubEvents } from "../fixtures/event-automations";
@@ -73,12 +74,6 @@ const ece = createRequire(createRequire(import.meta.url).resolve("web-push"))(
 };
 
 const PUSH_URL = "https://fcm.googleapis.com/fcm/send/phone";
-const ENV_NAMES = [
-  "JUNIOR_WEB_PUSH_PUBLIC_KEY",
-  "JUNIOR_WEB_PUSH_PRIVATE_KEY",
-  "JUNIOR_WEB_PUSH_SUBJECT",
-] as const;
-
 const queue = createConversationWorkQueueTestAdapter();
 const services = createSlackInboxItemToolServices(() => queue);
 const heartbeat = () =>
@@ -240,16 +235,18 @@ const ASK = {
 };
 
 describe("inbox item push", () => {
-  const savedEnv = new Map<string, string | undefined>();
+  let webPushConfig: { privateKey: string; publicKey: string; subject: string };
   let previousLinks: ReturnType<typeof setDashboardConversationLinkOptions>;
   let pushes: Record<string, unknown>[];
 
   beforeEach(async () => {
-    for (const name of ENV_NAMES) savedEnv.set(name, process.env[name]);
     const keys = webPush.generateVAPIDKeys();
-    process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"] = keys.publicKey;
-    process.env["JUNIOR_WEB_PUSH_PRIVATE_KEY"] = keys.privateKey;
-    process.env["JUNIOR_WEB_PUSH_SUBJECT"] = "mailto:junior@example.com";
+    webPushConfig = {
+      privateKey: keys.privateKey,
+      publicKey: keys.publicKey,
+      subject: "mailto:junior@example.com",
+    };
+    useConfig({ webPush: webPushConfig });
     previousLinks = setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
@@ -271,10 +268,6 @@ describe("inbox item push", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    for (const [name, value] of savedEnv) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
     setDashboardConversationLinkOptions(previousLinks);
     await disconnectStateAdapter();
     await closeDb();
@@ -552,6 +545,8 @@ describe("inbox item push", () => {
   it("pushes each wake of a snooze from a time or an Event, once", async () => {
     // The app that GitHub Events need sets its own dashboard links.
     await useGitHubEvents();
+    // The app loads config again, without the web push keys.
+    useConfig({ webPush: webPushConfig });
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
@@ -732,6 +727,11 @@ describe("inbox item push", () => {
       200,
     );
     await execute(tools.add, { ...ASK, dedupe_key: "deploy:db" });
-    expect(pushes[5]?.["close"]).toEqual([next.item.id, acme]);
+    // Her dismiss in the Conversation also closes its reply notice.
+    expect((await getInboxItem(getDb(), notice))?.status).toBe("done");
+    expect(pushes[5]?.["close"]).toEqual(
+      expect.arrayContaining([notice, next.item.id, acme]),
+    );
+    expect(pushes[5]?.["close"]).toHaveLength(3);
   });
 });

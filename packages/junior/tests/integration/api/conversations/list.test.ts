@@ -13,13 +13,12 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
   juniorConversations,
-  juniorDestinations,
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
@@ -198,27 +197,33 @@ describe("conversation list API", () => {
       });
       await fixture.sql
         .db()
+        .insert(juniorIdentities)
+        .values({
+          id: "identity-follow-up",
+          createdAt: new Date(nowMs - 60_000),
+          kind: "user",
+          provider: "slack",
+          providerSubjectId: "U123456",
+          providerTenantId: "T123",
+          updatedAt: new Date(nowMs - 60_000),
+        });
+      await fixture.sql
+        .db()
         .insert(juniorConversationEvents)
         .values([
           {
+            actorIdentityId: "identity-follow-up",
             conversationId: finishedUpdatedId,
             createdAt: new Date(nowMs - 30_000),
             historyVersion: 0,
             payload: {
-              content: "Please follow up.",
-              provenance: {
-                authority: "instruction",
-                actor: {
-                  platform: "slack",
-                  teamId: "T123",
-                  userId: "U123456",
-                },
-              },
-              timestamp: nowMs - 30_000,
+              messageId: "follow-up-message",
+              role: "user",
+              text: "Please follow up.",
             },
             schemaVersion: 1,
             seq: 0,
-            type: "user_message",
+            type: "message",
           },
           {
             conversationId: finishedId,
@@ -357,43 +362,35 @@ describe("conversation list API", () => {
     }
   });
 
-  test.each(["direct", "unknown"] as const)(
-    "treats persisted %s visibility as private",
-    async (visibility) => {
-      const fixture = createConfiguredJuniorSqlFixture();
-      const store = createSqlStore(fixture.sql);
-      const conversationId = `slack:C123:${visibility}-visibility`;
-      const channelId = `C${visibility.toUpperCase()}`;
-      try {
-        await migrateSchema(fixture.sql);
-        await store.recordActivity({
-          conversationId,
-          destination: {
-            platform: "slack",
-            teamId: "T123",
-            channelId,
-          },
-          nowMs: 1_000,
-          source: "slack",
-          visibility: "private",
-        });
-        const db = fixture.sql.db();
-        await db
-          .update(juniorDestinations)
-          .set({ visibility })
-          .where(eq(juniorDestinations.providerDestinationId, channelId));
-        const access = await readConversationAccessFromSql(db, [
-          conversationId,
-        ]);
-        expect(access.get(conversationId)).toMatchObject({
-          canViewPrivateContent: false,
-          visibility,
-        });
-      } finally {
-        await fixture.close();
-      }
-    },
-  );
+  test("treats a root with no stored visibility as private", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    const conversationId = "slack:C123:missing-visibility";
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId,
+        destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+        nowMs: 1_000,
+        source: "slack",
+        visibility: "public",
+      });
+      // A writer of an older deploy leaves the root null. Its public
+      // Destination does not widen access.
+      const db = fixture.sql.db();
+      await db
+        .update(juniorConversations)
+        .set({ visibility: null })
+        .where(eq(juniorConversations.conversationId, conversationId));
+      const access = await readConversationAccessFromSql(db, [conversationId]);
+      expect(access.get(conversationId)).toMatchObject({
+        canViewPrivateContent: false,
+        visibility: null,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 
   test("uses canonical and fallback actor names with provider identity fields", async () => {
     const fixture = createConfiguredJuniorSqlFixture();

@@ -1,6 +1,6 @@
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
-import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
+import type { AppEventPublisher } from "@/chat/plugins/hooks/routes";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";

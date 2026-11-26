@@ -23,6 +23,8 @@ import {
   conversationSummaryFromStoredConversation,
 } from "./projection";
 import {
+  canInviteToConversation,
+  leaveEndsAccess,
   createConversationAccessReader,
   type ConversationAccess,
 } from "./access";
@@ -367,6 +369,12 @@ async function readConversationDetailFromSql(
       : undefined),
     ...(canContinueInSlack(record.conversation, access)
       ? { canContinueInSlack: true as const }
+      : undefined),
+    ...(canInviteToConversation(access)
+      ? { canInvite: true as const }
+      : undefined),
+    ...(leaveEndsAccess(access)
+      ? { leaveEndsAccess: true as const }
       : undefined),
     ...(report.isParticipant &&
     canPauseConversationDelivery(record.conversation)

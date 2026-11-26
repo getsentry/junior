@@ -12,6 +12,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
 
 /**
  * The columns of one Conversation record, for `selectConversationRecords`.
@@ -28,6 +29,7 @@ export const conversationRecordColumns = () => ({
   identitySubjectId: juniorIdentities.providerSubjectId,
   identityTenantId: juniorIdentities.providerTenantId,
   userDisplayName: juniorUsers.displayName,
+  spaceId: rootSpaceIdSql(juniorConversations),
 });
 
 /** Left-join conditions from a Conversation to its record tables. */
@@ -111,7 +113,7 @@ export function conversationFromRecordRow(
     ...(value.parentConversationId
       ? { parentConversationId: value.parentConversationId }
       : undefined),
-    ...(value.spaceId ? { spaceId: value.spaceId } : undefined),
+    ...(row.spaceId ? { spaceId: row.spaceId } : undefined),
     ...(value.archivedAt
       ? { archivedAtMs: value.archivedAt.getTime() }
       : undefined),

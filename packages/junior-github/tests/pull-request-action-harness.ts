@@ -107,7 +107,11 @@ export function commented(
   if (eventName === "issue_comment") {
     (github.comments ??= []).push(by);
   } else {
+    // GitHub keeps a reply as a comment-only review that holds only it.
     github.reviews.push({
+      body: "",
+      comments: [comment.id],
+      id: comment.id,
       state: "COMMENTED",
       submitted_at: by.at,
       user: { login: by.login },
@@ -180,6 +184,8 @@ export interface GitHubState {
   draft: boolean;
   /** The commit at the head of the pull request. */
   headSha?: string;
+  /** When the head commit was made, as the time of the last push. */
+  headCommittedAt?: string;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
   /** When set, the next pull request read waits for it. */
@@ -190,6 +196,8 @@ export interface GitHubState {
   requestedTeams?: string[];
   /** The review requests on the pull request's timeline. */
   reviewRequests?: Array<{ at: string; login: string }>;
+  /** The review requests that a person removed, on the timeline. */
+  reviewRequestRemovals?: Array<{ actor: string; at: string; login: string }>;
   reviews: Array<{
     body?: string;
     commit_id?: string;
@@ -209,6 +217,11 @@ export interface GitHubState {
   laggingFeedback?: string[];
   /** GitHub rejects review requests, such as during an outage. */
   rejectReviewRequests?: boolean;
+  /**
+   * Each user's base role on the repository, by login. A user who is not
+   * listed has write access, so they can merge.
+   */
+  permissions?: Record<string, "admin" | "none" | "read" | "write">;
   /** The checks of the head commit. */
   checks?: Array<{ conclusion: string | null; name: string; status: string }>;
   /** The checks that a ruleset of the base branch requires. */
@@ -275,13 +288,24 @@ function botReactionGroups(github: GitHubState, key: string) {
 // What the feedback tool and the check suite webhook read to decide
 // whether to ask a reviewer again.
 function reviewAgainPull(github: GitHubState, reviewer: string) {
-  const review = github.reviews
-    .filter(
-      (item) =>
-        item.user.login.toLowerCase() === reviewer.toLowerCase() &&
-        item.state !== "COMMENTED",
-    )
-    .at(-1);
+  const lower = reviewer.toLowerCase();
+  const own = github.reviews.filter(
+    (item) => item.user.login.toLowerCase() === lower,
+  );
+  const node = (review: GitHubState["reviews"][number]) => ({
+    body: review.body ?? "Please change this.",
+    databaseId: review.id ?? null,
+    comments: {
+      nodes: (review.comments ?? []).map((id) => ({
+        databaseId: id,
+        reactionGroups: graphqlReactionGroups(github, `comment:${id}`),
+      })),
+      totalCount: review.comments?.length ?? 0,
+    },
+    reactionGroups: graphqlReactionGroups(github, `review:${review.id}`),
+    state: review.state,
+    submittedAt: review.submitted_at ?? null,
+  });
   return {
     baseRef: { refUpdateRule: null },
     baseRefName: "main",
@@ -307,30 +331,26 @@ function reviewAgainPull(github: GitHubState, reviewer: string) {
         requestedReviewer: { __typename: "User", login },
       })),
     },
+    decision: {
+      nodes: own
+        .filter(
+          (review) =>
+            review.state !== "COMMENTED" && review.state !== "PENDING",
+        )
+        .slice(-1)
+        .map(node),
+    },
     reviews: {
-      nodes: review
-        ? [
-            {
-              body: review.body ?? "Please change this.",
-              databaseId: review.id ?? null,
-              comments: {
-                nodes: (review.comments ?? []).map((id) => ({
-                  databaseId: id,
-                  reactionGroups: graphqlReactionGroups(
-                    github,
-                    `comment:${id}`,
-                  ),
-                })),
-                totalCount: review.comments?.length ?? 0,
-              },
-              reactionGroups: graphqlReactionGroups(
-                github,
-                `review:${review.id}`,
-              ),
-              state: review.state,
-            },
-          ]
-        : [],
+      nodes: own
+        .filter((review) => review.state === "COMMENTED")
+        .slice(-20)
+        .map(node),
+    },
+    timelineItems: {
+      nodes: (github.reviewRequests ?? []).map((request) => ({
+        createdAt: request.at,
+        requestedReviewer: { login: request.login },
+      })),
     },
   };
 }
@@ -435,6 +455,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
       },
     ),
     http.get(
+      "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
+      ({ params }) => {
+        const login = String(params["login"]);
+        requests.push(`permission ${login}`);
+        const permission = github.permissions?.[login] ?? "write";
+        return HttpResponse.json({ permission, role_name: permission });
+      },
+    ),
+    http.get(
       "https://api.github.com/repos/getsentry/junior/rules/branches/main",
       () => {
         requests.push("rules");
@@ -475,6 +504,11 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
           },
         });
       }
+      if (operationName === "PullRequestRequiredChecks") {
+        return HttpResponse.json({
+          data: { repository: { pullRequest: reviewAgainPull(github, "") } },
+        });
+      }
       if (operationName === "ReviewReactions") {
         return HttpResponse.json({
           data: {
@@ -502,7 +536,11 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                 autoMergeRequest: github.autoMerge
                   ? { enabledAt: "2026-07-02T00:00:00Z" }
                   : null,
-                commits: { nodes: [] },
+                commits: {
+                  nodes: github.headCommittedAt
+                    ? [{ commit: { committedDate: github.headCommittedAt } }]
+                    : [],
+                },
                 headRefOid: github.headSha ?? "head-1",
                 isDraft: github.draft,
                 mergeStateStatus: (mergeableState ?? "unknown").toUpperCase(),
@@ -529,6 +567,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                     })),
                     ...(github.reviewRequests ?? []).map((event) => ({
                       __typename: "ReviewRequestedEvent",
+                      createdAt: event.at,
+                      requestedReviewer: {
+                        __typename: "User",
+                        login: event.login,
+                      },
+                    })),
+                    ...(github.reviewRequestRemovals ?? []).map((event) => ({
+                      __typename: "ReviewRequestRemovedEvent",
+                      actor: graphqlActor(event.actor),
                       createdAt: event.at,
                       requestedReviewer: {
                         __typename: "User",
@@ -586,10 +633,20 @@ export async function markFeedback(
   state: PluginState,
   target: { id: number; kind: "review" | "review_body" },
   status: "addressed" | "declined" = "addressed",
+  /** Junior works for the requester, so it knows their GitHub login. */
+  requesterWork?: GitHubFixture,
 ): Promise<void> {
   const tool = bindPluginTool(
     githubPlugin().hooks!.tools!()["updatePullRequestFeedback"],
     {
+      db: requesterWork?.db(),
+      resolveWorkOwner: async () =>
+        requesterWork
+          ? {
+              kind: "person",
+              ...(await requesterUsers.readIdentity("identity-requester")),
+            }
+          : undefined,
       egress: {
         fetch: async ({ request }: { request: Request }) =>
           await fetch(request),
@@ -610,6 +667,32 @@ export async function markFeedback(
     { toolCallId: `${status}-${target.kind}-${target.id}` },
   );
 }
+
+/** The requester, who linked the GitHub account `Requester`. */
+export const requesterUsers = {
+  readIdentity: async (identityId: string) =>
+    identityId === "identity-requester"
+      ? {
+          identity: {
+            id: identityId,
+            provider: "slack",
+            providerSubjectId: "U123",
+          },
+          user: {
+            email: "requester@example.com",
+            id: "user-requester",
+            identities: [
+              {
+                handle: "Requester",
+                id: "identity-github",
+                provider: "github",
+                providerSubjectId: "1001",
+              },
+            ],
+          },
+        }
+      : undefined,
+};
 
 export type InboxItemCall =
   | { conversationId: string; kind: "upsert"; notice: unknown }
@@ -649,10 +732,12 @@ export function route(
       };
     },
   };
-  // These webhooks use no Conversation dispatch or cache.
+  // These webhooks use no Conversation dispatch.
   const unused = () => {
     throw new Error("The next-action webhooks do not use this");
   };
+  // The requester's repository access stays cached across webhooks.
+  const cached = new Map<string, unknown>();
   const annotations: PluginConversationAnnotations = {
     forConversation() {
       return {
@@ -689,36 +774,15 @@ export function route(
       async update() {},
       delete: unused,
       get: unused,
-      getOrLoad: unused,
+      async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
+        if (!cached.has(key)) cached.set(key, (await load()).value);
+        return cached.get(key) as T;
+      },
     },
     inboxItems,
     state,
     tasks: { start: unused },
-    // The requester linked the GitHub account `Requester`.
-    users: {
-      readIdentity: async (identityId: string) =>
-        identityId === "identity-requester"
-          ? {
-              identity: {
-                id: identityId,
-                provider: "slack",
-                providerSubjectId: "U123",
-              },
-              user: {
-                email: "requester@example.com",
-                id: "user-requester",
-                identities: [
-                  {
-                    handle: "Requester",
-                    id: "identity-github",
-                    provider: "github",
-                    providerSubjectId: "1001",
-                  },
-                ],
-              },
-            }
-          : undefined,
-    },
+    users: requesterUsers,
   });
   if (!webhook) throw new Error("The GitHub plugin has no webhook route");
   return webhook;

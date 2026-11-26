@@ -94,6 +94,15 @@ import {
   githubPullRequestRequesterBackfillTask,
   startGitHubPullRequestRequesterBackfill,
 } from "./pull-request-requesters/backfill.js";
+import {
+  GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK,
+  githubPullRequestActionBackfillTask,
+  startGitHubPullRequestActionBackfill,
+} from "./pull-request-action-backfill.js";
+import {
+  GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
+  githubPullRequestActionSyncTask,
+} from "./webhooks/pull-request-action.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
@@ -111,7 +120,9 @@ import { gitHooksPathOverrideRedirect } from "./hooks-path-command.js";
 import {
   githubGrantForEgress,
   githubPermissionDeniedMessage,
+  isGitHubGraphqlUrl,
 } from "./egress-policy.js";
+import { recordGitHubGraphqlSpend } from "./graphql-budget.js";
 import {
   GITHUB_APP_ID_ENV,
   GITHUB_APP_PRIVATE_KEY_ENV,
@@ -216,6 +227,15 @@ export function githubPlugin(
     images: githubImageSource,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     tasks: {
+      [GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK]:
+        githubPullRequestActionBackfillTask({
+          botEmail: () => readEnv(botEmailEnv),
+          env: { appIdEnv, installationIdEnv, privateKeyEnv },
+        }),
+      [GITHUB_PULL_REQUEST_ACTION_SYNC_TASK]: githubPullRequestActionSyncTask({
+        botEmail: () => readEnv(botEmailEnv),
+        env: { appIdEnv, installationIdEnv, privateKeyEnv },
+      }),
       [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
       [GITHUB_PULL_REQUEST_PATCH_TASK]: githubPullRequestPatchTask(
         async (refs) =>
@@ -475,6 +495,10 @@ export function githubPlugin(
           state: ctx.state,
           tasks: ctx.tasks,
         });
+        await startGitHubPullRequestActionBackfill({
+          state: ctx.state,
+          tasks: ctx.tasks,
+        });
       },
       async unfinishedWork(ctx) {
         return await listGitHubConversationWork(
@@ -607,6 +631,9 @@ export function githubPlugin(
         });
       },
       async onEgressResponse(ctx) {
+        if (isGitHubGraphqlUrl(new URL(ctx.request.url))) {
+          await recordGitHubGraphqlSpend(ctx);
+        }
         if (ctx.response.status === 403) {
           ctx.log.warn("github.egress.upstream_forbidden", {
             "app.github.accepted_permissions":

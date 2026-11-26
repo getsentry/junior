@@ -129,9 +129,11 @@ const AGENT_TEST_RULES = [
 ];
 
 /**
- * Rules for dashboard E2E spec bodies. A spec acts and asserts as a user does.
- * Shared helpers, such as `harness.ts`, are not specs and may do more. Each
- * rule has a baseline of the specs that break it today.
+ * Rules for dashboard E2E tests. A spec acts and asserts as a user does.
+ * Shared helpers, such as `harness.ts`, are not specs and may do more, so a
+ * spec-only rule has a `pathSuffix`. A rule without one also covers the
+ * helpers, so moving code out of a spec does not pass it. Each rule has a
+ * baseline of the files that break it today.
  */
 export const DASHBOARD_SPEC_RULES = [
   {
@@ -166,6 +168,43 @@ export const DASHBOARD_SPEC_RULES = [
     pathSuffix: ".spec.ts",
     pattern: /\btimeout\s*:/g,
   },
+  {
+    // getsentry/junior#3589 and #3974 wrapped a hover in `toPass` to retry
+    // around a race in the page instead of waiting for it to settle.
+    id: "dashboard-e2e-retry-loop",
+    message:
+      "dashboard E2E tests must not retry steps with toPass; wait for the visible state that ends the race, or fix the page so it does not move under the step",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /\.toPass\s*\(/g,
+  },
+  {
+    // The versions poll and other background reads keep the network busy,
+    // so network idle is a guess about timing, not a state.
+    id: "dashboard-e2e-network-idle",
+    message:
+      "dashboard E2E tests must not wait for network idle; wait for the visible state, URL, request, or response that the step needs",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /["'`]networkidle["'`]/g,
+  },
+  {
+    // A forwarded read runs in the page and in the mock server at once:
+    // getsentry/junior#3316 (a response disposed mid-handler) and
+    // getsentry/junior#4265 (ECONNRESET on a reused connection).
+    id: "dashboard-e2e-route-forward",
+    message:
+      "dashboard E2E tests must not forward a route to the mock server and edit its response; add the state to src/mock-reporting, or fulfill the whole response",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /\broute\.fetch\s*\(/g,
+  },
+  {
+    // getsentry/junior#3316 ignored the error that a forwarded read threw
+    // when the test ended mid-handler, and so hid a test that ended early.
+    id: "dashboard-e2e-ignore-route-errors",
+    message:
+      "dashboard E2E tests must not ignore route handler errors; end the test after the read or write that the handler serves",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern: /\bbehavior\s*:\s*["'`]ignoreErrors["'`]/g,
+  },
 ];
 
 // A kind or person-Source branch outside `kind-behavior.ts`.
@@ -183,7 +222,8 @@ const KIND_BRANCH_PATTERNS = [
   /\bisTopLevelKind\(/g,
 ];
 
-// A field of the parent edge or the Agent invocation read as a condition.
+// A field of the parent edge read as a condition. `agentInvocationId` is the
+// stored meta key that earlier releases wrote on a parent agent's input.
 const EDGE_FIELD_PATTERN =
   /\b(?:parentConversationId|parentToolCallId|agentInvocationId)\b/g;
 const EDGE_CONDITION_BEFORE =
@@ -232,7 +272,7 @@ export const SOURCE_RULES = [
   {
     id: "kind-behavior",
     message:
-      "branch on Conversation kind, the parent edge, the Agent invocation, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
+      "branch on Conversation kind, the parent edge, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
     pathPrefix: "packages/junior/src/",
     exclude: ["packages/junior/src/chat/conversations/kind-behavior.ts"],
     count: countKindBranches,
@@ -423,7 +463,7 @@ export async function run({ root, files }) {
       SOURCE_RULES,
     ),
     ...checkAgentTestArchitecture(
-      await tests([DASHBOARD_E2E_DIR]),
+      await sources([DASHBOARD_E2E_DIR]),
       baseline,
       DASHBOARD_SPEC_RULES,
     ),

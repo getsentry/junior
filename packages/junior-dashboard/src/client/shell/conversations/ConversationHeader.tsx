@@ -4,7 +4,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type ComponentProps,
   type ReactNode,
 } from "react";
 import { Ellipsis, Info, PanelRight, Search, X } from "lucide-react";
@@ -46,7 +45,6 @@ import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { useZenMode } from "../../components/layout/PaneNav";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
-import { LeadHeader } from "../../lead/LeadHeader";
 
 const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
 
@@ -61,45 +59,16 @@ const ConversationMenuSheet = lazy(() =>
 );
 
 /**
- * Head a Conversation page: its Space's header on a Lead, an empty bar until
- * the page knows which it is, else the Conversation's own header.
- */
-export function ConversationHeader(
-  props: ComponentProps<typeof ConversationTitleHeader> & {
-    /** Undefined until the page knows whether it shows a Lead. */
-    lead: boolean | undefined;
-    /** The Conversation's Space, which a Lead's header shows. */
-    spaceId?: string | undefined;
-  },
-) {
-  if (props.lead)
-    return (
-      <LeadHeader
-        detailsOpen={props.detailsOpen}
-        onDetailsClick={props.onDetailsClick}
-        sidebarToggle={props.sidebarToggle}
-        spaceId={props.spaceId}
-      />
-    );
-  if (props.lead === undefined)
-    return (
-      <div
-        aria-hidden="true"
-        className="hidden h-13 border-b border-dashboard-border md:block"
-      />
-    );
-  return <ConversationTitleHeader {...props} />;
-}
-
-/**
  * Keep the header to one row: the title and the controls people use most.
  * The summary, cost, repository, and location live in Conversation details.
  * A phone gets its own layout: the title and one menu button in the app
  * bar, and the menu as a bottom sheet.
  */
-function ConversationTitleHeader(props: {
+export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
+  /** The reader closed details. A resize can also close them. */
+  detailsClosedByReader?: boolean | undefined;
   detailsOpen: boolean;
   /** Messages of failed menu actions, shown below the title bar. */
   errors: readonly string[];
@@ -163,11 +132,31 @@ function ConversationTitleHeader(props: {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onDetailsClick, zen]);
 
+  // The element that last took focus. A layout switch can hide it with CSS,
+  // and then focus also falls to the body, but details did not take it.
+  const lastFocusRef = useRef<Element | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      lastFocusRef.current =
+        event.target instanceof Element ? event.target : null;
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+
+  // Closing details removes their focused close button, and focus falls to
+  // the body. Return it to the button that opens them. Not when a resize
+  // closes them, and not when the last focused element is still on the
+  // page: a resize can also hide another focused element, and the focus
+  // that falls from it stays on the body.
+  const detailsClosedByReader = props.detailsClosedByReader;
   useEffect(() => {
     if (
       wasDetailsOpen.current &&
       !detailsOpen &&
-      document.activeElement === document.body
+      detailsClosedByReader &&
+      document.activeElement === document.body &&
+      !lastFocusRef.current?.isConnected
     ) {
       const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
         ? menuButtonRef.current
@@ -175,7 +164,7 @@ function ConversationTitleHeader(props: {
       trigger?.focus({ preventScroll: true });
     }
     wasDetailsOpen.current = detailsOpen;
-  }, [detailsOpen]);
+  }, [detailsOpen, detailsClosedByReader]);
 
   useEffect(() => {
     if (!searchOpenVisible) return;

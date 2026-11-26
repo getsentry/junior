@@ -4,7 +4,6 @@ import { pasteText } from "./paste-text";
 import { expect, test } from "./test";
 
 const PUBLIC_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
-const PARTICIPANT_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 
 async function openComposer(page: Page, baseURL: string, id: string) {
   await page.goto(`${baseURL}/conversations/${encodeURIComponent(id)}`);
@@ -146,6 +145,34 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   expect(new Set(searches)).toEqual(new Set([PUBLIC_CONVERSATION_ID]));
 });
 
+test("@ searches a name with a space until two spaces end it", async ({
+  page,
+  dashboard,
+}) => {
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+
+  // A space keeps the menu open, and the next word narrows it.
+  await typeMention(composer, "Hi @avery ", /Avery Chen/);
+  await typeMention(composer, "ch", /Avery Chen/);
+  await expect(
+    mentions.getByRole("group", { name: "People" }).getByRole("option"),
+  ).toHaveText([/Avery Chen/]);
+  await composer.press("Enter");
+  await expect(composer).toHaveText("Hi @Avery Chen ");
+  await expect(
+    composer.getByRole("button", { name: "@Avery Chen" }),
+  ).toBeVisible();
+
+  await typeMention(composer, "and @casey ", /Casey Nguyen/);
+  await composer.pressSequentially(" ");
+  await expect(mentions).toBeHidden();
+});
+
 test("an earlier row cannot be inserted while the next search loads", async ({
   page,
   dashboard,
@@ -203,7 +230,7 @@ test("Enter and Tab wait while the first people search loads", async ({
   await answer();
 });
 
-test("a person without a People page still has a card with Invite", async ({
+test("a person without a People page still has a card", async ({
   page,
   dashboard,
 }) => {
@@ -215,8 +242,7 @@ test("a person without a People page still has a card with Invite", async ({
   await typeMention(composer, "@sam", /Sam Ortiz/);
   await composer.press("Tab");
   await composer.locator("[data-mention='U234']").hover();
-  const card = page.getByRole("dialog", { name: "Sam Ortiz" });
-  await expect(card.getByRole("button", { name: "Invite" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Sam Ortiz" })).toBeVisible();
 });
 
 test("a pasted Slack mention becomes a mention", async ({
@@ -241,117 +267,6 @@ test("a pasted Slack mention becomes a mention", async ({
   await composer.pressSequentially("!");
   await expect(composer).toHaveText("ask @U456! first");
 });
-
-test("Invite subscribes a mentioned person to a public conversation", async ({
-  page,
-  dashboard,
-}) => {
-  const invites: unknown[] = [];
-  await page.route("**/api/conversations/*/invites", async (route) => {
-    invites.push(route.request().postDataJSON());
-    await route.fallback();
-  });
-  const composer = await openComposer(
-    page,
-    dashboard.baseURL,
-    PUBLIC_CONVERSATION_ID,
-  );
-  await typeMention(composer, "@case", /Casey Nguyen/);
-  await composer.press("Tab");
-  await composer.locator("[data-mention='U456']").click();
-
-  const card = page.getByRole("dialog", { name: "Casey Nguyen" });
-  await card.getByRole("button", { name: "Invite" }).click();
-  await expect(card.getByText("Subscribed")).toBeVisible();
-  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
-
-  // A reopened card still shows the answer.
-  await page.keyboard.press("Escape");
-  await expect(card).toBeHidden();
-  await composer.locator("[data-mention='U456']").click();
-  await expect(card.getByText("Subscribed")).toBeVisible();
-  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
-  expect(invites).toEqual([{ slackUserId: "U456" }]);
-});
-
-test("Invite says when the person is already a participant", async ({
-  page,
-  dashboard,
-}) => {
-  // Only the API knows the feed subscribers.
-  await page.route("**/api/conversations/*/invites", (route) =>
-    route.fulfill({ json: { added: false } }),
-  );
-  const composer = await openComposer(
-    page,
-    dashboard.baseURL,
-    PUBLIC_CONVERSATION_ID,
-  );
-  await typeMention(composer, "@case", /Casey Nguyen/);
-  await composer.press("Tab");
-  await composer.locator("[data-mention='U456']").click();
-
-  const card = page.getByRole("dialog", { name: "Casey Nguyen" });
-  await card.getByRole("button", { name: "Invite" }).click();
-  await expect(card.getByText("Already a participant")).toBeVisible();
-});
-
-test("a person who is not a User has a card without Invite", async ({
-  page,
-  dashboard,
-}) => {
-  const composer = await openComposer(
-    page,
-    dashboard.baseURL,
-    PUBLIC_CONVERSATION_ID,
-  );
-  await typeMention(composer, "@rile", /Riley Park/);
-  await composer.press("Tab");
-  await composer.locator("[data-mention='U345']").hover();
-
-  const card = page.getByRole("dialog", { name: "Riley Park" });
-  await expect(card).toBeVisible();
-  await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
-});
-
-for (const [name, change] of [
-  ["private", { visibility: "private" }],
-  [
-    "archived",
-    { archivedAt: "2026-02-02T00:00:00.000Z", visibility: "public" },
-  ],
-] as const) {
-  test(`a ${name} conversation's mention card has no Invite`, async ({
-    page,
-    dashboard,
-  }) => {
-    // A participant's conversation, so the composer shows.
-    await page.route(
-      (url) =>
-        url.pathname ===
-        `/api/conversations/${encodeURIComponent(PARTICIPANT_CONVERSATION_ID)}`,
-      async (route) => {
-        const response = await route.fetch();
-        const json = await response.json();
-        await route.fulfill({
-          response,
-          json: { ...json, ...change },
-        });
-      },
-    );
-    const composer = await openComposer(
-      page,
-      dashboard.baseURL,
-      PARTICIPANT_CONVERSATION_ID,
-    );
-    await typeMention(composer, "@case", /Casey Nguyen/);
-    await composer.press("Enter");
-    await composer.locator("[data-mention='U456']").click();
-    const card = page.getByRole("dialog", { name: "Casey Nguyen" });
-    await expect(card).toBeVisible();
-    await expect(card.getByRole("button", { name: "Invite" })).toHaveCount(0);
-  });
-}
 
 test("$ suggests skills and inserts the skill name", async ({
   page,
@@ -390,4 +305,74 @@ test("$ suggests skills and inserts the skill name", async ({
   await composer.press("Tab");
   await expect(skills).toBeHidden();
   await expect(composer).toHaveText("use $triage-incident ");
+});
+
+test("$ finds a skill by its words, and the words after it are text", async ({
+  page,
+  dashboard,
+}) => {
+  await page.route("**/api/skills", (route) =>
+    route.fulfill({
+      json: [
+        {
+          name: "triage-incident",
+          description: "Triage a live incident into a suspects-first note.",
+        },
+        {
+          name: "tpm",
+          description: "Run the TPM bug digest from Linear.",
+        },
+      ],
+    }),
+  );
+  const sent: string[] = [];
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    if (route.request().method() === "POST") {
+      sent.push(route.request().postDataJSON().message);
+    }
+    await route.fallback();
+  });
+  const composer = await openComposer(
+    page,
+    dashboard.baseURL,
+    PUBLIC_CONVERSATION_ID,
+  );
+  const skills = page.getByRole("grid", { name: "Skills" });
+
+  await composer.pressSequentially("use $triage inc");
+  await expect(skills.getByRole("gridcell", { name: /^\$/ })).toHaveText([
+    /\$triage-incident/,
+  ]);
+  await composer.press("Tab");
+  await expect(composer).toHaveText("use $triage-incident ");
+
+  // `in` matches the inserted name, but the reference is complete. In the
+  // next one, `ix` matches no skill, so the menu stays closed even when
+  // `ixci` would match `incident` as a typo, also after a caret move in it.
+  await composer.pressSequentially("in tpm, then $triage ixci");
+  await composer.press("ArrowLeft");
+  await composer.pressSequentially("i");
+  await composer.press("End");
+  await expect(skills).toBeHidden();
+  await composer.press("Enter");
+  await expect
+    .poll(() => sent)
+    .toEqual(["use $triage-incident in tpm, then $triage ixcii"]);
+  await expect(composer).toHaveText("");
+
+  // Escape keeps the menu closed through a blur and a focus.
+  await composer.pressSequentially("run $triage i");
+  await expect(skills).toBeVisible();
+  await composer.press("Escape");
+  await expect(skills).toBeHidden();
+  await composer.blur();
+  await composer.focus();
+  await composer.pressSequentially("n");
+  await composer.press("Enter");
+  await expect
+    .poll(() => sent)
+    .toEqual([
+      "use $triage-incident in tpm, then $triage ixcii",
+      "run $triage in",
+    ]);
 });

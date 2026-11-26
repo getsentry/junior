@@ -30,10 +30,8 @@ import {
 } from "@/chat/conversations/provenance";
 import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
-import {
-  historyItemFromPiMessage,
-  type PiConversationEventProjection,
-} from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
+import { type PiConversationEventProjection } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
@@ -43,7 +41,6 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
-import { appendTodosSnapshot } from "@/chat/todos/snapshot";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
@@ -56,6 +53,7 @@ import {
   type ActiveContextCompactionArgs,
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
+import { appendPluginCompactionContext } from "@/chat/plugins/compaction-context";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
@@ -395,7 +393,7 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        await appendTodosSnapshot(
+        await appendPluginCompactionContext(
           renderCompactionSummary(prepared.summary),
           args.conversationId,
         ),

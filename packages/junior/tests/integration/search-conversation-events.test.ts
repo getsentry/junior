@@ -31,8 +31,8 @@ import {
   juniorConversationEventLexemes,
   juniorConversationEvents,
 } from "@/db/schema";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
-import { slackInvocationInput } from "../fixtures/agent-invocations";
+import { spawnChildAgent } from "@/chat/child-agents/create";
+import { slackSpawnInput } from "../fixtures/child-agents";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
   createHarness,
@@ -41,7 +41,8 @@ import {
 } from "../fixtures/thread-input";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 
@@ -749,7 +750,7 @@ describe("searchConversationEvents", () => {
       // A Task whose every try fails.
       const { childConversationId: taskId } = await spawnChildAgent(
         {
-          ...slackInvocationInput,
+          ...slackSpawnInput,
           idempotencyKey: `index-failed-task:${harness.agentName}`,
           kind: "task",
           parentToolCallId: "index-failed-task",

@@ -24,6 +24,7 @@ import {
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
 import { matchReplyToInboxItems } from "./reply-match";
+import { closeHandledReplyNotices } from "./reply-notice";
 import {
   closeInboxItem,
   getInboxItem,
@@ -127,7 +128,9 @@ function submittedAnswer(
  * `exceptConversationId` is the Conversation where the person acted. It gets
  * the person's input from its own surface, so it gets no message here.
  * `delivery` shows the change and sends the messages; see
- * `deliverInboxItemChange`.
+ * `deliverInboxItemChange`. A submit, dismiss, or done also closes the
+ * person's reply notices in the item's Conversations: the item had their
+ * attention.
  */
 export async function actOnInboxItem(args: {
   action: InboxItemAction;
@@ -151,7 +154,13 @@ export async function actOnInboxItem(args: {
         "A To-do item takes only Done or Dismiss.",
       );
     }
-    return await closeTodoItem(item, user, nowMs, action);
+    const closed = await closeTodoItem(item, user, nowMs, action);
+    await closeHandledReplyNotices(db, {
+      item: closed,
+      nowMs,
+      userId: user.id,
+    });
+    return closed;
   }
   if (action === "done") {
     throw new InboxItemActionError(
@@ -218,6 +227,7 @@ export async function actOnInboxItem(args: {
   if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
   }
+  await closeHandledReplyNotices(db, { item: closed, nowMs, userId: user.id });
   // The plugin that added the item does the work, so its answer starts no
   // Turn. A retry of the same answer calls the plugin again.
   if (action === "submit" && isPluginInboxItem(closed)) {
@@ -256,7 +266,7 @@ export async function actOnInboxItem(args: {
  * Close a To-do item for its assignee through its To-do: Done marks the
  * To-do done, and Dismiss drops it. The To-do change closes the item as
  * done or dismissed (`syncTodoInboxItems`), and the agent sees it in its
- * next `<todo-delta>`, so it sends no message and starts no Turn. A retry
+ * next To-do delta, so it sends no message and starts no Turn. A retry
  * after the item closed the same way by the same person succeeds.
  */
 async function closeTodoItem(

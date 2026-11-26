@@ -17,6 +17,7 @@ import {
   type PluginGraphqlRequest,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { assertGitHubSandboxGraphqlBudgetLeft } from "./graphql-budget.js";
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import { assertGitHubPushAllowed } from "./receive-pack-policy.js";
 import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
@@ -57,7 +58,8 @@ function githubSmartHttpAccess(
   return undefined;
 }
 
-function isGitHubGraphqlUrl(upstreamUrl: URL): boolean {
+/** Whether a URL is GitHub's GraphQL endpoint. */
+export function isGitHubGraphqlUrl(upstreamUrl: URL): boolean {
   return (
     upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
     upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
@@ -663,6 +665,11 @@ export async function githubGrantForEgress(
 ): Promise<GitHubGrant> {
   const upstreamUrl = new URL(ctx.request.url);
   const grant = await selectGitHubGrant(ctx, env, upstreamUrl);
+  // Last, after every other denial, because the check takes an in-flight
+  // slot that only the response frees.
+  if (isGitHubGraphqlUrl(upstreamUrl)) {
+    await assertGitHubSandboxGraphqlBudgetLeft(ctx);
+  }
   const repository = githubRepositoryFromUrl(upstreamUrl);
   return repository
     ? {

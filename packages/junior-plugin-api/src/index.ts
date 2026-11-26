@@ -20,6 +20,7 @@ export {
   type PromptContextContribution,
   type PromptHistory,
   type PromptHistoryContext,
+  type PromptHistoryMessage,
   type PromptMessage,
   type SystemPromptBuildContext,
   type UserPromptContribution,

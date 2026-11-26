@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { mockFeedPage } from "./mock-reports";
 
 /**
  * List two Conversations in each repository Conversations feed: "Pinned
@@ -8,11 +9,9 @@ export async function pinFirstRepositoryConversation(page: Page) {
   await page.route(
     /\/api\/conversations\?.*codeRepositoryId=/,
     async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
-      const [first] = feed.conversations;
+      const feed = await mockFeedPage(route);
+      const first = feed.conversations[0]!;
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: [

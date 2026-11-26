@@ -53,7 +53,7 @@ splitting them across setup sections.
 
 Start with the ways readers can define values:
 
-- Conversation config: `jr-rpc config set <plugin>.<key> <value>`
+- Conversation config: ask Junior to set `<plugin>.<key>` in a Slack channel or Space
 - Install-wide conversation defaults: `createApp({ configDefaults: { "<plugin>.<key>": "<value>" } })`
 - Plugin options: pass values to `<plugin>Plugin({ ... })` in `plugins.ts`
 - Environment variables: set them in the deployment environment, then redeploy
@@ -75,7 +75,7 @@ easy to scan on desktop and mobile:
 
 Default project when a request does not name one.
 
-- **Define:** `jr-rpc config set example.project <project>`
+- **Define:** ask Junior to set `example.project`
 - **Install-wide default:** `configDefaults["example.project"]`
 - **Required:** No
 - **Environment override:** None

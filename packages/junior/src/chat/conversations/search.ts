@@ -43,7 +43,10 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
+  juniorSpaces,
 } from "@/db/schema";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
+import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
 
 const MAX_LINKS = 5;
 // Lowest cosine similarity that admits a Conversation with no word match.
@@ -196,8 +199,7 @@ export async function searchConversations(
     );
   const { team } = search;
   const conditions: (SQL | undefined)[] = [
-    // The root decides visibility. Lists hide an unkept Quick question and
-    // its children.
+    // Lists hide an unkept Quick question and its children.
     isNull(roots.quickQuestionAt),
     isNull(conversations.quickQuestionAt),
     search.rootsOnly
@@ -210,13 +212,30 @@ export async function searchConversations(
       ? ne(conversations.conversationId, requesterConversationId)
       : ne(conversations.rootConversationId, requesterRootId),
     or(
-      eq(juniorDestinations.visibility, "public"),
+      isPublicConversation(conversations),
       // Conversations share a Destination only when they share an audience.
       eq(
         roots.destinationId,
         db
           .select({ destinationId: requesterRoot.destinationId })
           .from(requesterRoot)
+          .where(eq(requesterRoot.conversationId, requesterRootId)),
+      ),
+      // The Conversations of a private Space share one audience, the members.
+      // Space work can have other Destinations than the requester's root, so
+      // only this match reaches all of it.
+      eq(
+        rootSpaceIdSql(roots),
+        db
+          .select({ id: juniorSpaces.id })
+          .from(requesterRoot)
+          .innerJoin(
+            juniorSpaces,
+            and(
+              eq(juniorSpaces.id, rootSpaceIdSql(requesterRoot)),
+              eq(juniorSpaces.visibility, "private"),
+            ),
+          )
           .where(eq(requesterRoot.conversationId, requesterRootId)),
       ),
     ),

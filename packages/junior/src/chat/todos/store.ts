@@ -1,22 +1,22 @@
 /**
  * Durable To-dos of a Conversation. The list's own agent changes them with
- * `updateTodos`; a person can change a status in the dashboard. A child
+ * `todos_updateTodos`; a person can change a status in the dashboard. A child
  * agent can close the To-dos assigned to it, and a read closes the rest
  * once the child's result has reached this Conversation. Each
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
-import { readAgentUpdateStatus } from "@/chat/agent-invocations/agent-update";
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, asc, eq, inArray, is, isNotNull, ne, sql } from "drizzle-orm";
+import { alias, PgAsyncDatabase } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAgentBindings,
+  juniorConversations,
   juniorTodos,
   juniorTodoVersionSeq,
   juniorUsers,
 } from "@/db/schema";
-import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
@@ -24,6 +24,7 @@ import { mapBounded } from "@/chat/fan-out";
 import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { syncTodoInboxItems } from "./inbox-items";
+import { renderTodosSnapshot } from "./prompt";
 import { todoRef } from "./tool-output";
 import {
   isOpenTodoStatus,
@@ -31,6 +32,7 @@ import {
   type ClosedTodoStatus,
   type Todo,
   type TodoStatus,
+  UPDATE_TODOS_TOOL_NAME,
 } from "./types";
 
 const TODOS_LOCK_PREFIX = "junior:todos";
@@ -80,7 +82,7 @@ function requireKnownIds(rows: Map<number, TodoRow>, ids: number[]) {
   const unknown = ids.filter((id) => !rows.has(id));
   if (unknown.length > 0) {
     throw new ToolInputError(
-      `No To-do has id ${unknown.map(todoRef).join(", ")}. Call updateTodos with no changes to list the open To-dos.`,
+      `No To-do has id ${unknown.map(todoRef).join(", ")}. Call ${UPDATE_TODOS_TOOL_NAME} with no changes to list the open To-dos.`,
     );
   }
 }
@@ -94,6 +96,26 @@ function validateChange(rows: Map<number, TodoRow>, change: TodoChange) {
       "Change each To-do once per call: an id is in more than one update or remove.",
     );
   }
+}
+
+// The most characters of open To-do text. Each Turn context can show every
+// open To-do, and plugins share one budget for Turn contexts.
+const MAX_OPEN_TODOS_CHARS = 8_000;
+
+function openTodosChars(todos: readonly Todo[]): number {
+  return renderTodosSnapshot(todos)?.length ?? 0;
+}
+
+// A change that closes or shortens To-dos always applies, so a list that a
+// person pushed over the limit can shrink.
+function requireOpenTodosFit(before: readonly Todo[], after: readonly Todo[]) {
+  const chars = openTodosChars(after);
+  if (chars <= MAX_OPEN_TODOS_CHARS || chars <= openTodosChars(before)) {
+    return;
+  }
+  throw new ToolInputError(
+    `The open To-dos would take ${chars} characters, over the limit of ${MAX_OPEN_TODOS_CHARS}. Close, remove, or shorten To-dos, then try again.`,
+  );
 }
 
 // A Drizzle transaction, not `executor.transaction`: the Inbox item writes
@@ -127,7 +149,8 @@ async function withTodosLock<T>(
  * Apply one batch of changes from the list's own agent. Return the To-dos it
  * added or updated, and the To-dos whose status a person set last and the
  * change replaced, as they were before it. Throws `ToolInputError` for an
- * unknown id or an id that changes twice.
+ * unknown id, an id that changes twice, or a change that makes the open
+ * To-dos too long.
  */
 export async function changeTodos(
   executor: JuniorSqlDatabase,
@@ -147,7 +170,7 @@ export async function changeTodos(
     validateChange(rows, change);
     // A person can change a status during a Turn, after the Turn context
     // showed the To-dos. The agent's change wins, and its result shows what it
-    // replaced, since no later `<todo-delta>` can.
+    // replaced, since no later To-do delta can.
     const replacedIds = change.update
       .filter((update) => {
         const row = rows.get(update.id)!;
@@ -158,12 +181,10 @@ export async function changeTodos(
         );
       })
       .map((update) => update.id);
-    const replacedPersonChanges =
-      replacedIds.length > 0
-        ? (await readTodos(db, conversationId)).filter((todo) =>
-            replacedIds.includes(todo.id),
-          )
-        : [];
+    const before = await readTodos(db, conversationId);
+    const replacedPersonChanges = before.filter((todo) =>
+      replacedIds.includes(todo.id),
+    );
     if (change.remove.length > 0) {
       await db
         .delete(juniorTodos)
@@ -218,10 +239,12 @@ export async function changeTodos(
       changedIds.push(inserted!.id);
     }
     /* oxlint-enable no-await-in-loop */
+    const todos = await readTodos(db, conversationId);
+    // Throwing rolls the transaction back.
+    requireOpenTodosFit(before, todos);
     await sync(args.nowMs);
     // Open detail views of the Conversation reload the To-dos on this bump.
     await touchConversationDetail(db, [conversationId]);
-    const todos = await readTodos(db, conversationId);
     return {
       todos: changedIds.flatMap(
         (id) => todos.find((todo) => todo.id === id) ?? [],
@@ -284,7 +307,7 @@ export async function setTodoStatusByUser(
 /**
  * Close To-dos of one Conversation that are assigned to one of its child
  * agents, for that child. Each change names the child, so the parent sees it
- * in its next `<todo-delta>`. Returns the changed To-dos.
+ * in its next To-do delta. Returns the changed To-dos.
  */
 async function closeChildTodos(
   db: JuniorDatabase,
@@ -392,48 +415,69 @@ function rejectUnassigned(ids: readonly number[]): never {
   );
 }
 
-/** A child's result that reached a Conversation: who sent it, how it ended, and when. */
-type ReceivedChildResult = {
+/** How a child's work ended for its parent's To-dos: which child, how, and when. */
+type ChildWorkEnd = {
   atMs: number;
   childConversationId: string;
   status: ClosedTodoStatus;
 };
 
 /**
- * Read the child results that wait in a Conversation's mailbox. A done
- * result closes the child's To-dos as done, and a stopped one drops them.
+ * Read the stopped results of child agents that wait in a Conversation's
+ * mailbox. A stop drops the child's To-dos. A done result closes nothing: a
+ * child that watches work reports after each Turn while that work goes on.
  * A Turn reads its To-dos when it builds its prompt, before it takes its
  * input out of the mailbox, so a read sees every result there.
  */
-async function readReceivedChildResults(
-  conversationId: string,
-): Promise<ReceivedChildResult[]> {
+async function readChildStops(conversationId: string): Promise<ChildWorkEnd[]> {
   const work = await getConversationWorkState({ conversationId });
   return (work?.execution.pendingMessages ?? []).flatMap((message) => {
     const sender = readInboundMessageSender(message);
     const metadata = message.input.metadata;
-    const result = isEventMailboxMetadata(metadata)
-      ? readAgentUpdateStatus(metadata.event.status)
-      : undefined;
-    const status =
-      result === "done" ? "done" : result === "stopped" ? "dropped" : undefined;
-    return sender && status
+    const stopped =
+      isEventMailboxMetadata(metadata) && metadata.event.status === "stopped";
+    return sender && stopped
       ? [
           {
             atMs: message.createdAtMs,
             childConversationId: sender.conversationId,
-            status,
+            status: "dropped" as const,
           },
         ]
       : [];
   });
 }
 
+/** Read when child agents of a Conversation were archived. Archive closes their To-dos as done. */
+async function readChildArchives(
+  db: JuniorDatabase,
+  conversationId: string,
+  childConversationIds: readonly string[],
+): Promise<ChildWorkEnd[]> {
+  const rows = await db
+    .select({
+      archivedAt: juniorConversations.archivedAt,
+      childConversationId: juniorConversations.conversationId,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.parentConversationId, conversationId),
+        inArray(juniorConversations.conversationId, [...childConversationIds]),
+        isNotNull(juniorConversations.archivedAt),
+      ),
+    );
+  return rows.flatMap(({ archivedAt, childConversationId }) =>
+    archivedAt
+      ? [{ atMs: archivedAt.getTime(), childConversationId, status: "done" }]
+      : [],
+  );
+}
+
 /**
- * Close the open To-dos of a Conversation whose child's result reached it
- * after the To-do last changed: done when the child completed, dropped when
- * it was stopped. The received results decide it, so a repeat read changes
- * nothing.
+ * Close the open To-dos of a Conversation whose child ended its work after
+ * the To-do last changed: done when the child was archived, dropped when it
+ * was stopped. Stored state decides it, so a repeat read changes nothing.
  */
 async function settleChildTodos(
   executor: JuniorSqlDatabase,
@@ -444,21 +488,33 @@ async function settleChildTodos(
     (todo) => todo.assignee.kind === "agent" && isOpenTodoStatus(todo.status),
   );
   if (assigned.length === 0) return false;
-  const results = await readReceivedChildResults(conversationId);
+  const childIds = [
+    ...new Set(
+      assigned.flatMap((todo) =>
+        todo.assignee.kind === "agent" ? [todo.assignee.conversationId] : [],
+      ),
+    ),
+  ];
+  const results = (
+    await Promise.all([
+      readChildStops(conversationId),
+      readChildArchives(executor.db(), conversationId, childIds),
+    ])
+  ).flat();
   if (results.length === 0) return false;
   const byChild = new Map<string, Map<number, ClosedTodoStatus>>();
   for (const todo of assigned) {
     if (todo.assignee.kind !== "agent") continue;
     const childId = todo.assignee.conversationId;
-    // The newest result after the To-do's last change decides it. A To-do
-    // given to a child after its result waits for the next one.
+    // The newest end after the To-do's last change decides it. A To-do
+    // given to a child after that waits for the next one.
     const latest = results
       .filter(
         (result) =>
           result.childConversationId === childId &&
           result.atMs > todo.updatedAtMs,
       )
-      .reduce<ReceivedChildResult | undefined>(
+      .reduce<ChildWorkEnd | undefined>(
         (newest, result) =>
           !newest || result.atMs >= newest.atMs ? result : newest,
         undefined,
@@ -501,7 +557,7 @@ async function settleChildTodos(
 
 /**
  * List every To-do of one Conversation, oldest first, with assignees
- * resolved. A To-do assigned to a child agent that has finished or stopped
+ * resolved. A To-do assigned to a child agent that was archived or stopped
  * since it last changed is closed first.
  */
 export async function listTodos(
@@ -611,14 +667,24 @@ async function readTodos(
   );
 }
 
+/**
+ * Narrow the database of a plugin hook context to the To-do database. Core
+ * passes its Postgres database or a transaction of it.
+ */
+export function todosDb(db: unknown): JuniorDatabase {
+  if (!is(db, PgAsyncDatabase)) {
+    throw new TypeError("To-dos need a Postgres database.");
+  }
+  return db;
+}
+
 /** Delete the To-dos of purged Conversations. Titles and notes are content. */
 export async function deleteTodos(
-  executor: JuniorSqlDatabase,
+  db: JuniorDatabase,
   conversationIds: string[],
 ): Promise<void> {
   if (conversationIds.length === 0) return;
-  await executor
-    .db()
+  await db
     .delete(juniorTodos)
     .where(inArray(juniorTodos.conversationId, conversationIds));
 }

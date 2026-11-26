@@ -1,7 +1,7 @@
 name: iOS
 
-# Tests and builds apps/ios, and saves iPhone and iPad screenshots of its main
-# screens for pull request review.
+# Tests and builds apps/ios, and saves iPhone, iPad, and iPhone Duo screenshots
+# of its main screens for pull request review.
 on:
   push:
     branches: [main]
@@ -99,18 +99,28 @@ jobs:
           name: ios-mock-server-log
           path: ${{ runner.temp }}/mock-server.log
 
-  ipad:
-    name: screenshots / ipad ${{ matrix.orientation }}
+  devices:
+    name: screenshots / ${{ matrix.device }} ${{ matrix.orientation }}
     if: ${{ !inputs.skip_ui }}
     runs-on: xcode-27
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        device: [ipad, iphone-duo]
         orientation: [portrait, landscape]
+        include:
+          # With regular width, lists and the open item show side by side.
+          - device: ipad
+            simulator: iPad Pro 13-inch (M4)
+          # Two displays and a fold. Display 1 is the outer display, where
+          # the app opens.
+          - device: iphone-duo
+            simulator: iPhone Duo
+            display: "1"
     env:
-      # With regular width, lists and the open item show side by side.
-      JUNIOR_IOS_DEVICE: iPad Pro 13-inch (M4)
+      JUNIOR_IOS_DEVICE: ${{ matrix.simulator }}
+      JUNIOR_IOS_DISPLAY: ${{ matrix.display }}
       ORIENTATION: ${{ matrix.orientation }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -122,9 +132,9 @@ jobs:
       - name: Start the mock MCP server
         run: apps/ios/scripts/start-mock-server.sh "$RUNNER_TEMP/mock-server.log"
       - name: Take screenshots
-        run: apps/ios/scripts/screenshots.sh "$RUNNER_TEMP/ios-ipad-screenshots" "$ORIENTATION"
+        run: apps/ios/scripts/screenshots.sh "$RUNNER_TEMP/ios-device-screenshots" "$ORIENTATION"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ios-ipad-${{ matrix.orientation }}-screenshots
-          path: ${{ runner.temp }}/ios-ipad-screenshots
+          name: ios-${{ matrix.device }}-${{ matrix.orientation }}-screenshots
+          path: ${{ runner.temp }}/ios-device-screenshots
           if-no-files-found: error

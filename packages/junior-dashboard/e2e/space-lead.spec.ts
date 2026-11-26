@@ -1,4 +1,5 @@
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { conversationMenuRow } from "./conversationMenu";
 import { expectRequestBudget } from "./request-budget";
 import { expect, test } from "./test";
 import { desktop, mobile, screenshot } from "./screenshot";
@@ -30,54 +31,53 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     transcript.getByRole("separator", { name: "Today" }),
   ).toBeVisible();
 
-  // Each started Conversation is a card with its state, summary, and Watch.
-  const needsYou = transcript.getByRole("article", {
-    name: "Triage Sentaur GoCD deployment failures",
-  });
-  const failed = transcript.getByRole("article", {
-    name: "Deployment investigation failed",
-  });
-  const working = transcript.getByRole("article", {
-    name: "Investigate checkout latency",
-  });
-  const done = transcript.getByRole("article", {
-    name: "Checkout latency triage",
-  });
-  await expect(needsYou).toContainText("Needs you");
-  await expect(needsYou).toContainText("Watching");
-  await expect(
-    needsYou.getByRole("link", { name: "Open to approve" }),
-  ).toBeVisible();
-  await expect(failed).toContainText("Failed");
-  await expect(failed).not.toContainText("Watching");
-  await expect(failed.getByRole("link", { name: "Open" })).toBeVisible();
-  await expect(working).toContainText("Working");
-  await expect(working).toContainText("Watching");
-  await expect(working.getByRole("button", { name: "Message it" })).toHaveCount(
-    0,
-  );
-  await expect(done).toContainText("Done");
+  // The Lead's children show as child agent rows, as in any parent's
+  // transcript. The duration tells them from the Watch Event lines.
+  const child = (title: string) =>
+    transcript.getByRole("link", { name: new RegExp(`^${title} \\d+[smh]`) });
+  const working = child("Investigate checkout latency");
+  await expect(child("Triage Sentaur GoCD deployment failures")).toBeVisible();
+  await expect(child("Deployment investigation failed")).toBeVisible();
+  await expect(working).toBeVisible();
+  await expect(child("Checkout latency triage")).toBeVisible();
 
-  // Watch Events show as one line each, before the Lead's reply.
+  // Routine Watch Events fold into one row. The ones that need a person
+  // show as one line each, before the Lead's reply.
+  await expect(
+    transcript.getByText("Investigate checkout latency finished").first(),
+  ).toBeHidden();
   await expect(
     transcript.getByText("Triage Sentaur GoCD deployment failures needs you"),
   ).toBeVisible();
   await expect(
     transcript.getByText("Deployment investigation failed failed"),
   ).toBeVisible();
-  await expect(
-    page.getByText("Ask the Lead to start, find, or check on work…"),
-  ).toBeVisible();
 
-  // The Space's details sit beside the Lead: its Conversations and members.
-  const details = page.getByRole("complementary", { name: "Space details" });
+  // The Lead's details show its Threads, and its Participants are its
+  // Space's members.
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+  });
   await expect(
     details.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
-  await expect(details.getByText("Avery Chen")).toBeVisible();
+  await expect(
+    details
+      .getByRole("region", { name: "Participants" })
+      .getByRole("img", { name: /^Avery Chen/ }),
+  ).toBeVisible();
   await screenshot(page, "space-lead-reports");
   await working.scrollIntoViewIfNeeded();
   await screenshot(page, "space-lead");
+
+  // The folded row opens in place to the routine updates.
+  await transcript.getByRole("button", { name: /^2 routine updates/ }).click();
+  await expect(
+    transcript.getByText("Investigate checkout latency finished"),
+  ).toHaveCount(2);
+  await expect(
+    transcript.getByText("Investigate checkout latency finished").first(),
+  ).toBeVisible();
 
   // A message from the page goes to the Lead, not to a new Conversation.
   const sends: string[] = [];
@@ -98,14 +98,8 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     ),
   ]);
 
-  // "Message it" puts a reference to the card's Conversation in the reply.
-  await failed.getByRole("button", { name: "Message it" }).click();
-  await expect(reply).toContainText("Deployment investigation failed");
-
-  // A card opens its Conversation.
-  await working
-    .getByRole("link", { name: /Investigate checkout latency/ })
-    .click();
+  // A child agent row opens its Conversation.
+  await working.click();
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
@@ -119,18 +113,18 @@ test("loads a Space page within its request budget", async ({
   await expectRequestBudget(
     page,
     async () => {
-      await page.goto(`${dashboard.baseURL}${BILLING}`, {
-        waitUntil: "networkidle",
-      });
+      await page.goto(`${dashboard.baseURL}${BILLING}`);
       await expect(
         page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
       ).toBeVisible();
     },
-    { requests: 14, serialRounds: 3 },
+    // A Lead shows Conversation details and the outline, so it reads its
+    // Inbox items, To-dos, Watches, and outline as any Conversation does.
+    { requests: 19, serialRounds: 3 },
   );
 });
 
-test("the Lead's own link keeps its Space's header", async ({
+test("the Lead's own link shows the Conversation header", async ({
   page,
   dashboard,
 }) => {
@@ -150,9 +144,9 @@ test("the Lead's own link keeps its Space's header", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Conversation menu" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(
-    page.getByRole("complementary", { name: "Space details" }),
+    page.getByRole("complementary", { name: "Conversation details" }),
   ).toBeVisible();
 });
 
@@ -172,22 +166,18 @@ test("home opens the Inbox, and the pane has no Lead", async ({
   ).toHaveCount(0);
 });
 
-test("a new Lead introduces itself", async ({ page, dashboard }) => {
+test("a new Lead opens as an empty Conversation", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${MOBILE_APP}`);
+  await expect(page.getByRole("heading", { name: "Mobile app" })).toBeVisible();
+  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "This Space's Lead" }),
+    page.getByRole("complementary", { name: "Conversation details" }),
   ).toBeVisible();
-  for (const title of ["Starts work", "Keeps watch", "Finds and steers"]) {
-    await expect(page.getByText(title, { exact: true })).toBeVisible();
-  }
-  const reply = page.getByLabel("Continue this conversation");
-  await expect(reply).toBeFocused();
-  await screenshot(page, "space-lead-first-run");
-
-  // A Try prompt fills the reply box.
-  await page.getByRole("button", { name: "What's waiting on me?" }).click();
-  await expect(reply).toContainText("What's waiting on me?");
+  await screenshot(page, "space-lead-empty");
 });
 
 test("a non-member reads the Lead", async ({ page, dashboard }) => {
@@ -221,11 +211,10 @@ test("a non-member sees a Space whose Lead no member has talked to", async ({
   await expect(
     page.getByText("No member has talked to this Space's Lead yet."),
   ).toBeVisible();
+  // The Space's Threads are its Lead's, so it has none to list.
   await expect(
-    page
-      .getByRole("region", { name: "Conversations" })
-      .getByRole("link", { name: /Onboarding doc review/ }),
-  ).toBeVisible();
+    page.getByRole("region", { exact: true, name: "Threads" }),
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Join" })).toBeVisible();
 });
 
@@ -244,11 +233,16 @@ test.describe("on a touch screen", () => {
     await expect(
       page.getByRole("heading", { name: "Billing migration" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Space details" }).click();
-    const sheet = page.getByRole("dialog", { name: "Space details" });
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await conversationMenuRow(page, "Conversation details").click();
+    const sheet = page.getByRole("dialog", { name: "Conversation details" });
     await expect(
       sheet.getByRole("link", { name: /Plan the billing migration/ }),
     ).toBeVisible();
-    await expect(sheet.getByText("Avery Chen")).toBeVisible();
+    await expect(
+      sheet
+        .getByRole("region", { name: "Participants" })
+        .getByRole("img", { name: /^Avery/ }),
+    ).toBeVisible();
   });
 });

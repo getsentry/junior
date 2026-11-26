@@ -4,8 +4,8 @@ import type {
   JsonValue,
   TextContent,
   Tool,
+  ToolCall,
 } from "@earendil-works/pi-ai";
-import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
 
 /**
  * A tool: the declaration that the model sees, and the code that runs one
@@ -33,19 +33,46 @@ export type ToolDefinition<
   ): Promise<ToolResult<TDetails>>;
 };
 
-/**
- * What a tool gets for one call. The tool does not know where the environment
- * comes from or how long it lives: whoever builds the context owns that.
- */
+/** What a tool gets for one call. */
 export type ToolExecutionContext = {
   /** The model's id for this call. */
   callId: string;
   signal: AbortSignal;
-  /**
-   * The step's environment, when the caller gives one. Every call gets the
-   * same one. Tools that do not run commands or use files ignore it.
-   */
-  environment?: ToolExecutionEnvironment;
+};
+
+/**
+ * The tools of one step, which the host builds for the claimed Turn. Core
+ * calls `close` when the step ends, so the host can let go of what the tools
+ * hold, such as a sandbox handle.
+ */
+export type StepTools = {
+  definitions: ToolDefinition[];
+  /** Host code that core runs around the step's tool calls. */
+  hooks?: ToolExecutionHooks;
+  close(): void;
+};
+
+/**
+ * Core runs these in order: `beforeCall` per call, `beforeBatch` once, the
+ * calls, then `afterCall` per call. A throw from any of them fails the step.
+ */
+export type ToolExecutionHooks = {
+  /** Before a call runs. Return a result to skip the call; the model sees it instead. */
+  beforeCall?(
+    call: ToolCall,
+    signal: AbortSignal,
+  ): Promise<ToolResult | undefined>;
+  /** Once, before any call runs, with the calls not yet skipped. A result for a call id skips that call. */
+  beforeBatch?(
+    calls: ToolCall[],
+    signal: AbortSignal,
+  ): Promise<Map<string, ToolResult>>;
+  /** After each call, skipped ones included. The returned result replaces the call's result. */
+  afterCall?(
+    call: ToolCall,
+    result: ToolResult,
+    signal: AbortSignal,
+  ): Promise<ToolResult>;
 };
 
 /** What one call returns. It becomes a pi-ai `ToolResultMessage`. */

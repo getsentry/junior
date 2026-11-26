@@ -25,8 +25,8 @@ S=.agents/skills/verify-junior/scripts
 
    - Each run gets a new, empty Postgres database (`verify_junior_<run>`) and an empty Redis database (1 to 15) in the compose services. `pnpm dev` migrates the database. Your `junior` database and Redis database 0 are not touched.
    - `--mock` sets `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true`. The dashboard then shows fixed Conversations, Inbox items, Automations, and stats, and the composer runs no agent. Use it only where a feature file says so.
-   - `launch` refuses when port 3000 or 8969 is in use. `pnpm dev` binds both, so only one instance can run on a machine.
-   - `pnpm dev` runs inside `sentry local run`, so Nitro reports to one Sentry Local server on port 8969. `launch` tails it to `$RUN_DIR/telemetry.ndjson`. See [Telemetry](#telemetry).
+   - `launch` refuses when port 3000 or 8970 is in use. `pnpm dev` binds 3000 and the run's Sentry Local receiver binds 8970, so only one instance can run on a machine.
+   - `launch` starts a Sentry Local receiver on port 8970 before `pnpm dev` and sets `SENTRY_SPOTLIGHT` to it, so Nitro reports there and not to the `junior` session of a plain `pnpm dev`. The receiver writes every event to `$RUN_DIR/telemetry.ndjson`. See [Telemetry](#telemetry).
    - It generates a disposable `JUNIOR_ENCRYPTION_KEYS` and never writes it to a file.
    - It deletes the injected `dist` symlinks that an earlier `pnpm dev` left under `node_modules/.pnpm/@sentry+junior*`. With them, pnpm 12 fails the build with `ERR_PNPM_INJECTED_DEPS_SYNC_READ_DIR`.
    - A cold start takes 2 to 4 minutes.

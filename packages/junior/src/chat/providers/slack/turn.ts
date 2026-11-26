@@ -1123,6 +1123,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             credentialContext,
             // Always set the execution Actor when known.
             actor: executionActor,
+            // A dispatch runs as its own Actor, whatever its message says.
+            ...(!options.execution && message.author.isBot === true
+              ? { actorIsApp: true }
+              : undefined),
             slackConversation,
             source,
             ...(location ? { location } : undefined),

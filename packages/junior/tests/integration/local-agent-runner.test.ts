@@ -26,7 +26,7 @@ import {
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
@@ -37,6 +37,7 @@ import {
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
+import { useConfig } from "../fixtures/config";
 import { createModelStream } from "../fixtures/model-stream";
 import { runMcpOauthCallbackRoute } from "../fixtures/mcp-oauth-callback-harness";
 import { createPluginAppFixture } from "../fixtures/plugin-app";
@@ -210,8 +211,9 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-oauth-resume",
     });
     expect(conversationId).toBeDefined();
-    const previousBaseUrl = process.env["JUNIOR_BASE_URL"];
-    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
+    useConfig({
+      deployment: { configuredBaseUrl: "https://junior.example.com" },
+    });
     const pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
     let oauthCallback:
       | Awaited<ReturnType<typeof startLocalOAuthCallbackServer>>
@@ -334,11 +336,6 @@ describe("local agent runner", () => {
     } finally {
       await oauthCallback?.close();
       await pluginApp.cleanup();
-      if (previousBaseUrl === undefined) {
-        delete process.env["JUNIOR_BASE_URL"];
-      } else {
-        process.env["JUNIOR_BASE_URL"] = previousBaseUrl;
-      }
     }
   });
 
@@ -534,7 +531,7 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const loadedRuns: PluginRunContext[] = [];
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
     setPlugins([
       defineJuniorPlugin({
         manifest: {

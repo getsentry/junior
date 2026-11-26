@@ -7,7 +7,7 @@ function detail(
   events: ConversationDetailReport["events"],
 ): ConversationDetailReport {
   return {
-    kind: "root",
+    kind: "thread",
     conversationId: "slack:CQA123:1770003600.000200",
     displayTitle: "Live model resolution",
     startedAt: "2026-01-01T00:00:00.000Z",

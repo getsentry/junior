@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessageMetadata, QueueClient } from "@vercel/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
-import {
-  getChatConfig,
-  resetRuntimeConfig,
-  restoreRuntimeConfig,
-  snapshotRuntimeConfig,
-} from "@/chat/config";
+import { getChatConfig } from "@/chat/config";
 import {
   createVercelPluginTaskCallback,
   pluginTaskId,
@@ -24,6 +19,7 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { createEngineContext } from "@/turn-steps/engine-context";
+import { useConfig } from "../fixtures/config";
 
 // Mock the SDK once for the file and import statically. Per-test
 // `vi.doMock` needs `vi.resetModules`, and then a parallel import can load
@@ -121,7 +117,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
     await expect(handler(message, metadata)).resolves.toBeUndefined();
     expect(mocks.processWorkspaceSnapshotJob).not.toHaveBeenCalled();
 
-    process.env["JUNIOR_SECRET"] = "workspace-snapshot-secret";
+    useConfig({ secrets: { juniorSecret: "workspace-snapshot-secret" } });
     await sendWorkspaceSnapshotJob(message);
     const signedMessage = mocks.send.mock.lastCall?.[1];
     if (!signedMessage) throw new Error("Expected signed queue message");
@@ -172,7 +168,7 @@ describe("plugin task Vercel queue integration", () => {
     await expect(handler(message, metadata)).resolves.toBeUndefined();
     expect(mocks.processPluginTask).not.toHaveBeenCalled();
 
-    process.env["JUNIOR_SECRET"] = "plugin-task-secret";
+    useConfig({ secrets: { juniorSecret: "plugin-task-secret" } });
     const signedMessage = signPluginTaskQueueMessage(message);
     await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
     expect(mocks.processPluginTask).toHaveBeenCalledWith(message, {
@@ -194,7 +190,7 @@ describe("plugin task Vercel queue integration", () => {
   });
 
   it("sends plugin task messages with the derived idempotency key", async () => {
-    process.env["JUNIOR_SECRET"] = "plugin-task-secret";
+    useConfig({ secrets: { juniorSecret: "plugin-task-secret" } });
     const message = {
       name: "extractMemories",
       params: {
@@ -267,14 +263,9 @@ describe("conversation work Vercel queue integration", () => {
 });
 
 describe("Turn step Vercel queue integration", () => {
-  const runtimeConfig = snapshotRuntimeConfig();
-  afterEach(() => {
-    restoreRuntimeConfig(runtimeConfig);
-  });
-
   it("uses the app's max duration in the visibility timeout", async () => {
-    // createApp sets the host's max duration after this module loads.
-    resetRuntimeConfig(600);
+    // createApp installs the host's max duration after this module loads.
+    useConfig({ functionMaxDurationSeconds: 600 });
 
     const chatConfig = getChatConfig();
     const engineCtx = createEngineContext(chatConfig);
@@ -282,7 +273,7 @@ describe("Turn step Vercel queue integration", () => {
       await turnStepConsumer(engineCtx, {
         client: createGatewayModelClient(),
         bot: chatConfig.bot,
-        tools: [],
+        tools: () => Promise.resolve({ definitions: [], close: () => {} }),
       }),
     );
 

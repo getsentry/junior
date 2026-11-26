@@ -3,8 +3,7 @@
  * Conversation. The starter of a child agent gets the update as its child's
  * `<agent-result>`. Each Watch gets the same `<agent-result>`, as data under
  * the intent that the watcher wrote for the Watch. The update text never
- * adds instructions. A quiet update reaches each of them as a Conversation
- * note.
+ * adds instructions.
  */
 import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
@@ -13,11 +12,11 @@ import {
   renderAgentResult,
   type AgentUpdate,
   type AgentUpdateStatus,
-} from "@/chat/agent-invocations/agent-update";
-import { readChildConversationSender } from "@/chat/agent-invocations/child-input";
-import { getPersonStopTurnId } from "@/chat/agent-invocations/ids";
-import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
-import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
+} from "@/chat/child-agents/agent-update";
+import { readChildConversationSender } from "@/chat/child-agents/child-input";
+import { getPersonStopTurnId } from "@/chat/child-agents/ids";
+import { enqueueStarterUpdate } from "@/chat/child-agents/result";
+import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/child-agents/result-event-type";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";
@@ -34,23 +33,9 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { renderTaskInput } from "@/chat/task-input";
 import {
   isAgentResourceType,
-  starterWatchId,
   type MatchedWatch,
   type UpdateKey,
 } from "./watch-events";
-
-// A note is one line of runtime context, so it keeps only the start of a
-// long child note.
-const QUIET_NOTE_TEXT_MAX_LENGTH = 1_000;
-
-// A quiet update becomes a note, so the note carries what the agent said as
-// current state.
-function quietSummary(update: AgentUpdate): string {
-  const text = update.text.trim().slice(0, QUIET_NOTE_TEXT_MAX_LENGTH);
-  return text
-    ? `The agent ended a Turn with no reply. Its note: ${text}`
-    : "The agent ended a Turn with no reply.";
-}
 
 const SUMMARIES: Record<AgentUpdateStatus, string> = {
   blocked: "The conversation is blocked.",
@@ -63,8 +48,8 @@ const SUMMARIES: Record<AgentUpdateStatus, string> = {
 /**
  * Deliver one agent update to each matched Watch whose Conversation may
  * still read the target. The access check runs before the update text
- * reaches the watcher. A quiet update, or a Watch that names the update as
- * quiet, gives a note that starts no Turn.
+ * reaches the watcher. A Watch that names the update as quiet gives a note
+ * that starts no Turn.
  */
 export async function deliverAgentUpdate(args: {
   conversationId: string;
@@ -127,14 +112,9 @@ export async function deliverAgentUpdate(args: {
           ) {
             return false;
           }
-          if (args.update.quiet || isQuietEvent(current, eventType)) {
+          if (isQuietEvent(current, eventType)) {
             if (!turnConversations.has(current.conversationId)) {
-              await addQuietEventNote({
-                event: args.update.quiet
-                  ? { ...event, trustedSummary: quietSummary(args.update) }
-                  : event,
-                subscription: current,
-              });
+              await addQuietEventNote({ event, subscription: current });
             }
             return true;
           }
@@ -192,13 +172,11 @@ function starterMessageKey(
  * The stored parent edge is the starter's Watch: it never expires, and the
  * parent's Turn runs as `actor`, never with more authority than the work
  * that the update reports. A Conversation without a parent has no starter,
- * and its update is not read. A quiet update gives the starter a note that
- * starts no Turn.
+ * and its update is not read.
  */
 export async function deliverToStarter(args: {
   actor?: Actor | undefined;
   conversationId: string;
-  eventKey: string;
   key: UpdateKey;
   nowMs: number;
   queue: ConversationWorkQueue;
@@ -214,24 +192,6 @@ export async function deliverToStarter(args: {
   const update = await args.update();
   const status = update?.status;
   if (!update || !status || status === "waiting") return;
-  if (update.quiet) {
-    await addQuietEventNote({
-      event: {
-        eventKey: args.eventKey,
-        eventType: AGENT_UPDATE_EVENT_TYPE,
-        identifier: args.conversationId,
-        namespace: CORE_EVENT_NAMESPACE,
-        occurredAtMs: args.nowMs,
-        trustedSummary: quietSummary(update),
-      },
-      subscription: {
-        conversationId: sender.parentConversationId,
-        id: starterWatchId(args.conversationId),
-        label: `Child agent ${sender.agentName ?? sender.title ?? args.conversationId}`,
-      },
-    });
-    return;
-  }
   const messageKey = starterMessageKey(key);
   await enqueueStarterUpdate({
     actor: args.actor ?? EVENT_SYSTEM_ACTOR,

@@ -55,14 +55,15 @@ const COLLAPSED_ROW_COUNT = 3;
 
 /**
  * Show rows in a details card. A list with more than three rows shows the
- * first three and a row that shows the rest.
+ * first three and a row that shows the rest, unless it starts expanded.
  */
 export function DetailsList<T>(props: {
+  defaultExpanded?: boolean;
   items: readonly T[];
   itemKey(item: T): string;
   renderItem(item: T): ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(props.defaultExpanded ?? false);
   const hidden = props.items.length - COLLAPSED_ROW_COUNT;
   const visible =
     expanded || hidden <= 0

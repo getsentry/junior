@@ -7,7 +7,8 @@
 import { createHash } from "node:crypto";
 import * as z from "zod";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
-import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
+import type { AppEventPublisher } from "@/chat/plugins/hooks/routes";
+import type { SendPluginTask } from "./task-runner";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
@@ -167,6 +168,7 @@ function logPluginTaskQueueMessageRejected(
 
 interface PluginTaskCallbackOptions {
   events?: AppEventPublisher;
+  sendPluginTask?: SendPluginTask;
   showInboxItem?: ShowInboxItem;
 }
 

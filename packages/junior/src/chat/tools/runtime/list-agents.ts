@@ -3,38 +3,30 @@ import {
   subscribableResourceSchema,
   type PluginEmbedder,
 } from "@sentry/junior-plugin-api";
-import {
-  listAgentRelatives,
-  type ParentAgent,
-} from "@/chat/agent-invocations/list";
+import { listAgentRelatives } from "@/chat/child-agents/list";
 import {
   searchConversations,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
-import type { ConversationStatus } from "@/chat/conversations/store";
+import { AGENT_STATUSES } from "@/chat/conversations/agent-status";
 import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
-import { getDb, getSqlExecutor } from "@/chat/db";
-import { renderTodoAssignee } from "@/chat/todos/prompt";
-import { listTodos } from "@/chat/todos/store";
-import { outputTodo, todoOutputSchema } from "@/chat/todos/tool-output";
+import { getDb } from "@/chat/db";
 import {
-  isOpenTodoStatus,
-  SELF_TODO_ASSIGNEE,
-  type Todo,
-} from "@/chat/todos/types";
+  loadParentAgentFields,
+  parentAgentFields,
+} from "@/chat/plugins/parent-agent-fields";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
   agentNameSchema,
   CHILD_AGENT_KINDS,
-  CHILD_AGENT_RESULTS,
   type ChildAgent,
-} from "@/chat/agent-invocations/types";
-import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
+} from "@/chat/child-agents/types";
+import { CHILD_AGENT_RESULTS } from "@/chat/child-agents/results";
+import { AGENTS_TOOL_SOURCE } from "@/chat/child-agents/tool-source";
 
 const TASK_MAX_LENGTH = 1_000;
-const ERROR_MAX_LENGTH = 500;
 const SUMMARY_MAX_LENGTH = 1_000;
 const QUERY_LIMIT = 10;
 
@@ -48,45 +40,6 @@ const AGENT_RELATIONS = [
 ] as const;
 type AgentRelation = (typeof AGENT_RELATIONS)[number];
 
-/**
- * What an agent does now. The words match the Conversation execution
- * status, plus `stopped` after stopAgent.
- */
-const LISTED_AGENT_STATUSES = [
-  "pending",
-  "running",
-  "paused",
-  "idle",
-  "stopped",
-] as const;
-
-type ListedAgentStatus = (typeof LISTED_AGENT_STATUSES)[number];
-
-function childAgentStatus(agent: ChildAgent): ListedAgentStatus {
-  switch (agent.status) {
-    case "pending":
-    case "running":
-    case "paused":
-    case "stopped":
-      return agent.status;
-    case "blocked":
-    case "completed":
-    case "failed":
-      return "idle";
-  }
-}
-
-// A Conversation whose Turn failed waits for new input.
-function conversationAgentStatus(
-  status: ConversationStatus,
-): ListedAgentStatus {
-  return status === "failed" ? "idle" : status;
-}
-
-function parentAgentStatus(agent: ParentAgent): ListedAgentStatus {
-  return conversationAgentStatus(agent.status);
-}
-
 // The model learns how much was cut and where the rest is.
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
@@ -94,7 +47,7 @@ function truncate(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength)}… [${cut} more characters cut. Read the conversation with searchConversationEvents.]`;
 }
 
-const listedAgentSchema = z
+const listedAgentFields = z
   .object({
     relation: z
       .enum(AGENT_RELATIONS)
@@ -123,14 +76,16 @@ const listedAgentSchema = z
       .optional()
       .describe("What was asked and what happened, as of its last Turn"),
     status: z
-      .enum(LISTED_AGENT_STATUSES)
+      .enum(AGENT_STATUSES)
       .describe(
-        "What the agent does now. pending: waiting to run. running or paused: working. idle: finished its work and waits for a message. stopped: stopAgent stopped it.",
+        "What the agent does now. pending: waiting to run. running or paused: working. idle: finished its work and waits for a message. failed: its work stopped on a failure, and a message starts new work. stopped: stopAgent stopped it.",
       ),
     last_result: z
       .enum(CHILD_AGENT_RESULTS)
       .optional()
-      .describe("How the latest finished task of the agent ended"),
+      .describe(
+        "How the agent's latest finished Turn ended, as the status of its agent result",
+      ),
     task: z
       .string()
       .optional()
@@ -146,52 +101,16 @@ const listedAgentSchema = z
       .literal(true)
       .optional()
       .describe("The conversation is archived."),
-    error: z
-      .string()
-      .optional()
-      .describe("Why the agent is blocked, failed, or stopped"),
     updated_at: z.string().describe("Time of the latest change"),
     subscribable: subscribableResourceSchema
       .optional()
       .describe(
         "Watch it with watchEvents to hear its updates. Only on siblings and other matches, whose updates do not arrive by themselves.",
       ),
-    todos: z
-      .array(todoOutputSchema)
-      .optional()
-      .describe(
-        "Open To-dos of the parent. Only on the parent. Assignee self is this conversation, which can set those to done or dropped with updateTodos; parent is the parent's own agent.",
-      ),
   })
   .strict();
 
-type ListedAgent = z.output<typeof listedAgentSchema>;
-
-/**
- * Render a parent's To-do for its child: "self" is the child, and
- * "parent" is the parent's own agent.
- */
-function parentTodo(todo: Todo, conversationId: string) {
-  const { assignee } = todo;
-  if (assignee.kind === "self") {
-    return outputTodo(todo, "parent");
-  }
-  if (assignee.kind === "agent" && assignee.conversationId === conversationId) {
-    return outputTodo(todo, SELF_TODO_ASSIGNEE);
-  }
-  return outputTodo(todo, renderTodoAssignee(assignee));
-}
-
-/** Open To-dos of the parent. A child can only close its own. */
-async function parentTodos(
-  parentConversationId: string,
-  conversationId: string,
-) {
-  const todos = await listTodos(getSqlExecutor(), parentConversationId);
-  return todos
-    .filter((todo) => isOpenTodoStatus(todo.status))
-    .map((todo) => parentTodo(todo, conversationId));
-}
+type ListedAgent = z.output<typeof listedAgentFields>;
 
 // Results of a child agent arrive as new tasks, so only a sibling or a
 // match outside the team offers a Watch.
@@ -205,16 +124,13 @@ function listedChildAgent(
     conversation_id: agent.childConversationId,
     ...(agent.agentName ? { name: agent.agentName } : undefined),
     kind: agent.kind,
-    status: childAgentStatus(agent),
+    status: agent.status,
     ...(agent.lastResult ? { last_result: agent.lastResult } : undefined),
-    task: truncate(agent.task, TASK_MAX_LENGTH),
+    task: truncate(agent.title ?? "", TASK_MAX_LENGTH),
     ...(agent.title ? { title: agent.title } : undefined),
     ...(url ? { url } : undefined),
     ...(agent.archivedAtMs !== undefined
       ? { archived: true as const }
-      : undefined),
-    ...(agent.errorMessage
-      ? { error: truncate(agent.errorMessage, ERROR_MAX_LENGTH) }
       : undefined),
     updated_at: new Date(agent.updatedAtMs).toISOString(),
     ...(relation === "sibling"
@@ -234,7 +150,7 @@ function listedMatch(match: ConversationSearchResult): ListedAgent {
   return {
     relation: "other",
     conversation_id: match.conversationId,
-    status: conversationAgentStatus(match.status),
+    status: match.status,
     ...(match.title ? { title: match.title } : undefined),
     ...(url ? { url } : undefined),
     ...(match.archived ? { archived: true as const } : undefined),
@@ -246,42 +162,55 @@ function listedMatch(match: ConversationSearchResult): ListedAgent {
   };
 }
 
-const listAgentsOutputSchema = juniorToolOutputSchema.extend({
-  agents: z
-    .array(listedAgentSchema)
-    .describe(
-      "Without a query: this conversation, its parent, its child agents, then its siblings, newest activity first. With a query: the best matches, your team first, then the conversations that the person you work for takes part in.",
-    ),
-});
-
-/** Static definition of `listAgents`. */
-export const listAgentsToolDefinition = zodToolDefinition({
-  exposure: "deferred",
-  source: AGENTS_TOOL_SOURCE,
-  description:
-    "List your team, with the state recorded by the runtime: the agents you started, and, for a child agent, itself, its parent with the parent's open To-dos, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.",
-  annotations: {
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-    readOnlyHint: true,
-  },
-  inputSchema: z
-    .object({
-      query: z
-        .string()
-        .trim()
-        .min(1)
-        .max(200)
-        .nullable()
-        .optional()
+/**
+ * Definition of `listAgents`. Plugins add fields to the parent's entry, each
+ * named after its plugin.
+ */
+export function listAgentsToolDefinition() {
+  const fields = [...parentAgentFields()];
+  // `ListedAgent` types only the fields of core, so plugin fields have no
+  // static keys here.
+  const parentFields: Record<never, z.ZodType> = Object.fromEntries(
+    fields.map(([name, { field }]) => [name, field.schema.optional()]),
+  );
+  const parentDetails = fields.map(([, { field }]) => field.description);
+  const parent =
+    parentDetails.length > 0
+      ? `its parent with ${parentDetails.join(" and ")}`
+      : "its parent";
+  return zodToolDefinition({
+    exposure: "deferred",
+    source: AGENTS_TOOL_SOURCE,
+    description: `List your team, with the state recorded by the runtime: the agents you started, and, for a child agent, itself, ${parent}, and its siblings. With a query, find any conversation that you may read, your team first. Results of agents you started arrive as new tasks, not through this tool.`,
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
+    inputSchema: z
+      .object({
+        query: z
+          .string()
+          .trim()
+          .min(1)
+          .max(200)
+          .nullable()
+          .optional()
+          .describe(
+            "Words or meaning to match in the title or summary of any conversation that you may read. Omit it to list your team.",
+          ),
+      })
+      .strict(),
+    outputSchema: juniorToolOutputSchema.extend({
+      agents: z
+        .array(listedAgentFields.extend(parentFields).strict())
         .describe(
-          "Words or meaning to match in the title or summary of any conversation that you may read. Omit it to list your team.",
+          "Without a query: this conversation, its parent, its child agents, then its siblings, newest activity first. With a query: the best matches, your team first, then the conversations that the person you work for takes part in.",
         ),
-    })
-    .strict(),
-  outputSchema: listAgentsOutputSchema,
-});
+    }),
+  });
+}
 
 /**
  * Create the read-only tool that lists the team of one conversation: its
@@ -298,7 +227,7 @@ export function createListAgentsTool(
   },
 ) {
   return zodTool({
-    ...listAgentsToolDefinition,
+    ...listAgentsToolDefinition(),
     execute: async (input) => {
       const query = input.query ?? undefined;
       if (!query) return { agents: await listTeam(context) };
@@ -342,14 +271,19 @@ type TeamContext = {
  * List the team of one conversation: itself and its parent for a child
  * agent, its child agents, then its siblings.
  */
-async function listTeam(context: TeamContext): Promise<ListedAgent[]> {
+async function listTeam(
+  context: TeamContext,
+): Promise<Array<ListedAgent & Record<string, unknown>>> {
   const { children, parent, self, siblings } =
     await listAgentRelatives(context);
   // listAgentRelatives reads the parent only from the runtime context,
-  // so a child reads only its own parent's To-dos.
-  const todos = parent
-    ? await parentTodos(parent.conversationId, context.conversationId)
-    : [];
+  // so a child reads only its own parent's details.
+  const details = parent
+    ? await loadParentAgentFields({
+        conversationId: context.conversationId,
+        parentConversationId: parent.conversationId,
+      })
+    : {};
   return [
     ...(self ? [listedChildAgent("self", self)] : []),
     ...(parent
@@ -357,9 +291,9 @@ async function listTeam(context: TeamContext): Promise<ListedAgent[]> {
           {
             relation: "parent" as const,
             conversation_id: parent.conversationId,
-            status: parentAgentStatus(parent),
+            status: parent.status,
             updated_at: new Date(parent.updatedAtMs).toISOString(),
-            ...(todos.length > 0 ? { todos } : undefined),
+            ...details,
           },
         ]
       : []),

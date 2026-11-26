@@ -23,6 +23,7 @@ import {
   viewportBounds,
 } from "./transcriptScrollRoot";
 import {
+  captureRowAnchor,
   captureScrollAnchor,
   scrollAnchorShift,
   type ScrollAnchor,
@@ -396,6 +397,10 @@ export function usePinnedTranscriptBottom(input: {
   // and the restore after them needs the place from before.
   const restoredScrollTopRef = useRef<number | null>(null);
   const scrollAnchorRef = useRef<ScrollAnchor | null>(null);
+  // True while the anchor is the row that a jump showed. Restores keep that
+  // anchor, so the row stays put through later changes, such as a search
+  // that clears. Any other anchor moves to the first row in view.
+  const holdsShownRowRef = useRef(false);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
   const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
   const terminalEnabledRef = useRef(input.enabled);
@@ -434,6 +439,7 @@ export function usePinnedTranscriptBottom(input: {
     const content = contentElementRef.current;
     const root = scrollRootFor(content);
     if (!content || !root) return;
+    holdsShownRowRef.current = false;
     scrollAnchorRef.current = captureScrollAnchor(
       content,
       viewportBounds(root),
@@ -457,7 +463,7 @@ export function usePinnedTranscriptBottom(input: {
       previousScrollTopRef.current = restored;
       restoredScrollTopRef.current = restored;
     }
-    rememberPlace();
+    if (shift === null || !holdsShownRowRef.current) rememberPlace();
   }, [rememberPlace]);
 
   const stopFollowing = useCallback(() => {
@@ -576,6 +582,11 @@ export function usePinnedTranscriptBottom(input: {
       const bounds = viewportBounds(root);
       const rect = row.getBoundingClientRect();
       const viewportHeight = bounds.bottom - bounds.top;
+      // Hold the place on the shown row, not the first row in view.
+      const holdShownRow = () => {
+        scrollAnchorRef.current = captureRowAnchor(row, viewportBounds(root));
+        holdsShownRowRef.current = scrollAnchorRef.current !== null;
+      };
       // A row taller than the viewport shows from its start, not its middle.
       const offset =
         rect.top -
@@ -583,14 +594,16 @@ export function usePinnedTranscriptBottom(input: {
         (rect.height > viewportHeight
           ? TALL_ROW_TOP_GAP_PX
           : (viewportHeight - rect.height) / 2);
-      if (Math.abs(offset) < 1) return true;
-      const before = scrollSnapshot(root);
-      const scrollTop = Math.max(0, before.scrollTop + offset);
       // The reader goes to the row, so the latest must not pull them back.
-      // A row below the viewport can also sit above the latest, such as
-      // after a search shrank the content and then cleared.
-      if (offset < 0) leaveBottom();
-      else if (!isNearScrollBottom({ ...before, scrollTop })) stopFollowing();
+      // Decide without the scroll geometry: a search can shrink the content
+      // so that the row sits at its end, and clearing the search then shows
+      // the latest far below the row.
+      stopFollowing();
+      if (Math.abs(offset) < 1) {
+        holdShownRow();
+        return true;
+      }
+      const scrollTop = Math.max(0, scrollSnapshot(root).scrollTop + offset);
       const behavior = options?.instant
         ? "auto"
         : preferredExplicitScrollBehavior();
@@ -598,16 +611,17 @@ export function usePinnedTranscriptBottom(input: {
       // A layout change must not restore the place that the reader left.
       // A smooth scroll remembers each new place on its scroll events.
       if (behavior === "smooth") {
+        holdsShownRowRef.current = false;
         scrollAnchorRef.current = null;
         return true;
       }
       const snapshot = scrollSnapshot(root);
       previousScrollTopRef.current = snapshot.scrollTop;
       restoredScrollTopRef.current = snapshot.scrollTop;
-      rememberPlace();
+      holdShownRow();
       return true;
     },
-    [leaveBottom, rememberPlace, stopFollowing],
+    [stopFollowing],
   );
 
   /** Scroll to the "New" marker, if the transcript has one. */

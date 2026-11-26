@@ -1,4 +1,7 @@
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ActorIdentity,
+  ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 
 import { ConversationDetails } from "./ConversationDetails";
 import { ConversationGlance } from "./ConversationGlance";
@@ -16,10 +19,11 @@ import type {
   ConversationMemoryList,
 } from "../../conversations/conversationMemory";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
+import { conversationParticipants } from "../../components/ParticipantAvatarStack";
 import {
-  conversationParticipants,
-  ParticipantAvatarStack,
-} from "../../components/ParticipantAvatarStack";
+  ConversationParticipants,
+  type ParticipantInvite,
+} from "../../conversations/ConversationParticipants";
 import type { Conversation } from "../../types";
 
 /** Render the Conversation details side panel from the page's loaded data. */
@@ -34,9 +38,15 @@ export function ConversationDetailsPanel(props: {
   onClose(): void;
   onOpenSubagent(target: ConversationDrawerTarget): void;
   onSelectMemory(entry: ConversationMemoryEntry): void;
+  /**
+   * Who the Participants card lists and where its Invite adds people, when
+   * they are not the Conversation's own, as on a Lead.
+   */
+  participants?:
+    | { invite: ParticipantInvite; participants: readonly ActorIdentity[] }
+    | undefined;
 }) {
   const { conversation, detail } = props;
-  const participants = conversationParticipants(conversation);
   const showUsageBreakdown = hasConversationUsageBreakdown({
     conversation,
     detail,
@@ -51,10 +61,16 @@ export function ConversationDetailsPanel(props: {
       summaryMentions={detail?.summaryMentions}
       conversationId={props.conversationId}
       highlightReview={props.highlightReview}
-      identity={
-        participants.length > 0 ? (
-          <ParticipantAvatarStack participants={participants} size="detail" />
-        ) : null
+      participants={
+        <ConversationParticipants
+          conversationId={props.conversationId}
+          detail={detail}
+          invite={props.participants?.invite}
+          participants={
+            props.participants?.participants ??
+            conversationParticipants(conversation)
+          }
+        />
       }
       isParticipant={detail?.isParticipant === true}
       onClose={props.onClose}

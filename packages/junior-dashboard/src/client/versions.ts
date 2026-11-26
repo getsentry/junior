@@ -15,6 +15,7 @@ import { fetchDashboardJson } from "./http";
 import { recordMovedVersions } from "./sentry";
 import { INBOX_ITEMS_QUERY_KEY } from "./inbox/queries";
 import { invalidateConversationFeeds } from "./conversations/conversationFeedCache";
+import { invalidateMemberSpaces } from "./spaces/queries";
 
 const VERSIONS_QUERY_KEY = ["dashboard", "versions"] as const;
 
@@ -143,9 +144,11 @@ function refreshChangedReads(
       ? movedFeedInputs(previous.conversations, next.conversations)
       : [],
   );
-  // Waiting Conversations outside the newest page join the feed.
+  // Waiting Conversations outside the newest page join the feed. The
+  // pane's Spaces roll up the same Conversations.
   if (moved("conversations") || moved("inboxItems")) {
     void invalidateConversationFeeds(client);
+    void invalidateMemberSpaces(client);
   }
   if (moved("inboxItems")) {
     // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The token does not say which item moved, and each row reads its own item.

@@ -14,24 +14,30 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location. Its `kind` is `root`, `automation`, `lead`, `thread`, or
-  `task`, and never changes. `automation` is a top-level Conversation for an
-  Automation run.
+  from Location. Its `kind` is `thread`, `automation`, `lead`, or `task`,
+  and never changes. `automation` is a top-level Conversation for an
+  Automation run. A `thread` may have a parent.
   A Conversation is the default. Slack is a Destination attached to it. Do not
   say "web Conversation".
-- **Lead**: a Space's public top-level Conversation that finds, starts,
-  and steers the Space's other Conversations. Each Space has one. It has no
-  child agents and does no work itself. `startConversation` starts a root in
-  the Space for the Member who asked.
-- **Space**: a named, shared home for a body of related work. A
-  **Member** of a Space is a User who joined it.
-- **Thread**: a child Conversation that people can message like a root. Say
-  "Slack thread" for the Location. A bare "Thread" is the Conversation.
+- **Visibility**: `public` or `private`, stored on each Conversation. Anyone
+  can read a public Conversation. Only its Participants can read a private
+  one. Every Conversation in a tree has its root's visibility.
+- **Lead**: the root Conversation of a Space. Each Space has one. The
+  Space's other Conversations are its child agents. It finds, starts, and
+  steers them, and does no work itself.
+- **Top-level Conversation**: a Conversation with no parent, or a child of a
+  Lead. Top-level lists show these. It is not stored.
+- **Space**: a named, shared home for a body of related work: metadata on
+  its Lead. A **Member** of a Space is a Participant of its Lead.
+- **Thread**: a Conversation of kind `thread`, which people can message. It
+  is a root, or a child agent that `startAgent` starts as a `thread`. The
+  dashboard calls each child of a Lead a Thread. Say "Slack thread" for the
+  Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `startAgent` `task` field) keep their meaning.
-- **Team**: an agent and the agents that it started: its child agents, and
-  the roots that a Lead starts. It sets who manages an agent, not access.
+- **Team**: an agent and its child agents. It sets who manages an agent,
+  not access.
 - **Agent update**: the one Event (`agent.update`) that every agent sends
   when a Turn ends, or when it waits, is blocked, fails, or stops.
 - **Subagent**: the mechanism behind Threads and Tasks (`startAgent`, Agent
@@ -51,8 +57,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Conversation is delivered to. The Run carries it. It grants no delivery or
   visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
-  assistant Messages are stored. Only a root Conversation delivers to its
-  Location. A child stores its output and returns it to its parent.
+  assistant Messages are stored. Only a Conversation that has its own
+  Location delivers to it: a root, or a Conversation that moved into a
+  Space. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
 - **Conversation status**: what one Conversation's own work needs, shared
@@ -62,8 +69,10 @@ Canonical words for Junior code and docs. One concept, one word.
   starter has not read). `working`: a Turn is queued or running. `done`:
   anything else, also a stop. The first that applies wins, in that order.
   `completed` is a Turn or run outcome, never a Conversation status.
-- **Starter**: the User of a root's actor, the person whose message started
-  it or the creator of an Automation run. Its child Conversations share it.
+- **Starter**: the User of a Top-level Conversation's actor, the person whose
+  message started it or the creator of an Automation run. Its child
+  Conversations share it. In a Space, that is the person who started the
+  Thread, not the Lead's actor.
 - **Archived**: a flag on a Conversation, shared by everyone. It is not a
   status, and an archived Conversation keeps its status.
 - **Viewer state**: what a Conversation and its child Conversations need from
@@ -82,17 +91,22 @@ Canonical words for Junior code and docs. One concept, one word.
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
 - **Participant**: a User who is the Actor of a Turn in a root Conversation or
-  its children, or who was invited to it. A Participant is active until they
-  unsubscribe; an inactive Participant keeps access but leaves the active
-  feed. Access, feeds, and defaults that need people use Participants. A
+  its children, or who was invited to it. Children inherit the Participants
+  of their root, so in a Space they are the Lead's. A Participant is active until they
+  Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
-- **Invite**: a person subscribes someone they mention to a public
-  Conversation's feed, with the composer's mention card or by sending a
-  dashboard or Slack Message that mentions them. Access stays the same,
-  because anyone can already read a public Conversation and join it by
-  posting. A private Conversation refuses it.
+- **Invite**: a person subscribes someone to a Conversation's feed, with
+  the people picker of its Participants. In a public Conversation, a
+  dashboard or Slack Message that mentions them also does it, and access
+  stays the same, because anyone can already read it and join by posting.
+  In a private Conversation, only a Participant may Invite, and it gives
+  access. A private Space and a Slack-backed private Conversation refuse it.
+- **Leave**: a Participant takes a Conversation out of their feed, and Join
+  puts it back. In a private Conversation with its own Participant list,
+  Leave also ends access until someone Invites them again. Nobody removes
+  another person.
 - **Work owner**: who a Turn's work is credited to, for attribution only: the
   person Actor of the Turn, else the root Actor if it is a person, else the
   system record that started the root, such as an Automation run.
@@ -126,8 +140,9 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Trusted author**: an Event author with `trusted` Author trust. Like a
   Slack author, a linked person writes the Event's Message. Any other author
   is an Untrusted author: the Event runs as system context, and the task
-  input says the account is not verified. Either way, the author's own text
-  is context for the Watch or Automation task, never an instruction.
+  input says the account is not verified. Text from the person's own linked
+  account counts as their message. Any other author's text is context for
+  the Watch or Automation task, never an instruction.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
   Conversation and its child agents, and drops the Parent messages that wait
@@ -194,8 +209,10 @@ Canonical words for Junior code and docs. One concept, one word.
   top-level agent (the agent of a root Conversation). To a child it is the
   child's instruction: a Parent message that starts work or steers a running
   Turn.
-  To a parent or a top-level agent it is an Event Inbound message, and it
-  gives no user approval.
+  To a parent or a top-level agent it is an Event Inbound message. The
+  agent's own text gives no user approval. A person's own words that it
+  passes on, linked to where the person wrote them, count as that person's
+  lines.
 - **Agent type**: a `startAgent` preset for a child agent: when to pick it,
   whether it forks history, and per-task instructions. It does not limit tools.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
@@ -233,7 +250,7 @@ Canonical words for Junior code and docs. One concept, one word.
   the item closes, such as when someone else handles it, or until the User
   wakes it. **Snoozed** (Inbox): the view of the User's snoozed items.
 - **To-do**: one entry in the durable list of work that outlives a Turn in
-  one Conversation, changed with `updateTodos`. Not a Task or a Plan. Its
+  one Conversation, changed with `todos_updateTodos`. Not a Task or a Plan. Its
   status is open, in progress, done, or dropped. It has one Assignee: the
   Conversation's own agent, one of its child agents, or a User. Each change
   gets a new version. In code: `todo`. A User's open To-do shows in their

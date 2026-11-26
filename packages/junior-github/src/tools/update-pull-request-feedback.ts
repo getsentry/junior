@@ -4,11 +4,13 @@ import {
   type PluginLogger,
   type PluginState,
   type PluginToolOutput,
+  type PluginWorkOwner,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { gitHubDbSchema } from "../db/database.js";
 import {
   ADD_REVIEW_REACTION,
   type GitHubGraphqlOperation,
@@ -32,6 +34,11 @@ import {
   markGitHubReviewAsked,
   readReviewAgainReadiness,
 } from "../pull-request-review-again.js";
+import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import {
+  linkedGitHubLogin,
+  requesterPerson,
+} from "../tool-support/attribution.js";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 import {
   type GitHubApiResponse,
@@ -66,7 +73,7 @@ const inputSchema = z
     status: z
       .enum(["addressed", "declined"])
       .describe(
-        'Feedback outcome. "addressed" (+1): you made the change or answered the question. "declined" (-1): you do not make the change now, such as when you push back, defer it, or leave the decision to the author.',
+        'Feedback outcome. "addressed" (+1): you made the change, answered it, or agree and wait on the reviewer to confirm or choose. "declined" (-1), which reviewers read as disagreement: you push back or defer the change to later work.',
       ),
   })
   .strict();
@@ -331,20 +338,50 @@ async function reviewBodyReactions(
   };
 }
 
+/** What the feedback tool reads and changes. */
+interface FeedbackContext {
+  db: unknown;
+  egress: PluginEgress;
+  log: Pick<PluginLogger, "warn">;
+  resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
+  state: PluginState;
+}
+
+/**
+ * Whether `reviewer` is the person who asked Junior for the pull request.
+ * Only the opener row of a pull request that Junior opened has a
+ * Conversation, and only that person's own work knows their linked GitHub
+ * login, as when Junior asks them a question.
+ */
+async function reviewerIsRequester(
+  ctx: Pick<FeedbackContext, "db" | "resolveWorkOwner">,
+  input: { name: string; owner: string; pullRequest: number; reviewer: string },
+): Promise<boolean> {
+  const [opener, owner] = await Promise.all([
+    listGitHubPullRequestOpeners(gitHubDbSchema.parse(ctx.db), {
+      numbers: [input.pullRequest],
+      repositoryFullName: `${input.owner}/${input.name}`,
+    }).then((openers) => openers.get(input.pullRequest)),
+    ctx.resolveWorkOwner().then(requesterPerson),
+  ]);
+  const login =
+    opener?.conversationId && owner?.identity?.id === opener.identityId
+      ? linkedGitHubLogin(owner.user)
+      : undefined;
+  return login?.toLowerCase() === input.reviewer.toLowerCase();
+}
+
 /**
  * Ask the reviewer to review again when every comment of their latest
- * change request is marked and the required checks pass. GitHub stops
+ * change request is marked and the required checks pass. For the requester,
+ * their comment-only reviews count as a change request. GitHub stops
  * asking a reviewer once they review, so the fixed pull request would not
  * wait on them. While the checks have not passed, the ask is held, and the
  * check suite webhook asks when they pass. The ask is optional, so a failure
  * is logged and does not fail the tool.
  */
 async function askForReviewAgain(
-  ctx: {
-    egress: PluginEgress;
-    log: Pick<PluginLogger, "warn">;
-    state: PluginState;
-  },
+  ctx: FeedbackContext,
   input: {
     botUserId: number;
     marked?: { id: number; kind: "review" | "review_body" };
@@ -375,7 +412,11 @@ async function askForReviewAgain(
         }
         return response.body;
       },
-      { ...input, number: input.pullRequest },
+      {
+        ...input,
+        isRequester: async () => await reviewerIsRequester(ctx, input),
+        number: input.pullRequest,
+      },
     );
     // A read can lag behind another comment's new mark, so "none" drops
     // nothing. Each webhook checks a held ask again.
@@ -478,19 +519,11 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after you act on or reply to the feedback. Replaces only your prior status reaction on that comment. When every comment of the author's latest change request is marked and the required checks pass, asks the author to review again. Only works on pull requests the bot authored.",
+      "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after you act on or reply to the feedback. Replaces only your prior status reaction on that comment. When every comment of the author's latest change request, or of the requester's latest comment-only reviews, is marked and the required checks pass, asks the author to review again. Only works on pull requests the bot authored.",
     exposure: "direct",
     inputSchema,
     outputSchema,
-    async execute(
-      input,
-      _options,
-      ctx: {
-        egress: PluginEgress;
-        log: Pick<PluginLogger, "warn">;
-        state: PluginState;
-      },
-    ): Promise<Result> {
+    async execute(input, _options, ctx: FeedbackContext): Promise<Result> {
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(

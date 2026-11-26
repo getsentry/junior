@@ -3,12 +3,12 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import type { PluginRouteMethod, User } from "@sentry/junior-plugin-api";
-import { botConfig } from "@/chat/config";
+import { botConfig, getChatConfig } from "@/chat/config";
 import type { SignInAuth } from "@/chat/sign-in/auth";
 import type {
   PluginApiRouteRegistration,
   PluginRouteRegistration,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/routes";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 export interface JuniorDashboardOptions {
@@ -73,8 +73,7 @@ export function dashboardRequiresSignIn(
   dashboard: JuniorDashboardOptions | undefined,
 ): boolean {
   if (!dashboard || dashboard.disabled) return false;
-  if (dashboard.authRequired !== undefined) return dashboard.authRequired;
-  return process.env["JUNIOR_DASHBOARD_AUTH_REQUIRED"]?.trim() !== "false";
+  return dashboard.authRequired ?? getChatConfig().signIn.dashboardAuthRequired;
 }
 
 /** Mount the dashboard app on the dashboard-owned host paths. */

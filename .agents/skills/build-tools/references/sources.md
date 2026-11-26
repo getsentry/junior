@@ -11,6 +11,7 @@ Fetched 2026-10-29. Research and summaries: getsentry/junior#2364.
 - OpenAI: [Prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering.md), [GPT-5.5](https://developers.openai.com/api/docs/guides/latest-model/gpt-5.5.md), [GPT-5.6](https://developers.openai.com/api/docs/guides/prompt-guidance-gpt-5p6.md), [GPT-4.1 guide](https://cookbook.openai.com/examples/gpt4-1_prompting_guide), [Model Spec](https://model-spec.openai.com/2026-08-18.html).
 - Anthropic: [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices), [Reduce hallucinations](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-hallucinations), [Mid-conversation system messages](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages), [claude.ai system prompts](https://platform.claude.com/docs/en/release-notes/system-prompts/claude-fable-5-1).
 - Claude Code 2.1.312 binary: static sections first, then per-session context.
+- Anthropic [Prompting best practices, "Give Claude a role"](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#give-claude-a-role) (fetched 2026-11-26): a role in the system prompt focuses behavior. A Lead's identity header states its role.
 
 ## Tags, untrusted text, and IDs
 

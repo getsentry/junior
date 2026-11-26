@@ -28,7 +28,8 @@ import {
 } from "@/turn-steps/consumer";
 import { createEngineContext } from "@/turn-steps/engine-context";
 import { turnGroupKey } from "@/turn-steps/group-key";
-import type { TurnInputPayload } from "@/turn-steps/prompt";
+import { turnTools } from "@/turn-steps/tools";
+import type { TurnInputPayload } from "@/turn-steps/input-payload";
 
 const LOCAL_ACTOR: TurnInputPayload["actor"] = {
   fullName: "Local CLI",
@@ -43,8 +44,7 @@ const TURN_POLL_INTERVAL_MS = 250;
 // without a network call.
 const TURN_STEP_CALLBACK_URL = `http://cli.localhost/${TURN_STEP_TOPIC}`;
 
-// A Turn without tools makes one model request. This stops the wait for a
-// Turn whose step message never arrives.
+// This stops the wait for a Turn whose step message never arrives.
 const TURN_WAIT_TIMEOUT_MS = 10 * 60_000;
 
 const ENDED_STATES: ReadonlySet<TurnState> = new Set([
@@ -120,8 +120,7 @@ export async function runCoreEnginePrompt(args: {
     await turnStepConsumer(engineCtx, {
       client: createGatewayModelClient(),
       bot: config.bot,
-      // Core Turns have no tools yet.
-      tools: [],
+      tools: turnTools,
     }),
   );
   const server = await startLocalVercelQueueServer({

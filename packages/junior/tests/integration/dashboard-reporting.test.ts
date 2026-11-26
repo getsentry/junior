@@ -5,13 +5,12 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {
   juniorConversationEvents,
   juniorConversations,
-  juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
 import { deferred } from "../fixtures/conversation-work";
@@ -342,24 +341,16 @@ describe("dashboard canonical event reporting", () => {
     expect((await requireDetail(publicChild)).eventHistory).toEqual({
       status: "available",
     });
-    const { getConversationStore, getDb } = await import("@/chat/db");
+    const { getConversationStore, getDb, getSqlExecutor } =
+      await import("@/chat/db");
+    const { setConversationVisibility } =
+      await import("@/chat/conversations/sql/privacy");
     const { resolveViewerUser } = await import("@/chat/plugins/viewer");
-    const [rootRow] = await getDb()
-      .select({ destinationId: juniorConversations.destinationId })
-      .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, publicRoot));
-    if (!rootRow?.destinationId) throw new Error("Missing root destination");
-    await getDb()
-      .update(juniorDestinations)
-      .set({ visibility: "private" })
-      .where(eq(juniorDestinations.id, rootRow.destinationId));
+    await setConversationVisibility(getSqlExecutor(), publicRoot, "private");
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "redacted",
     );
-    await getDb()
-      .update(juniorDestinations)
-      .set({ visibility: "public" })
-      .where(eq(juniorDestinations.id, rootRow.destinationId));
+    await setConversationVisibility(getSqlExecutor(), publicRoot, "public");
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "available",
     );
@@ -405,7 +396,12 @@ describe("dashboard canonical event reporting", () => {
     });
     await getDb()
       .update(juniorConversations)
-      .set({ kind: "task", parentConversationId: cyclicChild })
+      // The forged child has no visibility, which reads as private.
+      .set({
+        kind: "task",
+        parentConversationId: cyclicChild,
+        visibility: null,
+      })
       .where(eq(juniorConversations.conversationId, cyclicRoot));
 
     await expect(

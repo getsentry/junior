@@ -1,7 +1,7 @@
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
-import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
+import { readParentMessage } from "@/chat/child-agents/parent-message-input";
+import { resultAuthorId } from "@/chat/child-agents/sender-actors";
 import { stopConversation } from "@/chat/conversations/stop";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -12,7 +12,7 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { changeTodos, listTodos } from "@/chat/todos/store";
-import { slackParentConversationId } from "../fixtures/agent-invocations";
+import { slackParentConversationId } from "../fixtures/child-agents";
 import { mailboxTexts, message, spawn } from "../fixtures/parent-agent-tools";
 import { readProxyProperty } from "../fixtures/proxy-property";
 import {
@@ -24,7 +24,7 @@ import {
   type Harness,
 } from "../fixtures/thread-input";
 
-describe("a person's stop of a child agent without an Agent invocation", () => {
+describe("a person's stop of a child agent", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();

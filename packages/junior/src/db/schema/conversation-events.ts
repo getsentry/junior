@@ -7,20 +7,13 @@ import {
   primaryKey,
   text,
   uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
-import { sql, type SQL, type SQLWrapper } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
+import { juniorTurns } from "./turns";
 import { timestamptz } from "./timestamps";
-
-/**
- * Match a user_message payload that a person sent as an instruction from a
- * chat surface. `junior_conversation_events_user_message_time_idx` has this
- * predicate, so a query with it can use the index and skip other events.
- */
-export function isUserInstruction(payload: SQLWrapper): SQL {
-  return sql`(${payload}->'provenance'->>'authority') = 'instruction' and (${payload}->'provenance'->'actor'->>'platform') in ('slack', 'local', 'web')`;
-}
 
 /**
  * Append-only canonical conversation history. `history_version` partitions
@@ -43,6 +36,12 @@ export const juniorConversationEvents = pgTable(
     actorIdentityId: text("actor_identity_id").references(
       () => juniorIdentities.id,
     ),
+    // The Turn that wrote the row, such as a step's agent history. Null for a
+    // row that no Turn wrote, such as a person's message: an input can move
+    // to another Turn, so its Turn is in `junior_turn_inbox`.
+    turnId: uuid("turn_id").references(() => juniorTurns.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [
@@ -97,6 +96,10 @@ export const juniorConversationEvents = pgTable(
       table.conversationId,
       table.seq,
     ),
+    // The rows of one Turn, and the delete of a Turn, which sets them null.
+    index("junior_conversation_events_turn_idx")
+      .on(table.turnId, table.seq)
+      .where(sql`${table.turnId} is not null`),
     // Message authors of a set of Conversations. The dashboard reads them for
     // each Conversation list and detail request.
     index("junior_conversation_events_author_idx")
@@ -113,15 +116,13 @@ export const juniorConversationEvents = pgTable(
         table.seq,
       )
       .where(sql`${table.type} = 'message'`),
-    // The newest user instruction, for each listed Conversation. With the
-    // provenance check in the predicate, a newest-first read stops at the
-    // first entry. A filter on the scan instead made Postgres misestimate
-    // the match rate and sort every user_message of the Conversation.
-    index("junior_conversation_events_user_message_time_idx")
-      .on(table.conversationId, table.createdAt, table.seq)
-      .where(
-        sql`${table.type} = 'user_message' and ${isUserInstruction(table.payload)}`,
-      ),
+    // The newest Message with one role in transcript order, for status.
+    // A newest-first read stops at the first entry; in message_role_idx
+    // `created_at` comes before `seq`, so that read sorts every Message of
+    // the role.
+    index("junior_conversation_events_message_role_seq_idx")
+      .on(table.conversationId, sql`(${table.payload}->>'role')`, table.seq)
+      .where(sql`${table.type} = 'message'`),
     index("junior_conversation_events_message_search_idx")
       .using("gin", sql`to_tsvector('english', ${table.payload}->>'text')`)
       .where(sql`${table.type} = 'message'`),
