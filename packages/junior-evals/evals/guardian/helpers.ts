@@ -157,6 +157,11 @@ export async function proposal(input: {
    * person's root Run, it is built from the evidence when not given.
    */
   root?: RootConversationMessage[] | undefined;
+  /**
+   * The Space Lead's author-labeled Conversation, as core reads it for a Run
+   * under a Lead. Needs `root`.
+   */
+  lead?: RootConversationMessage[] | undefined;
   /** The Code Mode script that made the call, as core bounds it. */
   script?: ToolActionScript;
   tool: SnapshotTool;
@@ -181,7 +186,15 @@ export async function proposal(input: {
     input: input.input,
     ...(priorRejectedActions.length > 0 ? { priorRejectedActions } : undefined),
     ...(root
-      ? { rootConversation: { messages: root, truncated: false } }
+      ? {
+          rootConversation: {
+            ...(input.lead
+              ? { lead: { messages: input.lead, truncated: false } }
+              : undefined),
+            messages: root,
+            truncated: false,
+          },
+        }
       : undefined),
     ...(input.script ? { script: input.script } : undefined),
     tool: await resolveTool(input.tool, input.input),

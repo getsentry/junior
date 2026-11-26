@@ -305,7 +305,7 @@ describe("Guardian action review", () => {
     ).not.toContain("root_user_instructions");
   });
 
-  it("reads a member's concern as a request only for a Lead's startAgent", () => {
+  it("reads a member's concern as a request only for a Lead's hand-off", () => {
     const withRoot: ToolActionProposal = {
       ...proposal,
       rootConversation: {
@@ -319,10 +319,18 @@ describe("Guardian action review", () => {
       ...withRoot,
       tool: { description: "Start a child agent.", name: "startAgent" },
     };
-    const leadRule = "This action is startAgent in a Space's Lead";
+    const leadRule =
+      "This action is startAgent or messageAgent in a Space's Lead";
 
     expect(
       guardianPrompt({ ...start, context: { ...start.context, lead: true } }),
+    ).toContain(leadRule);
+    expect(
+      guardianPrompt({
+        ...withRoot,
+        context: { ...withRoot.context, lead: true },
+        tool: { description: "Message an agent.", name: "messageAgent" },
+      }),
     ).toContain(leadRule);
     expect(guardianPrompt(start)).not.toContain(leadRule);
     expect(
@@ -331,5 +339,33 @@ describe("Guardian action review", () => {
         context: { ...withRoot.context, lead: true },
       }),
     ).not.toContain(leadRule);
+  });
+  it("fences the Lead's conversation for a Run under a Lead, before the Run's own", () => {
+    const prompt = guardianPrompt({
+      ...proposal,
+      rootConversation: {
+        lead: {
+          messages: [
+            { author: "user", text: "Drop the column." },
+            { author: "assistant", text: "Starting a Thread." },
+          ],
+          truncated: true,
+        },
+        messages: [{ author: "parent agent", text: "Drop the column." }],
+        truncated: false,
+      },
+    });
+    const key = /<lead_conversation key="([0-9a-f]{24})">/.exec(prompt)?.[1];
+
+    expect(key).toBeDefined();
+    expect(prompt).toContain("This run works under a Space's Lead.");
+    expect(prompt).toContain(
+      `<lead_conversation key="${key}">\nHost notice: some root messages are not shown.`,
+    );
+    expect(prompt).toContain(
+      `user: Drop the column.\nassistant: Starting a Thread.\n</lead_conversation key="${key}">\n<root_user_instructions key="${key}">\nparent agent: Drop the column.`,
+    );
+    // A Run that is not under a Lead gets neither the rules nor the section.
+    expect(guardianPrompt(proposal)).not.toContain("lead_conversation");
   });
 });

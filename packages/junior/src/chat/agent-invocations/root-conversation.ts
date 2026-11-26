@@ -2,8 +2,11 @@
  * Reads the authority of an action from the Conversation of its Run.
  *
  * When Guardian reviews an action, the runtime reads the messages of the
- * Conversation that the Run belongs to, and never of a Conversation above
- * it. The source is the `message` events: the durable visible transcript.
+ * Conversation that the Run belongs to. It reads no Conversation above it,
+ * except a Space's Lead: under a Lead, it also reads the Lead's messages, so
+ * what a member told the Lead authorizes the Lead's children and they do not
+ * ask the member again. The source is the `message` events: the durable
+ * visible transcript.
  * Compaction never rewrites these events, so an early request or a
  * later revocation is still there after the model history changes.
  *
@@ -15,12 +18,21 @@
  * the one exception, because it has no per-person Identity. A Run that an
  * agent started follows its parent agent, so the tasks and messages that the
  * parent sent with startAgent or messageAgent count as the user there, and no
- * person's message does. Each other message keeps its real author as a label
- * and is only context. Nothing is copied into the Run.
+ * person's message does. Under a Lead, the person is the Run's Actor: the
+ * member whose Lead Turn sent the task or message. Then only that member's
+ * own words count as the user, in the Lead and in the Run, and the parent's
+ * relayed tasks are labeled `parent agent`. Each other message keeps its
+ * real author as a label and is only context. Nothing is copied into the Run.
  */
+import { and, eq, ne } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
 import type { Actor } from "@/chat/actor";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
 import type { Conversation } from "@/chat/conversations/store";
@@ -30,6 +42,7 @@ import {
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { juniorConversations } from "@/db/schema";
 import { isParentMessageAuthor } from "./parent-message";
 
 /**
@@ -108,14 +121,14 @@ function messageLabel(
   if (data.role !== "user") {
     return "system";
   }
-  // In a Run that an agent started, a parent message is the instruction.
+  // In a Run that an agent started, a parent message is the instruction. In
+  // a Run that a person's words authorize, it is text that an agent relayed.
   if (
-    !actor &&
     isParentMessageAuthor(
       messageAuthorSchema.safeParse(data.meta?.["author"]).data,
     )
   ) {
-    return "user";
+    return actor ? "parent agent" : "user";
   }
   // An Event Turn input, such as a child agent result, is not a person.
   if (data.meta?.["eventType"] !== undefined) {
@@ -187,16 +200,72 @@ async function readOpeningMessage(
 }
 
 /**
+ * Read the id of the Space Lead that is the tree root of a Conversation, or
+ * nothing when the Conversation is not under a Lead. The Lead is the root of
+ * the requester's own tree, with the same visibility and audience, so
+ * reading it follows `policies/conversation-access.md`.
+ */
+async function readLeadAbove(
+  conversationId: string,
+): Promise<string | undefined> {
+  const lead = alias(juniorConversations, "lead");
+  const [row] = await getDb()
+    .select({ conversationId: lead.conversationId })
+    .from(juniorConversations)
+    .innerJoin(
+      lead,
+      and(
+        eq(lead.conversationId, juniorConversations.rootConversationId),
+        eq(lead.kind, "lead"),
+        ne(lead.conversationId, juniorConversations.conversationId),
+      ),
+    )
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .limit(1);
+  return row?.conversationId;
+}
+
+/**
  * Read a bounded projection of the Run's own Conversation for Guardian review
  * of one action. `actor` is the requester: the Actor whose instructions the
- * Run follows, or nothing when an agent writes them. Only the requester's
- * messages are labeled as authority. For a Run that an agent started, those
- * are its parent agent's tasks and messages.
+ * Run follows, or nothing when an agent writes them. `runActor` is the Run's
+ * Actor. Only the requester's messages are labeled as authority. For a Run
+ * that an agent started, those are its parent agent's tasks and messages.
+ *
+ * Under a Space's Lead, the person is the requester, or else the Run's Actor:
+ * the member whose Lead Turn handed off the work. Their own messages to the
+ * Lead and to the Run are the authority, and the parent's tasks are relayed
+ * text. A Run of a system Actor keeps the parent's tasks as its authority.
  */
 export async function readRootConversation(args: {
   actor: Actor | undefined;
   conversationId: string;
+  runActor?: Actor | undefined;
 }): Promise<RootConversation> {
+  const leadId = await readLeadAbove(args.conversationId);
+  const person = args.actor ?? args.runActor;
+  if (!leadId || !person || person.platform === "system") {
+    return await readConversationMessages(args);
+  }
+  const [own, lead] = await Promise.all([
+    readConversationMessages({
+      actor: person,
+      conversationId: args.conversationId,
+    }),
+    readConversationMessages({ actor: person, conversationId: leadId }),
+  ]);
+  return { ...own, lead };
+}
+
+/**
+ * Read the bounded, author-labeled messages of one Conversation. Only the
+ * messages of `actor`, or of the parent agent when `actor` is nothing, are
+ * labeled `user`.
+ */
+async function readConversationMessages(args: {
+  actor: Actor | undefined;
+  conversationId: string;
+}): Promise<Omit<RootConversation, "lead">> {
   const root = await getConversationStore().get({
     conversationId: args.conversationId,
   });

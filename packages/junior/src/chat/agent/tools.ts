@@ -530,8 +530,10 @@ export async function wireAgentTools(
       // Actor of the Run's instructions, or nothing when an agent writes
       // them. A Run of a system Actor, such as an event Turn, is not the
       // author of the person's messages, so it keeps only the unlabeled
-      // evidence, unless its instructions have their own provenance. Read
-      // for each action.
+      // evidence, unless its instructions have their own provenance. Under a
+      // Space's Lead, the Run's Actor is the member whose Lead Turn handed
+      // off the work, and their words to the Lead authorize too. Read for
+      // each action.
       ...(args.run.instruction.provenance ||
       (args.currentActor && args.currentActor.platform !== "system")
         ? {
@@ -541,6 +543,7 @@ export async function wireAgentTools(
                   ? args.run.instruction.provenance.actor
                   : args.currentActor,
                 conversationId: args.run.conversationId,
+                runActor: args.currentActor,
               }),
           }
         : undefined),

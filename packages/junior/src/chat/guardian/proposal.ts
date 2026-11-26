@@ -62,9 +62,17 @@ export const ROOT_LINE_BREAK = /\r\n|[\n\r\u2028\u2029\u0085]/;
 export interface RootConversationMessage {
   /**
    * `user` is a message from the Run's own Actor. Only it can authorize an
-   * action. Each other label is only context.
+   * action. `parent agent` is a task or message that the parent agent of a
+   * child Run relayed, in a Run that a person's words authorize. Each other
+   * label is only context.
    */
-  author: "user" | "assistant" | "other person" | "event" | "system";
+  author:
+    | "user"
+    | "assistant"
+    | "parent agent"
+    | "other person"
+    | "event"
+    | "system";
   text: string;
 }
 
@@ -73,6 +81,12 @@ export interface RootConversationMessage {
  * Guardian reviews one action.
  */
 export interface RootConversation {
+  /**
+   * The Space Lead's own Conversation, labeled for the same Actor, for a Run
+   * under a Lead. The member's words to the Lead authorize the Lead's
+   * children, so a child does not ask again for what the member said there.
+   */
+  lead?: Omit<RootConversation, "lead">;
   messages: RootConversationMessage[];
   /** Older root messages are not in `messages`. */
   truncated: boolean;

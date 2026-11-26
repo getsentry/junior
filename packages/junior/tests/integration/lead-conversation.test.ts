@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { canReadConversation } from "@/api/conversations/access";
 import { readConversationFeed } from "@/api/conversations/list";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import type { AgentRun } from "@/chat/agent/types";
 import { ownsLocation } from "@/chat/conversations/kind-behavior";
@@ -16,7 +17,10 @@ import {
   getConversationEventStore,
   getConversationStore,
   getDb,
+  getSqlExecutor,
 } from "@/chat/db";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { readSpaceStates } from "@/api/spaces/state";
 import { setConversationSpace } from "@/chat/spaces/conversations";
@@ -108,6 +112,39 @@ async function startAgent(
     { toolCallId },
   );
   return childConversationId;
+}
+
+let leadMessageCount = 0;
+
+/** Record one visible message in the Lead, as web ingress does. */
+async function recordLeadMessage(
+  conversationId: string,
+  message: { person?: User; text: string },
+): Promise<void> {
+  leadMessageCount += 1;
+  const messageId = `lead-message-${leadMessageCount}`;
+  const actor = message.person ? webActorFromUser(message.person) : undefined;
+  await getConversationEventStore().append(conversationId, [
+    {
+      idempotencyKey: `message:${messageId}`,
+      data: {
+        type: "message",
+        messageId,
+        role: actor ? "user" : "assistant",
+        text: message.text,
+        ...(actor
+          ? {
+              authorIdentityId: await resolveActorIdentityId(
+                getSqlExecutor(),
+                actor,
+              ),
+              meta: { author: { userId: actor.userId } },
+            }
+          : undefined),
+      },
+      createdAtMs: 1_000 + leadMessageCount,
+    },
+  ]);
 }
 
 /** The stored tree columns of some Conversations, by id. */
@@ -238,6 +275,88 @@ describe("Lead", () => {
         "call-too-deep",
       ),
     ).rejects.toThrow("only 0 level(s) of child agents can start their own");
+  });
+
+  it("lets a member's own words to the Lead authorize its children's actions", async () => {
+    const harness = await createConversationWorkHarness(
+      readRunsAgentRunner().agentRunner,
+    );
+    const ana = await signedInViewer("lead-authority@example.com");
+    const bo = await signedInViewer("lead-authority-bo@example.com");
+    const { lead } = await spaceLead(ana);
+    await recordLeadMessage(lead.conversationId, {
+      person: ana,
+      text: "Drop top_level_conversation_id from PR 2.",
+    });
+    await recordLeadMessage(lead.conversationId, {
+      text: "Starting a Thread for it.",
+    });
+    await recordLeadMessage(lead.conversationId, {
+      person: bo,
+      text: "Merge it too.",
+    });
+    const leadTurn = {
+      conversationId: lead.conversationId,
+      person: ana,
+      queue: harness.queue,
+      state: harness.state,
+    };
+    const child = await startAgent(leadTurn, "call-authority", {
+      task: "Drop top_level_conversation_id from PR 2 and merge it.",
+    });
+    await harness.process(harness.queue.takeMessageFor(child));
+    const grandchild = await startAgent(
+      { ...leadTurn, conversationId: child },
+      "call-authority-grandchild",
+    );
+    const leadMessages = [
+      { author: "user", text: "Drop top_level_conversation_id from PR 2." },
+      { author: "assistant", text: "Starting a Thread for it." },
+      { author: "other person", text: "Merge it too." },
+    ];
+
+    // The child runs as the member whose Lead Turn handed off the work. An
+    // agent writes its instructions, so only the Run's Actor names her.
+    const read = await readRootConversation({
+      actor: undefined,
+      conversationId: child,
+      runActor: webActorFromUser(ana),
+    });
+    // Only her own words authorize, in the Lead too. The Lead's task is
+    // relayed text.
+    expect(read.lead?.messages).toEqual(leadMessages);
+    expect(read.messages).toContainEqual({
+      author: "parent agent",
+      text: expect.stringContaining("and merge it"),
+    });
+    expect(read.messages.map(({ author }) => author)).not.toContain("user");
+    // Every depth under the Lead reads the Lead.
+    await expect(
+      readRootConversation({
+        actor: undefined,
+        conversationId: grandchild,
+        runActor: webActorFromUser(ana),
+      }),
+    ).resolves.toMatchObject({ lead: { messages: leadMessages } });
+    // A system Run names no member, so the parent's task stays its
+    // instruction and the Lead is not read.
+    const systemRead = await readRootConversation({
+      actor: undefined,
+      conversationId: child,
+      runActor: EVENT_SYSTEM_ACTOR,
+    });
+    expect(systemRead.lead).toBeUndefined();
+    expect(systemRead.messages).toContainEqual({
+      author: "user",
+      text: expect.stringContaining("and merge it"),
+    });
+    // The Lead reads only itself.
+    await expect(
+      readRootConversation({
+        actor: webActorFromUser(ana),
+        conversationId: lead.conversationId,
+      }),
+    ).resolves.not.toHaveProperty("lead");
   });
 
   it("starts work that a person begins in a Space as a child of the Lead", async () => {
