@@ -34,9 +34,11 @@ test("Invite adds the people that the picker finds to a public conversation", as
   await page.goto(
     `${dashboard.baseURL}${conversationPath(PUBLIC_CONVERSATION_ID)}`,
   );
-  const participants = page
-    .getByRole("complementary", { exact: true, name: "Conversation details" })
-    .getByRole("region", { name: "Participants" });
+  const details = page.getByRole("complementary", {
+    exact: true,
+    name: "Conversation details",
+  });
+  const participants = details.getByRole("region", { name: "Participants" });
   await participants.getByRole("button", { name: "Invite" }).click();
   const search = participants.getByRole("combobox", { name: "Invite people" });
   await expect(search).toBeFocused();
@@ -79,7 +81,7 @@ test("Invite adds the people that the picker finds to a public conversation", as
   ).toBeVisible();
   await screenshot(page, "people-picker-invite", {
     lightTheme: true,
-    target: participants,
+    target: details,
     view: "desktop",
   });
   // Escape clears the search.
