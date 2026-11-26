@@ -46,6 +46,8 @@ export interface Space {
   archivedAt: Date | null;
   memberCount: number;
   viewerIsMember: boolean;
+  /** The Lead, which Junior creates with the Space. */
+  leadConversationId: string;
 }
 
 /** One member of a Space. */
@@ -64,6 +66,7 @@ export interface SpaceListFilter {
 }
 
 const memberLead = alias(juniorConversations, "space_member_lead");
+const lead = alias(juniorConversations, "space_lead");
 const participants = juniorConversationParticipants;
 
 /**
@@ -115,8 +118,13 @@ async function selectSpaces(
       viewerIsMember: sql<boolean>`${exists(
         viewerMembership(viewerUserId),
       )}`.mapWith(Boolean),
+      leadConversationId: lead.conversationId,
     })
     .from(juniorSpaces)
+    .innerJoin(
+      lead,
+      and(eq(lead.kind, "lead"), eq(lead.spaceId, juniorSpaces.id)),
+    )
     // A private Space is readable only by its members.
     .where(
       and(

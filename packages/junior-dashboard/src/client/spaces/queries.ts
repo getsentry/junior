@@ -5,7 +5,6 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import {
-  conversationFeedSchema,
   setConversationSpaceResponseSchema,
   spaceListSchema,
   spaceMemberListSchema,
@@ -29,12 +28,8 @@ const spaceKey = (spaceId: string | undefined) =>
 const spaceMembersKey = (spaceId: string | undefined) =>
   [...spaceKey(spaceId), "members"] as const;
 
-/** The query key of a Space's Lead. */
-export const spaceLeadKey = (spaceId: string | undefined) =>
-  [...spaceKey(spaceId), "lead"] as const;
-
 /** The API path of one Space. */
-export const spaceApiPath = (spaceId: string) =>
+const spaceApiPath = (spaceId: string) =>
   `/api/spaces/${encodeURIComponent(spaceId)}`;
 
 /** Fetch the viewer's Spaces that are not archived, for the pane. */
@@ -103,24 +98,6 @@ export function useSpaceMembersData(spaceId: string | undefined) {
   });
 }
 
-/**
- * Fetch the top-level Conversations of one Space. The key is under the
- * Conversation feeds, so every change to a Conversation refreshes it.
- */
-export function useSpaceConversationsData(spaceId: string | undefined) {
-  return useQuery({
-    enabled: Boolean(spaceId),
-    queryKey: ["dashboard", "conversations", "space", { spaceId }],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationFeedSchema,
-        `/api/conversations?${new URLSearchParams({ spaceId: spaceId! })}`,
-        signal,
-      ),
-    retry: false,
-  });
-}
-
 /** Put the changed Space in its cache and refresh the pane's list. */
 function storeSpace(queryClient: QueryClient, space: SpaceReport) {
   queryClient.setQueryData(spaceKey(space.id), space);
@@ -164,10 +141,7 @@ export function useUpdateSpace() {
   });
 }
 
-/**
- * Join or leave one Space as the viewer. A member's read makes the Lead, so
- * the Lead reads again too.
- */
+/** Join or leave one Space as the viewer. */
 export function useSpaceMembership() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -179,15 +153,10 @@ export function useSpaceMembership() {
       // A former member can't read a private Space, so drop everything
       // cached for it and read the feeds and Inbox again without its rows.
       if (space.visibility === "private" && !space.viewerIsMember) {
-        const lead = queryClient.getQueryData<{ conversationId: string }>(
-          spaceLeadKey(space.id),
-        );
         queryClient.removeQueries({ queryKey: spaceKey(space.id) });
-        if (lead) {
-          queryClient.removeQueries({
-            queryKey: conversationDetailQueryKey(lead.conversationId),
-          });
-        }
+        queryClient.removeQueries({
+          queryKey: conversationDetailQueryKey(space.leadConversationId),
+        });
         for (const [queryKey, detail] of queryClient.getQueriesData<
           ConversationSnapshot | undefined
         >({ queryKey: ["conversation"] })) {
@@ -205,7 +174,6 @@ export function useSpaceMembership() {
       return Promise.all([
         storeSpace(queryClient, space),
         queryClient.invalidateQueries({ queryKey: spaceMembersKey(space.id) }),
-        queryClient.invalidateQueries({ queryKey: spaceLeadKey(space.id) }),
         ...invalidateSpaceDetails(queryClient, space.id),
       ]);
     },
