@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import {
   interceptTestGitHubChecksHttp,
+  interceptTestGitHubCraftReleaseHttp,
   interceptTestGitHubDraftsHttp,
   interceptTestGitHubIssuesHttp,
   resetTestGitHubHttpFixtures,
@@ -10,6 +11,24 @@ export const GITHUB_API_ORIGIN = "https://api.github.com";
 
 export function resetGitHubApiMockState(): void {
   resetTestGitHubHttpFixtures();
+}
+
+/**
+ * Answer a GitHub request from the shared GitHub fixtures, or return
+ * undefined when none of them serves it. Plugin tools and `webFetch` call
+ * GitHub in process, so they reach these fixtures here and not through
+ * sandbox egress.
+ */
+export async function serveGitHubFixture(
+  request: Request,
+): Promise<Response | undefined> {
+  const url = new URL(request.url);
+  return (
+    (await interceptTestGitHubChecksHttp(request, url)) ??
+    (await interceptTestGitHubCraftReleaseHttp(request, url)) ??
+    (await interceptTestGitHubDraftsHttp(request, url)) ??
+    (await interceptTestGitHubIssuesHttp(request, url))
+  );
 }
 
 export const githubApiHandlers = [
@@ -43,13 +62,7 @@ export const githubApiHandlers = [
     HttpResponse.json({ incidents: [] }),
   ),
   http.all(/^https:\/\/(api\.)?github\.com\//, async ({ request }) => {
-    const url = new URL(request.url);
-    // Plugin tools call GitHub in process, so they reach these fixtures here
-    // and not through sandbox egress.
-    const response =
-      (await interceptTestGitHubChecksHttp(request, url)) ??
-      (await interceptTestGitHubDraftsHttp(request, url)) ??
-      (await interceptTestGitHubIssuesHttp(request, url));
+    const response = await serveGitHubFixture(request);
     if (response) return response;
     // A matched MSW handler that returns undefined bypasses the network guard.
     throw new Error(

@@ -7,13 +7,15 @@
  * `mockWebSearchResults()`.
  *
  * The pages that the `webFetch` tool reads go to Roach, which
- * replays them. See the `web` rule in `roach.json`. A test can answer some
- * pages itself with `mockWebPages()`.
+ * replays them. See the `web` rule in `roach.json`. The shared GitHub
+ * fixtures answer the GitHub pages that they serve, and a test can answer
+ * some pages itself with `mockWebPages()`.
  */
 import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
 import { USER_AGENT } from "@/chat/tool-support/web/constants";
+import { serveGitHubFixture } from "@junior-tests/msw/handlers/github-api";
 import { mswServer } from "@junior-tests/msw/server";
 
 let mockedPages: Record<string, string> = {};
@@ -40,7 +42,7 @@ export function mockWebPages(pages: Record<string, string>): void {
 /** Send the pages that `webFetch` reads to Roach. */
 export function installWebReplay(): void {
   mswServer.use(
-    http.get("*", ({ request }) => {
+    http.get("*", async ({ request }) => {
       // Only `webFetch` sends this user agent.
       if (request.headers.get("user-agent") !== USER_AGENT) return undefined;
       const page = mockedPages[pageKey(new URL(request.url))];
@@ -49,6 +51,10 @@ export function installWebReplay(): void {
           headers: { "content-type": "text/html; charset=utf-8" },
         });
       }
+      // A GitHub page that the shared GitHub fixtures serve shows the same
+      // state as their API.
+      const github = await serveGitHubFixture(request);
+      if (github) return github;
       // `webFetch` uses `node:https`, which does not use the proxy. `fetch`
       // uses the proxy dispatcher of the test. `webFetch` follows redirects
       // itself, so each redirect is its own request.

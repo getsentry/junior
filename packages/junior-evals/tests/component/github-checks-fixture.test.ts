@@ -91,6 +91,15 @@ it("serves the merged Craft release blocker with open alerts that only a person 
     number: 983,
     merged: true,
   });
+  // Plugin tools and `webFetch` read it in process.
+  expect(
+    await fetch(`${api}/pulls/983`).then((response) => response.json()),
+  ).toMatchObject({ number: 983, merged: true });
+  const page = await createWebFetchTool({}).execute!(
+    { url: "https://github.com/getsentry/craft/pull/983" },
+    { experimental_context: undefined },
+  );
+  expect(page["content"]).toContain("State: merged");
   expect(await serve("/dependabot/alerts")).toMatchObject([
     {
       number: 1,
