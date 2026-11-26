@@ -91,6 +91,8 @@ import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/core-model";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createCurrentGuardian } from "@/chat/guardian/current";
+import type { Guardian } from "@/chat/guardian/guardian";
+import { createNextGuardian } from "@/chat/guardian/next/guardian";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
@@ -333,6 +335,24 @@ function resolveToolRuntimeRoute(args: {
   }
 }
 
+/**
+ * Build the Guardian that `JUNIOR_GUARDIAN` selects. `current` stays the
+ * default until the next Guardian meets the swap criteria of its eval
+ * suite and core gives it the facts that it needs.
+ */
+function selectGuardian(): Guardian {
+  const options = {
+    completeObject,
+    destinationFacts: guardianPluginFacts(
+      pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+    ),
+    modelId: botConfig.guardianModelId,
+  };
+  return botConfig.guardian === "next"
+    ? createNextGuardian(options)
+    : createCurrentGuardian(createGuardianActionReviewer(options));
+}
+
 export interface ToolWiring {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
   agentTools: AgentTool[];
@@ -558,15 +578,7 @@ export async function wireAgentTools(
       }),
     onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
-    guardian: createCurrentGuardian(
-      createGuardianActionReviewer({
-        completeObject,
-        destinationFacts: guardianPluginFacts(
-          pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
-        ),
-        modelId: botConfig.guardianModelId,
-      }),
-    ),
+    guardian: selectGuardian(),
   });
   const skills = loadableSkills(args.availableSkills, [
     ...args.invokedSkillNames,

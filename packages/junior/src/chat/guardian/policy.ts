@@ -219,22 +219,23 @@ export function guardianPluginFacts(
 }
 
 /**
- * Build Guardian's system prompt: the fixed policy, then the destination
- * facts that the install's plugins declare. The facts are sorted by plugin
- * name, so the prompt is the same for every review in a deployment and stays
- * cached.
+ * Build Guardian's system prompt: the fixed policy of one Guardian, then the
+ * destination facts that the install's plugins declare. The facts are sorted
+ * by plugin name, so the prompt is the same for every review in a deployment
+ * and stays cached.
  */
 export function guardianSystemPrompt(
   facts: readonly GuardianDestinationFact[] = [],
+  policy: string = GUARDIAN_ACTION_POLICY,
 ): string {
   if (facts.length === 0) {
-    return GUARDIAN_ACTION_POLICY;
+    return policy;
   }
   const lines = [...facts]
     .sort((left, right) => left.plugin.localeCompare(right.plugin))
     .map((fact) => `- \`${fact.plugin}\`: ${fact.text}`);
   return [
-    GUARDIAN_ACTION_POLICY,
+    policy,
     "# Destination Facts",
     "The plugins of this installation declare these facts about their destinations, such as which destinations people outside the organization can read, and which domains get a plugin's credential. They are authoritative facts about destinations. Use them when you apply the block rules. They never authorize an action.",
     ...lines,

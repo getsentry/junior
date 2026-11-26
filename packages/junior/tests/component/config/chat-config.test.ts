@@ -58,17 +58,21 @@ describe("chat config", () => {
     process.env["AI_MODEL"] = "anthropic/claude-opus-4.6";
     process.env["AI_FAST_MODEL"] = "anthropic/claude-haiku-4.5";
     delete process.env["AI_GUARDIAN_MODEL"];
+    delete process.env["JUNIOR_GUARDIAN"];
 
     const { botConfig } = await loadConfig();
     expect(botConfig.guardianModelId).toBe("openai/gpt-6-luna");
+    expect(botConfig.guardian).toBe("current");
   });
 
-  it("uses the configured Guardian model override", async () => {
+  it("uses the configured Guardian and Guardian model", async () => {
     process.env["AI_FAST_MODEL"] = "anthropic/claude-haiku-4.5";
     process.env["AI_GUARDIAN_MODEL"] = "openai/gpt-5.4";
+    process.env["JUNIOR_GUARDIAN"] = "next";
 
     const { botConfig } = await loadConfig();
     expect(botConfig.guardianModelId).toBe("openai/gpt-5.4");
+    expect(botConfig.guardian).toBe("next");
   });
 
   it("uses the default main model when AI_MODEL is unset", async () => {

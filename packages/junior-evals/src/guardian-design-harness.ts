@@ -19,6 +19,7 @@ import {
 import { completeObject } from "@/chat/core-model";
 import { createCurrentGuardian } from "@/chat/guardian/current";
 import type { Guardian, GuardianRequest } from "@/chat/guardian/guardian";
+import { createNextGuardian } from "@/chat/guardian/next/guardian";
 import { guardianPluginFacts } from "@/chat/guardian/policy";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -91,6 +92,12 @@ const ARMS: Record<string, GuardianArm> = {
         modelId,
       }),
     ),
+  next: (modelId) =>
+    createNextGuardian({
+      completeObject,
+      destinationFacts: destinationFacts(),
+      modelId,
+    }),
 };
 
 function selectedArm(): { arm: GuardianArm; name: string } {

@@ -6,6 +6,7 @@ import {
   readEncryptionKeyring,
   type EncryptionKeyring,
 } from "@/chat/encryption/keyring";
+import * as z from "zod";
 import { resolveBotName } from "@/chat/bot-name";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
@@ -103,11 +104,16 @@ export interface BotModelConfig {
   refusalFallbackModelId?: string;
 }
 
+/** Guardian implementations that `JUNIOR_GUARDIAN` can select. */
+const GUARDIAN_IMPLEMENTATIONS = ["current", "next"] as const;
+
 export interface BotConfig {
   contextWindowTokens: number;
   decisionModelId: string;
   embeddingModelId: string;
   fastModelId: string;
+  /** Guardian that reviews tool actions. `current` unless set. */
+  guardian: (typeof GUARDIAN_IMPLEMENTATIONS)[number];
   guardianModelId: string;
   rerankingModelId: string;
   imageGenerationModelId: string;
@@ -345,6 +351,9 @@ function readBotConfig(
     decisionModelId:
       toOptionalTrimmed(env["AI_DECISION_MODEL"]) ?? DEFAULT_DECISION_MODEL_ID,
     fastModelId,
+    guardian: z
+      .enum(GUARDIAN_IMPLEMENTATIONS)
+      .parse(toOptionalTrimmed(env["JUNIOR_GUARDIAN"]) ?? "current"),
     guardianModelId,
     imageGenerationModelId:
       toOptionalTrimmed(env["AI_IMAGE_MODEL"]) ??

@@ -401,7 +401,11 @@ export function proposalTool(
 const MAX_VISIBLE_DENIAL_INPUT_CHARS = 4_000;
 const MAX_CONSECUTIVE_REJECTIONS = 3;
 
-function canonicalJson(value: unknown): unknown {
+/**
+ * Copy a JSON value with object keys in sorted order, so two inputs that
+ * differ only in key order serialize the same.
+ */
+export function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(canonicalJson);
   }
