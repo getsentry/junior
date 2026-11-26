@@ -440,6 +440,28 @@ describe("the Inbox item of an issue that Junior created", () => {
       // Deleting the issue closes its item.
       await sendGitHubWebhook("issues", issueEvent(body, "deleted", ["sam"]));
       expect(await issueItem()).toMatchObject({ status: "done" });
+
+      // The other Conversation's earlier link becomes a card, so it owns
+      // the issue, and the footer does not name it. A new ask skips the
+      // issue with no item, and GitHub gets no failure to retry.
+      await getDb()
+        .update(juniorConversationAnnotations)
+        .set({
+          annotation: {
+            key: "getsentry/junior#4254",
+            kind: "object",
+            objectType: "task",
+          },
+          kind: "object",
+        })
+        .where(
+          eq(juniorConversationAnnotations.conversationId, "slack:C999:1.0001"),
+        );
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "assigned", ["pat"], { assignee: { login: "pat" } }),
+      );
+      expect(await issueItem()).toMatchObject({ status: "done" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
