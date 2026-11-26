@@ -118,6 +118,7 @@ describe("child agents", () => {
     harness: { queue: ConversationWorkQueue; state: Harness["state"] },
     childConversationId: string,
     idempotencyKey: string,
+    parentConversationId = slackParentConversationId,
   ) {
     return await messageChildAgent(
       {
@@ -125,7 +126,7 @@ describe("child agents", () => {
         childConversationId,
         idempotencyKey,
         input: "Check it again.",
-        parentConversationId: slackParentConversationId,
+        parentConversationId,
         parentToolCallId: idempotencyKey,
         parentTurnId: idempotencyKey,
       },
@@ -789,16 +790,22 @@ describe("child agents", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      await stopConversationTree([childId], {
+      const helperId = await spawnChild(harness, "child-turn:call-1", {
+        parentConversationId: childId,
+      });
+      await stopConversationTree([childId, helperId], {
         state: harness.state,
         stoppedAtMs: Date.now(),
       });
 
       await expect(
-        spawnChild(harness, "child-turn:call-1", {
+        spawnChild(harness, "child-turn:call-2", {
           parentConversationId: childId,
         }),
       ).rejects.toThrow("is stopped");
+      await expect(
+        messageChild(harness, helperId, "child-turn:call-3", childId),
+      ).resolves.toEqual({ delivery: "noted" });
     } finally {
       await harness.close();
     }

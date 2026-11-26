@@ -5,7 +5,7 @@ import {
   getConversationStoppedAtMs,
   stopConversationTree,
 } from "@/chat/conversations/session-stop";
-import { readAgentConfig } from "@/chat/conversations/agent-config";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -240,11 +240,8 @@ export async function reportPersonStopToParent(
     stoppedAtMs: number;
   },
 ): Promise<void> {
-  if (!(await readAgentConfig(conversationId))) {
-    return;
-  }
   const conversation = await getConversationStore().get({ conversationId });
-  if (!conversation) {
+  if (!conversation || isTopLevel(conversation)) {
     return;
   }
   const work = await getConversationWorkState({

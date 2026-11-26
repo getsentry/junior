@@ -6,7 +6,6 @@
  */
 import type { StateAdapter } from "chat";
 import { and, eq, inArray } from "drizzle-orm";
-import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { juniorConversationEvents } from "@/db/schema";
@@ -84,9 +83,10 @@ export async function recordChildAgentEnded(
     state?: StateAdapter | undefined;
   } = {},
 ): Promise<void> {
-  // Only a child agent stores an agent config. Its parent messages are the
-  // only input with these markers.
-  if (!(await readAgentConfig(childConversationId))) {
+  // Only a child agent has a parent edge. Its parent messages are the only
+  // input with these markers.
+  const sender = await readChildConversationSender(childConversationId);
+  if (!sender) {
     return;
   }
   const work = await getConversationWorkState({
@@ -107,10 +107,6 @@ export async function recordChildAgentEnded(
     (id) => !waiting.has(id),
   );
   if (taken.length === 0) {
-    return;
-  }
-  const sender = await readChildConversationSender(childConversationId);
-  if (!sender) {
     return;
   }
   const keys = await getSqlExecutor()
