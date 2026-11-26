@@ -7,6 +7,7 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
@@ -89,17 +90,6 @@ export function formatProviderLabel(provider: string): string {
     throw new Error(`Unknown plugin provider display name: "${provider}"`);
   }
   return displayName;
-}
-
-/** Resolve the public base URL from environment variables (JUNIOR_BASE_URL or Vercel). */
-export function resolveBaseUrl(): string | undefined {
-  const explicit = process.env["JUNIOR_BASE_URL"]?.trim();
-  if (explicit) return explicit;
-  const vercelProd = process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim();
-  if (vercelProd) return `https://${vercelProd}`;
-  const vercelUrl = process.env["VERCEL_URL"]?.trim();
-  if (vercelUrl) return `https://${vercelUrl}`;
-  return undefined;
 }
 
 /**
@@ -228,7 +218,7 @@ export async function startOAuthFlow(
     };
   }
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     return {
       ok: false,

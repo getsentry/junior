@@ -1,16 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toVercelNetworkPolicy } from "@/chat/sandbox/egress/vercel";
+import { useConfig } from "../../fixtures/config";
 
 const FORWARD_URL =
   "https://junior.example.com/api/internal/sandbox-egress/signed-token";
 
 describe("toVercelNetworkPolicy", () => {
   beforeEach(() => {
-    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
+    useConfig({
+      deployment: { configuredBaseUrl: "https://junior.example.com" },
+    });
   });
 
   afterEach(() => {
-    delete process.env["JUNIOR_BASE_URL"];
+    vi.unstubAllEnvs();
   });
 
   it("forwards credentialed domains and transforms trace domains", () => {
@@ -43,9 +46,10 @@ describe("toVercelNetworkPolicy", () => {
   });
 
   it("fails without a public callback URL for credentialed domains", () => {
-    delete process.env["JUNIOR_BASE_URL"];
-    delete process.env["VERCEL_PROJECT_PRODUCTION_URL"];
-    delete process.env["VERCEL_URL"];
+    vi.stubEnv("JUNIOR_BASE_URL", undefined);
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", undefined);
+    vi.stubEnv("VERCEL_URL", undefined);
+    useConfig();
 
     expect(() =>
       toVercelNetworkPolicy({

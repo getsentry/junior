@@ -37,6 +37,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { juniorInboxItems } from "@/db/schema";
+import { useConfig } from "../../fixtures/config";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { dndInfoOk } from "../../fixtures/slack/factories/api";
 import {
@@ -494,6 +495,34 @@ describe("reply notification task", () => {
       (await replyNotices(conversationId)).map((item) => item?.status),
     ).toEqual(["done", "done"]);
     expect(decrypted).toHaveLength(3);
+  });
+
+  it("signs pushes with the Vercel URL when no subject or base URL is set", async () => {
+    delete process.env["JUNIOR_WEB_PUSH_SUBJECT"];
+    useConfig({ deployment: { vercelProductionUrl: "junior.example.com" } });
+    const api = await viewerApi();
+    await api(
+      "POST",
+      "/api/notifications/subscriptions",
+      browserSubscription("phone"),
+    );
+    await api("PUT", "/api/notifications/schedule", {
+      workingHoursOnly: false,
+      days: [],
+      start: "09:00",
+      end: "18:00",
+    });
+
+    await completeDashboardTurn("The deploy finished.");
+
+    expect(pushes).toHaveLength(1);
+    const token = /t=([^,]+)/.exec(
+      pushes[0]!.headers.get("authorization") ?? "",
+    )?.[1];
+    const claims = JSON.parse(
+      Buffer.from(token!.split(".")[1]!, "base64url").toString("utf8"),
+    );
+    expect(claims.sub).toBe("https://junior.example.com");
   });
 
   it("does not push outside the user's working hours", async () => {

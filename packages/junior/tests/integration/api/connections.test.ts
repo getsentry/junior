@@ -169,6 +169,31 @@ describe("connections API", () => {
     expect(await evalOAuthIdentities()).toEqual([]);
   });
 
+  it("sends the OAuth callback to the host dashboard base URL", async () => {
+    await createEvalOAuthAccountApp(
+      { id: "eval-account-1", label: "person" },
+      "eval-oauth",
+      { baseURL: "https://dashboard.example.com", disabled: true },
+    );
+    const app = authenticatedApi("person@example.com");
+
+    const startResponse = await app.request(
+      "http://localhost/api/connections/eval-oauth",
+      {
+        body: "{}",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    expect(startResponse.status).toBe(200);
+    const { authorizationUrl } = (await startResponse.json()) as {
+      authorizationUrl: string;
+    };
+    expect(new URL(authorizationUrl).searchParams.get("redirect_uri")).toBe(
+      "https://dashboard.example.com/api/oauth/callback/eval-oauth",
+    );
+  });
+
   it("keeps a connection saved under the legacy web Actor id", async () => {
     const app = authenticatedApi("person@example.com");
     const viewer = await resolveViewerUser("person@example.com");
