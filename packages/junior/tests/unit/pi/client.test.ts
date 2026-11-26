@@ -12,10 +12,12 @@ const mocks = vi.hoisted(() => ({
   completeSimple: vi.fn(),
   createGatewayProvider: vi.fn(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
+    decisionModel: vi.fn((modelId: string) => ({ modelId })),
     embeddingModel: vi.fn((modelId: string) => ({ modelId })),
     rerankingModel: vi.fn((modelId: string) => ({ modelId })),
     transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
   })),
+  decide: vi.fn(),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
   getModels: vi.fn((): Array<{ id: string; maxTokens?: number }> => [
@@ -67,6 +69,8 @@ vi.mock("@ai-sdk/gateway", () => ({
 
 vi.mock("ai", () => ({
   embedMany: mocks.embedMany,
+  experimental_decide: mocks.decide,
+  Experimental_DecisionRefusalError: { isInstance: () => false },
   generateObject: mocks.generateObject,
   NoObjectGeneratedError: {
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
@@ -454,6 +458,7 @@ describe("completeText", () => {
     });
     mocks.createGatewayProvider.mockReturnValueOnce({
       chat: vi.fn(() => model),
+      decisionModel: vi.fn((modelId: string) => ({ modelId })),
       embeddingModel: vi.fn((modelId: string) => ({ modelId })),
       rerankingModel: vi.fn((modelId: string) => ({ modelId })),
       transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
@@ -654,6 +659,70 @@ describe("completeText", () => {
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "app.cost.total_usd": 0.0000074,
     });
+  });
+
+  it("records decision questions, state, and answers by Conversation privacy", async () => {
+    mocks.decide.mockResolvedValue({
+      answers: {
+        route: {
+          type: "choice",
+          choice: "reply",
+          probabilities: { reply: 0.9, stay_quiet: 0.1 },
+        },
+      },
+      response: { id: "gen_decide", modelId: "typesafe-ai/jev" },
+      usage: { inputTokens: 1000, outputTokens: 2 },
+    });
+    const { completeDecision } = await import("@/chat/pi/client");
+    const { runWithConversationPrivacy } =
+      await import("@/chat/conversation-privacy");
+    const call = () =>
+      completeDecision({
+        modelId: "typesafe-ai/jev",
+        state: "secret thread text",
+        questions: {
+          route: {
+            type: "choice",
+            instructions: "Should Junior reply?",
+            criteria: { reply: "yes", stay_quiet: "no" },
+          },
+        },
+      });
+
+    await call();
+    await runWithConversationPrivacy("public", call);
+
+    const [privateStart, publicStart] = mocks.withSpan.mock.calls.map(
+      (args) => args[4] as Record<string, unknown>,
+    );
+    const [privateEnd, publicEnd] = mocks.setSpanAttributes.mock.calls.map(
+      (args) => args[0] as Record<string, unknown>,
+    );
+    const answers =
+      '{"route":{"type":"choice","choice":"reply","probabilities":{"reply":0.9,"stay_quiet":0.1}}}';
+    for (const end of [privateEnd, publicEnd]) {
+      expect(end).toMatchObject({
+        "app.decision.answers": answers,
+        "app.cost.total_usd": 0.000042,
+        "gen_ai.response.id": "gen_decide",
+        "gen_ai.response.model": "typesafe-ai/jev",
+      });
+    }
+    expect(privateStart).toMatchObject({
+      "app.conversation.privacy": "private",
+      "app.decision.question.ids": ["route"],
+      "gen_ai.input.content_chars": 18,
+    });
+    expect(privateStart?.["gen_ai.input.messages"]).toBeUndefined();
+    expect(privateStart?.["gen_ai.system_instructions"]).toBeUndefined();
+    expect(privateEnd?.["gen_ai.output.messages"]).toBeUndefined();
+    expect(publicStart?.["gen_ai.input.messages"]).toContain(
+      "secret thread text",
+    );
+    expect(publicStart?.["gen_ai.system_instructions"]).toContain(
+      "Should Junior reply?",
+    );
+    expect(publicEnd?.["gen_ai.output.messages"]).toContain("stay_quiet");
   });
 });
 

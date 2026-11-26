@@ -58,6 +58,10 @@ import {
   structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
 import {
+  decisionEndAttributes,
+  decisionStartAttributes,
+} from "@/chat/pi/decision-span";
+import {
   extractGenAiUsageAttributes,
   serializeGenAiAttribute,
 } from "@/chat/logging";
@@ -593,6 +597,7 @@ export async function completeDecision<
 }> {
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
+  const privacy = getCurrentConversationPrivacy() ?? "private";
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
@@ -611,11 +616,16 @@ export async function completeDecision<
           params.modelId,
           result.usage.inputTokens,
         );
-        setSpanAttributes(
-          extractGenAiUsageAttributes(result.usage, {
+        setSpanAttributes({
+          ...decisionEndAttributes({
+            answers: result.answers,
+            privacy,
+            response: result.response,
+          }),
+          ...extractGenAiUsageAttributes(result.usage, {
             cost: { input: costUsd, total: costUsd },
           }),
-        );
+        });
         return { answers: result.answers, costUsd };
       },
       {
@@ -625,6 +635,11 @@ export async function completeDecision<
         "gen_ai.prompt.name": params.promptName,
         "server.address": GEN_AI_SERVER_ADDRESS,
         "gen_ai.provider.auth_mode": credential.mode,
+        ...decisionStartAttributes({
+          privacy,
+          questions: params.questions,
+          state: params.state,
+        }),
       },
     );
     return {
