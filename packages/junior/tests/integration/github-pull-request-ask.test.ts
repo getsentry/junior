@@ -18,6 +18,7 @@ import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
+  juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorInboxItemAssignees,
@@ -706,6 +707,7 @@ describe("the ask of a Junior pull request", () => {
       conversationId: slackParentConversationId,
     });
     await getDb().update(juniorDestinations).set({ visibility: "private" });
+    await getDb().update(juniorConversations).set({ visibility: "private" });
     const previousDashboard = setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
@@ -744,6 +746,11 @@ describe("the ask of a Junior pull request", () => {
         http.get(
           "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
           () => HttpResponse.json({ permission: "write" }),
+        ),
+        // The branch has no rules, so no check must pass before a merge.
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/rules/branches/main",
+          () => HttpResponse.json([]),
         ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { query } = (await request.json()) as { query: string };
@@ -795,6 +802,8 @@ describe("the ask of a Junior pull request", () => {
               repository: {
                 pullRequest: {
                   autoMergeRequest: null,
+                  baseRef: { refUpdateRule: null },
+                  baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,
