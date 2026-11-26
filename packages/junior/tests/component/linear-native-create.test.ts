@@ -241,8 +241,17 @@ describe("Linear MCP create annotations", () => {
     },
   );
 
-  it("keeps the tool result when annotation processing fails", async () => {
+  it("keeps the tool result and saves nothing when the hook fails or annotates a read", async () => {
     const server = new McpServer({ name: "linear-test", version: "1.0.0" });
+    server.registerTool(
+      "get_issue",
+      {
+        annotations: { readOnlyHint: true },
+        description: "Get a Linear issue",
+        inputSchema: { id: z.string() },
+      },
+      ({ id }) => ({ content: [{ type: "text", text: id }] }),
+    );
     server.registerTool(
       "save_issue",
       {
@@ -273,13 +282,30 @@ describe("Linear MCP create annotations", () => {
     );
 
     const registration = linearPlugin();
+    const readStores: unknown[] = [];
     const previousPlugins = setPlugins([
       {
         ...registration,
         hooks: {
           ...registration.hooks,
-          afterMcpTool: async () => {
-            throw new Error("annotation failed");
+          afterMcpTool: async (ctx) => {
+            if (ctx.tool.name !== "get_issue") {
+              throw new Error("annotation failed");
+            }
+            // A plugin bug: it links the object of a read.
+            readStores.push(ctx.annotations);
+            return {
+              objectAnnotations: [
+                {
+                  kind: "object",
+                  objectType: "task",
+                  key: "ENG-7",
+                  label: "ENG-7",
+                  title: "Read me",
+                  url: "https://linear.app/acme/issue/ENG-7/read-me",
+                },
+              ],
+            };
           },
         },
       },
@@ -340,6 +366,13 @@ describe("Linear MCP create annotations", () => {
           },
         ],
       });
+      const getIssue = manager
+        .getResolvedActiveTools({ provider: "linear" })
+        .find((tool) => tool.rawName === "get_issue");
+      const read = await getIssue!.execute({ id: "ENG-7" });
+      expect(read.cards).toBeUndefined();
+      // A read-only tool's hook gets no annotation store.
+      expect(readStores).toEqual([undefined]);
       await expect(
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toEqual([]);

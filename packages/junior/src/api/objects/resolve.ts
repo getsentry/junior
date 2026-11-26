@@ -137,7 +137,6 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
             await link.prefetch?.(objectLinkContext(name, viewer), urls),
         }
       : undefined),
-    readTool: link.readTool,
     resolve: (viewer, url, prefetched) =>
       link.resolve(objectLinkContext(name, viewer, prefetched), url),
     ...(link.webPageFallback ? { webPageFallback: true } : undefined),
@@ -204,20 +203,6 @@ async function resolveWithLinkType(
       plugin: linkType.owner,
     }),
   };
-}
-
-/**
- * Resolve one link for one viewer without the card cache, so a change of
- * access counts at once. Returns nothing when no link type claims the URL
- * or the viewer cannot see the object.
- */
-export async function resolveObjectLinkNow(
-  viewer: User,
-  url: URL,
-): Promise<ResolvedObjectLink | undefined> {
-  const linkType = findObjectLinkType(readObjectLinkTypes(), url);
-  if (!linkType) return undefined;
-  return (await resolveWithLinkType(linkType, viewer, url)) ?? undefined;
 }
 
 /**

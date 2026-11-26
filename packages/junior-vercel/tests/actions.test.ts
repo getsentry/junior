@@ -92,12 +92,16 @@ describe("Vercel actions", () => {
       Response.json({ alias: "qa.example.com" }),
       Response.json({ alias: "qa.example.com", deploymentId: "dpl_other" }),
     );
-    await expect(
-      tools["deploymentInspect"].execute?.(
-        { deployment: deployment.id, team: "team_example" },
-        options,
-      ),
-    ).resolves.toMatchObject({ state: "READY", deployment_id: deployment.id });
+    const inspected = await tools["deploymentInspect"].execute?.(
+      { deployment: deployment.id, team: "team_example" },
+      options,
+    );
+    expect(inspected).toMatchObject({
+      state: "READY",
+      deployment_id: deployment.id,
+    });
+    // A read links nothing to the Conversation.
+    expect(inspected).not.toHaveProperty("objectAnnotations");
     await expect(
       tools["aliasAssign"].execute?.(
         {

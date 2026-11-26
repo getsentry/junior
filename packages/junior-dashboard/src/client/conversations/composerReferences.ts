@@ -1,7 +1,6 @@
 import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 
-import { displayTextWebLinks } from "../display-text/plainText";
 import { composerTokenFinder } from "./composerTypeaheadToken";
 import { CONVERSATION_PATH } from "./conversationRoutes";
 
@@ -163,19 +162,4 @@ function linkReference(
   // Another label is the writer's own text, so it stays.
   if (label !== codeChangeLabel(change)) return undefined;
   return { reference: { kind: "code_change", url, ...change } };
-}
-
-/**
- * The web links of message text, once each, in order: the links that the
- * transcript shows, whether a reference wrote them or the writer pasted
- * them. They become the linked work of the Conversation that the message
- * goes to. The API attaches only a link that names an object that the
- * sender can see, so no link type is listed here.
- */
-export function linkedWorkUrls(text: string, origin: string): string[] {
-  // A memory is not work, so it links to nothing.
-  return displayTextWebLinks(text).filter((url) => {
-    const parsed = new URL(url);
-    return !(parsed.origin === origin && MEMORY_PATH.test(parsed.pathname));
-  });
 }

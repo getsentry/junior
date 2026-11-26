@@ -573,6 +573,7 @@ describe("McpToolManager", () => {
       arguments: { title: "Created via MCP" },
       content: [{ type: "text", text: "Created ENG-123" }],
       provider: "demo",
+      readOnly: false,
       structuredContent: { identifier: "ENG-123" },
       toolName: "save_issue",
     });

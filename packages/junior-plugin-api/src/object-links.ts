@@ -234,11 +234,4 @@ export interface PluginObjectLinkDefinition {
    * what anyone can read without signing in.
    */
   webPageFallback?: true;
-  /**
-   * Name the plugin tool that reads the resolved object live, such as
-   * `readGoogleFile`. When a person attaches the link to a Conversation, its
-   * next Turn is told to read the object with this tool. Return nothing when
-   * no tool reads this object.
-   */
-  readTool?(object: ObjectAnnotation): string | undefined;
 }

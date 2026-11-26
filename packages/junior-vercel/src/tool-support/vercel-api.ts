@@ -76,25 +76,32 @@ export function deploymentResult(data: unknown) {
     project_id: value.projectId ?? null,
     commit_sha: value.gitSource?.sha ?? null,
     ref: value.gitSource?.ref ?? null,
-    objectAnnotations: [
-      {
-        kind: "object",
-        objectType: "deployment",
-        displayType: "Deployment",
-        key: value.id,
-        label: value.id,
-        title: value.url.slice(0, 512),
-        url: `https://${value.url}`,
-        status: value.readyState,
-        facts: {
-          type: "deployment",
-          project: value.projectId?.slice(0, 64),
-          environment: value.target?.slice(0, 64) ?? undefined,
-          revision: value.gitSource?.sha?.slice(0, 64),
-          branch: value.gitSource?.ref?.slice(0, 64),
-        },
-      } satisfies ObjectAnnotation,
-    ],
+  };
+}
+
+/**
+ * Link a deployment that a tool created to the Conversation. A read-only
+ * tool, such as an inspect, returns none.
+ */
+export function deploymentAnnotation(
+  result: ReturnType<typeof deploymentResult>,
+): ObjectAnnotation {
+  return {
+    kind: "object",
+    objectType: "deployment",
+    displayType: "Deployment",
+    key: result.deployment_id,
+    label: result.deployment_id,
+    title: new URL(result.url).host.slice(0, 512),
+    url: result.url,
+    status: result.state,
+    facts: {
+      type: "deployment",
+      project: result.project_id?.slice(0, 64),
+      environment: result.deployment_target?.slice(0, 64) ?? undefined,
+      revision: result.commit_sha?.slice(0, 64),
+      branch: result.ref?.slice(0, 64),
+    },
   };
 }
 

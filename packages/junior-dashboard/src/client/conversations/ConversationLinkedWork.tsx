@@ -99,7 +99,7 @@ export function conversationLinks(
             : undefined),
           key: `${annotation.plugin}:${annotation.key}`,
           label: annotation.label,
-          // An attached link uses its own URL as the label.
+          // An older attached link uses its own URL as the label.
           ...(annotation.kind === "resource_link" &&
           annotation.url.startsWith(annotation.label)
             ? { linkOnly: true }

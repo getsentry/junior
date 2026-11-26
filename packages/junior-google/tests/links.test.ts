@@ -340,28 +340,6 @@ describe("Google link cards", () => {
       );
       expect(fileReads).toHaveLength(1);
     });
-
-    it("names the tool that reads an attached file live", async () => {
-      const readTool = async (file: unknown, url: string) => {
-        const card = await resolveAs(
-          "alice@example.com",
-          fakeGoogle({ file, finds: [NAMED] }),
-          "document",
-          url,
-        );
-        return linkType("document").readTool?.(card!);
-      };
-      // readGoogleFile reads a Doc, Sheet, or Slides file from any link.
-      expect(await readTool(DOC, DOC_URL)).toBe("readGoogleFile");
-      expect(await readTool(DOC, `${DRIVE}/file/d/${DOC_ID}/view`)).toBe(
-        "readGoogleFile",
-      );
-      // No tool reads another Drive file or a Calendar event.
-      expect(await readTool(PDF, `${DRIVE}/file/d/${DOC_ID}/view`)).toBe(
-        undefined,
-      );
-      expect(linkType("calendar_event").readTool).toBeUndefined();
-    });
   });
 
   describe("Drive files and folders", () => {

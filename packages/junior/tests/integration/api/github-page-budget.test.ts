@@ -1,11 +1,7 @@
-import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createJuniorApi } from "@/api";
-import type { JuniorApiEnv } from "@/api/route";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
-import { juniorConversationParticipants } from "@/db/schema";
+import { closeDb } from "@/chat/db";
 import {
   createGitHubApp,
   GITHUB_API,
@@ -14,44 +10,10 @@ import {
   stubGitHubApp,
   viewerApi,
 } from "../../fixtures/github-objects";
-import { signedInViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
 
 const DASHBOARD = "https://junior.example.com";
-const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
 const PULL_URL = `${GITHUB_REPO}/pull/35`;
-
-async function attachAsAlice(url: string) {
-  const viewer = await signedInViewer("alice@example.com");
-  await getConversationStore().recordActivity({
-    conversationId: CONVERSATION_ID,
-    destination: { channelId: "CPRIVATE", platform: "slack", teamId: "T123" },
-    nowMs: Date.now(),
-    source: "slack",
-    title: "Plan the release",
-    visibility: "private",
-  });
-  await getDb().insert(juniorConversationParticipants).values({
-    lastMessageAt: new Date(),
-    rootConversationId: CONVERSATION_ID,
-    userId: viewer.id,
-  });
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    context.set("viewer", viewer);
-    await next();
-  });
-  app.route("/", createJuniorApi());
-  const response = await app.request(
-    `http://localhost/api/conversations/${encodeURIComponent(CONVERSATION_ID)}/annotations`,
-    {
-      body: JSON.stringify({ url }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    },
-  );
-  return response.status;
-}
 
 // A page waits at most 20 s for its card queries. The cards that it ran out
 // of time for show only what the cache holds, on that page only.
@@ -70,7 +32,7 @@ describe("GitHub card reads after a page runs out of time", () => {
     await closeDb();
   });
 
-  it("skips GitHub for every link to a pull request on a page that ran out of time, and reads it on Attach", async () => {
+  it("skips GitHub for every link to a pull request on a page that ran out of time", async () => {
     stubGitHubApp();
     const reads: string[] = [];
     mswServer.use(
@@ -124,9 +86,5 @@ describe("GitHub card reads after a page runs out of time", () => {
     expect(objects.has(PULL_URL)).toBe(false);
     expect(objects.has(`${PULL_URL}#discussion_r1`)).toBe(false);
     expect(reads).toEqual(["graphql"]);
-
-    // An Attach is not part of the page, so it asks GitHub.
-    expect(await attachAsAlice(PULL_URL)).toBe(200);
-    expect(reads.length).toBeGreaterThan(0);
   });
 });

@@ -4,6 +4,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  deploymentAnnotation,
   deploymentOutputSchema,
   deploymentResult,
   nonEmptyText,
@@ -73,7 +74,7 @@ export const vercelDeploymentCreateTool = definePluginTool({
       ref: input.ref,
       sha: input.commit_sha?.toLowerCase(),
     };
-    return deploymentResult(
+    const result = deploymentResult(
       await vercelRequest(
         ctx.egress,
         "vercel.deployment.create",
@@ -89,5 +90,6 @@ export const vercelDeploymentCreateTool = definePluginTool({
         },
       ),
     );
+    return { ...result, objectAnnotations: [deploymentAnnotation(result)] };
   },
 });

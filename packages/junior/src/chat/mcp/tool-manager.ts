@@ -276,6 +276,8 @@ export interface McpToolSuccessHookInput {
   arguments: Record<string, unknown>;
   content?: PluginMcpContent[];
   provider: string;
+  /** The provider marks the tool `readOnlyHint`, so the call changed nothing. */
+  readOnly: boolean;
   structuredContent?: unknown;
   toolName: string;
 }
@@ -766,6 +768,7 @@ export class McpToolManager {
                 arguments: resolvedArgs,
                 content: toAgentToolContent(result),
                 provider: plugin.manifest.name,
+                readOnly: annotations?.readOnlyHint === true,
                 ...(result.structuredContent !== undefined
                   ? { structuredContent: result.structuredContent }
                   : undefined),

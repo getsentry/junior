@@ -11,8 +11,6 @@ const THREAD_ID = "junior:internal:dashboard-qa:thread";
 const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
 const CHECKOUT_ID = "slack:CQA123:1770003600.000200";
 const PULL_REQUEST = "https://github.com/getsentry/junior/pull/3842";
-const DOC_URL =
-  "https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit";
 
 async function openThread(page: Page, baseURL: string) {
   await page.goto(`${baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`);
@@ -24,32 +22,24 @@ async function openThread(page: Page, baseURL: string) {
   return composer;
 }
 
-// Messages and linked work that the page sends, once each response is in.
-function recordWrites(page: Page) {
+// Messages that the page sends, once each response is in.
+function recordSent(page: Page) {
   const sent: string[] = [];
-  const linked: string[] = [];
   page.on("requestfinished", (request) => {
     if (request.method() !== "POST") return;
-    const { pathname } = new URL(request.url());
-    if (pathname.endsWith("/messages")) {
+    if (new URL(request.url()).pathname.endsWith("/messages")) {
       sent.push(request.postDataJSON().message);
     }
-    if (pathname.endsWith("/annotations")) {
-      linked.push(request.postDataJSON().url);
-    }
   });
-  return { linked, sent };
+  return sent;
 }
 
 function conversationUrl(baseURL: string, id: string) {
   return `${new URL(baseURL).origin}/conversations/${encodeURIComponent(id)}`;
 }
 
-test("@ finds Conversations, Tasks and files, and links the work it sends", async ({
-  page,
-  dashboard,
-}) => {
-  const { linked, sent } = recordWrites(page);
+test("@ finds Conversations, Tasks and files", async ({ page, dashboard }) => {
+  const sent = recordSent(page);
   const composer = await openThread(page, dashboard.baseURL);
   const mentions = page.getByRole("listbox", { name: "Mentions" });
 
@@ -92,7 +82,7 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
     "pinned-rows.txt",
   );
 
-  // The same Conversation twice is linked once.
+  // The same Conversation can be referenced twice.
   await composer.pressSequentially("again @inves");
   await expect(conversations.getByRole("option").first()).toHaveText(
     /Investigate checkout latency/,
@@ -117,19 +107,6 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
       `Compare <${checkout}|Investigate checkout latency> with <${nested}|Recheck pin order in Safari> and pinned-rows.txt again <${checkout}|Investigate checkout latency>`,
     ]);
   await expect(composer).toHaveText("");
-  await expect.poll(() => linked.sort()).toEqual([checkout, nested].sort());
-
-  // Work that the Conversation already links is not linked again.
-  await composer.pressSequentially("one more @inves");
-  await expect(conversations.getByRole("option").first()).toHaveText(
-    /Investigate checkout latency/,
-  );
-  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
-  await composer.press("Enter");
-  await composer.press("Enter");
-  await expect.poll(() => sent).toHaveLength(2);
-  expect(linked).toHaveLength(2);
-  // The page read the card of this link for the first message.
   await cardRead;
 });
 
@@ -152,7 +129,7 @@ test("@ finds memories and sends each as a labeled link to its page", async ({
     const url = new URL(request.url());
     if (url.pathname === "/api/search") searches.push(url.searchParams);
   });
-  const { linked, sent } = recordWrites(page);
+  const sent = recordSent(page);
   const composer = await openThread(page, dashboard.baseURL);
   const mentions = page.getByRole("listbox", { name: "Mentions" });
 
@@ -182,8 +159,6 @@ test("@ finds memories and sends each as a labeled link to its page", async ({
   const memory = `${new URL(dashboard.baseURL).origin}/memories/memory-deploy-runbook`;
   await expect.poll(() => sent).toEqual([`Follow <${memory}|${label}>`]);
   await expect(composer).toHaveText("");
-  // A memory is not work, so the Conversation links nothing.
-  expect(linked).toEqual([]);
 });
 
 test("the active row stays put when a source above it loads", async ({
@@ -227,7 +202,7 @@ test("the active row stays put when a source above it loads", async ({
 });
 
 test("# finds pull requests and channels", async ({ page, dashboard }) => {
-  const { linked, sent } = recordWrites(page);
+  const sent = recordSent(page);
   const composer = await openThread(page, dashboard.baseURL);
   const references = page.getByRole("listbox", { name: "References" });
 
@@ -251,9 +226,6 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect(composer.locator("[data-reference='channel']")).toHaveText(
     "#proj-release",
   );
-  // A pasted link of any type is linked too, when it names an object.
-  await composer.pressSequentially("and ");
-  await pasteText(page, DOC_URL);
   // The thread ends at seq 5 when it opens. The sent message comes after it.
   const readSaved = waitForReadPosition(page, 5);
   await composer.press("Enter");
@@ -261,9 +233,8 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect
     .poll(() => sent)
     .toEqual([
-      `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release> and ${DOC_URL}`,
+      `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release>`,
     ]);
-  await expect.poll(() => linked.sort()).toEqual([DOC_URL, PULL_REQUEST]);
   await readSaved;
 });
 
@@ -299,55 +270,6 @@ test("@ and # find a Conversation and a pull request by words of the title", asy
   await expect(composer.getByTitle("getsentry/junior#3842")).toHaveText(
     "junior#3842",
   );
-});
-
-test("the first Message of a new Conversation links its links", async ({
-  page,
-  dashboard,
-}) => {
-  const { linked } = recordWrites(page);
-  await page.goto(`${dashboard.baseURL}/conversations/new`);
-  const composer = page.getByLabel("Start a conversation");
-  await composer.click();
-  await composer.pressSequentially("Review ");
-  await pasteText(page, DOC_URL);
-  await composer.press("Enter");
-
-  await expect(page).toHaveURL(/\/conversations\/(?!new)/);
-  await expect.poll(() => linked).toEqual([DOC_URL]);
-  await expect(
-    page
-      .getByTestId("conversation-transcript")
-      .getByRole("link", { name: /Release 4\.2 checklist/ }),
-  ).toBeVisible();
-});
-
-test("a Retry links the links of a send that failed", async ({
-  page,
-  dashboard,
-}) => {
-  const { linked } = recordWrites(page);
-  let failed = false;
-  await page.route("**/api/conversations/*/messages", async (route) => {
-    if (failed) {
-      await route.fallback();
-      return;
-    }
-    failed = true;
-    await route.fulfill({ json: { error: "temporary failure" }, status: 500 });
-  });
-  const composer = await openThread(page, dashboard.baseURL);
-  await composer.pressSequentially("Review ");
-  await pasteText(page, DOC_URL);
-  await composer.press("Enter");
-
-  const retry = page
-    .getByLabel("Pending messages")
-    .getByRole("button", { name: "Retry" });
-  await expect(retry).toBeVisible();
-  expect(linked).toEqual([]);
-  await retry.click();
-  await expect.poll(() => linked).toEqual([DOC_URL]);
 });
 
 test("# inserts a pull request only once its card says whether it is a draft", async ({
