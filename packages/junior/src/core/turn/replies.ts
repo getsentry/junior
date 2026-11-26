@@ -4,8 +4,8 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { markdownNodes, parseMarkdown } from "@sentry/junior-plugin-api";
 import { and, asc, eq, like } from "drizzle-orm";
-import { eventFromRow } from "@/chat/conversations/sql/history";
-import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
+import { piMessageFromHistoryItem } from "@/core/history/items";
+import { agentHistoryFromRow } from "@/core/history/rows";
 import type { EngineContext } from "@/core/engine-context";
 import { juniorConversationEvents } from "@/db/schema";
 
@@ -87,7 +87,10 @@ export function turnEventKeyPrefix(turnId: string): string {
 
 /** The text that a message event delivers, or undefined when it is no reply. */
 export function replyText(row: EventRow): string | undefined {
-  const { data } = eventFromRow(row);
+  if (row.type !== "assistant_message") {
+    return undefined;
+  }
+  const data = agentHistoryFromRow(row);
   if (data.type !== "assistant_message") {
     return undefined;
   }

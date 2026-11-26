@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getChatConfig } from "@/chat/config";
 import { fetchWithBoundedOAuthErrorBodies } from "@/chat/oauth-response";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -39,7 +39,7 @@ export async function createMcpOAuthClientProvider(input: {
 }): Promise<StateBackedMcpOAuthClientProvider> {
   const plugin = requirePluginWithMcp(input.provider);
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)",
@@ -97,7 +97,7 @@ export async function finalizeMcpAuthorization(
     );
   }
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)",

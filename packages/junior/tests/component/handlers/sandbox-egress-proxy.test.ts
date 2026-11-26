@@ -39,7 +39,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
   return {
     ...original,
     botConfig: memoryConfig.bot,
-    getChatConfig: () => memoryConfig,
+    getChatConfig: vi.fn(() => memoryConfig),
   };
 });
 
@@ -78,6 +78,7 @@ import {
   consumeSandboxEgressPermissionDeniedSignal,
   createSandboxEgressCredentialToken,
 } from "@/chat/sandbox/egress/session";
+import { getChatConfig } from "@/chat/config";
 import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/proxy-path";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
@@ -334,8 +335,12 @@ describe("sandbox egress proxy composition", () => {
   });
 
   it("does not reuse Slack signing secret for sandbox egress tokens", () => {
-    delete process.env["JUNIOR_SECRET"];
-    process.env["SLACK_SIGNING_SECRET"] = "test-slack-signing-secret";
+    const config = getChatConfig();
+    vi.mocked(getChatConfig).mockReturnValueOnce({
+      ...config,
+      secrets: { ...config.secrets, juniorSecret: undefined },
+      slack: { ...config.slack, signingSecret: "test-slack-signing-secret" },
+    });
 
     expect(() =>
       createSandboxEgressCredentialToken({

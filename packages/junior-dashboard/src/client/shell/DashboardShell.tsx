@@ -77,7 +77,7 @@ import {
   SystemRouteLoading,
 } from "../pages/system/SystemPageLayout";
 import { hasWorkspaceDetailsFrame } from "../pages/system/SystemNavigation";
-import { SystemRoute } from "../pages/system/SystemRoute";
+import { SystemRoute, SystemRouteFallback } from "../pages/system/SystemRoute";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -259,7 +259,7 @@ function Shell() {
   useDensityRoot();
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // A Space's page shows its Lead. Its header reads the Space, so that read
+  // A Space's page shows its Lead. Its details read the Space, so that read
   // starts here beside the Lead's, not after the lazy page loads.
   const pageSpaceId = spaceIdFromPath(location.pathname);
   const spaceLead = useSpaceLead(pageSpaceId);
@@ -772,12 +772,7 @@ function Shell() {
               <Route
                 element={
                   loading ? (
-                    <SystemRouteLoading
-                      description="Runtime health, model usage, and loaded capabilities."
-                      label="Loading system"
-                      title="System"
-                      variant="overview"
-                    />
+                    <SystemRouteFallback />
                   ) : data ? (
                     <SystemRoute coreData={data} />
                   ) : (

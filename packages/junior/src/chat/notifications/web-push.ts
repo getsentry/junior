@@ -1,9 +1,9 @@
+import { getChatConfig } from "@/chat/config";
 import { mapBounded } from "@/chat/fan-out";
 import { listClearedInboxItemPushes } from "@/chat/inbox-items/deliveries";
 import webPush, { WebPushError } from "web-push";
 import type { JuniorDatabase } from "@/db/db";
 import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
-import { readWebPushPrivateKey } from "@/chat/secrets";
 import {
   deletePushSubscriptionsById,
   listPushSubscriptions,
@@ -38,7 +38,7 @@ const PUSH_TTL_SECONDS = 12 * 60 * 60;
 const PUSH_TIMEOUT_MS = 10_000;
 
 function subjectFromBaseUrl(): string | undefined {
-  const baseUrl = process.env["JUNIOR_BASE_URL"]?.trim();
+  const { baseUrl } = getChatConfig().deployment;
   if (!baseUrl) return undefined;
   return baseUrl.startsWith("https://") || baseUrl.startsWith("http://")
     ? baseUrl
@@ -51,16 +51,18 @@ function isVapidSubject(subject: string): boolean {
 }
 
 /**
- * Read VAPID settings from the environment. Push notifications are off when
+ * Read VAPID settings from config. Push notifications are off when
  * either key is missing or the subject is not `https:` or `mailto:`, such as
  * an `http://` base URL.
  */
 export function readWebPushConfig(): WebPushConfig | undefined {
-  const publicKey = process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"]?.trim();
-  const privateKey = readWebPushPrivateKey();
+  const {
+    privateKey,
+    publicKey,
+    subject: configuredSubject,
+  } = getChatConfig().webPush;
   if (!publicKey || !privateKey) return undefined;
-  const subject =
-    process.env["JUNIOR_WEB_PUSH_SUBJECT"]?.trim() || subjectFromBaseUrl();
+  const subject = configuredSubject || subjectFromBaseUrl();
   if (!subject || !isVapidSubject(subject)) return undefined;
   return { privateKey, publicKey, subject };
 }

@@ -4,12 +4,14 @@
  * Conversation storage owns the ordered event log. This module turns its
  * stored messages into the active Pi context.
  */
+import {
+  type AgentHistoryItem,
+  piMessageFromHistoryItem,
+} from "@/core/history/items";
 import type {
   ConversationEvent,
   ConversationEventData,
-  AgentHistoryItem,
 } from "@/chat/conversations/history";
-import { agentHistoryItemSchema } from "@/chat/conversations/history";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { type ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import { contextProvenance } from "@/chat/conversations/provenance";
@@ -48,56 +50,6 @@ function authorizationObservationMessage(
     ],
     timestamp: createdAtMs,
   });
-}
-
-/** Translate one Pi message into Junior's native durable history item. */
-export function historyItemFromPiMessage(
-  message: PiMessage,
-  provenance: ConversationMessageProvenance,
-): AgentHistoryItem {
-  const parsed = piMessageSchema.parse(message);
-  const { role, ...fields } = parsed;
-  if (role === "user") {
-    return agentHistoryItemSchema.parse({
-      ...fields,
-      type: "user_message",
-      provenance,
-    });
-  }
-  if (role === "assistant") {
-    return agentHistoryItemSchema.parse({
-      ...fields,
-      type: "assistant_message",
-    });
-  }
-  if (role === "toolResult") {
-    return agentHistoryItemSchema.parse({
-      ...fields,
-      type: "tool_result",
-    });
-  }
-  return agentHistoryItemSchema.parse({
-    ...fields,
-    type: "system_message",
-  });
-}
-
-/** Translate one Junior-native history item into the Pi message it represents. */
-export function piMessageFromHistoryItem(data: AgentHistoryItem): PiMessage {
-  if (data.type === "user_message") {
-    const { type: _, provenance: __, ...fields } = data;
-    return piMessageSchema.parse({ ...fields, role: "user" });
-  }
-  if (data.type === "assistant_message") {
-    const { type: _, ...fields } = data;
-    return piMessageSchema.parse({ ...fields, role: "assistant" });
-  }
-  if (data.type === "system_message") {
-    const { type: _, ...fields } = data;
-    return piMessageSchema.parse({ ...fields, role: "system" });
-  }
-  const { type: _, ...fields } = data;
-  return piMessageSchema.parse({ ...fields, role: "toolResult" });
 }
 
 function historyItemProvenance(

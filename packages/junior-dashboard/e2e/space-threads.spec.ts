@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import type { ConversationChildAgent } from "@sentry/junior/api/schema";
 
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { conversationMenuRow } from "./conversationMenu";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -65,7 +66,7 @@ async function seedThreads(page: Page) {
   );
 }
 
-test("a Space's Threads show what each one needs, Done collapsed", async ({
+test("a Space's Threads list what each one needs, in attention order", async ({
   dashboard,
   page,
 }) => {
@@ -76,46 +77,34 @@ test("a Space's Threads show what each one needs, Done collapsed", async ({
   const threads = page
     .getByRole("complementary", { name: "Conversation details" })
     .getByRole("region", { exact: true, name: "Threads" });
-  const group = (name: string) =>
-    threads.getByRole("region", { exact: true, name });
 
-  // Needs you, then Working, then Waiting, then Done. Each group runs
-  // newest first, and a failed Thread needs the viewer.
-  await expect(threads.getByRole("heading", { level: 4 })).toHaveText([
-    "Needs you · 2",
-    "Working · 2",
-    "Waiting · 1",
-    "Done · 2",
-  ]);
-  await expect(group("Needs you").getByRole("link")).toHaveText([
+  // Needs you, then Working, then Waiting, then Done, with no group
+  // headings. Each group runs newest first, and a failed Thread needs the
+  // viewer.
+  await expect(threads.getByRole("heading", { level: 4 })).toHaveCount(0);
+  await expect(threads.getByRole("link")).toHaveText([
     /Approve the cutover window/,
     /Reconcile Stripe balances/,
-  ]);
-  await expect(group("Working").getByRole("link")).toHaveText([
     /Check refund webhooks/,
-    /Migrate tax settings/,
   ]);
-  await expect(group("Waiting").getByRole("link")).toHaveText([
-    /Backfill invoice IDs/,
-  ]);
-  // Done starts collapsed, and its heading opens it.
-  const done = group("Done");
-  await expect(done.getByRole("link")).toHaveCount(0);
   await page.mouse.move(0, 0);
   await screenshot(page, "space-threads", {
     lightTheme: true,
     view: "desktop",
   });
-  await done.getByRole("button", { name: "Done · 2" }).click();
-  await expect(done.getByRole("link")).toHaveText([
+  await threads.getByRole("button", { name: "Show 4 more" }).click();
+  await expect(threads.getByRole("link")).toHaveText([
+    /Approve the cutover window/,
+    /Reconcile Stripe balances/,
+    /Check refund webhooks/,
+    /Migrate tax settings/,
+    /Backfill invoice IDs/,
     /Close out the dry run/,
     /Map plan IDs/,
   ]);
 
   // One click opens a Thread.
-  await group("Working")
-    .getByRole("link", { name: /Check refund webhooks/ })
-    .click();
+  await threads.getByRole("link", { name: /Check refund webhooks/ }).click();
   await expect(page).toHaveURL(/\/conversations\/internal%3Aquestions-qa$/);
   await expect(
     page.getByRole("heading", { name: "Plan the billing migration" }),
@@ -130,15 +119,13 @@ test("a phone shows a Space's Threads in its details sheet", async ({
   await seedThreads(page);
   await page.setViewportSize(mobile);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  await page.getByRole("button", { name: "Conversation details" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Conversation details").click();
   const threads = page
     .getByRole("dialog", { name: "Conversation details" })
     .getByRole("region", { exact: true, name: "Threads" });
-  await expect(threads.getByRole("heading", { level: 4 })).toHaveText([
-    "Needs you · 2",
-    "Working · 2",
-    "Waiting · 1",
-    "Done · 2",
-  ]);
+  await expect(threads.getByRole("link").first()).toHaveText(
+    /Approve the cutover window/,
+  );
   await screenshot(page, "space-threads", { lightTheme: true, view: "mobile" });
 });

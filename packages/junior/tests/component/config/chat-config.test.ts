@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { getChatConfig, setSlackReactionConfig } from "@/chat/config";
-import { loadConfig } from "@/config";
+import { describe, expect, it } from "vitest";
+import { loadConfig, type ConfigInput } from "@/config";
 
 const TEST_DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 const ENCRYPTION_ENV = {
@@ -272,6 +271,130 @@ describe("chat config", () => {
         env: { ...BASE_ENV, JUNIOR_QUEUE_API_URL: "localhost:3100" },
       }),
     ).toThrow("JUNIOR_QUEUE_API_URL must be an http or https URL");
+  });
+
+  it("resolves the base URL from the host option, then JUNIOR_BASE_URL, then Vercel", () => {
+    const vercelEnv = {
+      ...BASE_ENV,
+      VERCEL_PROJECT_PRODUCTION_URL: " junior.example.com ",
+      VERCEL_URL: "junior-abc123.vercel.app",
+    };
+    const baseUrl = (env: Record<string, string>, options?: ConfigInput) =>
+      loadConfig({ env, options }).deployment.baseUrl;
+
+    expect(baseUrl(BASE_ENV)).toBeUndefined();
+    expect(
+      baseUrl({ ...BASE_ENV, VERCEL_URL: "junior-abc123.vercel.app" }),
+    ).toBe("https://junior-abc123.vercel.app");
+    expect(baseUrl(vercelEnv)).toBe("https://junior.example.com");
+    expect(
+      baseUrl({ ...vercelEnv, JUNIOR_BASE_URL: " http://localhost:3000/ " }),
+    ).toBe("http://localhost:3000/");
+    expect(
+      baseUrl(
+        { ...vercelEnv, JUNIOR_BASE_URL: "http://localhost:3000" },
+        { deployment: { configuredBaseUrl: "https://dashboard.example.com" } },
+      ),
+    ).toBe("https://dashboard.example.com");
+  });
+
+  it("reads JUNIOR_SECRET trimmed, with an empty value unset", () => {
+    expect(loadConfig({ env: BASE_ENV }).secrets.juniorSecret).toBeUndefined();
+    expect(
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_SECRET: " s3cret " } }).secrets
+        .juniorSecret,
+    ).toBe("s3cret");
+    expect(
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_SECRET: "   " } }).secrets
+        .juniorSecret,
+    ).toBeUndefined();
+  });
+
+  it("falls back to CRON_SECRET for the scheduler secret", () => {
+    const schedulerSecret = (env: Record<string, string>) =>
+      loadConfig({ env: { ...BASE_ENV, ...env } }).secrets.schedulerSecret;
+
+    expect(schedulerSecret({ CRON_SECRET: " cron " })).toBe("cron");
+    expect(
+      schedulerSecret({
+        JUNIOR_SCHEDULER_SECRET: " own ",
+        CRON_SECRET: "cron",
+      }),
+    ).toBe("own");
+    expect(
+      schedulerSecret({ JUNIOR_SCHEDULER_SECRET: " ", CRON_SECRET: "cron" }),
+    ).toBe("cron");
+  });
+
+  it("keeps the sign-in secret untrimmed, and an empty BETTER_AUTH_SECRET does not fall back", () => {
+    const secret = (env: Record<string, string>) =>
+      loadConfig({ env: { ...BASE_ENV, ...env } }).signIn.secret;
+
+    expect(secret({ JUNIOR_SECRET: " junior " })).toBe(" junior ");
+    expect(
+      secret({ BETTER_AUTH_SECRET: " auth ", JUNIOR_SECRET: "junior" }),
+    ).toBe(" auth ");
+    expect(secret({ BETTER_AUTH_SECRET: "", JUNIOR_SECRET: "junior" })).toBe(
+      "",
+    );
+  });
+
+  it("reads the sign-in env vars as given, and leaves the lists unparsed", () => {
+    const { signIn } = loadConfig({
+      env: {
+        ...BASE_ENV,
+        GOOGLE_CLIENT_ID: " client-id ",
+        GOOGLE_CLIENT_SECRET: "client-secret",
+        JUNIOR_ALLOWED_DOMAINS: "[1]",
+        JUNIOR_DASHBOARD_TRUSTED_ORIGINS: " https://a.example.com ",
+      },
+    });
+
+    expect(signIn).toMatchObject({
+      allowedDomains: "[1]",
+      googleClientId: " client-id ",
+      googleClientSecret: "client-secret",
+      trustedOrigins: " https://a.example.com ",
+    });
+  });
+
+  it("requires dashboard sign-in unless JUNIOR_DASHBOARD_AUTH_REQUIRED is false", () => {
+    const required = (value?: string) =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_DASHBOARD_AUTH_REQUIRED: value },
+      }).signIn.dashboardAuthRequired;
+
+    expect(required()).toBe(true);
+    expect(required(" false ")).toBe(false);
+    expect(required("FALSE")).toBe(true);
+    expect(required("no")).toBe(true);
+  });
+
+  it("rejects the removed JUNIOR_DASHBOARD_GOOGLE_DOMAINS", () => {
+    expect(() =>
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_DASHBOARD_GOOGLE_DOMAINS: "sentry.io" },
+      }),
+    ).toThrow(
+      "JUNIOR_DASHBOARD_GOOGLE_DOMAINS was removed; set JUNIOR_ALLOWED_DOMAINS instead",
+    );
+  });
+
+  it("reads the web push keys and subject trimmed", () => {
+    expect(
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          JUNIOR_WEB_PUSH_PRIVATE_KEY: " private ",
+          JUNIOR_WEB_PUSH_PUBLIC_KEY: " public ",
+          JUNIOR_WEB_PUSH_SUBJECT: " mailto:junior@example.com ",
+        },
+      }).webPush,
+    ).toEqual({
+      privateKey: "private",
+      publicKey: "public",
+      subject: "mailto:junior@example.com",
+    });
   });
 
   it("enables conversation work by default", () => {
@@ -563,42 +686,153 @@ describe("loadConfig", () => {
       }),
     ).toThrow(/^bot\.contextWindowTokens \(AI_MODEL_CONTEXT_WINDOW_TOKENS\): /);
   });
-});
 
-// `setSlackReactionConfig` changes the module's config, so these cases use
-// the module and put the defaults back after each one.
-describe("setSlackReactionConfig", () => {
-  afterEach(() => {
-    setSlackReactionConfig({
-      completedReactionEmoji: "white_check_mark",
-      processingReactionEmoji: "eyes",
+  it("applies createApp limits over env and only caps the turn timeout", () => {
+    const { bot } = loadConfig({
+      env: { ...BASE_ENV, AI_MODEL_CONTEXT_WINDOW_TOKENS: "200000" },
+      options: {
+        limits: {
+          contextWindowTokens: 2_000,
+          eventAutomationRunLimit: { maxRuns: 2 },
+          turnTimeoutMs: 5_000,
+        },
+      },
+    });
+
+    expect(bot).toMatchObject({
+      contextWindowTokens: 2_000,
+      eventAutomationRunWindowMs: 60_000,
+      maxEventAutomationRuns: 2,
+      turnTimeoutMs: 5_000,
     });
   });
 
+  it("names the createApp option in an option error", () => {
+    expect(() =>
+      loadConfig({
+        env: BASE_ENV,
+        options: { limits: { maxSlicesPerTurn: 0 } },
+      }),
+    ).toThrow(/^limits\.maxSlicesPerTurn must be a positive integer$/);
+    expect(() =>
+      loadConfig({ env: BASE_ENV, options: { bot: { userName: " " } } }),
+    ).toThrow(/^botName must not be empty$/);
+  });
+});
+
+describe("Slack reaction emoji options", () => {
+  const slackConfig = (slack: ConfigInput["slack"]) =>
+    loadConfig({ env: BASE_ENV, options: { slack } }).slack;
+
   it("overrides processingReactionEmoji when provided", () => {
-    setSlackReactionConfig({ processingReactionEmoji: "jr-thinking" });
-    expect(getChatConfig().slack.processingReactionEmoji).toBe("jr-thinking");
+    expect(
+      slackConfig({ processingReactionEmoji: "jr-thinking" })
+        .processingReactionEmoji,
+    ).toBe("jr-thinking");
   });
 
   it("overrides completedReactionEmoji when provided", () => {
-    setSlackReactionConfig({ completedReactionEmoji: "jr-done" });
-    expect(getChatConfig().slack.completedReactionEmoji).toBe("jr-done");
+    expect(
+      slackConfig({ completedReactionEmoji: "jr-done" }).completedReactionEmoji,
+    ).toBe("jr-done");
   });
 
   it("normalizes colon-wrapped emoji names", () => {
-    setSlackReactionConfig({ processingReactionEmoji: ":tada:" });
-    expect(getChatConfig().slack.processingReactionEmoji).toBe("tada");
+    expect(
+      slackConfig({ processingReactionEmoji: ":tada:" })
+        .processingReactionEmoji,
+    ).toBe("tada");
   });
 
   it("throws when override emoji name is invalid", () => {
     expect(() =>
-      setSlackReactionConfig({ processingReactionEmoji: "not valid emoji!" }),
+      slackConfig({ processingReactionEmoji: "not valid emoji!" }),
     ).toThrow("processingReactionEmoji must be a valid Slack emoji name");
   });
 
   it("leaves unspecified fields unchanged", () => {
-    const original = getChatConfig().slack.completedReactionEmoji;
-    setSlackReactionConfig({ processingReactionEmoji: "jr-thinking" });
-    expect(getChatConfig().slack.completedReactionEmoji).toBe(original);
+    expect(
+      slackConfig({ processingReactionEmoji: "jr-thinking" })
+        .completedReactionEmoji,
+    ).toBe("white_check_mark");
+  });
+});
+
+describe("sandbox config", () => {
+  const sandboxConfig = (
+    env: Record<string, string>,
+    sandbox?: ConfigInput["sandbox"],
+  ) =>
+    loadConfig({ env: { ...BASE_ENV, ...env }, options: { sandbox } }).sandbox;
+
+  it("prefers the createApp vCPU option over SANDBOX_VCPUS", () => {
+    expect(sandboxConfig({ SANDBOX_VCPUS: "2" }, { vcpus: 4 }).vcpus).toBe(4);
+    expect(sandboxConfig({ SANDBOX_VCPUS: " 2 " }).vcpus).toBe(2);
+    expect(sandboxConfig({}).vcpus).toBeUndefined();
+  });
+
+  it("ignores invalid SANDBOX_VCPUS values", () => {
+    for (const value of ["", "0", "-1", "1.5", "two", "99999999999999999"]) {
+      expect(sandboxConfig({ SANDBOX_VCPUS: value }).vcpus).toBeUndefined();
+    }
+  });
+
+  it("rejects an invalid vCPU option", () => {
+    for (const vcpus of [0, -1, 1.5, Number.NaN]) {
+      expect(() => sandboxConfig({}, { vcpus })).toThrow(
+        /^sandbox\.vcpus must be a positive integer$/,
+      );
+    }
+  });
+
+  it("parses the keepalive and turns invalid values off", () => {
+    expect(
+      sandboxConfig({ VERCEL_SANDBOX_KEEPALIVE_MS: "5000" }).keepAliveMs,
+    ).toBe(5000);
+    expect(
+      sandboxConfig({ VERCEL_SANDBOX_KEEPALIVE_MS: " 5000ms" }).keepAliveMs,
+    ).toBe(5000);
+    for (const value of ["", "-5", "soon"]) {
+      expect(
+        sandboxConfig({ VERCEL_SANDBOX_KEEPALIVE_MS: value }).keepAliveMs,
+      ).toBe(0);
+    }
+    expect(sandboxConfig({}).keepAliveMs).toBe(0);
+  });
+
+  it("parses snapshot freshness settings", () => {
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    expect(sandboxConfig({}).snapshot).toEqual({
+      floatingMaxAgeMs: sevenDaysMs,
+      rebuildEpoch: "",
+    });
+    expect(
+      sandboxConfig({
+        SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS: "0",
+        SANDBOX_SNAPSHOT_REBUILD_EPOCH: " epoch-a ",
+      }).snapshot,
+    ).toEqual({ floatingMaxAgeMs: 0, rebuildEpoch: "epoch-a" });
+    for (const value of [" ", "-1", "later"]) {
+      expect(
+        sandboxConfig({ SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS: value }).snapshot
+          .floatingMaxAgeMs,
+      ).toBe(sevenDaysMs);
+    }
+  });
+
+  it("trims Docker and Vercel provider settings", () => {
+    const config = sandboxConfig({
+      DOCKER_HOST: " unix:///tmp/docker.sock ",
+      JUNIOR_DOCKER_SANDBOX_DIR: " ",
+      JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS: " /etc/ca.pem ",
+      VERCEL_TOKEN: " tk ",
+      VERCEL_TEAM_ID: "",
+      VERCEL_PROJECT_ID: "pj",
+    });
+    expect(config.docker).toEqual({
+      host: "unix:///tmp/docker.sock",
+      extraCaCertsFile: "/etc/ca.pem",
+    });
+    expect(config.vercel).toEqual({ token: "tk", projectId: "pj" });
   });
 });

@@ -296,7 +296,6 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
 
 vi.mock("@/chat/oauth-flow", () => ({
   extractOAuthStartedMessageFromToolResults: () => undefined,
-  resolveBaseUrl: () => undefined,
 }));
 
 vi.mock("@/chat/conversations/turn-lifecycle", async (importOriginal) => ({

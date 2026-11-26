@@ -34,6 +34,7 @@ import {
   useSteerConversationPendingMessages,
   useStopConversationTurn,
 } from "./queries";
+import { useAttachLinkedWork } from "./composerLinkedWork";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 import { getDashboardAgentName } from "../agentName";
 
@@ -146,6 +147,13 @@ function ReplyFooter(props: {
     !props.pendingMessages.some(
       (message) => !committedIds.has(message.messageId),
     );
+  // Each accepted send, also a Retry, adds the Message's links to linked
+  // work.
+  const attachLinkedWork = useAttachLinkedWork();
+  const attachLinks = (message: string) =>
+    attachLinkedWork(props.conversationId, message);
+  const attachLinksRef = useRef(attachLinks);
+  attachLinksRef.current = attachLinks;
   const onSubmit = useCallback(
     async (message: string, idempotencyKey: string, files?: File[]) => {
       await appendMessageRef.current.mutateAsync({
@@ -154,17 +162,24 @@ function ReplyFooter(props: {
         message,
         files,
       });
+      attachLinksRef.current(message);
     },
     [],
   );
   const onRetry = useCallback((message: ConversationMailboxMessage) => {
     if (!message.idempotencyKey || (!message.text && !message.files?.length))
       return;
-    void appendMessageRef.current.mutateAsync({
-      idempotencyKey: message.idempotencyKey,
-      message: message.text ?? "",
-      files: message.files,
-    });
+    const text = message.text ?? "";
+    void appendMessageRef.current
+      .mutateAsync({
+        idempotencyKey: message.idempotencyKey,
+        message: text,
+        files: message.files,
+      })
+      .then(
+        () => attachLinksRef.current(text),
+        () => {},
+      );
   }, []);
   const onSubmitStart = useCallback(() => {
     // Keep an in-flight remove intact so optimistic cache rollback stays coherent.
@@ -390,7 +405,6 @@ function ReplyFooter(props: {
             : undefined)
         }
         conversation={props.conversation}
-        linksWork
         ref={composerRef}
         label="Continue this conversation"
         placeholder={props.placeholder}
