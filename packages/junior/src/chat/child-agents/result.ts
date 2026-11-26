@@ -4,10 +4,12 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import {
   enqueueAutomatedInput,
   getConversationStoppedAtMs,
 } from "@/chat/conversations/session-stop";
+import { parentResultActor } from "@/chat/conversations/kind-behavior";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getConversationStore } from "@/chat/db";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -16,7 +18,7 @@ import {
   resolveMailboxTurnWork,
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
-import { parentResultActor } from "./parent-result";
+import type { InboundMessageSender } from "@/chat/task-execution/message-sender";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   getConversationWorkState,
@@ -29,11 +31,7 @@ import type {
 import { readChildConversationSender } from "./child-input";
 import { resultAuthorId, withSenderActors } from "./sender-actors";
 import { getAgentMessageId, getAgentReplyMessageId } from "./ids";
-import {
-  childMessageSenderMetadata,
-  listChildMessages,
-  type ChildMessage,
-} from "./child-message";
+import { listChildMessages, type ChildMessage } from "./child-message";
 import { childAgentStillWorks } from "./store";
 import { renderDataTag } from "@/chat/input-tags";
 import { remindsNoReplyForChildStatus } from "@/chat/conversations/kind-behavior";
@@ -41,7 +39,6 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { listUnreportedSiblingAgents } from "./list";
 import { recordChildAgentEnded, type SubagentOutcome } from "./markers";
 import {
-  AGENT_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
   AGENT_UPDATE_EVENT_TYPE,
 } from "./result-event-type";
@@ -188,7 +185,7 @@ export async function enqueueAgentMessageToParent(args: {
     eventKey: inboundMessageId,
     eventType: AGENT_MESSAGE_EVENT_TYPE,
     identifier: senderId,
-    namespace: AGENT_EVENT_NAMESPACE,
+    namespace: CORE_EVENT_NAMESPACE,
     trustedSummary: summary,
   });
   await enqueueAutomatedInput({
@@ -270,14 +267,14 @@ export async function enqueueStarterUpdate(args: {
       eventKey: inboundMessageId,
       eventType: AGENT_UPDATE_EVENT_TYPE,
       identifier: senderId,
-      namespace: AGENT_EVENT_NAMESPACE,
+      namespace: CORE_EVENT_NAMESPACE,
       ...(stillWorks ? undefined : { status }),
       trustedSummary: `${childAgentLabel(args.sender)} ${stillWorks ? "sent a message." : RESULT_SUMMARIES[status]}`,
     }),
-    ...childMessageSenderMetadata({
+    sender: {
       conversationId: senderId,
       turnId: args.turnId,
-    }),
+    } satisfies InboundMessageSender,
   };
   await enqueueAutomatedInput({
     message: {

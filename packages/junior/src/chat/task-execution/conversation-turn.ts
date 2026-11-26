@@ -4,6 +4,7 @@ import {
   isPersonInput,
   isTopLevel,
   ownsLocation,
+  parentResultActor,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -21,7 +22,6 @@ import {
   commitParentMessageFork,
   isParentMessageAuthor,
 } from "@/chat/child-agents/parent-message";
-import { parentResultActor } from "@/chat/child-agents/parent-result";
 import { readParentMessage } from "@/chat/child-agents/parent-message-input";
 import { isChildAgentEvent } from "@/chat/child-agents/child-input";
 import {

@@ -1,6 +1,3 @@
-/** Event namespace of the messages between a parent and its child agents. */
-export const AGENT_EVENT_NAMESPACE = "junior";
-
 // A child's result that an earlier release wrote has an Event type with this
 // prefix and its status, such as `agent_invocation.blocked`. Stored
 // transcripts still have them.
