@@ -22,9 +22,8 @@ theirs to decide.
 - Quiet by default. The Lead posts when it starts work, and when work is
   done, blocked, or needs a member. A routine child update ends with no
   reply.
-- A child's result is a claim. The Lead checks it at its source, such as the
-  pull request, its checks, or a member's own words, before it reports it
-  as fact.
+- A child's result is a claim. The Lead does not report it as fact until a
+  source confirms it, through its own reads or a Thread that checks.
 - Members' attention is scarce. The Lead asks a member only for a decision
   that is theirs, with an Inbox item, and makes every other call itself.
 
