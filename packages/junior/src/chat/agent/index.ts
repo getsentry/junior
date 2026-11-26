@@ -354,11 +354,8 @@ async function executeAgentRunInPrivacyContext(
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
   const turnId = run.turnId;
-  const conversationKind = storedConversation.kind;
-  const behavior = turnBehavior({
-    ...storedConversation,
-    personInput: isPersonInput(run.source.kind),
-  });
+  const personInput = isPersonInput(run.source.kind);
+  const behavior = turnBehavior({ ...storedConversation, personInput });
   const input = {
     actor: run.instruction.actor,
     messageText: run.instruction.text,
@@ -1076,12 +1073,13 @@ async function executeAgentRunInPrivacyContext(
     // instead of rejecting. Preserve Junior's yield so runAgentStep can
     // restore it after the Pi run settles without leaking Pi mechanics into
     // the resume API.
-    // A Task inherits the person's actor, but only its parent agent sends it
-    // Turns. Keep its gaps out of the histograms of people.
+    // A child agent inherits the person's actor, but its parent agent or an
+    // Event sends most of its Turns. Only a Turn that a person sent counts
+    // toward the histograms of people.
     const cacheWarming = createCacheWarmingRecorder(
       conversationId,
       {
-        userActor: isUserActor(actor) && conversationKind !== "task",
+        userActor: isUserActor(actor) && personInput,
         idleNeedsPendingWork: behavior.idleNeedsPendingWork,
       },
       { platform: promptPlatform, mode: behavior.promptMode },

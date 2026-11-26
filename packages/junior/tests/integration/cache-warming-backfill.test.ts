@@ -27,7 +27,6 @@ import {
 } from "@/chat/cache-warming/savings-refill";
 import { GLOBAL_GAPS_TTL_MS } from "@/chat/cache-warming/warmup";
 import {
-  agentInstructionProvenance,
   contextProvenance,
   instructionProvenanceFor,
 } from "@/chat/conversations/provenance";
@@ -159,20 +158,39 @@ describe("cache warming gap backfill", () => {
       { atMs: T0 + 67 * MINUTE, prefixTokens: 1_000 },
       { atMs: T0 + 69 * MINUTE, prefixTokens: 60_000 },
     ]);
-    // Only the parent agent sends Turns to a Task.
-    const taskId = `${conversationId}:task`;
+    // The parent agent sends this Turn to its child Thread with the
+    // person's Actor. No person sent it, so it is a system Turn.
+    const threadId = `${conversationId}:thread`;
     await getConversationStore().createChild({
-      childConversationId: taskId,
-      kind: "task",
+      childConversationId: threadId,
+      kind: "thread",
       parentConversationId: conversationId,
       nowMs: T0,
     });
-    await getConversationEventStore().append(taskId, [
+    await getConversationEventStore().append(threadId, [
+      {
+        createdAtMs: T0 + MINUTE,
+        data: {
+          type: "message",
+          messageId: "parent-task-1",
+          role: "user",
+          text: "Check the logs.",
+        },
+      },
+      {
+        createdAtMs: T0 + MINUTE,
+        data: {
+          type: "turn_started",
+          turnId: "turn-parent-task-1",
+          inputMessageIds: ["parent-task-1"],
+          surface: "api",
+        },
+      },
       {
         createdAtMs: T0 + MINUTE,
         data: historyItemFromPiMessage(
           { role: "user", content: "Check the logs.", timestamp: T0 + MINUTE },
-          agentInstructionProvenance,
+          instructionProvenanceFor({ platform: "web", userId: "user-1" }),
         ),
       },
       {
@@ -770,6 +788,25 @@ describe("cache warming savings re-fill", () => {
       kind: "automation",
     });
     await getConversationEventStore().append(replyId, [
+      {
+        createdAtMs: REPLY,
+        data: {
+          type: "message",
+          messageId: "reply-1",
+          role: "user",
+          text: "Run it again.",
+          meta: { source: "slack" },
+        },
+      },
+      {
+        createdAtMs: REPLY,
+        data: {
+          type: "turn_started",
+          turnId: "turn-reply-1",
+          inputMessageIds: ["reply-1"],
+          surface: "slack",
+        },
+      },
       {
         createdAtMs: REPLY,
         data: historyItemFromPiMessage(

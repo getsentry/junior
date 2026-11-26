@@ -14,7 +14,9 @@ import {
 } from "@/chat/conversations/web-input";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import type { AgentRun } from "@/chat/agent/types";
-import { getConversationEventStore } from "@/chat/db";
+import { eq } from "drizzle-orm";
+import { getConversationEventStore, getDb } from "@/chat/db";
+import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
@@ -238,7 +240,7 @@ describe("Conversation mailbox Turn work", () => {
     ]);
   }, 10_000);
 
-  it("feeds private source visibility into the agent run", async () => {
+  it("feeds private source visibility into the agent run, also for a root with none", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const accepted = await createAndEnqueueConversation(
@@ -258,6 +260,26 @@ describe("Conversation mailbox Turn work", () => {
       visibility: "private",
     });
 
+    // A root whose visibility nobody knows runs private. No current web
+    // writer leaves one, so the test clears the root and its Destination.
+    const unknown = await createAndEnqueueConversation(
+      {
+        actor,
+        idempotencyKey: "create-unknown-1",
+        message: "Start a dashboard turn with no stored visibility.",
+      },
+      { conversationStore, queue, state },
+    );
+    const [root] = await getDb()
+      .update(juniorConversations)
+      .set({ visibility: null })
+      .where(eq(juniorConversations.conversationId, unknown.conversationId))
+      .returning({ destinationId: juniorConversations.destinationId });
+    await getDb()
+      .update(juniorDestinations)
+      .set({ visibility: "unknown" })
+      .where(eq(juniorDestinations.id, root!.destinationId!));
+
     const agentRuns: AgentRun[] = [];
     const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
@@ -269,18 +291,22 @@ describe("Conversation mailbox Turn work", () => {
     );
     const run = requireConversationTurn(worker);
 
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run,
-        state,
-      }),
-    ).resolves.toMatchObject({ status: "completed" });
-    expect(agentRuns).toHaveLength(1);
-    expect(agentRuns[0]?.source).toEqual(
-      createWebSource(accepted.conversationId, "private"),
-    );
+    for (const conversationId of [
+      accepted.conversationId,
+      unknown.conversationId,
+    ]) {
+      await expect(
+        processConversationQueueMessage(queue.takeMessage(), {
+          conversationStore,
+          queue,
+          run,
+          state,
+        }),
+      ).resolves.toMatchObject({ status: "completed" });
+      expect(agentRuns.at(-1)?.source).toEqual(
+        createWebSource(conversationId, "private"),
+      );
+    }
   });
 
   it("reports a lost lease when cancelled input acknowledgement fails", async () => {
@@ -733,9 +759,10 @@ describe("Conversation mailbox Turn work", () => {
         source,
       }),
     );
+    // The root stores no visibility, so the rebuilt Source is private.
     expect(agentRuns[1]).toEqual(
       expect.objectContaining({
-        source: createWebSource(conversationId),
+        source: createWebSource(conversationId, "private"),
       }),
     );
     expect(deliverMessage).toHaveBeenCalledOnce();

@@ -37,6 +37,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { storedMessageJson } from "@/chat/conversations/sql/message-json";
 import { isTopLevel, turnBehavior } from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -126,9 +127,16 @@ interface EventRow {
    * `tool_result`: only a successful answer tool result. `warmup`: the cost
    * event of one warmup call.
    */
-  type: "assistant_message" | "tool_result" | "user_message" | "warmup";
+  type:
+    | "assistant_message"
+    | "tool_result"
+    | "turn_started"
+    | "user_message"
+    | "warmup";
   /** User message instruction: its Actor is a person. */
   personInstruction: boolean | null;
+  /** Turn start: a person sent one of its input Messages. */
+  personInput: boolean | null;
   stopReason: string | null;
   /** Tool result: the answer tool that returned it. */
   toolName: string | null;
@@ -289,6 +297,19 @@ export async function warmupCostUsdByDay(range: {
 async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
   const events = juniorConversationEvents;
   const isUserMessage = sql`${events.type} = 'user_message'`;
+  const isTurnStarted = sql`${events.type} = 'turn_started'`;
+  // A person's input Message stores its Slack or web Source. Parent agent
+  // and Event input does not. A Slack Automation dispatch does, but its
+  // Actor is not a person.
+  const inputName = "input_message";
+  const input = alias(events, inputName);
+  const hasPersonInput = sql`EXISTS (
+    SELECT 1 FROM ${events} AS ${sql.identifier(inputName)}
+    WHERE ${input.conversationId} = ${events.conversationId}
+      AND ${input.type} = 'message'
+      AND (${events.payload}->'inputMessageIds') @> jsonb_build_array(${input.payload}->>'messageId')
+      AND (${input.payload}->'meta'->>'source') IN ('slack', 'web')
+  )`;
   const isToolResult = sql`${events.type} = 'tool_result'`;
   const isStructuredEvent = sql`${events.type} = 'structured_event'`;
   const messageText = sql`${events.payload}->>'message'`;
@@ -310,6 +331,9 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
       personInstruction: sql<
         boolean | null
       >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
+      personInput: sql<
+        boolean | null
+      >`CASE WHEN ${isTurnStarted} THEN ${hasPersonInput} END`,
       stopReason: sql<string | null>`(${message})->>'stopReason'`,
       toolName: sql<string | null>`(${message})->>'toolName'`,
       startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
@@ -343,6 +367,7 @@ async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
             isUserMessage,
             sql`(${events.payload}->'provenance'->>'authority') = 'instruction'`,
           ),
+          isTurnStarted,
           isWarmupEvent,
         ),
         gte(events.createdAt, juniorConversations.createdAt),
@@ -462,6 +487,8 @@ function replayConversation(
   // Live recording takes the Actor when the Turn starts. A later instruction
   // in the same Turn is steering and does not change it.
   let inTurn = false;
+  // Whether a person sent the next Turn, from its stored Turn start.
+  let personInput = false;
   let endedTurns = 0;
   let lastCallMs: number | undefined;
   let idle: Idle | undefined;
@@ -486,11 +513,16 @@ function replayConversation(
   }
   for (const event of events) {
     if (event.type === "tool_result" || event.type === "warmup") continue;
+    if (event.type === "turn_started") {
+      personInput = event.personInput === true;
+      continue;
+    }
     if (event.type === "user_message") {
       if (!inTurn) {
-        // `agent/index.ts` counts a Task as not started by a person.
-        userActor =
-          event.personInstruction === true && conversation.kind !== "task";
+        // `agent/index.ts` counts a Turn as a person's only when a person
+        // sent it. A parent agent's task has the person's Actor.
+        userActor = event.personInstruction === true && personInput;
+        personInput = false;
         inTurn = true;
       }
       continue;

@@ -215,13 +215,9 @@ export function createConversationTurnWorker(
       conversationId: context.conversationId,
     });
     const kind = storedConversation?.kind ?? "thread";
-    // The parent's task can carry the root's private content, so a child
-    // with missing visibility runs as private.
-    const visibility = isTopLevel({
-      parentConversationId: storedConversation?.parentConversationId,
-    })
-      ? storedConversation?.visibility
-      : (storedConversation?.visibility ?? "private");
+    // A child stores its root's visibility, so a child with none has a root
+    // with none. Missing visibility runs as private.
+    const visibility = storedConversation?.visibility ?? "private";
     const mailboxDestination =
       resolved.kind === "mailbox"
         ? resolved.batch[0]?.message.destination
@@ -284,7 +280,7 @@ export function createConversationTurnWorker(
         location: storedConversation?.location,
         savedActor: savedTurn?.actor,
         savedSource: savedTurn?.source,
-        visibility: storedConversation?.visibility,
+        visibility,
       });
       // Rebuild the inputs from every saved input Message. A web batch saved
       // each Message apart. An Event or parent batch saved one Message with
