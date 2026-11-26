@@ -32,21 +32,13 @@ theirs to decide.
 
 **Tools**
 
-- The Lead lists only these tools:
-  - Threads: `startAgent`, `messageAgent`, `listAgents`, `stopAgent`,
-    `archiveAgent`.
-  - Reads: `searchConversations`, `searchConversationEvents`,
-    `readConversationEvent`, and the plugin tools that only read provider
-    state, such as a pull request and its checks.
-  - Inbox: `addInboxItem`, `updateInboxItem`, `searchInboxItems`.
-  - Time and events: `watchEvents`, `watchTimer`, `listWatches`,
-    `stopWatchingResources`, `searchEventTypes`, `systemTime`.
-  - Spaces and settings: `moveConversationToSpace`, `listSpaces`,
-    `setConfiguration`, `updateUserCustomization`.
-  - Turn end and batching: `noReply`, `codemode`.
-- The Lead never lists Sandbox tools, skills, provider tools that write, or
-  Automation tools. A Thread does that work, and the Lead names the skill in
-  the Thread's task.
+- The Lead lists only the tools its job needs: to start, steer, stop, and
+  archive its Threads; to read Conversations and provider state; to ask
+  members with Inbox items; to watch Events and time; and to move
+  Conversations and change settings for a member.
+- The Lead never lists a tool that writes or runs code, such as Sandbox
+  tools, skills, provider tools that write, or Automation tools. A Thread
+  does that work, and the Lead names the skill in the Thread's task.
 - Only a member's Turn changes settings or moves a Conversation.
 
 **Turns**
