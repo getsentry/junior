@@ -138,6 +138,20 @@ describe("Lead API", () => {
       200,
     );
 
+    const started = await ana.request("http://localhost/api/conversations", {
+      body: JSON.stringify({
+        idempotencyKey: "lead-api-ana-work",
+        message: "Plan the cutover.",
+        spaceId,
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(started.status).toBe(200);
+    const workId = acceptedConversationMessageSchema.parse(
+      await started.json(),
+    ).conversationId;
+
     // Leaving ends Ana's part in the Lead, so no surface takes her messages.
     const left = await ana.request(
       `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/members/me`,
@@ -149,18 +163,37 @@ describe("Lead API", () => {
     );
     const state = getStateAdapter();
     await state.connect();
+    const acp = createAcpConversations({
+      eventStore: getConversationEventStore(),
+      queue,
+      state,
+    });
     await expect(
-      createAcpConversations({
-        eventStore: getConversationEventStore(),
-        queue,
-        state,
-      }).prompt({
+      acp.prompt({
         conversationId: leadId,
         idempotencyKey: "lead-api-ana-acp",
         text: "Check the deploy.",
         user: await signedInViewer("lead-api-ana@example.com"),
       }),
     ).resolves.toEqual({ status: "not_found" });
+    // An archived Space takes no messages, in its Lead or in its work.
+    const archived = await bo.request(
+      `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/archive`,
+      {
+        body: JSON.stringify({ archived: true }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      },
+    );
+    expect(archived.status).toBe(200);
+    await expect(
+      acp.prompt({
+        conversationId: workId,
+        idempotencyKey: "lead-api-bo-acp-work",
+        text: "Check the deploy.",
+        user: await signedInViewer("lead-api-bo@example.com"),
+      }),
+    ).resolves.toEqual({ status: "space_closed" });
   });
 
   it("lists the Conversations that the Lead watches, with the seq it read them at", async () => {

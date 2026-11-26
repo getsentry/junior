@@ -6,7 +6,6 @@
  */
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
-import { messagesNeedSpaceMembership } from "@/chat/conversations/kind-behavior";
 import type { Conversation } from "@/chat/conversations/store";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createSpaceLead, readSpace, type Space } from "@/chat/spaces/store";
@@ -79,18 +78,14 @@ export async function readLeadSpace(
 /**
  * Return whether a person may send a Message to a Conversation now, as far
  * as its Space decides: only members of a Space that is not archived message
- * its Lead. Every other Conversation leaves the decision to its access rules.
+ * its Lead or its work. A Conversation outside a Space leaves the decision to
+ * its access rules.
  */
 export async function spaceTakesMessagesFrom(
-  conversation: Pick<Conversation, "kind" | "spaceId">,
+  conversation: Pick<Conversation, "spaceId">,
   userId: string,
 ): Promise<boolean> {
-  if (
-    !messagesNeedSpaceMembership(conversation.kind) ||
-    !conversation.spaceId
-  ) {
-    return true;
-  }
+  if (!conversation.spaceId) return true;
   const space = await readSpace(userId, conversation.spaceId);
   return Boolean(space?.viewerIsMember && !space.archivedAt);
 }
