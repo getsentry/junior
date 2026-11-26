@@ -19,8 +19,8 @@ ALTER TABLE "junior_conversation_annotations" ADD COLUMN "action" text;--> state
 --   key, which is the provider id (a Ticket's is its identifier).
 -- - Any other object, such as an attached link or a GitHub object whose id
 --   is not known, is the core `link` kind, with its link.
--- A link with no status is an attached link. Every other saved object was
--- changed: the old JSON does not say which Conversation created it.
+-- Every saved object was changed: the old JSON does not say which
+-- Conversation created it.
 CREATE OR REPLACE FUNCTION "junior_conversation_annotations_legacy_subject"()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -68,14 +68,11 @@ BEGIN
     NEW."subject_id" := CASE WHEN kind IS NOT NULL THEN id ELSE coalesce(url, NEW."key") END;
   END IF;
   IF NEW."action" IS NULL THEN
-    NEW."action" := CASE
-        WHEN NEW."kind" = 'resource_link' AND NEW."annotation_json"->>'status' IS NULL THEN 'attached'
-        ELSE 'changed'
-      END;
+    NEW."action" := 'changed';
   END IF;
   RETURN NEW;
 END;
 $function$;--> statement-breakpoint
 CREATE TRIGGER "junior_conversation_annotations_legacy_subject" BEFORE INSERT OR UPDATE ON "junior_conversation_annotations" FOR EACH ROW WHEN (NEW."subject_kind" IS NULL OR NEW."action" IS NULL) EXECUTE FUNCTION "junior_conversation_annotations_legacy_subject"();--> statement-breakpoint
--- junior:bounded-backfill: every saved Annotation needs its subject before search and the new primary key use it, so the update runs once over the Annotation table. Each Conversation has only the few objects that it created, changed, or attached, and the update writes each row once.
+-- junior:bounded-backfill: every saved Annotation needs its subject before search and the new primary key use it, so the update runs once over the Annotation table. Each Conversation has only the few objects that it created or changed, and the update writes each row once.
 UPDATE "junior_conversation_annotations" SET "subject_kind" = NULL;

@@ -5,6 +5,7 @@ import {
   eq,
   gt,
   inArray,
+  isNull,
   ne,
   notExists,
   or,
@@ -203,7 +204,12 @@ export async function upsertPluginAnnotation(
       subject,
     );
   }
-  await db
+  const action = args.action
+    ? {
+        action: sql`case when ${table.action} = 'created' then 'created' else ${args.action} end`,
+      }
+    : undefined;
+  const saved = await db
     .with(conversationDetailTouch(db, [args.conversationId]))
     .insert(table)
     .values({
@@ -230,13 +236,65 @@ export async function upsertPluginAnnotation(
         ...(subject
           ? { subjectId: subject.id, subjectKind: subject.kind }
           : undefined),
-        ...(args.action
-          ? {
-              action: sql`case when ${table.action} = 'created' then 'created' else ${args.action} end`,
-            }
-          : undefined),
+        ...action,
       },
-    });
+      // A row of another object keeps its key and subject.
+      ...(subject
+        ? {
+            setWhere: or(
+              isNull(table.subjectId),
+              and(
+                eq(table.subjectKind, subject.kind),
+                eq(table.subjectId, subject.id),
+              ),
+            ),
+          }
+        : undefined),
+    })
+    .returning({ key: table.key });
+  if (saved.length > 0 || !subject) return;
+  // Another object has the new key here, so the rekey left this object on
+  // its old key. The object's row there gets the new content.
+  const updated = await db
+    .with(conversationDetailTouch(db, [args.conversationId]))
+    .update(table)
+    .set({ title, updatedAt: now, url: parsed.url, ...action })
+    .where(
+      and(
+        eq(table.conversationId, args.conversationId),
+        eq(table.plugin, args.plugin),
+        eq(table.kind, parsed.kind),
+        eq(table.subjectKind, subject.kind),
+        eq(table.subjectId, subject.id),
+      ),
+    )
+    .returning({ key: table.key });
+  if (updated.length > 0) return;
+  // This object has no row here yet. The provider gives it the key now, so
+  // the row of the other object there is stale. This object takes it as a
+  // new Annotation, so the other object's time and action do not make this
+  // Conversation its first one.
+  await db
+    .with(conversationDetailTouch(db, [args.conversationId]))
+    .update(table)
+    .set({
+      action: args.action ?? null,
+      annotation,
+      createdAt: now,
+      subjectId: subject.id,
+      subjectKind: subject.kind,
+      title,
+      updatedAt: now,
+      url: parsed.url,
+    })
+    .where(
+      and(
+        eq(table.conversationId, args.conversationId),
+        eq(table.plugin, args.plugin),
+        eq(table.kind, parsed.kind),
+        eq(table.key, parsed.key),
+      ),
+    );
 }
 
 // A move at the provider, such as a repository rename, changes the key of

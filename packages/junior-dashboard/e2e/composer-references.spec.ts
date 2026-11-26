@@ -267,6 +267,40 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await readSaved;
 });
 
+test("@ and # find a Conversation and a pull request by words of the title", async ({
+  page,
+  dashboard,
+}) => {
+  const composer = await openThread(page, dashboard.baseURL);
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+  const references = page.getByRole("listbox", { name: "References" });
+
+  await composer.pressSequentially("Compare @investigate check");
+  await expect(
+    mentions
+      .getByRole("group", { name: "Conversations" })
+      .getByRole("option")
+      .first(),
+  ).toHaveText(/Investigate checkout latency/);
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  await composer.press("Enter");
+  await expect(
+    composer.getByTitle("Investigate checkout latency"),
+  ).toBeVisible();
+
+  await composer.pressSequentially("with #link pull");
+  await expect(
+    references
+      .getByRole("group", { name: "Pull requests" })
+      .getByRole("option"),
+  ).toHaveText([/getsentry\/junior#3842/]);
+  await expect(references).not.toHaveAttribute("aria-busy", "true");
+  await composer.press("Enter");
+  await expect(composer.getByTitle("getsentry/junior#3842")).toHaveText(
+    "junior#3842",
+  );
+});
+
 test("the first Message of a new Conversation links its links", async ({
   page,
   dashboard,

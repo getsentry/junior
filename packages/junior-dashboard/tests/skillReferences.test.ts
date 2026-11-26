@@ -20,10 +20,19 @@ it("finds the skill reference at the caret", () => {
   expect(at("($rev|iew-pr) now")).toEqual({ start: 1, end: 11, query: "rev" });
 });
 
-it("skips a dollar after a word or outside a name", () => {
+it("finds a skill query with one space between words", () => {
+  expect(at("run $review p|")).toEqual({
+    start: 4,
+    end: 13,
+    query: "review p",
+  });
+});
+
+it("skips a dollar after a word or outside a query", () => {
   expect(at("US$5|")).toBeUndefined();
   expect(at("$$x|")).toBeUndefined();
-  expect(at("$review |")).toBeUndefined();
+  expect(at("$ |")).toBeUndefined();
+  expect(at("$review  |")).toBeUndefined();
 });
 
 it("finds each complete skill reference the runtime reads", () => {

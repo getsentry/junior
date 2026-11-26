@@ -1,6 +1,6 @@
 import path from "node:path";
 import { githubPlugin } from "@sentry/junior-github";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
@@ -243,7 +243,7 @@ describe("GitHub Annotations without GitHub's id of their object", () => {
     ]);
     expect(await annotationsOf(attached)).toEqual([
       {
-        action: "attached",
+        action: "changed",
         key: "getsentry/junior#77",
         subjectId: "77000",
         subjectKind: "github:pull_request",
@@ -648,6 +648,87 @@ describe("a GitHub issue of a renamed repository", () => {
         url: "https://github.com/getsentry/junior-next/issues/4254",
       },
     ]);
+  });
+
+  it("keeps another issue's Annotation when it already has the new name", async () => {
+    await createIssue();
+    // A stale Annotation of another issue still has the new key.
+    await saveLegacyAnnotation(slackParentConversationId, {
+      key: "getsentry/junior-next#4254",
+      kind: "object",
+      objectType: "task",
+      subject: { id: "9999000", kind: "github:issue" },
+      url: "https://github.com/getsentry/junior-next/issues/4254",
+    });
+
+    await runTool(
+      "github_updateIssue",
+      { issue: 4254, repo: "getsentry/junior-next", state: "closed" },
+      {
+        html_url: "https://github.com/getsentry/junior-next/issues/4254",
+        id: 4_254_000,
+        number: 4254,
+        state: "closed",
+      },
+    );
+
+    expect(await annotationsOf(slackParentConversationId)).toEqual([
+      {
+        action: "created",
+        key: "getsentry/junior#4254",
+        subjectId: "4254000",
+        subjectKind: "github:issue",
+        url: "https://github.com/getsentry/junior-next/issues/4254",
+      },
+      expect.objectContaining({
+        key: "getsentry/junior-next#4254",
+        subjectId: "9999000",
+      }),
+    ]);
+
+    // With no row of its own here, the issue takes its key's stale row as
+    // a new Annotation: the other issue's time and created action go.
+    await getDb()
+      .update(juniorConversationAnnotations)
+      .set({ action: "created" })
+      .where(
+        eq(juniorConversationAnnotations.key, "getsentry/junior-next#4254"),
+      );
+    await getDb()
+      .delete(juniorConversationAnnotations)
+      .where(
+        and(
+          eq(
+            juniorConversationAnnotations.conversationId,
+            slackParentConversationId,
+          ),
+          eq(juniorConversationAnnotations.key, "getsentry/junior#4254"),
+        ),
+      );
+    await runTool(
+      "github_updateIssue",
+      { issue: 4254, repo: "getsentry/junior-next", state: "open" },
+      {
+        html_url: "https://github.com/getsentry/junior-next/issues/4254",
+        id: 4_254_000,
+        number: 4254,
+        state: "open",
+      },
+    );
+    expect(await annotationsOf(slackParentConversationId)).toEqual([
+      expect.objectContaining({
+        action: "changed",
+        key: "getsentry/junior-next#4254",
+        subjectId: "4254000",
+      }),
+    ]);
+    const [taken] = await getDb()
+      .select({ createdAt: juniorConversationAnnotations.createdAt })
+      .from(juniorConversationAnnotations)
+      .where(
+        eq(juniorConversationAnnotations.key, "getsentry/junior-next#4254"),
+      );
+    expect(taken!.createdAt.getTime()).toBeGreaterThan(1_000);
   });
 
   it("stays on the new name when a tool changes the issue by its old name", async () => {

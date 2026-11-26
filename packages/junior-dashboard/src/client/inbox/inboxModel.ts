@@ -253,7 +253,11 @@ function pullRequestState(
   item: InboxItemPayload,
 ): (typeof PULL_REQUEST_STATES)[number] | "Other" {
   if (!isCodeChangeItem(item)) return "Other";
-  const state = item.subject.label;
+  // Without a live card the label is only the kind's, so the ask that the
+  // plugin last wrote in the title, such as "Review requested · #91", says it.
+  const state = item.subject.object
+    ? item.subject.label
+    : item.title.split(" · ")[0];
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
 }
 

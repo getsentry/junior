@@ -131,17 +131,20 @@ export function registerMockPeopleSearchRoutes(
 }
 
 /**
- * Find mock people whose name or Slack handle has a word that starts with
- * the query, like the API's prefix search.
+ * Find mock people like the API: each word of the query starts a word of
+ * the name or the Slack handle.
  */
 function searchMockPeople(query: string): PeopleSearchReport {
-  const prefix = query.trim().toLowerCase();
-  const people = MOCK_MENTIONABLE_PEOPLE.filter((person) =>
-    `${person.fullName ?? ""} ${person.slackUserName ?? ""}`
+  const terms = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const people = MOCK_MENTIONABLE_PEOPLE.filter((person) => {
+    const words = `${person.fullName ?? ""} ${person.slackUserName ?? ""}`
       .toLowerCase()
-      .split(/\s+/)
-      .some((word) => word.startsWith(prefix)),
-  ).slice(0, MOCK_PEOPLE_SEARCH_LIMIT);
+      .split(/[^\p{L}\p{N}]+/u);
+    return (
+      terms.length > 0 &&
+      terms.every((term) => words.some((word) => word.startsWith(term)))
+    );
+  }).slice(0, MOCK_PEOPLE_SEARCH_LIMIT);
   return { people };
 }
 

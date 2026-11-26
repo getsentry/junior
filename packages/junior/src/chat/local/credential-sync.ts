@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { readJuniorSecret } from "@/chat/secrets";
+import { getChatConfig } from "@/chat/config";
 
 const LOCAL_CREDENTIAL_SYNC_CONTEXT = "junior.local-credential-sync.v1";
 const LOCAL_CREDENTIAL_SYNC_MAX_AGE_MS = 60_000;
@@ -21,7 +21,7 @@ const localCredentialSyncSchema = z
 type LocalCredentialSyncPayload = z.infer<typeof localCredentialSyncSchema>;
 
 function syncSecret(): string {
-  const secret = readJuniorSecret();
+  const secret = getChatConfig().secrets.juniorSecret;
   if (!secret) {
     throw new Error("Local credential sync requires JUNIOR_SECRET");
   }

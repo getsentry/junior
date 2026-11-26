@@ -1,8 +1,8 @@
 # Annotations
 
-An Annotation shows that a Conversation created, changed, or attached an
+An Annotation shows that a Conversation created, changed, or deleted an
 object, such as a pull request, a Ticket, or a Calendar event. People see it
-on the Conversation row, as a Message card, and in search.
+in Linked work, as a Message card, and in search.
 
 ## Intent
 
@@ -22,6 +22,8 @@ on the Conversation row, as a Message card, and in search.
   renderer as the Inbox. The cache keeps the last good value.
 - A read adds no Annotation. A change at the provider, such as a merge,
   changes no Annotation.
+- A link that someone shares in a Message is not an Annotation. The agent
+  reads it from the transcript.
 - A card shows only what the viewer can see. A viewer who cannot read the
   object sees only its label.
 - A root Conversation shows the Annotations of its child agents.

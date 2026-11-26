@@ -47,7 +47,7 @@ import {
 import {
   historyItemFromPiMessage,
   piMessageFromHistoryItem,
-} from "@/chat/pi/conversation-events";
+} from "@/core/history/items";
 import {
   COMPACTION_SUMMARY_PREFIX,
   hasCompactedConversationContext,
