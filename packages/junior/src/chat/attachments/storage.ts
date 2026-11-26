@@ -1,5 +1,5 @@
 import { getChatConfig } from "@/chat/config";
-import type { AttachmentStorageConfig } from "./config";
+import type { AttachmentStorageConfig } from "@/config";
 import { createMemoryAttachmentStorage } from "./memory";
 import { createS3AttachmentStorage } from "./s3";
 import { createVercelAttachmentStorage } from "./vercel";
