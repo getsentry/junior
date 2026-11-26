@@ -47,7 +47,7 @@ export function closeReason(
 /** The item text that says why Junior asked for the review again. */
 const REVIEW_AGAIN_TEXT: Record<GitHubReviewAskReason, string> = {
   checks: "Checks now pass, and every comment is handled.",
-  handled: "Every comment on your change request is handled.",
+  handled: "Every comment on your review is handled.",
   question: "A comment asks you a question.",
 };
 

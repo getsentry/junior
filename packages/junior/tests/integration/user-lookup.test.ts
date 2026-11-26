@@ -18,7 +18,8 @@ import {
 } from "../msw/handlers/slack-api";
 
 const rootTurnTools = turnBehavior({
-  kind: "root",
+  kind: "thread",
+  hasParent: false,
   personInput: true,
 }).tools;
 

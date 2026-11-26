@@ -237,7 +237,7 @@ export function createConversationTurnWorker(
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
     });
-    const kind = storedConversation?.kind ?? "root";
+    const kind = storedConversation?.kind ?? "thread";
     // The parent's task can carry the root's private content, so a child
     // with missing visibility runs as private.
     const visibility = isTopLevel({
@@ -388,6 +388,9 @@ export function createConversationTurnWorker(
     const postsToProvider = Boolean(conversationLocation) && isEventTurn;
     const behavior = turnBehavior({
       kind,
+      hasParent: !isTopLevel({
+        parentConversationId: storedConversation?.parentConversationId,
+      }),
       personInput: isPersonInput(source.kind),
     });
     const webActor = actor.platform === "web" ? actor : undefined;

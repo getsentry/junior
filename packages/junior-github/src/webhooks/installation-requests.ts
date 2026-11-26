@@ -578,11 +578,6 @@ export interface GitHubPullRequestMergeState {
   activity: GitHubPullRequestActivity[];
   /** A person turned on auto-merge, so GitHub merges it without them. */
   autoMerge: boolean;
-  /**
-   * The requester's latest review requests changes. Read only when the pull
-   * request is open and not a draft.
-   */
-  changesRequested: boolean;
   draft: boolean;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: Date;
@@ -732,7 +727,6 @@ export async function loadPullRequestMergeState(
   const state: GitHubPullRequestMergeState = {
     activity,
     autoMerge: Boolean(pull.autoMergeRequest),
-    changesRequested: false,
     draft: pull.isDraft,
     ...(headCommittedAt
       ? { headCommittedAt: new Date(headCommittedAt) }
@@ -789,6 +783,5 @@ export async function loadPullRequestMergeState(
   } else if (reviewStates.includes("APPROVED")) {
     state.reviewOutcome = "approved";
   }
-  state.changesRequested = requesterReview?.state === "CHANGES_REQUESTED";
   return state;
 }

@@ -155,6 +155,7 @@ async function readThreadIds(
     .where(
       and(
         inArray(juniorConversations.conversationId, ids),
+        // Every id is a child, so a `thread` is a child Thread.
         eq(juniorConversations.kind, "thread"),
       ),
     );
