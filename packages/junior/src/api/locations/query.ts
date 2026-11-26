@@ -255,7 +255,7 @@ async function directoryRows(db: JuniorDatabase) {
     .innerJoin(
       treeConversation,
       eq(
-        treeConversation.topLevelConversationId,
+        treeConversation.rootConversationId,
         juniorConversations.conversationId,
       ),
     )
@@ -506,7 +506,7 @@ export async function readLocationDetailFromSql(
         .innerJoin(
           treeConversation,
           eq(
-            treeConversation.topLevelConversationId,
+            treeConversation.rootConversationId,
             juniorConversations.conversationId,
           ),
         )
@@ -525,7 +525,7 @@ export async function readLocationDetailFromSql(
         .innerJoin(
           treeConversation,
           eq(
-            treeConversation.topLevelConversationId,
+            treeConversation.rootConversationId,
             juniorConversations.conversationId,
           ),
         )
@@ -544,7 +544,7 @@ export async function readLocationDetailFromSql(
         .innerJoin(
           treeConversation,
           eq(
-            treeConversation.topLevelConversationId,
+            treeConversation.rootConversationId,
             juniorConversations.conversationId,
           ),
         )
@@ -571,7 +571,7 @@ export async function readLocationDetailFromSql(
         .innerJoin(
           treeConversation,
           eq(
-            treeConversation.topLevelConversationId,
+            treeConversation.rootConversationId,
             juniorConversations.conversationId,
           ),
         )

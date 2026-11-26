@@ -1,5 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { topLevelConversation } from "./listed";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
@@ -19,7 +18,7 @@ export async function resolveRootConversationId(
   const [row] = await executor
     .db()
     .select({
-      rootConversationId: juniorConversations.topLevelConversationId,
+      rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
@@ -189,7 +188,7 @@ export async function recordStartedConversationParticipants(
     .where(
       and(
         eq(juniorConversations.actorIdentityId, args.identityId),
-        topLevelConversation(),
+        isNull(juniorConversations.parentConversationId),
       ),
     );
   if (roots.length === 0) return;

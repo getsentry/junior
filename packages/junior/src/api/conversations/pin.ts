@@ -96,7 +96,7 @@ async function setPin(
       kind: juniorConversations.kind,
       lastActivityAt: juniorConversations.lastActivityAt,
       parentConversationId: juniorConversations.parentConversationId,
-      rootConversationId: juniorConversations.topLevelConversationId,
+      rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
@@ -105,11 +105,7 @@ async function setPin(
   if (!conversation) throwApiError(404, "Conversation not found.");
   // The viewer passed the access check above, so the root id is safe to name.
   // MCP output has no root field, and the caller needs it to act.
-  // A Lead's child is its own root, so it has its own pin.
-  if (
-    conversation.parentConversationId &&
-    conversation.rootConversationId !== conversationId
-  ) {
+  if (conversation.parentConversationId) {
     throwApiError(
       409,
       `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${conversation.rootConversationId ?? conversation.parentConversationId}.`,

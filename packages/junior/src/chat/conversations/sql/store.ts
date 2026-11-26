@@ -2,6 +2,7 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { ownLocalDestination } from "@/chat/conversations/destination";
 import { topLevelConversation } from "./listed";
+import { isLeadSql, rootSpaceIdSql } from "@/chat/spaces/tree-space";
 import { alias } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { sameDestination } from "@/chat/destination";
@@ -63,6 +64,7 @@ import {
 } from "./row-decode";
 import {
   childrenAreTopLevel,
+  keepsStoredParent,
   copiesRootVisibility,
   kindAllowsParent,
   storesSpace,
@@ -91,12 +93,8 @@ const parentReadColumns = {
   destinationId: parentConversation.destinationId,
 };
 
-/** The Space of the row's tree root, for `conversationFromRow`. */
-const treeSpaceIdColumn = sql<string | null>`(
-  select tree_root.space_id
-  from junior_conversations tree_root
-  where tree_root.conversation_id = ${juniorConversations.rootConversationId}
-)`;
+/** The Space of the row's tree, for `conversationFromRow`. */
+const treeSpaceIdColumn = rootSpaceIdSql(juniorConversations);
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
 
@@ -202,8 +200,8 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
-    ...(row.topLevelConversationId
-      ? { topLevelConversationId: row.topLevelConversationId }
+    ...(row.rootConversationId
+      ? { rootConversationId: row.rootConversationId }
       : undefined),
     ...(spaceId ? { spaceId } : undefined),
     ...(ownLocation ? { ownLocation } : undefined),
@@ -809,32 +807,20 @@ export class SqlStore implements ConversationStore {
       this.executor,
       conversation,
     );
-    // A child is in its parent's tree. A Lead's child is top-level Space
-    // work, so the state of its own work keys on it.
-    const [rootConversationId, topLevelConversationId] =
-      conversation.parentConversationId
-        ? [
-            sql<string | null>`(
-              select parent.root_conversation_id
-              from junior_conversations parent
-              where parent.conversation_id = ${conversation.parentConversationId}
-            )`,
-            sql<string | null>`(
-              select case when parent.kind = 'lead' then ${conversation.conversationId} else parent.top_level_conversation_id end
-              from junior_conversations parent
-              where parent.conversation_id = ${conversation.parentConversationId}
-            )`,
-          ]
-        : [conversation.conversationId, conversation.conversationId];
-    // A Lead's children are its child agents, so each stores an agent
-    // config. A spawn writes its own config after this.
-    const agentConfig = conversation.parentConversationId
-      ? sql`(
-          select case when parent.kind = 'lead' then '{}'::jsonb end
+    const rootConversationId = conversation.parentConversationId
+      ? sql<string | null>`(
+          select parent.root_conversation_id
           from junior_conversations parent
           where parent.conversation_id = ${conversation.parentConversationId}
         )`
-      : null;
+      : conversation.conversationId;
+    // A Lead's children are its child agents, so each stores an agent
+    // config. A spawn writes its own config after this.
+    const agentConfig = sql`(
+      select case when parent.kind = 'lead' then '{}'::jsonb end
+      from junior_conversations parent
+      where parent.conversation_id = ${conversation.parentConversationId ?? null}
+    )`;
     // Only a Lead stores its Space. A Lead's child reads it from the Lead.
     const spaceId = storesSpace(conversation.kind)
       ? (conversation.spaceId ?? null)
@@ -891,7 +877,6 @@ export class SqlStore implements ConversationStore {
         kind: conversation.kind,
         agentConfig,
         rootConversationId,
-        topLevelConversationId,
         spaceId,
         visibility,
       })
@@ -918,7 +903,6 @@ export class SqlStore implements ConversationStore {
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
-          topLevelConversationId: sql`coalesce(${juniorConversations.topLevelConversationId}, excluded.top_level_conversation_id)`,
           // Set once. This also fills a null kind left by an older deploy.
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
           // Only a new Lead sends a Space.
@@ -932,13 +916,21 @@ export class SqlStore implements ConversationStore {
       .returning({
         actorIdentityId: juniorConversations.actorIdentityId,
         parentConversationId: juniorConversations.parentConversationId,
-        topLevelConversationId: juniorConversations.topLevelConversationId,
+        rootConversationId: juniorConversations.rootConversationId,
         visibility: juniorConversations.visibility,
         filledVisibility: sql<boolean>`exists (select 1 from ${prior} where ${prior.visibility} is null)`,
         setActor: sql<boolean>`not exists (select 1 from ${prior} where ${prior.actorIdentityId} is not null)`,
+        // Name the table: an unqualified column in the subquery would read
+        // the Lead's own row.
+        storedParentIsLead: isLeadSql(
+          sql.raw(`"junior_conversations"."parent_conversation_id"`),
+        ),
+        incomingParentIsLead: isLeadSql(
+          sql`${conversation.parentConversationId ?? null}`,
+        ),
       });
     const row = rows[0];
-    if (!row?.topLevelConversationId) {
+    if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
     }
     if (
@@ -948,30 +940,32 @@ export class SqlStore implements ConversationStore {
     ) {
       await fillMissingTreeVisibility(
         this.executor,
-        row.topLevelConversationId,
+        row.rootConversationId,
         row.visibility,
       );
     }
     // A conflict keeps the stored parent. A history append can create the row
-    // first under the event lock, so a new child can find a root row here. A
-    // top-level Conversation that moved between Spaces has a new parent, so
-    // a write from before the move keeps the stored one.
+    // first under the event lock, so a new child can find a root row here.
     if (
-      row.parentConversationId !==
-        (conversation.parentConversationId ?? null) &&
-      row.topLevelConversationId !== conversation.conversationId
+      !keepsStoredParent(
+        { id: row.parentConversationId, isLead: row.storedParentIsLead },
+        {
+          id: conversation.parentConversationId,
+          isLead: row.incomingParentIsLead,
+        },
+      )
     ) {
       throw new Error(
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // The top-level Actor is a Participant before they author a message.
-    // Only the write that sets the Actor adds them, so a later Turn does not
-    // undo their Leave.
+    // The root Actor is a Participant before they author a message. Only the
+    // write that sets the Actor adds them, so a later Turn does not undo
+    // their Leave.
     if (
       row.actorIdentityId &&
       row.setActor &&
-      row.topLevelConversationId === conversation.conversationId
+      row.parentConversationId === null
     ) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

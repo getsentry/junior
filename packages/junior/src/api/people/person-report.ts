@@ -48,7 +48,7 @@ export const turnRoot = alias(juniorConversations, "person_turn_root");
 
 /** Root of a Conversation row: itself when it has no root. */
 export const conversationRootId = sql<string>`coalesce(
-  ${juniorConversations.topLevelConversationId},
+  ${juniorConversations.rootConversationId},
   ${juniorConversations.conversationId}
 )`;
 

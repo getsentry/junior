@@ -157,7 +157,7 @@ export function conversationRecordFromRow(
       : undefined),
     status: row.status,
     usage: row.conversation.usage,
-    rootConversationId: row.conversation.topLevelConversationId,
+    rootConversationId: row.conversation.rootConversationId,
   };
 }
 

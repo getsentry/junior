@@ -6,11 +6,15 @@
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { topLevelConversation } from "@/chat/conversations/sql/listed";
 import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
+import { setMovedWorkVisibility } from "@/chat/conversations/sql/privacy";
 import { alias } from "drizzle-orm/pg-core";
+import {
+  conversationSubtree,
+  conversationSubtreeColumns,
+} from "@/chat/conversations/sql/subtree";
 import { stopConversation } from "@/chat/conversations/stop";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
-import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -128,6 +132,12 @@ export async function setConversationSpace(
     if (space?.visibility === "public" && root.visibility !== "public") {
       return "private_into_public";
     }
+    // The Conversation and its child agents, read before the move changes
+    // their root. Each statement reads it once, when it starts.
+    const work = inArray(
+      juniorConversations.conversationId,
+      sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`,
+    );
     if (space?.visibility === "private") {
       if (root.provider !== "local" || !root.locationId) {
         return "shared_location";
@@ -136,15 +146,20 @@ export async function setConversationSpace(
         .update(juniorDestinations)
         .set({ visibility: "private", updatedAt: new Date() })
         .where(eq(juniorDestinations.id, root.locationId));
-      await setConversationVisibility(executor, conversationId, "private");
+      await setMovedWorkVisibility(executor, conversationId, "private");
     }
+    // Its work joins the tree of its new parent: the Lead's, or its own.
+    await db
+      .update(juniorConversations)
+      .set({
+        rootConversationId: target?.leadConversationId ?? conversationId,
+        detailVersion: nextDetailVersion,
+      })
+      .where(work);
     await db
       .update(juniorConversations)
       .set({
         parentConversationId: target?.leadConversationId ?? null,
-        // It stays the top-level Conversation of its work, also when a row
-        // from before `top_level_conversation_id` was set has none.
-        topLevelConversationId: sql`coalesce(${juniorConversations.topLevelConversationId}, ${juniorConversations.conversationId})`,
         // A Lead's children are its child agents.
         ...(target
           ? {
@@ -154,14 +169,6 @@ export async function setConversationSpace(
         detailVersion: nextDetailVersion,
       })
       .where(eq(juniorConversations.conversationId, conversationId));
-    // Its work joins the tree of its new parent: the Lead's, or its own.
-    await db
-      .update(juniorConversations)
-      .set({
-        rootConversationId: target?.leadConversationId ?? conversationId,
-        detailVersion: nextDetailVersion,
-      })
-      .where(eq(juniorConversations.topLevelConversationId, conversationId));
     return undefined;
   });
 }

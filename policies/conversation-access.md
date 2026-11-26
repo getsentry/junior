@@ -21,14 +21,13 @@ rule, and it does not add a surface or tenant check to public access.
 
 - **Requester**: the Conversation where the work runs and the output goes.
 - **Target**: the Conversation whose data is read, found, or acted on.
-- **Visibility**: `public` or `private`, stored on every Conversation row. A
-  root takes the first known visibility of its Destination or Space, and
-  each child copies its root's. In a Space, the root is the Lead. Only an
-  explicit change, such as a move into a private Space, changes it for the
-  whole tree (`setConversationVisibility`); a Slack channel that becomes
-  private does not. Queries check it with `isPublicConversation`. Missing
-  visibility and direct messages are private. A missing root fails rows 2,
-  4, and 5, and row 6 denies.
+- **Visibility**: `public` or `private`, stored on every Conversation row.
+  A root takes the first known visibility of its Destination or Space, and
+  each child copies its root's. Only an explicit change, such as a move into
+  a private Space, changes it for the whole tree (`setConversationVisibility`);
+  a Slack channel that becomes private does not. Queries check it with
+  `isPublicConversation`. Missing visibility and direct messages are
+  private. A missing root fails rows 2, 4, and 5, and row 6 denies.
 
 ## Rule between Conversations
 
@@ -36,15 +35,15 @@ Check the rows in this order. The first match decides.
 
 | #   | Target                                          | Result |
 | --- | ----------------------------------------------- | ------ |
-| 1   | In the same top-level Conversation as requester | Allow  |
+| 1   | In the same Conversation tree as the requester  | Allow  |
 | 2   | Root in the requester's private Space           | Allow  |
 | 3   | Root in another private Space                   | Deny   |
 | 4   | Root at the same Destination as the requester's | Allow  |
 | 5   | Public                                          | Allow  |
 | 6   | Private, in another tree and Destination        | Deny   |
 
-- Row 1 compares top-level Conversations (`top_level_conversation_id`),
-  not trees: a Lead's tree is its whole Space, which rows 2 and 3 decide.
+- In a Space, the Lead is the root, so row 1 covers the whole Space. A
+  private Space's tree holds only private work that its members read.
 - Row 4 skips a requester in a private Space, so the Space's data stays
   with its members. It compares only the Destination ids of the two roots.
   It has no provider or surface check. It is safe because of one invariant:
@@ -68,7 +67,8 @@ Check the rows in this order. The first match decides.
   where the member who asked is a Participant, as the member could. The
   Lead of a private Space writes only inside its Space.
 - A Lead starts work in its Space with `startAgent`, as a child with the
-  Space's visibility. Action review judges its task like any child's.
+  Space's visibility. Action review judges its task as a child's task, with the
+  `lead-member` rule in `design/guardian.md`.
 
 ## Rules for every surface
 

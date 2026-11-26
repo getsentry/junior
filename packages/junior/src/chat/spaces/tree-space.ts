@@ -1,4 +1,11 @@
-import { and, eq, getTableName, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  getTableName,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 import { alias, type AnyPgColumn, type PgTable } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
@@ -32,4 +39,14 @@ export function spaceLeadIds(spaceId: string) {
     .select({ id: spaceLead.conversationId })
     .from(spaceLead)
     .where(and(eq(spaceLead.spaceId, spaceId), eq(spaceLead.kind, "lead")));
+}
+
+/** True when the Conversation with this id is a Lead. */
+export function isLeadSql(conversationId: SQLWrapper): SQL<boolean> {
+  return sql<boolean>`exists (
+    select 1
+    from junior_conversations lead_parent
+    where lead_parent.conversation_id = ${conversationId}
+      and lead_parent.kind = 'lead'
+  )`;
 }

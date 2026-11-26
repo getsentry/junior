@@ -66,8 +66,9 @@ export async function resumeConversationDelivery(
 }
 
 /**
- * True while the root of this Conversation is detached from its Location.
- * Only a root stores the pause, so a child agent reads its root's.
+ * True while this Conversation is detached from its Location. Only a
+ * Conversation with its own Location stores the pause, so a child agent
+ * reads its root's.
  */
 export async function isConversationDeliveryPaused(
   conversationId: string,
@@ -75,13 +76,17 @@ export async function isConversationDeliveryPaused(
   const root = alias(juniorConversations, "root");
   const [row] = await getSqlExecutor()
     .db()
-    .select({ pausedAt: root.deliveryPausedAt })
+    // A Conversation with its own Location, such as a Slack Conversation in
+    // a Space, stores its own pause.
+    .select({
+      pausedAt: sql<Date | null>`coalesce(${juniorConversations.deliveryPausedAt}, ${root.deliveryPausedAt})`,
+    })
     .from(juniorConversations)
     .innerJoin(
       root,
       eq(
         root.conversationId,
-        sql`coalesce(${juniorConversations.topLevelConversationId}, ${juniorConversations.conversationId})`,
+        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
       ),
     )
     .where(eq(juniorConversations.conversationId, conversationId))

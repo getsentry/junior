@@ -146,7 +146,7 @@ export async function listConversationAnnotationsById(
   const rows = await db
     .select({
       annotation: juniorConversationAnnotations,
-      rootConversationId: juniorConversations.topLevelConversationId,
+      rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversationAnnotations)
     .innerJoin(
@@ -161,7 +161,7 @@ export async function listConversationAnnotationsById(
     .where(
       or(
         inArray(juniorConversations.conversationId, [...requested]),
-        inArray(juniorConversations.topLevelConversationId, [...requested]),
+        inArray(juniorConversations.rootConversationId, [...requested]),
       ),
     )
     .orderBy(desc(juniorConversationAnnotations.updatedAt));

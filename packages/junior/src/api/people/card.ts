@@ -39,7 +39,7 @@ function personCardTurns(email: string, since: Date) {
     .select({
       occurredAt: juniorConversationMetrics.occurredAt,
       rootConversationId: sql<string>`coalesce(
-        ${juniorConversations.topLevelConversationId},
+        ${juniorConversations.rootConversationId},
         ${juniorConversations.conversationId}
       )`.as("card_root_conversation_id"),
     })

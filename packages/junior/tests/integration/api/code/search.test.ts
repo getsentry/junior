@@ -188,7 +188,6 @@ describe("code change search API", () => {
           ...root!,
           conversationId: `slack:C1:other-${index}`,
           rootConversationId: `slack:C1:other-${index}`,
-          topLevelConversationId: `slack:C1:other-${index}`,
         })),
       );
     await getSqlExecutor().query("analyze");
