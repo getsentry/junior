@@ -328,6 +328,17 @@ describe("Spaces API", () => {
       spaceId: space.id,
     });
     const oneOff = await startConversation(ana, "one-off");
+    // Only members post in the Space's Conversations, too.
+    expect(
+      (
+        await request(
+          bo,
+          "POST",
+          `/conversations/${encodeURIComponent(inSpace)}/messages`,
+          { idempotencyKey: "bo-in-ledger-plan", message: "Hi" },
+        )
+      ).status,
+    ).toBe(403);
 
     // Anyone can read the public Space's list. Rows and the detail name the
     // Space.
