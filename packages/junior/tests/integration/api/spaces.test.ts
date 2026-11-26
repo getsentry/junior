@@ -953,5 +953,12 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId).sort(),
     ).toEqual([first, second].sort());
+
+    // A second archive stops the Space again, though its Lead was stopped.
+    const firstStopMs = await getConversationStoppedAtMs(first);
+    await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
+    expect(await getConversationStoppedAtMs(first)).toBeGreaterThan(
+      firstStopMs ?? 0,
+    );
   });
 });

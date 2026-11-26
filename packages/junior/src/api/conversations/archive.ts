@@ -163,20 +163,20 @@ export async function stopArchivedWork(
   // A stop also stops the child agents below it, and only a direct stop of
   // a child agent reports to its parent. So stop the target and each
   // Conversation that is not a child agent, and let the stop reach the rest.
-  const running = await db
+  // An earlier stop does not skip one: work may have resumed below it since.
+  const stops = await db
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
     .where(
       and(
         inArray(juniorConversations.conversationId, archivedIds),
-        isNull(juniorConversations.stoppedAt),
         or(
           eq(juniorConversations.conversationId, conversationId),
           isNull(juniorConversations.agentConfig),
         ),
       ),
     );
-  await mapBounded(running, ({ conversationId }) =>
+  await mapBounded(stops, ({ conversationId }) =>
     stopConversation({ conversationId, queue }),
   );
 }
