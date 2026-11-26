@@ -103,17 +103,22 @@ export interface InboxItemActionInput {
 /** An open item that a `InboxItemActionInput` acts on. */
 export interface InboxItem {
   body: string;
-  /** Without a request, the item is a notice. */
+  /**
+   * Without a request, the item is a notice. A question that
+   * `askUserQuestion` asked has no shared `question`: each field holds its
+   * own question in `description`.
+   */
   request?: {
-    question: string;
+    question?: string;
     fields: (
       | {
+          description?: string;
           id: string;
           kind: "choice";
           label: string;
           options: { label: string }[];
         }
-      | { id: string; kind: "text"; label: string }
+      | { description?: string; id: string; kind: "text"; label: string }
     )[];
   };
   title: string;

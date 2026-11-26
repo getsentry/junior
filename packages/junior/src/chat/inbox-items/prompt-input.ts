@@ -2,8 +2,11 @@
  * Prompt inputs for person answers to Inbox items. An answer is its own
  * prompt content part, keyed by the item id that `askUserQuestion` returned.
  * The runtime builds it from the stored change record and the item, so the
- * model never reads status prose. It repeats the question, then one line for
- * each answered field. `input-tags.ts` lists the input tags.
+ * model never reads status prose. A question that `askUserQuestion` asked
+ * reads like Claude Code's AskUserQuestion result: each question with its
+ * answer, then a nudge to go on. An older item with one shared question
+ * repeats it, then one line for each answered field. `input-tags.ts` lists
+ * the input tags.
  */
 import { mapBounded } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";
@@ -48,19 +51,23 @@ function shortQuestion(text: string): string {
     : question;
 }
 
-// A request whose fields each hold their own question shows each question
-// right above its answer, so the model maps each answer to its question.
+// A request whose fields each hold their own question pairs each question
+// with its answer, in the shape of Claude Code's AskUserQuestion result, so
+// the model maps each answer to its question. A question left blank says so,
+// so that the model does not read it as consent.
 function questionAnswerLines(
   request: UserInputRequest,
   answer: UserInputAnswer,
 ): string[] {
   const { other, values } = normalizeUserInputAnswer(request, answer);
+  const pairs = request.fields.map(
+    (field) =>
+      `"${shortQuestion(field.description ?? field.label)}"="${values[field.id]?.join(", ") || "(no answer)"}"`,
+  );
   return [
-    ...request.fields.flatMap((field) => [
-      `Question ${field.id} (${field.label}): ${shortQuestion(field.description ?? field.label)}`,
-      `Answer: ${values[field.id]?.join(", ") || "(no answer)"}`,
-    ]),
-    ...(other ? [`Other: ${other}`] : []),
+    `The person has answered your questions: ${pairs.join(", ")}`,
+    ...(other ? [`They also wrote: ${other}`] : []),
+    "You can now continue with their answers in mind.",
   ];
 }
 

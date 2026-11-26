@@ -36,6 +36,11 @@ import {
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
 
+// Unlike Claude Code's AskUserQuestion, the call returns before the person
+// answers, so the result says that no answer exists yet. A model that reads
+// a finished call as an answer invents one.
+const ASKED_NEXT_STEP = `The questions were sent. There is no answer yet. The answer arrives in a later Turn as an \`<inbox-item-answer>\` with the item id; a dismiss comes as a note. Do not guess the answer. If your next step needs it, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Otherwise, finish the work that does not need it, then end the Turn.`;
+
 /**
  * Pick the assignees of a new item when the agent names none: the User of
  * the Actor, or else the creator of the Automation of this run. A Turn with
@@ -63,7 +68,8 @@ async function defaultAssignees(
 }
 
 export const askUserQuestionToolDefinition = zodToolDefinition({
-  description: `Ask a person one or more questions with choices. This is how you ask a person anything. The question goes in their Inbox and, in a Slack thread, shows as a card. Returns the Inbox item. The answer arrives later as an \`<inbox-item-answer>\` with the item id; a dismiss comes as a note. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply.`,
+  description:
+    "Ask a person one or more questions with choices. This is how you ask a person anything. The questions go in their Inbox and, in a Slack thread, show as a card. The person answers in a later Turn, not in this call. Returns the Inbox item and what to do until the answer comes.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -166,7 +172,7 @@ export function createAskUserQuestionTool(
         nowMs: Date.now(),
       });
       await publishWaiting(services, context.conversationId, item);
-      return { item: itemResult(item) };
+      return { item: itemResult(item), next_step: ASKED_NEXT_STEP };
     },
   });
 }

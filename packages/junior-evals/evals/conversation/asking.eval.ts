@@ -1,5 +1,12 @@
 import { describe, expect } from "vitest";
-import { heartbeat, person, slackMention } from "@junior-evals/fixture/inputs";
+import {
+  heartbeat,
+  inboxItemAnswer,
+  person,
+  reply,
+  slackMention,
+  webMessage,
+} from "@junior-evals/fixture/inputs";
 import {
   insertScheduledAutomation,
   slackChannel,
@@ -65,6 +72,86 @@ describe("Asking a Person", () => {
         question.options.some((option) => /^other\b/i.test(option.label)),
       ).toBe(false);
     }
+  });
+
+  test("after asking, end the Turn without guessing the answer", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      webMessage(
+        "I'm launching the pricing page on Tuesday or Thursday and haven't picked yet. Ask me which day, then write the two-line launch announcement for that day.",
+      ),
+    );
+
+    // The answer comes in a later Turn, so this Turn asks and stops.
+    expect(askedQuestions(conversation)).toHaveLength(1);
+    expect(conversation.turns).toHaveLength(1);
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: ["The agent asks which launch day the person picks."],
+        fail: [
+          "Do not write the launch announcement yet.",
+          "Do not say that the person picked Tuesday or Thursday, or pick a day for them.",
+        ],
+      }),
+    );
+  });
+
+  test("when the person answers several questions, continue the work with each answer", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      inboxItemAnswer(
+        {
+          body: "Shift length and paging for the payments on-call rotation.",
+          request: {
+            fields: [
+              {
+                description: "How long is each on-call shift?",
+                id: "q1",
+                kind: "choice",
+                label: "Shifts",
+                options: [{ label: "Weekly" }, { label: "Daily" }],
+              },
+              {
+                description: "Where does the rotation page?",
+                id: "q2",
+                kind: "choice",
+                label: "Paging",
+                options: [{ label: "Slack" }, { label: "PagerDuty" }],
+              },
+            ],
+          },
+          title: "How long is each on-call shift?",
+        },
+        { q1: ["Daily"], q2: ["PagerDuty"] },
+      ),
+      {
+        history: [
+          webMessage(
+            "Draft the on-call rotation plan for the payments team: Ana, Ben, and Chloe. I still have to decide the shift length and where it pages. Ask me, then write the plan.",
+          ),
+          reply("I asked you about the shift length and where it pages."),
+        ],
+      },
+    );
+
+    // Each answer reaches the work, and nothing is asked again.
+    expect(toolCallsOf("askUserQuestion", conversation)).toHaveLength(0);
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The reply has an on-call plan for Ana, Ben, and Chloe with daily shifts.",
+          "The plan pages in PagerDuty.",
+        ],
+        fail: [
+          "Do not use weekly shifts or page in Slack.",
+          "Do not ask the shift length or the paging again.",
+        ],
+      }),
+    );
   });
 
   test("when a question suggests an answer, put that choice first and mark it recommended", async ({
