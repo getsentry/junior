@@ -298,12 +298,15 @@ export async function executeAgentRun(
       reportFailedRun(
         await executeAgentRunInPrivacyContext(
           run,
-          // TODO(dcramer): Remove the `root` case one release after #3060
-          // step 3. An Automation run in progress at deploy is stored as
-          // `root`.
-          run.dispatch?.declaresResult
-            ? "automation"
-            : (conversation?.kind ?? "root"),
+          {
+            // TODO(dcramer): Remove the `thread` case one release after #3060
+            // step 3. An Automation run in progress at deploy is stored as
+            // `thread`.
+            kind: run.dispatch?.declaresResult
+              ? "automation"
+              : (conversation?.kind ?? "thread"),
+            hasParent: Boolean(conversation?.parentConversationId),
+          },
           conversationPrivacy,
           runLogContext,
           streamFn,
@@ -336,7 +339,7 @@ function reportFailedRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
-  conversationKind: ConversationKind,
+  storedConversation: { kind: ConversationKind; hasParent: boolean },
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: AgentRequestStreamFn | undefined,
@@ -344,8 +347,9 @@ async function executeAgentRunInPrivacyContext(
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
   const turnId = run.turnId;
+  const conversationKind = storedConversation.kind;
   const behavior = turnBehavior({
-    kind: conversationKind,
+    ...storedConversation,
     personInput: isPersonInput(run.source.kind),
   });
   const input = {
@@ -418,7 +422,7 @@ async function executeAgentRunInPrivacyContext(
 
   signal?.throwIfAborted();
 
-  assertRunConsistency(run, conversationKind);
+  assertRunConsistency(run, storedConversation);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;

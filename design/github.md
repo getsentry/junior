@@ -42,17 +42,22 @@ also wake a Conversation or run an Event automation.
   next, and the Inbox stops asking. A requester who approved since is not
   asked. The Inbox item says why it asks: every comment is handled, or the
   checks now pass.
-- A comment-only review is not an answer to a review ask. The ask stays
-  open: the PR keeps asking the requester to review in the Inbox, and
-  Junior does not ask again on GitHub.
-- A ready Junior PR always has an Inbox ask or a pending GitHub review
-  request for its requester. When it asks nothing of the requester, Junior
-  asks for the requester's review on GitHub once the required checks pass.
+- A comment-only review is not an answer to a review ask. Junior handles
+  it like a change request: the ask closes while Junior works, and once
+  Junior answers and the checks pass, Junior asks the requester to review
+  again.
+- A ready Junior PR always has an Inbox ask (review or merge) or a pending
+  GitHub review request for its requester. When it asks nothing of the
+  requester, Junior asks for the requester's review on GitHub once the
+  required checks pass.
   A push does not ask a requester who has already reviewed or commented.
 - When the requester removes their own review request, Junior does not ask
   them again until someone asks them again on GitHub.
 - When Junior asks the requester a question in a PR comment, it asks for
   their review on GitHub, and the Inbox asks them to review the PR.
+- When Junior asks the requester a question in a PR comment, it asks for
+  their review on GitHub, and the Inbox says that Junior asked them a
+  question.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.

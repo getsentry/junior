@@ -14,6 +14,10 @@ import {
 } from "../../../fixtures/sql-budget";
 import { createWaitUntilCollector } from "../../../fixtures/wait-until";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
+import {
+  recordTurnFailure,
+  recordTurnStart,
+} from "../../../fixtures/turn-start";
 import { recordTurn, seedPeople, turnActorIdentityId } from "./fixture";
 
 describe("people list API", () => {
@@ -319,6 +323,40 @@ describe("people list API", () => {
       expect(day("2026-06-13")).toMatchObject({ conversations: 1, failed: 0 });
       expect(day("2026-06-14")).toMatchObject({ conversations: 2, failed: 1 });
       expect(profile.totals).toMatchObject({ conversations: 2, failed: 1 });
+      // A failed Turn fails the shared root for each person who ran a Turn
+      // in it, on the day of their last Turn, until a later Turn starts.
+      const failed = async (email: string) => {
+        const { activityDays, locations, totals } =
+          await readPeopleProfileFromSql(email);
+        return {
+          day: activityDays.find((entry) => entry.date === "2026-06-14")
+            ?.failed,
+          locations: locations.map((location) => location.failed),
+          totals: totals.failed,
+        };
+      };
+      await recordTurnFailure(conversationId, "shared-failed");
+      await expect(failed("ana@example.com")).resolves.toEqual({
+        day: 2,
+        locations: [2],
+        totals: 2,
+      });
+      await expect(failed("ben@example.com")).resolves.toEqual({
+        day: 1,
+        locations: [1],
+        totals: 1,
+      });
+      await recordTurnStart(conversationId, "shared-retry");
+      await expect(failed("ana@example.com")).resolves.toEqual({
+        day: 1,
+        locations: [1],
+        totals: 1,
+      });
+      await expect(failed("ben@example.com")).resolves.toEqual({
+        day: 0,
+        locations: [0],
+        totals: 0,
+      });
 
       const nowMs = Date.now();
       expect(

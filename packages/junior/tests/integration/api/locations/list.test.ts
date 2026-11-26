@@ -8,7 +8,12 @@ import { juniorConversations, juniorDestinations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
+  type JuniorSqlConversationInsert,
 } from "../../../fixtures/sql";
+import {
+  recordTurnFailure,
+  recordTurnStart,
+} from "../../../fixtures/turn-start";
 
 describe("locations API", () => {
   test("serves the route through its response schema", async () => {
@@ -137,6 +142,43 @@ describe("locations API", () => {
           }),
         );
 
+      // A root counts as failed once, however many tree rows it has. Only
+      // the root's own newest Turn counts: a failed child does not fail its
+      // root, and a stop or a later Turn ends the failure.
+      const failureRoots: Partial<JuniorSqlConversationInsert>[] = [
+        { conversationId: "slack:C1:failed" },
+        {
+          conversationId: "slack:C1:failed-sibling",
+          parentConversationId: "slack:C1:failed",
+          rootConversationId: "slack:C1:failed",
+        },
+        { conversationId: "slack:C1:retried" },
+        {
+          conversationId: "slack:C1:retried-child",
+          executionStatus: "failed",
+          parentConversationId: "slack:C1:retried",
+          rootConversationId: "slack:C1:retried",
+        },
+        { conversationId: "slack:C1:failed-stopped", stoppedAt: now },
+      ];
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values(
+          failureRoots.map((row) =>
+            buildJuniorSqlConversation({
+              destinationId: destination?.id,
+              visibility: "public",
+              ...row,
+            }),
+          ),
+        );
+      await recordTurnFailure("slack:C1:failed", "failed-1");
+      await recordTurnFailure("slack:C1:retried", "retried-1");
+      await recordTurnStart("slack:C1:retried", "retried-2");
+      await recordTurnFailure("slack:C1:retried-child", "retried-child-1");
+      await recordTurnFailure("slack:C1:failed-stopped", "failed-stopped-1");
+
       const directory = await readLocationDirectoryFromSql();
       expect(directory.locations).toHaveLength(2);
       expect(
@@ -144,8 +186,9 @@ describe("locations API", () => {
           (location) => location.label === "#proj-alpha",
         ),
       ).toMatchObject({
-        conversations: 5_001,
+        conversations: 5_004,
         durationMs: 10_004,
+        failed: 1,
         tokens: 15_007,
       });
       expect(

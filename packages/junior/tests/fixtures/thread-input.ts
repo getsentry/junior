@@ -46,10 +46,15 @@ export async function createHarness() {
   let onRun: ((run: AgentRun) => Promise<AgentRunOutcome>) | undefined;
   const work = await createConversationWorkHarness({
     run: async (run) => {
+      const stored = await conversationStore.get({
+        conversationId: run.conversationId,
+      });
       assertRunConsistency(
         run,
-        (await conversationStore.get({ conversationId: run.conversationId }))
-          ?.kind,
+        stored && {
+          kind: stored.kind,
+          hasParent: Boolean(stored.parentConversationId),
+        },
       );
       runs.push(run);
       otherOpenTurns.push(
