@@ -397,6 +397,16 @@ export function ConversationPage(props: {
     props.pendingArchiveUpdate,
   );
   const conversationDetail = detail.data;
+  // A Lead's menu shows its Space's archive and membership, which the Space
+  // actions write to the cache at once.
+  const menuConversation =
+    lead && leadSpace && conversation
+      ? { ...conversation, archivedAt: leadSpace.archivedAt }
+      : conversation;
+  const menuDetail =
+    lead && leadSpace && conversationDetail
+      ? { ...conversationDetail, subscribed: leadSpace.viewerIsMember }
+      : conversationDetail;
   const displayState = conversation
     ? conversationDisplayState(conversation)
     : undefined;
@@ -737,7 +747,7 @@ export function ConversationPage(props: {
                 actions: {
                   archive: () => {
                     if (lead) {
-                      spaceActions.archive(!conversation?.archivedAt);
+                      spaceActions.archive(!menuConversation?.archivedAt);
                     } else if (conversation?.archivedAt) {
                       setArchived(false);
                     } else if (!conversation!.parentConversationId) {
@@ -759,9 +769,9 @@ export function ConversationPage(props: {
                     else spaceActions.leave();
                   },
                 },
-                conversation,
+                conversation: menuConversation,
                 conversationId,
-                detail: conversationDetail,
+                detail: menuDetail,
                 eventLogOpen: view === "raw",
                 getMarkdown: conversationDetail
                   ? async () =>

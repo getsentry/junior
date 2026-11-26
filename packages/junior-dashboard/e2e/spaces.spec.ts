@@ -233,7 +233,12 @@ test("a non-member opens a Space and joins it", async ({ dashboard, page }) => {
     page.getByText("Join Docs refresh to message its Lead."),
   ).toBeVisible();
   await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
-  await page.getByRole("button", { name: "Join" }).click();
+  // The Conversation menu joins the Space, like the button below the
+  // transcript. The row is a toggle, so the menu stays open on Leave.
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Join").click();
+  await expect(conversationMenuRow(page, "Leave")).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(page.getByLabel("Continue this conversation")).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Spaces" }).getByRole("link", {
