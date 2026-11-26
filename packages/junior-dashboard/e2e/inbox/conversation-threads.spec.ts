@@ -67,9 +67,11 @@ test.describe("new UI", () => {
     );
 
     const threads = details.getByRole("region", { name: "Threads" });
-    // Its one Thread is done, so it shows once Done opens.
-    await threads.getByRole("button", { name: "Done · 1" }).click();
-    await expect(threads.getByRole("listitem")).toHaveCount(1);
+    // Its one Thread is done, so Done starts collapsed.
+    await expect(
+      threads.getByRole("button", { name: "Done · 1" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    // Archived Threads sit under Done, so showing them opens it.
     await threads.getByRole("button", { name: "Show archived (1)" }).click();
     await expect(
       threads.getByRole("link", { name: /^archived Compare sidebar badges/ }),

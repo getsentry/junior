@@ -50,6 +50,8 @@ describe("a Conversation's Threads", () => {
       treeState: "working",
     }),
     thread("Backfill invoice IDs", 4, { watching: true }),
+    // Its own run ended, but a nested child still works.
+    thread("Close the books", 6, { treeState: "working" }),
     thread("Approve the cutover window", 3, { treeState: "needs_you" }),
     thread("Reconcile Stripe balances", 2, {
       error: "Lost access to the API.",
@@ -62,7 +64,7 @@ describe("a Conversation's Threads", () => {
     expect(markup).toContain(">Threads<");
     const found = positions(markup, [
       "Needs you · 2",
-      "Working · 1",
+      "Working · 2",
       "Waiting · 1",
       "Done · 1",
     ]);
@@ -76,9 +78,11 @@ describe("a Conversation's Threads", () => {
       markup.indexOf("Reconcile Stripe balances"),
     );
     expect(markup).toContain("Lost access to the API.");
-    // A wait on the viewer or a Watch shows over the run's own status.
+    // A wait on the viewer, work in its tree, or a Watch shows over the
+    // run's own status.
     expect(markup).toContain('aria-label="Waiting on you"');
     expect(markup).toContain('aria-label="Watching for an event"');
+    expect(markup).toContain('aria-label="Working"');
     expect(markup).toContain(
       'href="/conversations/internal%3Acheck-refund-webhooks"',
     );

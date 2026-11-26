@@ -126,7 +126,18 @@ function childAgentAttention(agent: ConversationChildAgent): Attention {
 export function ConversationThreads(props: {
   threads: readonly ConversationChildAgent[];
 }) {
-  const { action, items: threads } = useShowArchived(props.threads);
+  const {
+    action,
+    items: threads,
+    showArchived,
+  } = useShowArchived(props.threads);
+  const [doneOpen, setDoneOpen] = useState(false);
+  const [archivedShown, setArchivedShown] = useState(showArchived);
+  // Archived Threads sit under Done, so showing them opens it.
+  if (archivedShown !== showArchived) {
+    setArchivedShown(showArchived);
+    if (showArchived) setDoneOpen(true);
+  }
   return (
     <DetailsCard
       action={action}
@@ -148,7 +159,12 @@ export function ConversationThreads(props: {
                 );
               }
               return (
-                <Collapsible key={group} render={<section aria-label="Done" />}>
+                <Collapsible
+                  key={group}
+                  onOpenChange={setDoneOpen}
+                  open={doneOpen}
+                  render={<section aria-label="Done" />}
+                >
                   <h4 className="m-0">
                     <CollapsibleTrigger
                       render={
@@ -267,6 +283,7 @@ function useShowArchived(children: readonly ConversationChildAgent[]) {
     items: showArchived
       ? children
       : children.filter((child) => !child.archivedAt),
+    showArchived,
   };
 }
 
@@ -290,13 +307,18 @@ const statusIconToneClass: Record<StatusChipTone, string> = {
 
 /**
  * Mark a child agent with one icon and an audible label. A wait on the
- * viewer or a Watch outranks how its own run ended, as in its group.
+ * viewer, work in its tree, or a Watch outranks how its own run ended, as
+ * in its group.
  */
 function ChildAgentStatusIcon(props: { agent: ConversationChildAgent }) {
   const { archivedAt, status, treeState, watching } = props.agent;
   const settled = !archivedAt && status !== "failed" && status !== "blocked";
   if (settled && treeState === "needs_you") {
     return <ConversationStateIcon state="needs_you" />;
+  }
+  // A nested child can still work after this child's own run ended.
+  if (settled && treeState === "working" && status !== "running") {
+    return <ConversationStateIcon state="working" />;
   }
   if (settled && treeState === "done" && watching) {
     return <ConversationStateIcon state="watching" />;
