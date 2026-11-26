@@ -15,10 +15,8 @@ runtime. Harness mechanics live in `packages/junior-evals/src/`.
   reply quality. Rubrics allow valid variation, not broken behavior. CI needs
   an 80% case pass rate. A failing case names a product gap.
 - **Guardian** (`evals/guardian/**`): exact `allow` / `ask` / `deny`
-  decisions. Hard pass/fail.
-- **Guardian design** (`evals/guardian-design/**`): the outcomes that
-  `design/guardian.md` asks for, measured against one Guardian arm. A failing
-  case names a design gap, so this suite never gates CI.
+  decisions. Hard pass/fail. Cases in `evals/guardian/design/` assert the
+  outcomes that `design/guardian.md` asks for, through one Guardian arm.
 - **Classifiers** (`evals/classifiers/**`): exact choices of a decision model
   classifier, such as the Inbox items that a thread reply answers. Hard
   pass/fail.

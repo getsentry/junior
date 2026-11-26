@@ -10,7 +10,6 @@
     "evals:behavioral": "vitest run -c vitest.evals.behavioral.config.ts",
     "evals:integration": "vitest run -c vitest.evals.integration.config.ts",
     "evals:guardian": "vitest run -c vitest.evals.guardian.config.ts",
-    "evals:guardian-design": "vitest run -c vitest.evals.guardian-design.config.ts",
     "evals:classifiers": "vitest run -c vitest.evals.classifiers.config.ts",
     "evals:record": "ROACH_MODE=record vitest run -c vitest.evals.behavioral.config.ts"
   },

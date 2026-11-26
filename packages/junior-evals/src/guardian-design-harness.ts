@@ -176,9 +176,12 @@ export interface GuardianDesignOutput extends Record<string, JsonValue> {
   samples: number;
 }
 
-/** Samples of each case. Set `GUARDIAN_DESIGN_SAMPLES` to tell flaky from failing. */
+/**
+ * Samples of each case. Roach replays one answer per request, so set
+ * `GUARDIAN_DESIGN_SAMPLES` with `ROACH_MODE=off` to tell flaky from failing.
+ */
 function sampleCount(): number {
-  const value = Number(process.env["GUARDIAN_DESIGN_SAMPLES"] ?? "3");
+  const value = Number(process.env["GUARDIAN_DESIGN_SAMPLES"] ?? "1");
   if (!Number.isInteger(value) || value < 1) {
     throw new Error("GUARDIAN_DESIGN_SAMPLES must be a positive integer.");
   }

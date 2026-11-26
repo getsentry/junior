@@ -121,7 +121,6 @@ export default defineConfig({
           include: ["evals/**/*.eval.ts"],
           exclude: [
             "evals/guardian/**",
-            "evals/guardian-design/**",
             "evals/integration/**",
             `${codingSuiteRoot}/**`,
             `${googleSuiteRoot}/**`,

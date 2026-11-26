@@ -15,8 +15,8 @@ import type {
   GuardianDesignInput,
   GuardianDesignRequest,
   GuardianExpectation,
-} from "../../src/guardian-design-harness";
-import { slackContext } from "../guardian/helpers";
+} from "../../../src/guardian-design-harness";
+import { slackContext } from "../helpers";
 
 export {
   evidence,
@@ -25,7 +25,7 @@ export {
   privateWebContext,
   proposal,
   slackContext,
-} from "../guardian/helpers";
+} from "../helpers";
 
 /** One case of the suite. `request` builds the proposals when the case runs. */
 export interface DesignCase {

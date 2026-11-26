@@ -4,7 +4,7 @@
  */
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
-import { guardianDesignEvals } from "../../src/guardian-design-harness";
+import { guardianDesignEvals } from "../../../src/guardian-design-harness";
 import {
   caseInput,
   caseTitle,

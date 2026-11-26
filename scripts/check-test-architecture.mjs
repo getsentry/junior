@@ -29,7 +29,6 @@ const AGENT_EVALS_ROOT = "packages/junior-evals/evals/";
 const ISOLATED_EVAL_ROOTS = [
   "packages/junior-evals/evals/classifiers/",
   "packages/junior-evals/evals/guardian/",
-  "packages/junior-evals/evals/guardian-design/",
 ];
 const AGENT_TEST_BASELINE_PATH = "scripts/test-architecture-baseline.json";
 const SOURCE_ROOTS = ["packages/junior/src"];
