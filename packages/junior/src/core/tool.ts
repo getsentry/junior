@@ -47,40 +47,27 @@ export type ToolExecutionContext = {
  */
 export type StepTools = {
   definitions: ToolDefinition[];
+  /** Host code that core runs around the step's tool calls. */
   hooks?: ToolExecutionHooks;
   close(): void;
 };
 
 /**
- * Fixed points in a tool batch where the host adds its own behavior. Core
- * runs them in this order: `beforeCall` for each call that passed core's
- * checks, then `beforeBatch` once, then each call that is still allowed, then
- * `afterCall` for every result. Calls carry their validated arguments. A
- * throw from a hook fails the step, unlike a throw from a tool. Results go
- * into the history in the model's call order. The tools of a step are built
- * for that step, so the host can keep what a hook learns about a call by its
- * call id, for `execute` or `afterCall` to use.
+ * Core runs these in order: `beforeCall` per call, `beforeBatch` once, the
+ * calls, then `afterCall` per call. A throw from any of them fails the step.
  */
 export type ToolExecutionHooks = {
-  /** Per call. A result means the call does not run, and the model sees it. */
+  /** Before a call runs. Return a result to skip the call; the model sees it instead. */
   beforeCall?(
     call: ToolCall,
     signal: AbortSignal,
   ): Promise<ToolResult | undefined>;
-  /**
-   * Once, with every call that is still allowed, in the model's order, before
-   * any call runs. A call with a result in the map, by call id, does not run,
-   * and the model sees that result.
-   */
+  /** Once, before any call runs, with the calls not yet skipped. A result for a call id skips that call. */
   beforeBatch?(
     calls: ToolCall[],
     signal: AbortSignal,
   ): Promise<Map<string, ToolResult>>;
-  /**
-   * Per result, including results from core's checks, from a before hook,
-   * and from a tool that failed. The returned result is the one the model
-   * sees.
-   */
+  /** After each call, skipped ones included. The returned result replaces the call's result. */
   afterCall?(
     call: ToolCall,
     result: ToolResult,
