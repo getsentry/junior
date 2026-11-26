@@ -362,20 +362,56 @@ describe("buildConversationContext", () => {
     expect(context?.match(/<\/message>/g)).toHaveLength(1);
   });
 
-  it("applies the message character budget only to model context", () => {
+  it("shows a long message in full", () => {
+    const paragraph =
+      "Materialized State is the record that each Turn rebuilds from Events. ";
+    const text = Array.from(
+      { length: 8 },
+      (_, index) => `${index}: ${paragraph.repeat(8)}`,
+    ).join("\n\n");
+    expect(text.length).toBeGreaterThan(4_000);
     const conversation = coerceThreadConversationState({});
     conversation.messages = [
       {
         id: "msg-1",
-        role: "assistant",
-        text: "x".repeat(4_000),
+        role: "user",
+        text: `${text} For example, every Event ends here.`,
         createdAtMs: 1000,
       },
     ];
 
-    const context = buildConversationContext(conversation).text;
-    const renderedText = /\[assistant\][^\n]*: (x+)/.exec(context ?? "")?.[1];
-    expect(renderedText).toHaveLength(3_200);
+    const context = buildConversationContext(conversation).text ?? "";
+    expect(context).toContain(`${paragraph.repeat(8).trim()} 7:`);
+    expect(context).toContain("For example, every Event ends here.");
+    expect(context).not.toContain("truncated");
+  });
+
+  it("cuts a message that alone exceeds the size cap and says how to read it", () => {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages = [
+      {
+        id: "msg-1",
+        role: "user",
+        text: "older",
+        createdAtMs: 1000,
+      },
+      {
+        id: "msg-2",
+        role: "user",
+        text: `start ${"x".repeat(70_000)} end`,
+        createdAtMs: 2000,
+        meta: { slackTs: "1795727795.305449" },
+      },
+    ];
+
+    const block = buildConversationContext(conversation);
+    const context = block.text ?? "";
+    expect(block).toMatchObject({ shownMessages: 1, omittedMessages: 1 });
+    expect(context.length).toBeLessThan(61_000);
+    expect(context).toContain("user: start x");
+    expect(context).not.toContain(" end");
+    expect(context).toMatch(/truncated.*slackThreadRead/);
+    expect(context).toMatch(/searchConversationEvents/);
   });
 });
 

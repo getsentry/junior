@@ -24,8 +24,8 @@ import { authorAttrs, renderThreadContext } from "@/chat/input-tags";
 import { isEventConversationMessage } from "@/chat/events/actor";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
-const CONTEXT_MAX_MESSAGE_CHARS = 3200;
-// Hard cap on the rendered thread context, newest Messages first.
+// Hard cap on the rendered thread context, newest Messages first. A Message
+// is shown whole, unless it alone is larger than the cap.
 const THREAD_CONTEXT_MAX_CHARS = 60_000;
 const THREAD_CONTEXT_OMITTED_NOTE =
   "Older Messages of this thread are not shown. Find them with a searchConversationEvents query, then read them with readConversationEvent.";
@@ -56,16 +56,27 @@ function buildImageContextSuffix(
   return ` [image context: ${escapeTagTextAndQuotes(summaries.join(" | "))}]`;
 }
 
+function truncatedMessageNote(message: ConversationMessage): string {
+  const reader = message.meta?.slackTs
+    ? "slackThreadRead"
+    : "a searchConversationEvents query, then readConversationEvent";
+  return ` [truncated: this Message is longer than the thread context allows. Read it in full with ${reader}.]`;
+}
+
 function renderConversationMessageLine(
   message: ConversationMessage,
   conversation?: ThreadConversationState,
+  /** Cut the Message text to this length and mark it as truncated. */
+  maxTextChars?: number,
 ): string {
   const displayName = escapeTagTextAndQuotes(
     conversationAuthorDisplayName(message),
   );
-  const text = escapeTagTextAndQuotes(
-    message.text.replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS),
-  );
+  const fullText = message.text.replace(/\s+/g, " ");
+  const text =
+    maxTextChars !== undefined && fullText.length > maxTextChars
+      ? `${escapeTagTextAndQuotes(fullText.slice(0, maxTextChars))}${truncatedMessageNote(message)}`
+      : escapeTagTextAndQuotes(fullText);
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
@@ -227,6 +238,7 @@ function renderThreadContextMessage(
   message: ConversationMessage,
   conversation: ThreadConversationState,
   index: number,
+  maxTextChars?: number,
 ): string {
   return indentTagLines(
     renderTag(
@@ -241,10 +253,34 @@ function renderThreadContextMessage(
         }),
         slack_ts: message.meta?.slackTs,
       },
-      [renderConversationMessageLine(message, conversation)],
+      [renderConversationMessageLine(message, conversation, maxTextChars)],
     ),
     "  ",
   );
+}
+
+// Cut the text of a Message that alone is larger than the cap until it fits.
+// Escaping can make the text longer, so cut again by what is still over.
+function renderOversizedMessage(
+  message: ConversationMessage,
+  conversation: ThreadConversationState,
+): string {
+  let maxTextChars = THREAD_CONTEXT_MAX_CHARS;
+  for (;;) {
+    const rendered = renderThreadContextMessage(
+      message,
+      conversation,
+      1,
+      maxTextChars,
+    );
+    if (rendered.length <= THREAD_CONTEXT_MAX_CHARS || maxTextChars === 0) {
+      return rendered;
+    }
+    maxTextChars = Math.max(
+      0,
+      maxTextChars - (rendered.length - THREAD_CONTEXT_MAX_CHARS),
+    );
+  }
 }
 
 // A Message that the agent history does not hold: no mention, no Event, and
@@ -329,6 +365,10 @@ export function buildConversationContext(
     .map((message, index) =>
       renderThreadContextMessage(message, conversation, index + 1),
     );
+  const newest = candidates.at(-1);
+  if (shown.length === 0 && newest) {
+    shown.push(renderOversizedMessage(newest, conversation));
+  }
   const counts = {
     shownMessages: shown.length,
     omittedMessages: candidates.length - shown.length,
