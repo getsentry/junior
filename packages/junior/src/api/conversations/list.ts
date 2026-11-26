@@ -44,7 +44,7 @@ import {
   conversationIdsWithParticipantUser,
   conversationPinnedForUser,
   conversationIsMemberRoot,
-  rootSpaceReadableBy,
+  feedRowReadableBy,
   conversationIsNotUnsubscribedRoot,
   type ConversationMember,
   readMemberParticipants,
@@ -123,7 +123,7 @@ function conversationFeedMembershipFilter(
   const member = feedMember(filter);
   return and(
     conversationIsMemberRoot(member),
-    rootSpaceReadableBy(member),
+    feedRowReadableBy(member),
     status === "archived"
       ? isNotNull(juniorConversations.archivedAt)
       : status === "all"
@@ -813,8 +813,7 @@ export async function readConversationFeedFromSql(
         access,
         // Only members may learn a private Space's name.
         space:
-          conversation.spaceId &&
-          (!access?.privateSpaceId || access.canViewPrivateContent)
+          conversation.spaceId && access?.canViewPrivateContent
             ? (spaceRefs.get(conversation.spaceId) ?? null)
             : null,
         auxiliaryCosts: auxiliaryCosts?.total,

@@ -404,9 +404,7 @@ async function readDetailState(
         : undefined),
       // Only members may learn a private Space's name.
       space:
-        row?.spaceId &&
-        row.spaceName &&
-        (!access?.privateSpaceId || access.canViewPrivateContent)
+        row?.spaceId && row.spaceName && access?.canViewPrivateContent
           ? { id: row.spaceId, name: row.spaceName }
           : null,
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),

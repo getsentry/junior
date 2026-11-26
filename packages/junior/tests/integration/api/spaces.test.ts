@@ -15,6 +15,7 @@ import {
   versionsSchema,
 } from "@/api/schema";
 import { canReadConversation } from "@/api/conversations/access";
+import { setConversationArchive } from "@/api/conversations/archive";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
 import {
@@ -30,7 +31,7 @@ import type {
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import { getSpaceLead } from "@/chat/lead/conversation";
+import { getSpaceLead, readSpaceLead } from "@/chat/lead/conversation";
 import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
@@ -221,22 +222,6 @@ describe("Spaces API", () => {
     );
     expect(read).toMatchObject({ memberCount: 1, viewerIsMember: false });
 
-    // A mention in the Space's work does not make them a member: people
-    // join a Space themselves.
-    await resolveActorIdentityId(getSqlExecutor(), {
-      email: "spaces-api-bo@example.com",
-      platform: "slack",
-      teamId: "T1",
-      userId: "USPACESBO",
-    });
-    await startConversation(ana, "spaces-api-mention", {
-      message: "<@USPACESBO> look",
-      spaceId: space.id,
-    });
-    expect(
-      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
-    ).toMatchObject({ memberCount: 1, viewerIsMember: false });
-
     const joined = await send(bo, "PUT", `/${space.id}/members/me`);
     expect(joined.status).toBe(200);
     expect(spaceSchema.parse(await joined.json())).toMatchObject({
@@ -259,6 +244,22 @@ describe("Spaces API", () => {
       viewerIsMember: false,
     });
     expect(await listNames(bo)).not.toContain("Billing migration");
+
+    // A Space is its Lead, so a mention in its work adds them, as in any
+    // public root.
+    await resolveActorIdentityId(getSqlExecutor(), {
+      email: "spaces-api-bo@example.com",
+      platform: "slack",
+      teamId: "T1",
+      userId: "USPACESBO",
+    });
+    await startConversation(ana, "spaces-api-mention", {
+      message: "<@USPACESBO> look",
+      spaceId: space.id,
+    });
+    expect(
+      spaceSchema.parse(await (await send(bo, "GET", `/${space.id}`)).json()),
+    ).toMatchObject({ memberCount: 2, viewerIsMember: true });
   });
 
   it("lets only members rename or archive a Space", async () => {
@@ -404,7 +405,13 @@ describe("Spaces API", () => {
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
 
-    // Leave by the last subscriber never archives the Space's work.
+    // Leave by the last subscriber never archives the Space's work, and it
+    // takes the Space's Conversations out of their feed, as on any root.
+    const anaFeed = async () =>
+      conversationFeedSchema
+        .parse(await (await request(ana, "GET", "/conversations")).json())
+        .conversations.map((row) => row.conversationId);
+    expect(await anaFeed()).toContain(inSpace);
     const left = await request(
       ana,
       "POST",
@@ -415,6 +422,7 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
+    expect(await anaFeed()).not.toContain(inSpace);
   });
 
   it("finds and moves Conversations into, between, and out of Spaces with the agent tools", async () => {
@@ -612,6 +620,26 @@ describe("Spaces API", () => {
     ).toBe(400);
     expect(await detailSpace(cy, inSpace)).toBeNull();
 
+    // Invite in its work adds a member, as in any private root.
+    await resolveActorIdentityId(getSqlExecutor(), {
+      email: "spaces-private-cy@example.com",
+      platform: "slack",
+      teamId: "T1",
+      userId: "USPACESCY",
+    });
+    const invited = await request(
+      ana,
+      "POST",
+      `/conversations/${inSpace}/invites`,
+      { slackUserId: "USPACESCY" },
+    );
+    expect(await invited.json()).toEqual({ added: true });
+    expect(await detailSpace(cy, inSpace)).toEqual(spaceRef);
+    expect((await send(cy, "DELETE", `/${space.id}/members/me`)).status).toBe(
+      200,
+    );
+    expect(await detailSpace(cy, inSpace)).toBeNull();
+
     // A participant who leaves no longer finds its Conversations.
     await getDb()
       .insert(juniorConversationParticipants)
@@ -641,6 +669,19 @@ describe("Spaces API", () => {
     expect(leaves.map((response) => response.status).sort()).toEqual([
       200, 409,
     ]);
+    // Leave on its work keeps the last member too.
+    const conversationLeaves = await Promise.all(
+      [ana, bo].map((app) =>
+        request(
+          app,
+          "POST",
+          `/conversations/${encodeURIComponent(inSpace)}/leave`,
+        ),
+      ),
+    );
+    expect(
+      conversationLeaves.map((response) => response.status).sort(),
+    ).toEqual([404, 409]);
   });
 
   it("keeps a Slack Conversation out of a private Space", async () => {
@@ -867,7 +908,7 @@ describe("Spaces API", () => {
     });
   });
 
-  it("stops and archives every Conversation when a Space is archived", async () => {
+  it("stops and archives the Lead's tree when a Space is archived", async () => {
     const ana = apiFor("spaces-archive-ana@example.com");
     const space = await createSpace(ana, "Short project");
     const first = await startConversation(ana, "short-first", {
@@ -890,6 +931,10 @@ describe("Spaces API", () => {
     expect(await getConversationStoppedAtMs(second)).toBeDefined();
     expect(await getConversationStoppedAtMs(outside)).toBeUndefined();
     expect(
+      (await getConversationStore().get({ conversationId: outside }))
+        ?.archivedAtMs,
+    ).toBeUndefined();
+    expect(
       (await getConversationStore().get({ conversationId: thread }))
         ?.archivedAtMs,
     ).toBeDefined();
@@ -904,10 +949,25 @@ describe("Spaces API", () => {
       ).status,
     ).toBe(409);
 
-    // Restore brings back what the archive archived.
+    // A raced second archive keeps the first time, so restore still
+    // brings back what the archive archived.
+    const lead = await readSpaceLead(space.id);
+    await setConversationArchive({
+      applyToChildren: true,
+      archived: true,
+      conversationId: lead!.conversationId,
+      lastSeenAt: new Date(lead!.lastActivityAtMs).toISOString(),
+    });
     await send(ana, "PATCH", `/${space.id}/archive`, { archived: false });
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId).sort(),
     ).toEqual([first, second].sort());
+
+    // A second archive stops the Space again, though its Lead was stopped.
+    const firstStopMs = await getConversationStoppedAtMs(first);
+    await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
+    expect(await getConversationStoppedAtMs(first)).toBeGreaterThan(
+      firstStopMs ?? 0,
+    );
   });
 });

@@ -1,6 +1,11 @@
 import { Hono } from "hono";
-import { setSpaceArchive } from "@/chat/spaces/conversations";
+import {
+  setConversationArchive,
+  stopArchivedWork,
+} from "../conversations/archive";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { readSpaceLead } from "@/chat/lead/conversation";
+import { throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import { archiveSpaceBodySchema } from "../schema/space";
 import { validateRequest } from "../validation";
@@ -11,9 +16,12 @@ import {
   spaceResponse,
 } from "./access";
 
-/** Create the route that archives or restores a Space with its Conversations. */
+/**
+ * Create the route that archives or restores a Space. A Space is its Lead,
+ * so this archives or restores the Lead's tree, as for any root, and an
+ * archive stops the tree's running work.
+ */
 export function createSpaceArchiveRoutes(options: {
-  /** Archive stops the Conversations of the Space through it. */
   queue: ConversationWorkQueue;
 }): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
@@ -26,12 +34,33 @@ export function createSpaceArchiveRoutes(options: {
     async (context) => {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
-      await requireMemberSpace(viewerUserId, spaceId);
-      await setSpaceArchive({
-        archived: context.req.valid("json").archived,
-        queue: options.queue,
-        spaceId,
-      });
+      const space = await requireMemberSpace(viewerUserId, spaceId);
+      const archived = context.req.valid("json").archived;
+      const lead = await readSpaceLead(spaceId);
+      if (!lead) throwApiError(404, "Space was not found.");
+      if (archived !== (space.archivedAt !== null)) {
+        const result = await setConversationArchive(
+          archived
+            ? {
+                applyToChildren: true,
+                archived: true,
+                conversationId: lead.conversationId,
+                lastSeenAt: new Date(lead.lastActivityAtMs).toISOString(),
+              }
+            : {
+                applyToChildren: true,
+                archived: false,
+                conversationId: lead.conversationId,
+                userId: viewerUserId,
+              },
+        );
+        if (result.status === "conflict") {
+          throwApiError(409, "The Space received new activity.");
+        }
+      }
+      // A retry after a failed stop finds the Space archived, so it stops
+      // what is still running.
+      if (archived) await stopArchivedWork(lead.conversationId, options.queue);
       return await spaceResponse(viewerUserId, spaceId);
     },
   );

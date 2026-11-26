@@ -64,6 +64,7 @@ export interface SpaceListFilter {
 }
 
 const memberLead = alias(juniorConversations, "space_member_lead");
+const spaceLeadRow = alias(juniorConversations, "space_lead");
 const participants = juniorConversationParticipants;
 
 /**
@@ -107,22 +108,31 @@ async function selectSpaces(
       id: juniorSpaces.id,
       name: juniorSpaces.name,
       description: juniorSpaces.description,
-      visibility: juniorSpaces.visibility,
+      // A Space is its Lead: the Lead's visibility and archive are the
+      // Space's.
+      visibility: sql<SpaceVisibility>`coalesce(${spaceLeadRow.visibility}, 'private')`,
       createdAt: juniorSpaces.createdAt,
       updatedAt: juniorSpaces.updatedAt,
-      archivedAt: juniorSpaces.archivedAt,
+      archivedAt: spaceLeadRow.archivedAt,
       memberCount: sql<number>`(${memberCountSql()})`.mapWith(Number),
       viewerIsMember: sql<boolean>`${exists(
         viewerMembership(viewerUserId),
       )}`.mapWith(Boolean),
     })
     .from(juniorSpaces)
+    .innerJoin(
+      spaceLeadRow,
+      and(
+        eq(spaceLeadRow.spaceId, juniorSpaces.id),
+        eq(spaceLeadRow.kind, "lead"),
+      ),
+    )
     // A private Space is readable only by its members.
     .where(
       and(
         where,
         or(
-          eq(juniorSpaces.visibility, "public"),
+          eq(spaceLeadRow.visibility, "public"),
           exists(viewerMembership(viewerUserId)),
         ),
       ),
@@ -140,8 +150,8 @@ export async function listSpaces(
     viewerUserId,
     and(
       filter.archived
-        ? isNotNull(juniorSpaces.archivedAt)
-        : isNull(juniorSpaces.archivedAt),
+        ? isNotNull(spaceLeadRow.archivedAt)
+        : isNull(spaceLeadRow.archivedAt),
       filter.membership === "member"
         ? exists(viewerMembership(viewerUserId))
         : undefined,
@@ -293,11 +303,16 @@ export async function leaveSpace(
   return await executor.transaction(async () => {
     const db = executor.db();
     // Two members who leave at once take turns on this lock, so the second
-    // sees that the first left.
+    // sees that the first left. The Lead's visibility is the Space's.
     const [space] = await db
-      .select({ visibility: juniorSpaces.visibility })
-      .from(juniorSpaces)
-      .where(eq(juniorSpaces.id, spaceId))
+      .select({ visibility: juniorConversations.visibility })
+      .from(juniorConversations)
+      .where(
+        and(
+          eq(juniorConversations.spaceId, spaceId),
+          eq(juniorConversations.kind, "lead"),
+        ),
+      )
       .for("update");
     const lead = inArray(participants.rootConversationId, spaceLeadId(spaceId));
     if (space?.visibility === "private") {

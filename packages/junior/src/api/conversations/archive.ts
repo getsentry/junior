@@ -1,6 +1,9 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { stopConversation } from "@/chat/conversations/stop";
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { mapBounded } from "@/chat/fan-out";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   conversationAncestors,
   conversationDescendants,
@@ -46,6 +49,7 @@ export async function setConversationArchive(
     const db = executor.db();
     const [target] = await db
       .select({
+        archivedAt: juniorConversations.archivedAt,
         lastActivityAt: juniorConversations.lastActivityAt,
         rootConversationId: juniorConversations.rootConversationId,
       })
@@ -69,11 +73,16 @@ export async function setConversationArchive(
           unarchivedChildCount: unarchived.length,
         };
       }
-      const archivedAt = new Date();
-      // Descendants that are already archived keep their own time.
+      // An archived target keeps its time, so a raced or repeated archive
+      // writes the time that a restore of the target clears. Descendants
+      // that are already archived keep their own time.
+      const archivedAt = target.archivedAt ?? new Date();
       await setArchivedAt(
         db,
-        [args.conversationId, ...unarchived.map((node) => node.conversationId)],
+        [
+          ...(target.archivedAt ? [] : [args.conversationId]),
+          ...unarchived.map((node) => node.conversationId),
+        ],
         archivedAt,
       );
       return {
@@ -133,13 +142,61 @@ export async function setConversationArchive(
 }
 
 /**
+ * Stop the running work of an archived Conversation and of the archived
+ * Conversations below it. Archived work is done, so nothing in the archived
+ * tree keeps running. It reads the tree each time, so a retry stops what an
+ * earlier call left running.
+ */
+export async function stopArchivedWork(
+  conversationId: string,
+  queue: ConversationWorkQueue,
+): Promise<void> {
+  const db = getDb();
+  const [target] = await db
+    .select({ rootConversationId: juniorConversations.rootConversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .limit(1);
+  if (!target) return;
+  const tree = await readConversationTrees(db, [
+    target.rootConversationId ?? conversationId,
+  ]);
+  const archivedIds = [
+    tree.get(conversationId),
+    ...conversationDescendants(tree, conversationId),
+  ].flatMap((node) => (node?.archivedAt ? [node.conversationId] : []));
+  if (archivedIds.length === 0) return;
+  // A stop also stops the child agents below it, and only a direct stop of
+  // a child agent reports to its parent. So stop the target and each
+  // Conversation that is not a child agent, and let the stop reach the rest.
+  // An earlier stop does not skip one: work may have resumed below it since.
+  const stops = await db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        inArray(juniorConversations.conversationId, archivedIds),
+        or(
+          eq(juniorConversations.conversationId, conversationId),
+          isNull(juniorConversations.agentConfig),
+        ),
+      ),
+    );
+  await mapBounded(stops, ({ conversationId }) =>
+    stopConversation({ conversationId, queue }),
+  );
+}
+
+/**
  * Archive or restore one Conversation for everyone. Only a participant may
- * do it. The rules are those of `setConversationArchive`.
+ * do it. The rules are those of `setConversationArchive`, and an archive
+ * stops the running work of what it archived.
  */
 export async function archiveConversation(
   viewer: User,
   conversationId: string,
   body: ArchiveConversationBody,
+  services: { queue: ConversationWorkQueue },
 ): Promise<ArchiveConversationResponse> {
   const access = await readConversationAccessFromSql(
     getDb(),
@@ -162,6 +219,7 @@ export async function archiveConversation(
   );
   switch (result.status) {
     case "archived":
+      await stopArchivedWork(conversationId, services.queue);
       // Archive also reads the conversation to the end for the person who
       // archived it. The archive saw no newer activity, so the end is what
       // they saw. Other participants keep their read position.

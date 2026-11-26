@@ -71,9 +71,10 @@ import {
  * - Given a private Conversation, when a Participant Invites a person, then
  *   that person becomes a Participant and can read it. Only Invite does
  *   this: a mention in a Message adds nobody, so sharing private content
- *   is always an explicit act. A private Space owns its audience, and a
- *   Slack-backed private Conversation follows its Slack channel, so both
- *   refuse Invite, with the same error as a missing Conversation.
+ *   is always an explicit act. In a private Space the root is its Lead, so
+ *   Invite adds a member, as a member can on the Space. A Slack-backed
+ *   private Conversation follows its Slack channel, so it refuses Invite,
+ *   with the same error as a missing Conversation.
  * - Given a Participant, when they Leave, then they unsubscribe. In a
  *   private Conversation with its own Participant list, their row is also
  *   deleted, so they lose access until someone Invites them again.
@@ -209,8 +210,8 @@ export async function leaveConversation(
   if (!rootConversationId || !access.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  // Where the Conversation is public, or a Space or Slack channel decides
-  // who reads it, Leave only takes it out of the viewer's feed.
+  // Where the Conversation is public, or a Slack channel decides who reads
+  // it, Leave only takes it out of the viewer's feed.
   if (!leaveEndsAccess(access)) {
     const result = await updateConversationSubscription(
       viewer,
@@ -231,6 +232,25 @@ export async function leaveConversation(
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .for("no key update");
     if (!root) throwApiError(404, "Conversation not found.");
+    // A private Space with no members has nobody who can read or restore
+    // it, so its last member stays, as `leaveSpace` does.
+    if (await isLeadConversation(db, rootConversationId)) {
+      const members = await db
+        .select({ userId: juniorConversationParticipants.userId })
+        .from(juniorConversationParticipants)
+        .where(
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            rootConversationId,
+          ),
+        )
+        .limit(2);
+      // A Leave that raced another Leave by the same person finds only the
+      // other member, and its delete changes nothing.
+      if (members.length === 1 && members[0]!.userId === viewer.id) {
+        throwApiError(409, "The last member can't leave a private Space.");
+      }
+    }
     await db
       .delete(juniorConversationParticipants)
       .where(
@@ -332,11 +352,6 @@ export async function inviteMentionedPeople(
   const conversation = await readInvitableConversation(viewer, conversationId);
   // A mention never shares a private Conversation. Only Invite does.
   if (conversation?.visibility !== "public") return;
-  // The Participants of a Lead are its Space's members, and a person joins
-  // a Space on purpose, so a mention there adds nobody.
-  if (await isLeadConversation(getDb(), conversation.rootConversationId)) {
-    return;
-  }
   const userIds = await readMentionedUserIds(
     getSqlExecutor(),
     slackUserIds,
