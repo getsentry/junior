@@ -44,14 +44,17 @@ export function SpaceThreads(props: { spaceId: string }) {
   const threads = buildConversations(feed.data?.conversations ?? []);
   return (
     <DetailsCard count={threads.length} label="Threads" title="Threads">
-      {feed.error ? (
+      {/* A failed refresh keeps the Threads that loaded. */}
+      {feed.data ? (
+        threads.length === 0 ? (
+          <p className="m-0">No Threads in this Space yet.</p>
+        ) : (
+          <ThreadGroups threads={threads} />
+        )
+      ) : feed.error ? (
         <p className="m-0">Threads are unavailable.</p>
-      ) : !feed.data ? (
-        <Skeleton className="h-4 w-3/5" />
-      ) : threads.length === 0 ? (
-        <p className="m-0">No Threads in this Space yet.</p>
       ) : (
-        <ThreadGroups threads={threads} />
+        <Skeleton className="h-4 w-3/5" />
       )}
     </DetailsCard>
   );

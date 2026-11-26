@@ -73,8 +73,9 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     page.getByText("Ask the Lead to start, find, or check on work…"),
   ).toBeVisible();
 
-  // The Space's details sit beside the Lead: its Conversations and members.
+  // The Space's details sit beside the Lead: its Threads and members.
   const details = page.getByRole("complementary", { name: "Space details" });
+  await details.getByRole("button", { name: "Done · 2" }).click();
   await expect(
     details.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
@@ -258,6 +259,7 @@ test.describe("on a touch screen", () => {
     ).toBeVisible();
     await page.getByRole("button", { name: "Space details" }).click();
     const sheet = page.getByRole("dialog", { name: "Space details" });
+    await sheet.getByRole("button", { name: "Done · 2" }).click();
     await expect(
       sheet.getByRole("link", { name: /Plan the billing migration/ }),
     ).toBeVisible();

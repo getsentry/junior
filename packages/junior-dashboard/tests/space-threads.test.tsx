@@ -41,11 +41,9 @@ function render(threads: Conversation[]): string {
   );
 }
 
-/** The text of each group heading, in page order. */
-function headings(markup: string): string[] {
-  return [...markup.matchAll(/<h4[^>]*>(.*?)<\/h4>/g)].map((match) =>
-    match[1]!.replace(/<[^>]+>/g, ""),
-  );
+/** Where each label first shows in the markup, or -1. */
+function positions(markup: string, labels: string[]): number[] {
+  return labels.map((label) => markup.indexOf(label));
 }
 
 describe("a Space's Threads", () => {
@@ -64,12 +62,14 @@ describe("a Space's Threads", () => {
   ];
 
   it("labels each group with its count, needs you first", () => {
-    expect(headings(render(threads))).toEqual([
+    const found = positions(render(threads), [
       "Needs you · 2",
       "Working · 1",
       "Waiting · 1",
       "Done · 1",
     ]);
+    expect(found.every((at) => at >= 0)).toBe(true);
+    expect(found).toEqual([...found].sort((left, right) => left - right));
   });
 
   it("lists rows newest first, each with its summary and a Thread link", () => {
