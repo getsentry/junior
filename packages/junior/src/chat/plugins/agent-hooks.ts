@@ -1,4 +1,7 @@
-import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
+import type {
+  OwnedObjectAnnotation,
+  PromptHistoryMessage,
+} from "@sentry/junior-plugin-api";
 import {
   missingToolAnnotationKeys,
   normalizeEventIdentifier,
@@ -190,6 +193,8 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "ALL",
 ]);
 const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
+const USER_PROMPT_FAILED_TEXT =
+  "The context of this plugin could not load for this Turn.";
 const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
 
 const promptContextContentSchema = z.record(z.string(), z.unknown());
@@ -606,12 +611,18 @@ export async function getPluginUserPromptContributions(args: {
     | "source"
     | "userText"
   >;
+  /** Read the model history that the prompt replays, for one plugin. */
+  historyMessages?: (pluginName: string) => PromptHistoryMessage[];
   turnId?: string;
 }): Promise<PluginPromptContributionContext[]> {
+  const { historyMessages } = args;
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   let totalContextBytes = 0;
-  const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
+  // Core registrations go first, so app plugins cannot use up the shared
+  // budget before them.
+  const registrations = [...coreRegistrations(), ...registeredPlugins];
+  const outcomes = await runPluginHooksAtOnce(registrations, (plugin) => {
     const hook = plugin.hooks?.userPrompt;
     return (
       hook &&
@@ -627,6 +638,12 @@ export async function getPluginUserPromptContributions(args: {
                 setSpanAttributes,
                 args.turnId,
               ),
+              ...(historyMessages
+                ? {
+                    historyMessages: () =>
+                      historyMessages(plugin.manifest.name),
+                  }
+                : undefined),
             }),
         ))
     );
@@ -695,6 +712,16 @@ export async function getPluginUserPromptContributions(args: {
         "app.plugin.name": pluginName,
         "exception.message": safeErrorMessage(error),
       });
+      // Say that the context is missing, so the model does not take its
+      // absence as no state.
+      contributions.push(
+        toPromptContributionContext({
+          hookName: "userPrompt",
+          index: 0,
+          message: { text: USER_PROMPT_FAILED_TEXT },
+          pluginName,
+        }),
+      );
     }
   }
   return contributions;

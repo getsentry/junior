@@ -50,9 +50,12 @@ import {
   escapeClosingTag,
   escapeTagText,
   escapeTagTextAndQuotes,
+  findTags,
   indentTagLines,
+  openingTag,
   renderInlineTag,
   renderTag,
+  unescapeTagText,
   type Destination,
   type Platform,
   type Source,
@@ -698,7 +701,11 @@ export function buildCapabilitySections(params: {
   );
 }
 
-function buildPluginPromptContributionsSection(
+/**
+ * Render plugin contributions as one `<plugin-context>` block, or null for
+ * none. Turn contexts and compaction summaries hold this block.
+ */
+export function renderPluginContextSection(
   contributions: PluginPromptContributionContext[] | undefined,
 ): string | null {
   if (!contributions || contributions.length === 0) {
@@ -730,6 +737,24 @@ function renderPluginContribution(
     ),
     "  ",
   );
+}
+
+/**
+ * Read back the text of one plugin's contributions in a prompt text, such
+ * as a Turn context, oldest first. Escaped text cannot fake a contribution.
+ */
+export function readPluginContributions(
+  text: string,
+  pluginName: string,
+): string[] {
+  const opening = openingTag(
+    "plugin-contribution",
+    { plugin: pluginName },
+    escapeTagTextAndQuotes,
+  ).slice(0, -1);
+  return findTags(text, "plugin-contribution")
+    .filter((block) => block.opening.trimStart().startsWith(`${opening} `))
+    .map((block) => unescapeTagText(block.body).trim());
 }
 
 /** One tool that the current Turn cannot run. */
@@ -844,8 +869,6 @@ type TurnContextPromptInput = {
   askerTimezone?: string | undefined;
   includeSessionContext?: boolean;
   conversationNotes?: string[];
-  /** From `renderTodoDelta` or `renderTodosReview`. */
-  todos?: string | null;
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
@@ -905,7 +928,7 @@ export function buildTurnContextPrompt(
   params: TurnContextPromptInput,
 ): string | null {
   const includeSessionContext = params.includeSessionContext ?? true;
-  const pluginPromptContributions = buildPluginPromptContributionsSection(
+  const pluginPromptContributions = renderPluginContextSection(
     params.pluginPromptContributions,
   );
   const conversationNotes = buildConversationNotesSection(
@@ -929,7 +952,6 @@ export function buildTurnContextPrompt(
     !includeSessionContext &&
     !pluginPromptContributions &&
     !conversationNotes &&
-    !params.todos &&
     !disabledTools &&
     !userCustomization &&
     !askerTimezone &&
@@ -941,7 +963,6 @@ export function buildTurnContextPrompt(
   const runtimeSections = [
     pluginPromptContributions,
     conversationNotes,
-    params.todos,
     disabledTools,
     userCustomization,
     askerTimezone,

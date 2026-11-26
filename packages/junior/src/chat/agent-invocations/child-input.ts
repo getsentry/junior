@@ -1,6 +1,6 @@
 import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getSqlExecutor } from "@/chat/db";
