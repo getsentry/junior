@@ -288,6 +288,34 @@ test("the first Message of a new Conversation links its links", async ({
   ).toBeVisible();
 });
 
+test("a Retry links the links of a send that failed", async ({
+  page,
+  dashboard,
+}) => {
+  const { linked } = recordWrites(page);
+  let failed = false;
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    if (failed) {
+      await route.fallback();
+      return;
+    }
+    failed = true;
+    await route.fulfill({ json: { error: "temporary failure" }, status: 500 });
+  });
+  const composer = await openThread(page, dashboard.baseURL);
+  await composer.pressSequentially("Review ");
+  await pasteText(page, DOC_URL);
+  await composer.press("Enter");
+
+  const retry = page
+    .getByLabel("Pending messages")
+    .getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible();
+  expect(linked).toEqual([]);
+  await retry.click();
+  await expect.poll(() => linked).toEqual([DOC_URL]);
+});
+
 test("# inserts a pull request only once its card says whether it is a draft", async ({
   page,
   dashboard,

@@ -43,7 +43,6 @@ import {
   splitComposerText,
   type ComposerReference,
 } from "./composerReferences";
-import { useAttachLinkedWork } from "./composerLinkedWork";
 import type ComposerEditor from "./composer-editor/ComposerEditor";
 import type { ComposerEditorHandle } from "./composer-editor/ComposerEditor";
 import editorChunkUrl from "./composer-editor/editorChunkUrl";
@@ -169,12 +168,6 @@ type ConversationComposerProps = {
   compact?: boolean;
   /** The Conversation that this composer writes to, if it exists yet. */
   conversation?: ComposerConversation | undefined;
-  /**
-   * Add the links of a sent Message to `conversation`'s linked work. A
-   * composer whose Messages go elsewhere, such as Quick question, leaves it
-   * off.
-   */
-  linksWork?: boolean;
   label: string;
   placeholder?: string | undefined;
   /**
@@ -260,15 +253,6 @@ export const ConversationComposer = memo(function ConversationComposer(
       ]),
     ),
   );
-  const attachToConversation = useAttachLinkedWork();
-  const linkedWorkConversationId = props.linksWork
-    ? props.conversation?.conversationId
-    : undefined;
-  const attachLinkedWork = (text: string) => {
-    if (linkedWorkConversationId) {
-      attachToConversation(linkedWorkConversationId, text);
-    }
-  };
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
   // Source of truth for the in-flight attempt. React state alone is too late for
@@ -455,7 +439,6 @@ export const ConversationComposer = memo(function ConversationComposer(
       setHoldPending(true);
       try {
         await send();
-        attachLinkedWork(text);
       } catch {
         // The parent shows the error. The draft stays for a retry, with
         // focus, so Enter sends it again.
@@ -477,10 +460,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     queueMicrotask(() => {
       submittingRef.current = false;
     });
-    await send().then(
-      () => attachLinkedWork(text),
-      () => {},
-    );
+    await send().catch(() => {});
   };
 
   // Put queued text back ahead of anything the reader already typed.
