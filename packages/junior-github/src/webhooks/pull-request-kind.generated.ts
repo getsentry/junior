@@ -28,10 +28,10 @@ export interface Inputs {
   viewer: {
     requester: boolean;
     /**
-     * GitHub lets the viewer merge: the base permission of their repository
-     * role, custom roles too, is write or admin.
+     * GitHub lets the viewer merge on the repository. Without it, a person
+     * with write access merges, so the viewer gets no merge ask.
      */
-    can_merge: boolean;
+    merge_access: boolean;
     /**
      * GitHub still requests the viewer's review. GitHub requests a review
      * only while it is pending, so `requested` is never true while
@@ -131,7 +131,7 @@ export function decide(inputs: Inputs): Outcome {
     inputs.merge_state === "clean" &&
     inputs.review_outcome !== "changes_requested" &&
     inputs.viewer.requester &&
-    inputs.viewer.can_merge &&
+    inputs.viewer.merge_access &&
     !inputs.viewer.feedback
   ) {
     return { kind: "ask", rule: "pr-merge", label: "Ready to merge" };
@@ -143,6 +143,7 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.auto_merge &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
+    inputs.viewer.merge_access &&
     !inputs.viewer.feedback &&
     inputs.viewer.shown === "merge"
   ) {
@@ -155,6 +156,7 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.auto_merge &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
+    inputs.viewer.merge_access &&
     !inputs.viewer.asked_again &&
     !inputs.viewer.feedback
   ) {
@@ -167,7 +169,7 @@ export function decide(inputs: Inputs): Outcome {
     inputs.merge_state === "clean" &&
     inputs.review_outcome === "approved" &&
     !inputs.viewer.requester &&
-    inputs.viewer.can_merge &&
+    inputs.viewer.merge_access &&
     inputs.viewer.requested
   ) {
     return { kind: "ask", rule: "pr-merge-reviewer", label: "Ready to merge" };

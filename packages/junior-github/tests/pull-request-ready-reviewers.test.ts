@@ -265,11 +265,6 @@ describe("review request when a draft is ready", () => {
       http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
         HttpResponse.json({ draft: false, html_url: PULL_URL, number: 946 }),
       ),
-      // The next-action check reads the requester's role.
-      http.get(
-        "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
-        () => HttpResponse.json({ permission: "write" }),
-      ),
       // The next-action check and the review request read the same state.
       http.post("https://api.github.com/graphql", () =>
         HttpResponse.json({

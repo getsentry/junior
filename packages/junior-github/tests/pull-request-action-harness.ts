@@ -217,6 +217,11 @@ export interface GitHubState {
   laggingFeedback?: string[];
   /** GitHub rejects review requests, such as during an outage. */
   rejectReviewRequests?: boolean;
+  /**
+   * Each user's base role on the repository, by login. A user who is not
+   * listed has write access, so they can merge.
+   */
+  permissions?: Record<string, "admin" | "none" | "read" | "write">;
   /** The checks of the head commit. */
   checks?: Array<{ conclusion: string | null; name: string; status: string }>;
   /** The checks that a ruleset of the base branch requires. */
@@ -224,11 +229,6 @@ export interface GitHubState {
   state: "closed" | "open";
   /** The pull request title. */
   title?: string;
-  /**
-   * The requester's repository role and its base permission, or `unknown`
-   * when GitHub does not know their login. Defaults to `write`.
-   */
-  requesterAccess?: { permission: string; role: string } | "unknown";
 }
 
 // Each pull request read takes the next merge state, after any hold.
@@ -289,9 +289,23 @@ function botReactionGroups(github: GitHubState, key: string) {
 // whether to ask a reviewer again.
 function reviewAgainPull(github: GitHubState, reviewer: string) {
   const lower = reviewer.toLowerCase();
-  const reviews = github.reviews
-    .filter((item) => item.user.login.toLowerCase() === lower)
-    .slice(-20);
+  const own = github.reviews.filter(
+    (item) => item.user.login.toLowerCase() === lower,
+  );
+  const node = (review: GitHubState["reviews"][number]) => ({
+    body: review.body ?? "Please change this.",
+    databaseId: review.id ?? null,
+    comments: {
+      nodes: (review.comments ?? []).map((id) => ({
+        databaseId: id,
+        reactionGroups: graphqlReactionGroups(github, `comment:${id}`),
+      })),
+      totalCount: review.comments?.length ?? 0,
+    },
+    reactionGroups: graphqlReactionGroups(github, `review:${review.id}`),
+    state: review.state,
+    submittedAt: review.submitted_at ?? null,
+  });
   return {
     baseRef: { refUpdateRule: null },
     baseRefName: "main",
@@ -317,21 +331,20 @@ function reviewAgainPull(github: GitHubState, reviewer: string) {
         requestedReviewer: { __typename: "User", login },
       })),
     },
+    decision: {
+      nodes: own
+        .filter(
+          (review) =>
+            review.state !== "COMMENTED" && review.state !== "PENDING",
+        )
+        .slice(-1)
+        .map(node),
+    },
     reviews: {
-      nodes: reviews.map((review) => ({
-        body: review.body ?? "Please change this.",
-        databaseId: review.id ?? null,
-        comments: {
-          nodes: (review.comments ?? []).map((id) => ({
-            databaseId: id,
-            reactionGroups: graphqlReactionGroups(github, `comment:${id}`),
-          })),
-          totalCount: review.comments?.length ?? 0,
-        },
-        reactionGroups: graphqlReactionGroups(github, `review:${review.id}`),
-        state: review.state,
-        submittedAt: review.submitted_at ?? null,
-      })),
+      nodes: own
+        .filter((review) => review.state === "COMMENTED")
+        .slice(-20)
+        .map(node),
     },
     timelineItems: {
       nodes: (github.reviewRequests ?? []).map((request) => ({
@@ -353,22 +366,6 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
           expires_at: "2027-01-01T00:00:00.000Z",
           token: "installation-token",
         }),
-    ),
-    http.get(
-      "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
-      () => {
-        if (github.requesterAccess === "unknown") {
-          return HttpResponse.json({ message: "Not Found" }, { status: 404 });
-        }
-        const access = github.requesterAccess ?? {
-          permission: "write",
-          role: "write",
-        };
-        return HttpResponse.json({
-          permission: access.permission,
-          role_name: access.role,
-        });
-      },
     ),
     http.get(
       "https://api.github.com/repos/getsentry/junior/pulls/946",
@@ -455,6 +452,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
         const { content } = (await request.json()) as { content: string };
         (github.feedback ??= {})[`comment:${String(params["id"])}`] = content;
         return HttpResponse.json({ content, id: 1 }, { status: 201 });
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
+      ({ params }) => {
+        const login = String(params["login"]);
+        requests.push(`permission ${login}`);
+        const permission = github.permissions?.[login] ?? "write";
+        return HttpResponse.json({ permission, role_name: permission });
       },
     ),
     http.get(
@@ -726,10 +732,12 @@ export function route(
       };
     },
   };
-  // These webhooks use no Conversation dispatch or cache.
+  // These webhooks use no Conversation dispatch.
   const unused = () => {
     throw new Error("The next-action webhooks do not use this");
   };
+  // The requester's repository access stays cached across webhooks.
+  const cached = new Map<string, unknown>();
   const annotations: PluginConversationAnnotations = {
     forConversation() {
       return {
@@ -766,9 +774,9 @@ export function route(
       async update() {},
       delete: unused,
       get: unused,
-      // The requester's role is read on each sync.
-      async getOrLoad(_key, load) {
-        return (await load()).value;
+      async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
+        if (!cached.has(key)) cached.set(key, (await load()).value);
+        return cached.get(key) as T;
       },
     },
     inboxItems,

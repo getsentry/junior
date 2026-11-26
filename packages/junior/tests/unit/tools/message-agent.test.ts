@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AgentStoppedError } from "@/chat/agent-invocations/errors";
+import { AgentStoppedError } from "@/chat/child-agents/errors";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 

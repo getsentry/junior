@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { messageChildAgent } from "@/chat/agent-invocations/create";
+import { messageChildAgent } from "@/chat/child-agents/create";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { enqueueEventNotification } from "@/chat/events/notification";
@@ -27,10 +27,10 @@ import {
 import { runTestHeartbeat } from "../fixtures/conversation-work";
 import { context, execute } from "../fixtures/event-automations";
 import {
-  invocationInput,
+  spawnInput,
   loadTurnEvents,
   spawnChildAgent,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 
 // Timer heartbeat coverage lives here because heartbeat.test.ts is at its file limit.
 afterEach(async () => {
@@ -453,7 +453,7 @@ it("saves a stopped child's timers until a person writes to its root", async () 
   clock.mockReturnValue(clock() + 1_000);
   await messageChildAgent(
     {
-      actor: invocationInput.actor,
+      actor: spawnInput.actor,
       childConversationId: child.childConversationId,
       idempotencyKey: "parent-message",
       input: "Keep watching.",

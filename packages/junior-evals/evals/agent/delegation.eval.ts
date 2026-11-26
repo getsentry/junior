@@ -106,11 +106,9 @@ describe("Implicit Delegation", () => {
     expect(conversation.replies).toHaveLength(1);
   });
 
-  // A Lead's `startConversation` makes a web root whose first message is the
-  // brief, sent as the person, so this web message is that root's first
-  // Turn. The case measures only whether the root hands its one work item to
-  // a child agent, which it does in its first calls, so a budget of 3 keeps
-  // the build short.
+  // A person's first web message asks for one work item. The case measures
+  // only whether the Conversation hands it to a child agent, which it does in
+  // its first calls, so a budget of 3 keeps the build short.
   test("when a Conversation is asked for one long code change, do it here and do not hand it to a child agent", async ({
     agent,
   }) => {

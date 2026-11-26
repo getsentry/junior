@@ -4,6 +4,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
+import type { AgentStatus } from "@/chat/conversations/agent-status";
 
 export type ConversationSource =
   | "api"
@@ -31,12 +32,8 @@ export type ChildConversationKind = Extract<
   "thread" | "task"
 >;
 
-export type ConversationStatus =
-  | "paused"
-  | "failed"
-  | "idle"
-  | "pending"
-  | "running";
+/** Conversation execution status. */
+export type ConversationStatus = Exclude<AgentStatus, "stopped">;
 
 /** Cumulative duration and usage that one Run reported. */
 export interface ConversationRunMetrics {
@@ -79,15 +76,28 @@ export interface Conversation {
   /** Immutable kind. Set when the Conversation is created. */
   kind: ConversationKind;
   lastActivityAtMs: number;
-  /** Immutable parent Conversation. */
+  /**
+   * Parent Conversation. Only `setConversationSpace` changes it: a
+   * Conversation in a Space is a child of the Space's Lead.
+   */
   parentConversationId?: string;
-  /** Immutable root of the Conversation tree, read from storage. */
+  /**
+   * Top-level Conversation of this work, read from storage: itself when it
+   * has no parent or its parent is a Lead. Its child agents keep it when it
+   * moves.
+   */
   rootConversationId?: string;
   /**
-   * Space of a root. A child has none: it is in the Space of its root. Only
-   * a create and `setConversationSpace` write it.
+   * Space of a Lead, or of a Lead's child, read from its Lead. Other
+   * Conversations have none: a child agent is in the Space of its root. Only
+   * a Lead stores it.
    */
   spaceId?: string;
+  /**
+   * Set on a child whose Location is its own, not a copy of its parent's,
+   * such as a Slack Conversation that moved into a Space.
+   */
+  ownLocation?: true;
   /**
    * When the Conversation was archived for everyone. Only archive, auto-archive,
    * pin, and a person's message write it; `upsertConversation` does not.

@@ -35,16 +35,20 @@ vi.mock("@/chat/plugins/viewer", () => ({
 }));
 import {
   applyPluginFormatMarkdown,
-  createPluginHookRunner,
-  getPluginApiRoutes,
   getPluginUserPromptContributions,
+} from "@/chat/plugins/hooks/prompt";
+import { setPlugins } from "@/chat/plugins/hooks/registry";
+import {
   getPluginOperationalReports,
   getPluginProfileReports,
+} from "@/chat/plugins/hooks/reports";
+import {
+  getPluginApiRoutes,
   getPluginRoutes,
   getPluginSlackConversationLink,
-  getPluginTools,
-  setPlugins,
-} from "@/chat/plugins/agent-hooks";
+} from "@/chat/plugins/hooks/routes";
+import { createPluginHookRunner } from "@/chat/plugins/hooks/runner";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createTools } from "@/chat/tool-support/create-tools";

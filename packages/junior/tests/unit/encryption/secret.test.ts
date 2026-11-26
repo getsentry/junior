@@ -1,13 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { readEncryptionKeyring } from "@/chat/encryption/keyring";
+import { createEncryptionKeyring } from "@/chat/encryption/keyring";
 import {
   decryptSecret,
   encryptSecret,
   UnreadableSecretError,
 } from "@/chat/encryption/secret";
+import { loadConfig } from "@/config";
 
 const OLD_KEY = "old:yzdMjBLutb3SqjtwO1Lm3Cr2wN7FSGG8tzlRjvJc8Xg";
 const NEW_KEY = "new:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
+
+function loadEncryptionEnv(env: Record<string, string>) {
+  return loadConfig({
+    env: { DATABASE_URL: "postgres://localhost/junior", ...env },
+  });
+}
+
+function keyring(env: Record<string, string>) {
+  return createEncryptionKeyring(loadEncryptionEnv(env).encryption);
+}
 
 function unreadableReason(read: () => unknown): string | undefined {
   try {
@@ -47,12 +58,12 @@ describe("encryptSecret", () => {
   });
 
   it("decrypts with a key that is not active and reports it stale", () => {
-    const oldOnly = readEncryptionKeyring({ JUNIOR_ENCRYPTION_KEYS: OLD_KEY });
-    const rotated = readEncryptionKeyring({
+    const oldOnly = keyring({ JUNIOR_ENCRYPTION_KEYS: OLD_KEY });
+    const rotated = keyring({
       JUNIOR_ENCRYPTION_KEYS: `${NEW_KEY},${OLD_KEY}`,
       JUNIOR_ENCRYPTION_KEY_ID: "new",
     });
-    const newOnly = readEncryptionKeyring({ JUNIOR_ENCRYPTION_KEYS: NEW_KEY });
+    const newOnly = keyring({ JUNIOR_ENCRYPTION_KEYS: NEW_KEY });
     const envelope = encryptSecret("access-token", "key", oldOnly);
 
     expect(decryptSecret(envelope, "key", rotated)).toEqual({
@@ -65,7 +76,7 @@ describe("encryptSecret", () => {
   });
 });
 
-describe("readEncryptionKeyring", () => {
+describe("encryption config", () => {
   it.each([
     [{}, "JUNIOR_ENCRYPTION_KEYS is required"],
     [{ JUNIOR_ENCRYPTION_KEYS: "old:c2hvcnQ" }, 'key "old" must be 32 bytes'],
@@ -82,6 +93,6 @@ describe("readEncryptionKeyring", () => {
       'JUNIOR_ENCRYPTION_KEY_ID "old" is not in JUNIOR_ENCRYPTION_KEYS',
     ],
   ])("rejects an invalid keyring", (env, message) => {
-    expect(() => readEncryptionKeyring(env)).toThrow(message);
+    expect(() => loadEncryptionEnv(env)).toThrow(message);
   });
 });

@@ -74,13 +74,14 @@ also wake a Conversation or run an Event automation.
   its code owners only after the requester has looked.
 - `ended-silent` When a Junior PR is merged or closed, Junior posts
   nothing, but its later replies in that Conversation know it.
-- `ready-to-merge` When GitHub says that it can merge, no reviewer
-  requests changes, and the requester's repository role can merge, the
-  requester gets a "Ready to merge" Inbox item. Where GitHub requires no
-  review, a PR with no approval gets it too, and the item tells the
-  requester to review it before they merge. When a review is requested
-  and still pending, the PR asks for that review instead, even where the
-  repo allows merging without one.
+- `ready-to-merge` When GitHub says that it can merge, no reviewer requests
+  changes, and the requester has write access to the repo, the requester
+  gets a "Ready to merge" Inbox item. A requester without write access gets
+  no merge ask, because a person with write access merges the PR. Where
+  GitHub requires no review, a PR with no approval gets it too, and the item
+  tells the requester to review it before they merge. When a review is
+  requested and still pending, the PR asks for that review instead, even
+  where the repo allows merging without one.
 - `retry-after-limit` When GitHub fails the next-action read for a while
   (rate limit or outage), Junior syncs the pull request again later, after
   the rate limit resets. A failed webhook never leaves a stale action in

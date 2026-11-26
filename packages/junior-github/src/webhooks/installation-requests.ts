@@ -427,25 +427,31 @@ const repositoryPermissionSchema = z.object({
 // Roles change rarely. A removed maintainer can keep their role this long.
 const REPOSITORY_ROLE_TTL_MS = 10 * 60 * 1000;
 
-type RepositoryTarget = { login: string; repositoryFullName: string };
+/**
+ * One user's access to a repository. `role` is GitHub's `role_name`, which
+ * includes maintain, triage, and custom roles. `permission` is the base
+ * role that it maps to: admin, write, read, or none.
+ */
+interface RepositoryPermission {
+  permission: string;
+  role: string;
+}
 
 /**
- * Read one user's access to a repository, with a metadata-only token: their
- * role, and GitHub's base permission of that role. GitHub returns "none" for
- * accounts without access, such as most bots. It is cached for ten minutes.
+ * Read one user's access to a repository, with a metadata-only token.
+ * GitHub returns "none" for accounts without access, such as most bots. It
+ * is cached for ten minutes.
  */
-async function loadRepositoryAccess(
+async function loadRepositoryPermission(
   env: GitHubInstallationEnv,
   cache: PluginCache,
-  target: RepositoryTarget,
-): Promise<{ permission: string; role: string }> {
+  target: { login: string; repositoryFullName: string },
+): Promise<RepositoryPermission> {
   const { owner, name } = splitRepository(
     target.repositoryFullName,
     "repository role",
   );
-  return await cache.getOrLoad(
-    // Not `repository-access:`, which `repository-access.ts` keeps a boolean
-    // under in the same plugin cache.
+  return await cache.getOrLoad<RepositoryPermission>(
     `repository-permission:${owner}/${name}:${target.login}`.toLowerCase(),
     async () => {
       const token = await issueInstallationToken({
@@ -460,8 +466,6 @@ async function loadRepositoryAccess(
           { responses: env.responses, token: token.token },
         ),
       );
-      // role_name includes maintain, triage, and custom roles. permission
-      // is the base of the role: admin, write, read, or none.
       return {
         value: {
           permission: response.permission,
@@ -473,34 +477,26 @@ async function loadRepositoryAccess(
   );
 }
 
-/** Read one user's role on a repository, such as `maintain` or a custom role. */
+/** Read one user's role on a repository, such as "maintain" or "none". */
 export async function loadRepositoryRole(
   env: GitHubInstallationEnv,
   cache: PluginCache,
-  target: RepositoryTarget,
+  target: { login: string; repositoryFullName: string },
 ): Promise<string> {
-  return (await loadRepositoryAccess(env, cache, target)).role;
+  return (await loadRepositoryPermission(env, cache, target)).role;
 }
 
 /**
- * Whether GitHub lets a user merge pull requests in a repository: the base
- * permission of their role, custom roles too, is write or admin. A login
- * that GitHub does not know, such as a renamed account, cannot merge.
+ * Whether one user can merge pull requests on a repository: their base role
+ * is write or admin. Maintain and custom roles map to one of these.
  */
-export async function canMergeInRepository(
+export async function loadRepositoryMergeAccess(
   env: GitHubInstallationEnv,
   cache: PluginCache,
-  target: RepositoryTarget,
+  target: { login: string; repositoryFullName: string },
 ): Promise<boolean> {
-  try {
-    const { permission } = await loadRepositoryAccess(env, cache, target);
-    return permission === "admin" || permission === "write";
-  } catch (error) {
-    if (error instanceof GitHubRequestError && error.status === 404) {
-      return false;
-    }
-    throw error;
-  }
+  const { permission } = await loadRepositoryPermission(env, cache, target);
+  return permission === "admin" || permission === "write";
 }
 
 const timestampSchema = z.iso.datetime({ offset: true });

@@ -1,9 +1,9 @@
 import * as z from "zod";
-import { stopChildAgent } from "@/chat/agent-invocations/stop";
+import { stopChildAgent } from "@/chat/child-agents/stop";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
-import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
+import { AGENTS_TOOL_SOURCE } from "@/chat/child-agents/tool-source";
 
 const stopAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1).describe("Stopped child conversation ID"),

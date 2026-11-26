@@ -9,7 +9,7 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
+import { enqueueStarterUpdate } from "@/chat/child-agents/result";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   readScheduledAutomation,

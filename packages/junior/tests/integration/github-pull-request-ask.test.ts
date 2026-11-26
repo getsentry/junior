@@ -9,7 +9,7 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
@@ -18,15 +18,15 @@ import { juniorInboxItems } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { mswServer } from "../msw/server";
 
 const API = "https://api.github.com/repos/getsentry/junior/pulls/1592";
 const PULL_URL = "https://github.com/getsentry/junior/pull/1592";
 const BOT = "sentry-junior[bot]";
-const person = slackInvocationInput.actor;
+const person = slackSpawnInput.actor;
 
 let app: Awaited<ReturnType<typeof createApp>>;
 
@@ -150,7 +150,7 @@ describe("the ask of a Junior pull request", () => {
 
   it("closes before the chip says merged, so no reader sees a merged pull request with an open ask", async () => {
     app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    const slack = await upsertIdentity(getSqlExecutor(), {
+    const requester = await upsertIdentity(getSqlExecutor(), {
       displayName: "Pat Requester",
       email: "pat@example.com",
       emailVerified: true,
@@ -159,13 +159,13 @@ describe("the ask of a Junior pull request", () => {
       providerSubjectId: person.userId,
       providerTenantId: person.teamId,
     });
-    // "Ready to merge" needs the requester's GitHub login, to read whether
-    // their repository role can merge.
-    await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
-      handle: "pat",
+    // A merge ask needs the requester's GitHub login, to read their access.
+    if (!requester.userId) throw new Error("missing requester user");
+    await upsertLinkedIdentity(getSqlExecutor(), requester.userId, {
+      handle: "pat-requester",
       kind: "user",
       provider: "github",
-      providerSubjectId: "3001",
+      providerSubjectId: "1001",
     });
     const { fixture } = await prepareSlackParentConversation();
     // The footer that links the pull request to its Conversation needs a
@@ -236,8 +236,9 @@ describe("the ask of a Junior pull request", () => {
             },
           });
         }),
+        // The requester has write access, so they get the merge ask.
         http.get(
-          "https://api.github.com/repos/getsentry/junior/collaborators/pat/permission",
+          "https://api.github.com/repos/getsentry/junior/collaborators/pat-requester/permission",
           () => HttpResponse.json({ permission: "write", role_name: "write" }),
         ),
         http.get(`${API}/commits`, async () => {

@@ -3,9 +3,9 @@ import type { MessageMetadata, QueueClient } from "@vercel/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
 import {
   getChatConfig,
-  resetRuntimeConfig,
-  restoreRuntimeConfig,
-  snapshotRuntimeConfig,
+  installChatConfig,
+  readChatConfig,
+  type ChatConfig,
 } from "@/chat/config";
 import {
   createVercelPluginTaskCallback,
@@ -267,14 +267,14 @@ describe("conversation work Vercel queue integration", () => {
 });
 
 describe("Turn step Vercel queue integration", () => {
-  const runtimeConfig = snapshotRuntimeConfig();
+  let previousConfig: ChatConfig | undefined;
   afterEach(() => {
-    restoreRuntimeConfig(runtimeConfig);
+    installChatConfig(previousConfig);
   });
 
   it("uses the app's max duration in the visibility timeout", async () => {
-    // createApp sets the host's max duration after this module loads.
-    resetRuntimeConfig(600);
+    // createApp installs the host's max duration after this module loads.
+    previousConfig = installChatConfig(readChatConfig(process.env, 600));
 
     const chatConfig = getChatConfig();
     const engineCtx = createEngineContext(chatConfig);

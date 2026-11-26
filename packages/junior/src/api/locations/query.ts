@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, gte, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ne, sql } from "drizzle-orm";
+import { topLevelConversation } from "@/chat/conversations/sql/listed";
 import { alias } from "drizzle-orm/pg-core";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
@@ -124,7 +125,7 @@ function emptyActor(actor: ActorIdentity): LocationActorSummaryReport {
 }
 
 function topLevelWhere() {
-  return isNull(juniorConversations.parentConversationId);
+  return topLevelConversation();
 }
 
 function publicLocationWhere(locationId: string) {

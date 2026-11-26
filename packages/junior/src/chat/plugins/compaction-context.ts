@@ -1,5 +1,5 @@
 import { promptMessageSchema } from "@sentry/junior-plugin-api";
-import { getRegistrations } from "@/chat/plugins/agent-hooks";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 import { runPluginHooksAtOnce } from "@/chat/plugins/hook-runner";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";

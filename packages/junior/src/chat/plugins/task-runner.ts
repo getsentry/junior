@@ -56,7 +56,8 @@ import {
   CONVERSATION_METADATA_TASK,
   updateConversationMetadata,
 } from "@/chat/conversations/metadata/task";
-import { type AppEventPublisher, getRegistrations } from "./agent-hooks";
+import { getRegistrations } from "@/chat/plugins/hooks/registry";
+import type { AppEventPublisher } from "@/chat/plugins/hooks/routes";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,

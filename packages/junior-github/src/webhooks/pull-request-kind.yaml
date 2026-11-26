@@ -31,11 +31,11 @@ inputs:
       changes, and `none` with neither.
   viewer.requester:
     values: bool
-  viewer.can_merge:
+  viewer.merge_access:
     values: bool
     description: >-
-      GitHub lets the viewer merge: the base permission of their repository
-      role, custom roles too, is write or admin.
+      GitHub lets the viewer merge on the repository. Without it, a person
+      with write access merges, so the viewer gets no merge ask.
   viewer.requested:
     values: bool
     description: >-
@@ -90,7 +90,7 @@ rules:
           merge_state: clean
           review_outcome: not(changes_requested)
           viewer.requester: true
-          viewer.can_merge: true
+          viewer.merge_access: true
         output: { ask: { label: Ready to merge } }
       - when:
           state: open
@@ -100,6 +100,7 @@ rules:
           viewer.feedback: false
           merge_state: unknown
           viewer.shown: merge
+          viewer.merge_access: true
         output: keep
       - when:
           state: open
@@ -109,6 +110,7 @@ rules:
           viewer.feedback: false
           merge_state: unknown
           viewer.asked_again: false
+          viewer.merge_access: true
         output: keep
   - id: pr-merge-reviewer
     serves: [first-rule-wins]
@@ -120,7 +122,7 @@ rules:
           auto_merge: false
           viewer.requested: true
           viewer.requester: false
-          viewer.can_merge: true
+          viewer.merge_access: true
         output: { ask: { label: Ready to merge } }
   - id: pr-review-again
     serves: [review-again, comment-review, one-way-to-ask]

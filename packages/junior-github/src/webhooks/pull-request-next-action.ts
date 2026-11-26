@@ -150,11 +150,14 @@ export function nextAction(
   requester: {
     actedLast: boolean;
     askedAgain: boolean;
-    /** `canMergeInRepository`: GitHub lets the requester merge. */
-    canMerge: boolean;
     /** `requesterFeedback`: the requester waits for Junior's answer. */
     feedback: boolean;
     login: string | undefined;
+    /**
+     * GitHub lets the requester merge on the repository. Without it, a
+     * person with write access merges, so the requester gets no merge ask.
+     */
+    mergeAccess: boolean;
   },
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
@@ -171,8 +174,8 @@ export function nextAction(
     viewer: {
       approved: state.requesterApproved,
       asked_again: requester.askedAgain,
-      can_merge: requester.canMerge,
       feedback: requester.feedback,
+      merge_access: requester.mergeAccess,
       replied: requester.actedLast,
       requested: isRequested(state, requester.login),
       requester: true,

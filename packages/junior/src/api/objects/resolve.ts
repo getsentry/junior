@@ -18,7 +18,7 @@ import { createPluginEgress } from "@/chat/egress/plugin";
 import { imagePath } from "@/chat/images/ids";
 import { logException } from "@/chat/logging";
 import { createViewerMcp } from "@/chat/mcp/viewer";
-import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { getStateAdapter } from "@/chat/state/adapter";

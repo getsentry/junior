@@ -280,48 +280,6 @@ describe("next action item", () => {
     }
   });
 
-  it("asks to merge only a requester whose repository role can merge", async () => {
-    const fixture = await createGitHubFixture();
-    const calls: InboxItemCall[] = [];
-    const github: GitHubState = {
-      draft: false,
-      mergeableStates: ["clean"],
-      merged: false,
-      requesterAccess: { permission: "read", role: "triage" },
-      reviews: [{ state: "APPROVED", user: { login: "reviewer" } }],
-      state: "open",
-    };
-    mockGitHub(github, []);
-    const ready = {
-      kind: "upsert",
-      notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
-    };
-    try {
-      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      const webhook = route(fixture, calls);
-
-      // GitHub says that it can merge, but triage cannot merge.
-      await webhook.handler(reviewSubmitted("approved"));
-      expect(calls).not.toContainEqual(expect.objectContaining(ready));
-
-      // A custom role whose base permission is write can merge.
-      github.requesterAccess = { permission: "write", role: "merger" };
-      await webhook.handler(checkSuiteCompleted());
-      expect(calls.at(-1)).toMatchObject(ready);
-
-      // GitHub no longer knows the requester's login, such as after a
-      // rename. They cannot merge, and the item still follows the state.
-      github.requesterAccess = "unknown";
-      await webhook.handler(checkSuiteCompleted());
-      expect(calls.at(-1)).toMatchObject({
-        input: { dedupeKey: DEDUPE_KEY, status: "dismissed" },
-        kind: "close",
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("closes the merge conflict notice when the conflict is gone", async () => {
     const fixture = await createGitHubFixture();
     const github: GitHubState = {
@@ -537,7 +495,7 @@ describe("next action item", () => {
     }
   });
 
-  it("reuses the installation tokens for later webhooks", async () => {
+  it("reuses one installation token for later webhooks", async () => {
     const fixture = await createGitHubFixture();
     const requests: string[] = [];
     mockGitHub(
@@ -571,9 +529,7 @@ describe("next action item", () => {
       await webhook.handler(checkSuiteCompleted());
       await webhook.handler(reviewSubmitted("approved"));
       expect(requests).toEqual(["pull", "pull"]);
-      // One token reads the pull request, and a metadata-only one reads the
-      // requester's role. The second webhook mints none.
-      expect(minted).toBe(2);
+      expect(minted).toBe(1);
     } finally {
       await fixture.close();
     }

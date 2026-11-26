@@ -679,14 +679,11 @@ test.describe("new UI", () => {
     ).toBeVisible();
     const tasks = details.getByRole("region", { name: "Tasks" });
     await expect(tasks.getByRole("listitem")).toHaveCount(2);
-    await expect(tasks.getByRole("listitem").first()).toContainText(
-      "GitHub access is needed to read the pull request.",
-    );
     await screenshot(page, "conversation-subagents");
     // A row opens the same Task transcript drawer as the transcript row.
     await tasks
       .getByRole("button", {
-        name: /^blocked Review the open dashboard pull requests/,
+        name: /^blocked reviewer/,
       })
       .click();
     const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });

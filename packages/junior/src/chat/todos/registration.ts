@@ -11,8 +11,8 @@ import {
   renderTodosReview,
   renderTodosSnapshot,
 } from "./prompt";
-import { todosSystemPromptRegistration } from "./prompt-rules";
 import { deleteTodos, listTodos, todosDb } from "./store";
+import { TODOS_REGISTRATION_NAME } from "./types";
 import { createUpdateTodosTool } from "./tools/update";
 
 // The longest text of one prompt message. A long list of To-dos goes in
@@ -42,15 +42,17 @@ function promptMessages(text: string | null): PromptMessage[] | undefined {
 
 /**
  * Core registration of durable To-dos: work that outlives a Turn. It
- * reaches the agent only through plugin hooks: its tool, its system prompt
- * guidance, the To-do changes in each Turn context, the snapshot in each
- * compaction summary, the parent's To-dos in a child's team listing, and
- * purge.
+ * reaches the agent only through plugin hooks: its tool, the To-do changes
+ * in each Turn context, the snapshot in each compaction summary, the
+ * parent's To-dos in a child's team listing, and purge.
  */
 export const todosRegistration: PluginRegistration = {
-  manifest: todosSystemPromptRegistration.manifest,
+  manifest: {
+    name: TODOS_REGISTRATION_NAME,
+    displayName: "To-dos",
+    description: "Durable work that outlives a Turn",
+  },
   hooks: {
-    ...todosSystemPromptRegistration.hooks,
     tools: () => ({
       updateTodos: createUpdateTodosTool(undefined, findSlackMentionedUserId),
     }),

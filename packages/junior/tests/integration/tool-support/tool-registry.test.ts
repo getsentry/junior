@@ -161,7 +161,8 @@ async function sentTurn(
     { writeGeneratedFiles: () => [] },
     {
       ...fullContext("slack", behavior.promptMode),
-      ...bindTurnTools(run, behavior),
+      // No Turn here is a Lead's child.
+      ...bindTurnTools(run, behavior, false),
     },
   );
   return {
@@ -411,6 +412,9 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
+        "addInboxItem",
+        "archiveAgent",
+        "listAgents",
         "listSpaces",
         "listWatches",
         "messageAgent",
@@ -422,9 +426,11 @@ describe("static tool registry", () => {
         "searchEventTypes",
         "searchInboxItems",
         "setConfiguration",
-        "startConversation",
+        "startAgent",
+        "stopAgent",
         "stopWatchingResources",
         "systemTime",
+        "updateInboxItem",
         // `updateUserCustomization` is listed only with its experiment on.
         "watchEvents",
         "watchTimer",
@@ -446,12 +452,15 @@ describe("static tool registry", () => {
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
+        "listAgents",
         "listWatches",
+        "messageAgent",
         "readConversationEvent",
         "searchConversationEvents",
         "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
+        "startAgent",
         "stopWatchingResources",
       ]),
     );

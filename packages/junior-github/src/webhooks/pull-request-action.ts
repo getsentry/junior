@@ -4,7 +4,9 @@
  *
  * The action derives from GitHub state. It is "merge" when the pull request
  * is open, not a draft, auto-merge is off, GitHub's merge state is `clean`,
- * no reviewer still requests changes, and GitHub requests no review. GitHub
+ * no reviewer still requests changes, GitHub requests no review, and the
+ * requester has write access to the repository. A requester without it
+ * gets no merge ask: a person with write access merges it. GitHub
  * gives `blocked` until a required review approves, so a pull request with
  * no approval is "merge" only where GitHub requires no review, and its item
  * asks the requester to review it first. A pending review request comes
@@ -127,8 +129,8 @@ import { logFailOpenFailure } from "./fail-open-log.js";
 import { GitHubGraphqlError } from "./graphql-request.js";
 import {
   loadGraphqlRateLimitReset,
-  canMergeInRepository,
   loadPullRequestMergeState,
+  loadRepositoryMergeAccess,
   loadReviewAgainReader,
   requestPullRequestReviewers,
   type GitHubInstallationEnv,
@@ -271,6 +273,8 @@ async function showAction(
     action: GitHubPullRequestAction | undefined;
     dedupeKey: string;
     identityId: string;
+    /** Undefined when this sync did not read it. */
+    mergeAccess: boolean | undefined;
     number: number;
     previous: GitHubPullRequestAction | undefined;
     reason: GitHubReviewAskReason | undefined;
@@ -304,7 +308,7 @@ async function showAction(
   } else if (args.previous) {
     await items.close({
       dedupeKey: args.dedupeKey,
-      ...closeReason(state, args.previous),
+      ...closeReason(state, args.previous, args.mergeAccess),
     });
   }
 }
@@ -462,7 +466,7 @@ interface PullRequestActionSyncContext {
    */
   askAfterRequesterActed?: boolean | undefined;
   botEmail: string | undefined;
-  /** Caches the requester's repository role. */
+  /** Holds the requester's repository access, which decides a merge ask. */
   cache: PluginCache;
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
@@ -531,30 +535,33 @@ async function syncOne(
       requesterLogin,
     );
     const activity = latestActivity(state.activity, requesterLogin);
-    // Without a linked login, Junior cannot read the requester's role.
-    const canMerge =
-      requesterLogin !== undefined &&
-      (await canMergeInRepository(args.env, args.cache, {
-        login: requesterLogin,
-        repositoryFullName: target.repositoryFullName,
-      }));
     const asked = await askHeldReview(args, target, state, requesterLogin);
     const reason = await askReason(args.state, target, {
       asked,
       requesterAt: activity.requesterAt,
       requesterLogin,
     });
-    const next = nextAction(
-      state,
-      {
-        actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
-        askedAgain: asked !== undefined && reason !== undefined,
-        canMerge,
-        feedback: requesterFeedback(state, activity),
-        login: requesterLogin,
-      },
-      previous,
-    );
+    const requester = {
+      actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
+      askedAgain: asked !== undefined && reason !== undefined,
+      feedback: requesterFeedback(state, activity),
+      login: requesterLogin,
+    };
+    const decide = (mergeAccess: boolean) =>
+      nextAction(state, { ...requester, mergeAccess }, previous);
+    const withAccess = decide(true);
+    // Only a merge ask, new or saved, needs the requester's access, so most
+    // syncs read none. Junior knows a requester's access only through their
+    // linked GitHub login.
+    const mergeAccess =
+      withAccess?.action === "merge" || previous === "merge"
+        ? requesterLogin !== undefined &&
+          (await loadRepositoryMergeAccess(args.env, args.cache, {
+            login: requesterLogin,
+            repositoryFullName: target.repositoryFullName,
+          }))
+        : undefined;
+    const next = mergeAccess === false ? decide(false) : withAccess;
     if (
       !askedRequester &&
       requesterLogin &&
@@ -595,6 +602,7 @@ async function syncOne(
         action: next.action,
         dedupeKey,
         identityId: opener.identityId,
+        mergeAccess,
         number: target.number,
         previous,
         reason,
