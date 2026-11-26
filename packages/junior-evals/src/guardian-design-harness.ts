@@ -58,6 +58,11 @@ export interface GuardianDesignFacts {
   confirmed?: Array<{ tool: string; input: Record<string, unknown> }>;
   /** Resources that the same instruction created, such as a pull request. */
   createdByInstruction?: string[];
+  /**
+   * Guardian allowed the startAgent or messageAgent hand-off that gave this
+   * Turn its task, so the task is an instruction (`agent-task`).
+   */
+  handoffAllowed?: boolean;
 }
 
 /** One planned action, or the calls of one Code Mode batch, for Guardian. */
@@ -118,6 +123,7 @@ export type DesignRuleId =
   | "relayed-words"
   | "lead-member"
   | "handoff-task"
+  | "agent-task"
   | "allow-default"
   | "same-outcome"
   | "rule-kinds"
