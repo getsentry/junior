@@ -21,6 +21,7 @@ vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
 }));
 
 import { create, isStale } from "@/chat/sandbox/snapshot/profile";
+import { useConfig } from "../../../fixtures/config";
 
 describe("snapshot dependency profile", () => {
   beforeEach(() => {
@@ -29,8 +30,13 @@ describe("snapshot dependency profile", () => {
     dependenciesMock.mockReturnValue([]);
     postinstallMock.mockReturnValue([]);
     globalPostinstall.length = 0;
-    delete process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"];
-    delete process.env["SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS"];
+    useConfig(
+      {},
+      {
+        SANDBOX_SNAPSHOT_REBUILD_EPOCH: undefined,
+        SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS: undefined,
+      },
+    );
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-10T00:00:00.000Z"));
   });
@@ -200,9 +206,9 @@ describe("snapshot dependency profile", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },
     ]);
-    process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"] = "epoch-a";
+    useConfig({ sandbox: { snapshot: { rebuildEpoch: "epoch-a" } } });
     const first = create("node22");
-    process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"] = "epoch-b";
+    useConfig({ sandbox: { snapshot: { rebuildEpoch: "epoch-b" } } });
     const second = create("node22");
 
     expect(first?.hash).not.toBe(second?.hash);
