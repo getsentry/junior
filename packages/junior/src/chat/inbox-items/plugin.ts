@@ -172,18 +172,14 @@ export function createPluginInboxItems(args: {
       ]);
       // A person joins only with the event that gives them an ask. The
       // others with an ask stay only when they are on the item already, so
-      // a person who left does not come back until a new ask. A role on the
-      // object puts its holder on the item: leaving drops the role, so the
-      // roles are the item's assignees, also on a new item.
+      // a person who left does not come back until a new ask.
       const current = new Set(
         existing?.assignees.map((assignee) => assignee.userId),
       );
       const askedNow = new Set(asked.map((user) => user.userId));
       const userIds = withAsk
         .map((user) => user.userId)
-        .filter(
-          (userId) => roles || askedNow.has(userId) || current.has(userId),
-        );
+        .filter((userId) => askedNow.has(userId) || current.has(userId));
       // The item closes when nobody is left: everyone with an ask left it,
       // or everyone who was on it no longer has one. One for nobody Junior
       // knows, such as a person with no linked account, stays open with no

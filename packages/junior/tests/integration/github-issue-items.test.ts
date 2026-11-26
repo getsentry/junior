@@ -356,9 +356,15 @@ describe("the Inbox item of an issue that Junior created", () => {
       await sendGitHubWebhook("issues", issueEvent(body, "closed", ["pat"]));
       expect(await issueItem()).toMatchObject({ status: "done" });
 
-      // Pat is still assigned, so the new item that Sam's assignment opens
-      // has Pat on it too. Then Pat and Sam both dismiss at once. The second
-      // one to leave is the last, so the item closes and nobody is left.
+      // A reopen brings the item back for Pat, who is still assigned. Sam
+      // joins it when assigned. Then Pat and Sam both dismiss at once. The
+      // second one to leave is the last, so the item closes and nobody is
+      // left.
+      await sendGitHubWebhook("issues", issueEvent(body, "reopened", ["pat"]));
+      expect(await issueItem()).toMatchObject({
+        assignees: ["pat@example.com"],
+        status: "open",
+      });
       await sendGitHubWebhook(
         "issues",
         issueEvent(body, "assigned", ["pat", "sam"], {

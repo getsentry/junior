@@ -106,8 +106,6 @@ export interface PluginReviewNotice {
    * upsert gave, such as a review request. Only they join the item, and
    * Junior pushes it to them. The others stay only when they are on the
    * open item already, so a person who left comes back only with a new ask.
-   * For a subject kind with `assigneeRoles`, each role holder is on the
-   * item, and this list only picks whom Junior pushes it to.
    */
   askedIdentityIds: string[];
   /** Markdown details for the person. */
