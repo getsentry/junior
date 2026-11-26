@@ -1,4 +1,4 @@
-import type { PluginMarkdownFormat } from "@/chat/plugins/agent-hooks";
+import type { PluginMarkdownFormat } from "@/chat/plugins/hooks/prompt";
 import { isTableRow, normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
 // Slack recommends at most 4,000 characters of message text, and all markdown

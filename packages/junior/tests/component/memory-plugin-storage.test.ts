@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import { defineJuniorPlugins } from "@/plugins";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { readConversationAuxiliaryCostsFromSql } from "@/api/conversations/auxiliary-costs";

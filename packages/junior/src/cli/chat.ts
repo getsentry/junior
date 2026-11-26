@@ -144,13 +144,13 @@ async function configureLocalChatPlugins(
 ): Promise<void> {
   const [
     pluginsModule,
-    agentHooksModule,
+    registryModule,
     catalogRuntimeModule,
     validationModule,
     databaseModule,
   ] = await Promise.all([
     import("@/plugins"),
-    import("@/chat/plugins/agent-hooks"),
+    import("@/chat/plugins/hooks/registry"),
     import("@/chat/plugins/catalog-runtime"),
     import("@/chat/plugins/validation"),
     import("@/chat/db"),
@@ -166,7 +166,7 @@ async function configureLocalChatPlugins(
     : pluginsModule.pluginCatalogConfigFromEnv();
   const shouldValidatePluginCatalog =
     Boolean(pluginConfig) || Boolean(resolvedPluginSet?.registrations.length);
-  agentHooksModule.validatePlugins(plugins);
+  registryModule.validatePlugins(plugins);
   const previousPluginCatalogConfig =
     catalogRuntimeModule.pluginCatalogRuntime.setConfig(pluginConfig);
   try {
@@ -180,7 +180,7 @@ async function configureLocalChatPlugins(
       );
     }
     databaseModule.getDb();
-    agentHooksModule.setPlugins(plugins);
+    registryModule.setPlugins(plugins);
   } catch (error) {
     catalogRuntimeModule.pluginCatalogRuntime.setConfig(
       previousPluginCatalogConfig,

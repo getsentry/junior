@@ -15,7 +15,7 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { upsertIdentity } from "@/chat/identities/sql";
-import { getPluginTools } from "@/chat/plugins/agent-hooks";
+import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";

@@ -27,7 +27,7 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { hasEventCatalogEntries } from "@/chat/events/catalog";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
-import { getStaticPluginToolDefinitions } from "@/chat/plugins/agent-hooks";
+import { getStaticPluginToolDefinitions } from "@/chat/plugins/hooks/tools";
 import { slackCanvasEditToolDefinition } from "@/chat/slack/tools/canvas/edit";
 import { slackCanvasReadToolDefinition } from "@/chat/slack/tools/canvas/read";
 import { slackCanvasWriteToolDefinition } from "@/chat/slack/tools/canvas/write";
