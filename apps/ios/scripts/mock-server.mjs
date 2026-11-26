@@ -77,7 +77,8 @@ const refreshTokens = new Map();
 const config = await (
   await app.fetch(new Request(`${baseURL}/api/config`))
 ).json();
-const serverVersion = config.version ?? "mock";
+// A fixed commit, as a Vercel deploy adds, so screenshots show it.
+const serverVersion = `${config.version ?? "mock"}+4f2c9a1e0b7d3c5a`;
 const agentName = "Junior";
 const mcpTools = createMockMcpTools({ app, origin: baseURL });
 

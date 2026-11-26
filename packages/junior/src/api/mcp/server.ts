@@ -10,7 +10,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { botConfig } from "@/chat/config";
-import { JUNIOR_VERSION } from "@/version";
+import { getJuniorBuildVersion } from "@/deployment";
 import { conversationOperations } from "../conversations/operations";
 import type { ApiOperation } from "../operation";
 import type { McpScope } from "./oauth/scopes";
@@ -68,7 +68,7 @@ function createMcpServer(
   scopes: readonly McpScope[],
 ): McpServer {
   const server = new McpServer(
-    { name: "junior", version: JUNIOR_VERSION },
+    { name: "junior", version: getJuniorBuildVersion() },
     {
       instructions: scopes.includes("conversations:write")
         ? writeInstructions(botConfig.userName)
