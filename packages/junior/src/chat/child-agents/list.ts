@@ -9,10 +9,7 @@ import {
 import * as z from "zod";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import type { ConversationStatus } from "@/chat/conversations/store";
-import {
-  conversationLastTurnOutcomeSql,
-  conversationTurnFailedSql,
-} from "@/chat/conversations/sql/status";
+import { conversationLastTurnOutcomeSql } from "@/chat/conversations/sql/status";
 import { TURN_OUTCOME_STATUSES } from "@/chat/conversations/turn-update";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
@@ -40,10 +37,10 @@ const CHILD_AGENT_LIST_LIMIT = 200;
  * from model output. Work that a person starts in a Space and advisor
  * histories from before child agents also have a parent edge, but only
  * child agents store an agent config, so the listing reads the agent config
- * to leave them out. A child is `running` while a Turn or mailbox input that
- * answers its parent is open, and is `failed` when its last Turn failed,
- * also when the Turn ended with a model error and execution went back to
- * idle.
+ * to leave them out. A child is `stopped` while stopped, `running` while a
+ * Turn or mailbox input that answers its parent is open, `failed` when its
+ * stored execution failed, such as when its worker gave up and no Turn
+ * ended, and else `idle`.
  * `lastResult` is how its newest finished Turn that was not stopped ended:
  * the status that `readTurnUpdate` gives it, or `failed`.
  */
@@ -56,12 +53,12 @@ export async function listChildAgents(
       agentName: juniorAgentBindings.name,
       archivedAt: juniorConversations.archivedAt,
       conversationId: juniorConversations.conversationId,
+      executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       kind: juniorConversations.kind,
       lastTurnOutcome: conversationLastTurnOutcomeSql(juniorConversations),
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
-      turnFailed: conversationTurnFailedSql(juniorConversations),
       updatedAt: juniorConversations.updatedAt,
     })
     .from(juniorConversations)
@@ -125,12 +122,11 @@ export async function listChildAgents(
             ? "stopped"
             : running
               ? "running"
-              : row.turnFailed
+              : row.executionStatus === "failed"
                 ? "failed"
-                : "completed",
+                : "idle",
         // The task text stays in the child's transcript. The spawn title
         // names it.
-        task: row.title ?? "",
         ...(row.title ? { title: row.title } : undefined),
         updatedAtMs: (row.executionUpdatedAt ?? row.updatedAt).getTime(),
       };

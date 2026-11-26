@@ -3370,8 +3370,8 @@ export function readMockConversationChildAgents(
           ...childMetrics(DASHBOARD_QA_PLAN_CHECK_ID),
           conversationId: DASHBOARD_QA_PLAN_CHECK_ID,
           kind: "task",
-          status: "completed",
-          task: "Check one claim in the dashboard plan.",
+          lastResult: "done",
+          status: "idle",
           title: "Check one plan claim",
           updatedAt: iso(startedAtMs, 16_000),
         },
@@ -3380,7 +3380,7 @@ export function readMockConversationChildAgents(
     };
   }
   // Match the API: archived children stay in the report.
-  const thread = (childConversationId: string, task: string) => {
+  const thread = (childConversationId: string) => {
     const child = conversations.find(
       (candidate) => candidate.conversationId === childConversationId,
     )!;
@@ -3388,20 +3388,15 @@ export function readMockConversationChildAgents(
       ...childMetrics(childConversationId),
       conversationId: childConversationId,
       kind: "thread",
-      status: "completed",
-      task,
+      lastResult: "done",
+      status: "idle",
       title: child.displayTitle,
       updatedAt: child.lastProgressAt,
     } as const;
   };
   if (conversationId === DASHBOARD_QA_THREAD_ID) {
     return {
-      agents: [
-        thread(
-          DASHBOARD_QA_NESTED_THREAD_ID,
-          "Recheck the pinned row order in Safari.",
-        ),
-      ],
+      agents: [thread(DASHBOARD_QA_NESTED_THREAD_ID)],
       conversationId,
     };
   }
@@ -3410,30 +3405,24 @@ export function readMockConversationChildAgents(
   }
   return {
     agents: [
-      thread(
-        DASHBOARD_QA_THREAD_ID,
-        "Check pinned row order with the person who reported it.",
-      ),
-      thread(
-        DASHBOARD_QA_ARCHIVED_THREAD_ID,
-        "Compare the sidebar badges with the design.",
-      ),
+      thread(DASHBOARD_QA_THREAD_ID),
+      thread(DASHBOARD_QA_ARCHIVED_THREAD_ID),
       {
         ...childMetrics(DASHBOARD_QA_REVIEW_ID),
         conversationId: DASHBOARD_QA_REVIEW_ID,
         kind: "task",
-        error: "GitHub access is needed to read the pull request.",
+        lastResult: "blocked",
         name: "reviewer",
-        status: "blocked",
-        task: "Review the open dashboard pull requests and list risky changes.",
+        status: "idle",
+        title: null,
         updatedAt: iso(startedAtMs, 44_000),
       },
       {
         ...childMetrics(DASHBOARD_QA_PLAN_ID),
         conversationId: DASHBOARD_QA_PLAN_ID,
         kind: "task",
-        status: "completed",
-        task: "Review the dashboard plan before editing.",
+        lastResult: "done",
+        status: "idle",
         title: "Review the dashboard plan",
         updatedAt: iso(startedAtMs, 20_000),
       },

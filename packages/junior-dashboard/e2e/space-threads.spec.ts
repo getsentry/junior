@@ -31,8 +31,8 @@ async function seedThreads(page: Page) {
         conversationId: `internal:space-thread-${index}`,
         cumulativeDurationMs: (index + 1) * 60_000,
         kind: "thread",
-        status: "completed",
-        task: title,
+        lastResult: "done",
+        status: "idle",
         title,
         treeState: "done",
         updatedAt: new Date(NOW_MS - index * 3_600_000).toISOString(),
@@ -51,10 +51,7 @@ async function seedThreads(page: Page) {
             }),
             row(2, "Backfill invoice IDs", { watching: true }),
             row(3, "Approve the cutover window", { treeState: "needs_you" }),
-            row(4, "Reconcile Stripe balances", {
-              error: "Lost access to the Stripe API.",
-              status: "failed",
-            }),
+            row(4, "Reconcile Stripe balances", { lastResult: "failed" }),
             row(5, "Migrate tax settings", {
               status: "running",
               treeState: "working",
@@ -94,9 +91,6 @@ test("a Space's Threads show what each one needs, Done collapsed", async ({
     /Approve the cutover window/,
     /Reconcile Stripe balances/,
   ]);
-  await expect(
-    group("Needs you").getByText("Lost access to the Stripe API."),
-  ).toBeVisible();
   await expect(group("Working").getByRole("link")).toHaveText([
     /Check refund webhooks/,
     /Migrate tax settings/,
