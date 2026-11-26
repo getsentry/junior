@@ -10,6 +10,8 @@ import { MCP_SCOPES, createMockMcpTools } from "./mock-mcp-tools.mjs";
 process.env["DATABASE_URL"] ??= "postgres://localhost/junior-ios-mock";
 process.env["JUNIOR_ENCRYPTION_KEYS"] ??=
   "ios:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
+// A fixed commit, as a Vercel deploy sets, so screenshots show it.
+process.env["VERCEL_GIT_COMMIT_SHA"] ??= "4f2c9a1e0b7d3c5a";
 
 const port = Number(process.env["PORT"] ?? 4317);
 // The built dashboard: run `pnpm --filter "@sentry/junior-dashboard..." build`

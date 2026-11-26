@@ -24,7 +24,7 @@ import {
   nameRequestRoute,
   routeNameMiddleware,
 } from "@sentry/junior/instrumentation";
-import { JUNIOR_VERSION } from "@sentry/junior/version";
+import { getDeployedCommit, JUNIOR_VERSION } from "@sentry/junior/version";
 import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
 import { revalidateConversation } from "./conversation-cache";
 import type {
@@ -722,11 +722,13 @@ export function createDashboardApp(
     "/",
     createJuniorApi({ conversationWorkQueue: options.conversationWorkQueue }),
   );
+  const commit = getDeployedCommit();
   const dashboardConfig = (): DashboardConfig => ({
     allowedDomainCount: allowedDomains.length,
     authRequired,
     authPath,
     basePath,
+    ...(commit ? { commit } : undefined),
     sentryConversationLinks: hasSentryConversationLinks(),
     version: JUNIOR_VERSION,
   });
