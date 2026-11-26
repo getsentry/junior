@@ -28,7 +28,7 @@ The composer is the message box under the transcript of a Conversation ("Continu
 - `mention-card` Hover or a tap on the chip opens the shared person card. In a public Conversation, its `Invite` adds a User to the Conversation's feed and then shows `Subscribed`. A person who is not a User gets no `Invite`.
 - `mention-sources` Below `People`, the `Conversations` group has the viewer's Conversations, `Tasks` has this Conversation's Tasks and Threads, `Files` has its files, and `Memories` has active public memories that match the typed text, from the same search as Cmd+K.
 - `hash-menu` Typing `#` opens the `References` listbox, with `Pull requests` that Junior tracks and the Slack `Channels` it worked in. `a#b`, `# heading`, and a link with `#` stay text.
-- `reference-chip` An inserted Conversation or Task sends as a labeled link, a memory as `<origin/memories/<id>|text>` with the start of its text on one line, a pull request (`repo#123`) as `<url|owner/repo#123>`, a channel as `<#C…|name>`, and a file as its name. After the send, each Conversation, Task, and pull request is linked work once. A memory is never linked work.
+- `reference-chip` An inserted Conversation or Task sends as a labeled link, a memory as `<origin/memories/<id>|text>` with the start of its text on one line, a pull request (`repo#123`) as `<url|owner/repo#123>`, a channel as `<#C…|name>`, and a file as its name. Sending a reference adds no linked work.
 - `read-only` A user who may not reply to a private Conversation sees "Only participants can reply to a private conversation." in place of the box.
 
 ## How to get to it (user POV)
