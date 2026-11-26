@@ -5,7 +5,8 @@
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
  * third-party APIs are MSW mocks. Other HTTP traffic goes through
  * Roach, the recording proxy, which replays model responses and the web pages that
- * `webFetch` reads. See `roach.json`. The fixture replaces only the
+ * `webFetch` reads. See `roach.json`. A `childResult()` input fakes the
+ * model of one Thread (`child-result.ts`). The fixture replaces only the
  * Vercel Queue transports and `waitUntil` with in-process versions, so it
  * knows when the agent is idle.
  */
@@ -24,6 +25,7 @@ import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-
 import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
+import { sendChildResult } from "./child-result";
 import { installGatewayObserver } from "./gateway";
 import {
   createSpace,
@@ -39,6 +41,7 @@ import { installWebReplay } from "./web";
 import type { CallOptions, Conversation, RunAgent, TurnProgress } from "./call";
 import type {
   AutomationInput,
+  ChildResultInput,
   HistoryReply,
   Input,
   MentionInput,
@@ -132,6 +135,8 @@ type ConversationRecord = (LoadedConversation | AutomationConversation) & {
   viewerEmail: string;
   /** User-visible messages so far, for the judge's context. */
   visibleMessages: VisibleMessage[];
+  /** Ids of the Threads that `childResult()` started, by title. */
+  threads: Map<string, string>;
 };
 
 export interface FixtureAgent {
@@ -376,6 +381,20 @@ export async function createFixtureAgent(
       await actOnWebInboxItem(api, input, record);
       return;
     }
+    if (input.kind === "child_result") {
+      if (record.surface !== "web") {
+        throw new Error("childResult() reaches a Lead");
+      }
+      record.started = true;
+      await sendChildResult({
+        actor: await webViewerActor(record.viewerEmail),
+        input,
+        leadConversationId: record.conversationId,
+        queue,
+        threads: record.threads,
+      });
+      return;
+    }
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
@@ -448,10 +467,13 @@ export async function createFixtureAgent(
 
   /** Create the record for a new Conversation. It starts with its first input. */
   const newConversation = async (
-    first: MessageInput | InboxItemActionInput,
+    first: MessageInput | InboxItemActionInput | ChildResultInput,
     history: CallOptions["history"],
   ): Promise<ConversationRecord> => {
-    if (first.kind === "web_message" && first.lead) {
+    if (
+      first.kind === "child_result" ||
+      (first.kind === "web_message" && first.lead)
+    ) {
       return newRecord({
         conversationId: await readLeadConversationId(api, WEB_VIEWER_EMAIL),
         idempotencyKey: fixtureId("web-conversation", 32),
@@ -520,6 +542,7 @@ export async function createFixtureAgent(
       idempotencyKey: loaded.idempotencyKey ?? randomUUID(),
       lastSeq: BEFORE_FIRST_EVENT,
       started: false,
+      threads: new Map(),
       viewerEmail,
       visibleMessages: [],
     };

@@ -119,6 +119,18 @@ export interface InboxItem {
   title: string;
 }
 
+/**
+ * A Thread of the Lead that ends a Turn with `text` as its result. The first
+ * result with a title starts that Thread. Only the Thread's model is faked:
+ * the result reaches the Lead as the product delivers any child's result.
+ */
+export interface ChildResultInput {
+  kind: "child_result";
+  text: string;
+  /** The title of the Thread. */
+  title: string;
+}
+
 /** The authenticated heartbeat route, which runs due automations. */
 export interface HeartbeatInput {
   kind: "heartbeat";
@@ -154,6 +166,7 @@ export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 export type Input =
   | MessageInput
   | InboxItemActionInput
+  | ChildResultInput
   | AutomationInput
   | CompleteAuthInput
   | AppHomeUnlinkInput;
@@ -234,6 +247,15 @@ export function webMessage(
   options: { files?: FileInput[]; lead?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
+}
+
+/**
+ * A result of the Lead's Thread `title`. `run(childResult(...))` opens the
+ * Lead of a new Space. Several results in one call reach the Lead as one
+ * batch.
+ */
+export function childResult(title: string, text: string): ChildResultInput {
+  return { kind: "child_result", text, title };
 }
 
 /** Answer an Inbox item from the dashboard, by field id. */
