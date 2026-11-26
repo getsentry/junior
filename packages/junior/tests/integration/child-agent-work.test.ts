@@ -5,13 +5,13 @@ import {
   conversationEventPageSchema,
   conversationOutlineSchema,
 } from "@/api/schema";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
+import { spawnChildAgent } from "@/chat/child-agents/create";
 import {
   getAgentReplyMessageId,
   getParentMessageId,
-} from "@/chat/agent-invocations/ids";
-import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
-import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
+} from "@/chat/child-agents/ids";
+import { enqueueStarterUpdate } from "@/chat/child-agents/result";
+import { withSenderActors } from "@/chat/child-agents/sender-actors";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import {
   getCurrentSystemPrompt,
@@ -19,8 +19,8 @@ import {
   type Context,
 } from "@earendil-works/pi-ai";
 import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
@@ -40,10 +40,10 @@ import { createModelStream } from "../fixtures/model-stream";
 import { createEventSource } from "@sentry/junior-plugin-api";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
-  invocationInput,
+  spawnInput,
   parentConversationId,
   slackDestination,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
   prepareParentConversation,
   prepareSlackParentConversation,
@@ -54,7 +54,7 @@ import {
   prepareForkParentHistory,
   prepareSummarizedHistory,
   upkeepPlugins,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import { recordTurnStart } from "../fixtures/turn-start";
 import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
 import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
@@ -106,7 +106,7 @@ describe("child agent task work", () => {
     try {
       const { childConversationId } = await spawnChildAgent(
         {
-          ...slackInvocationInput,
+          ...slackSpawnInput,
           idempotencyKey: "execute-1",
           parentToolCallId: "execute-1",
           parentTurnId: "parent-turn",
@@ -212,15 +212,15 @@ describe("child agent task work", () => {
         }),
       };
       await expect(
-        withAgentInvocationResultActors({
+        withSenderActors({
           kind: "mailbox",
           batch: [resultEntry],
         }),
       ).resolves.toMatchObject({
-        batch: [{ actor: slackInvocationInput.actor }],
+        batch: [{ actor: slackSpawnInput.actor }],
       });
       await expect(
-        withAgentInvocationResultActors({
+        withSenderActors({
           kind: "mailbox",
           batch: [
             {
@@ -259,9 +259,9 @@ describe("child agent task work", () => {
           type: "message",
           messageId: taskMessageId,
           role: "user",
-          text: expect.stringContaining(slackInvocationInput.input),
+          text: expect.stringContaining(slackSpawnInput.input),
           meta: expect.objectContaining({
-            requestText: slackInvocationInput.input,
+            requestText: slackSpawnInput.input,
           }),
         }),
         expect.objectContaining({
@@ -295,7 +295,7 @@ describe("child agent task work", () => {
       );
       expect(outline.items).toEqual([
         expect.objectContaining({
-          agentInvocationId: taskMessageId,
+          fromParentAgent: true,
           reply: "Durable child result",
         }),
       ]);
@@ -310,7 +310,7 @@ describe("child agent task work", () => {
         expect.objectContaining({
           type: "message",
           messageId: taskMessageId,
-          agentInvocationId: taskMessageId,
+          fromParentAgent: true,
         }),
       );
       expect(run).toHaveBeenCalledOnce();
@@ -321,7 +321,7 @@ describe("child agent task work", () => {
         instruction: { provenance: { authority: "instruction" } },
         disabledFeatures: ["interactive-auth"],
         reasoning: "medium",
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         destination: slackDestination,
         location: {
           id: expect.any(String),
@@ -336,7 +336,7 @@ describe("child agent task work", () => {
         "actor",
       );
       expect(run.mock.calls[0]?.[0].instruction.text).toContain(
-        slackInvocationInput.input,
+        slackSpawnInput.input,
       );
       expect(observedVisibility).toBe("public");
 
@@ -371,7 +371,7 @@ describe("child agent task work", () => {
       await processChild();
       const helper = await spawnChildAgent(
         {
-          ...slackInvocationInput,
+          ...slackSpawnInput,
           idempotencyKey: "helper-1",
           parentConversationId: childConversationId,
           parentToolCallId: "helper-1",
@@ -380,7 +380,7 @@ describe("child agent task work", () => {
         { conversationStore, queue, state },
       );
       await enqueueStarterUpdate({
-        actor: slackInvocationInput.actor,
+        actor: slackSpawnInput.actor,
         messageKey: "helper-reply",
         queue,
         update: { status: "done", text: "Helper fact." },
@@ -404,7 +404,7 @@ describe("child agent task work", () => {
           JSON.stringify(event.data).includes("Helper fact."),
       );
       expect(helperInput?.data).toMatchObject({
-        provenance: { authority: "context", actor: slackInvocationInput.actor },
+        provenance: { authority: "context", actor: slackSpawnInput.actor },
       });
       // A Turn records each input Message once. Its reply is a
       // `message_handled` row, not an edit of the Message.
@@ -628,7 +628,7 @@ describe("child agent task work", () => {
       try {
         const { childConversationId } = await spawnChildAgent(
           {
-            ...invocationInput,
+            ...spawnInput,
             idempotencyKey: "failed-result-1",
             parentToolCallId: "failed-result-1",
             parentTurnId: "parent-turn",
@@ -642,7 +642,7 @@ describe("child agent task work", () => {
         );
         if (replied) {
           await enqueueStarterUpdate({
-            actor: invocationInput.actor,
+            actor: spawnInput.actor,
             messageKey: turnId,
             queue,
             update: { status: "done", text: "Lost reply." },
@@ -783,7 +783,7 @@ describe("child agent task work", () => {
       try {
         const { childConversationId } = await spawnChildAgent(
           {
-            ...invocationInput,
+            ...spawnInput,
             idempotencyKey: "resume-1",
             parentToolCallId: fork
               ? await prepareForkParentHistory()

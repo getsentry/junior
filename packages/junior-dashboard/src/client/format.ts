@@ -188,7 +188,7 @@ export function transcriptMessageActor(
   message: TranscriptViewMessage,
 ): ActorIdentity | undefined {
   if (transcriptRoleKind(message.role) !== "user") return undefined;
-  if (message.agentInvocationId) return undefined;
+  if (message.fromParentAgent) return undefined;
   const author = message.actorIdentityId
     ? conversation.authors?.[message.actorIdentityId]
     : undefined;
@@ -225,7 +225,7 @@ export function transcriptMessageActorLabel(
     // The parent agent wrote this input, and the Turn it starts reports back
     // to the parent. The conversation actor started the child but did not
     // write it, so do not fall back to that actor here.
-    if (message.agentInvocationId) return "Parent agent";
+    if (message.fromParentAgent) return "Parent agent";
     // Show the person's name, not their email. A web send carries both, and
     // its durable Message carries only the name.
     const actor = transcriptMessageActor(conversation, message);

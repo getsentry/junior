@@ -11,15 +11,15 @@ import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import {
-  invocationInput,
+  spawnInput,
   parentConversationId,
   prepareParentConversation,
   prepareSlackParentConversation,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../../../fixtures/agent-invocations";
+} from "../../../fixtures/child-agents";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
+import { startChildAgent } from "../../../fixtures/child-agent-start";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 async function requestDetail(conversationId: string, etag?: string) {
@@ -45,13 +45,13 @@ describe("conversation child agents API", () => {
   function spawn(
     conversationStore: ConversationStore,
     args: Omit<
-      Parameters<typeof spawnChildWithoutAgentInvocation>[0],
+      Parameters<typeof startChildAgent>[0],
       "actor" | "conversationStore" | "queue"
     >,
   ) {
     vi.useFakeTimers({ now: args.nowMs, toFake: ["Date"] });
-    return spawnChildWithoutAgentInvocation({
-      actor: slackInvocationInput.actor,
+    return startChildAgent({
+      actor: slackSpawnInput.actor,
       conversationStore,
       queue: createConversationWorkQueueTestAdapter(),
       ...args,
@@ -271,8 +271,8 @@ describe("conversation child agents API", () => {
   it("redacts child agent content from viewers without private access", async () => {
     const { conversationStore } = await prepareParentConversation();
     vi.useFakeTimers({ now: 1_000, toFake: ["Date"] });
-    const child = await spawnChildWithoutAgentInvocation({
-      actor: invocationInput.actor,
+    const child = await startChildAgent({
+      actor: spawnInput.actor,
       agentConfig: { agentType: "reviewer", fork: true },
       agentName: "private-reviewer",
       conversationStore,

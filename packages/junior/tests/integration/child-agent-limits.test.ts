@@ -1,18 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  AgentInvocationLimitError,
+  ChildAgentLimitError,
   AgentNameInUseError,
-} from "@/chat/agent-invocations/errors";
+} from "@/chat/child-agents/errors";
 import {
-  MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
+  MAX_ACTIVE_CHILD_AGENTS,
   messageChildAgent,
   spawnChildAgent,
-} from "@/chat/agent-invocations/create";
+} from "@/chat/child-agents/create";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import {
   createHarness,
   finishRun,
@@ -27,7 +27,7 @@ async function spawn(
 ) {
   const { childConversationId } = await spawnChildAgent(
     {
-      ...slackInvocationInput,
+      ...slackSpawnInput,
       ...input,
       idempotencyKey,
       input: `Task ${idempotencyKey}.`,
@@ -51,7 +51,7 @@ async function message(
 ) {
   return await messageChildAgent(
     {
-      actor: slackInvocationInput.actor,
+      actor: slackSpawnInput.actor,
       childConversationId,
       idempotencyKey,
       input: "More work.",
@@ -70,14 +70,12 @@ async function spawnFullCap(
   parentConversationId?: string,
 ) {
   return await Promise.all(
-    Array.from(
-      { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
-      (_, index) =>
-        spawn(
-          harness,
-          `${prefix}-${index}`,
-          parentConversationId ? { parentConversationId } : {},
-        ),
+    Array.from({ length: MAX_ACTIVE_CHILD_AGENTS }, (_, index) =>
+      spawn(
+        harness,
+        `${prefix}-${index}`,
+        parentConversationId ? { parentConversationId } : {},
+      ),
     ),
   );
 }
@@ -133,14 +131,14 @@ describe("child agent names and limits", () => {
       const active = await spawnFullCap(harness, "limit");
 
       await expect(spawn(harness, "limit-overflow")).rejects.toBeInstanceOf(
-        AgentInvocationLimitError,
+        ChildAgentLimitError,
       );
       // A replay of an open spawn is not new fan-out.
       await expect(spawn(harness, "limit-0")).resolves.toBe(active[0]);
       // A message to an idle child makes it active, so it needs room.
       await expect(
         message(harness, idle, "limit-idle-message"),
-      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      ).rejects.toBeInstanceOf(ChildAgentLimitError);
       // A busy child already counts, so a message to it queues.
       await expect(
         message(harness, active[0]!, "limit-busy-message"),
@@ -159,7 +157,7 @@ describe("child agent names and limits", () => {
         spawn(harness, "limit-nested-overflow", {
           parentConversationId: coordinator,
         }),
-      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      ).rejects.toBeInstanceOf(ChildAgentLimitError);
     } finally {
       await harness.close();
     }

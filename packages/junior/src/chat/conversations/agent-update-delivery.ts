@@ -12,11 +12,11 @@ import {
   renderAgentResult,
   type AgentUpdate,
   type AgentUpdateStatus,
-} from "@/chat/agent-invocations/agent-update";
-import { readChildConversationSender } from "@/chat/agent-invocations/child-input";
-import { getPersonStopTurnId } from "@/chat/agent-invocations/ids";
-import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
-import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/agent-invocations/result-event-type";
+} from "@/chat/child-agents/agent-update";
+import { readChildConversationSender } from "@/chat/child-agents/child-input";
+import { getPersonStopTurnId } from "@/chat/child-agents/ids";
+import { enqueueStarterUpdate } from "@/chat/child-agents/result";
+import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/child-agents/result-event-type";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { getConversationStore, getDb } from "@/chat/db";

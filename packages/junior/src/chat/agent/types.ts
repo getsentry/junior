@@ -25,8 +25,8 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
-import type { AgentType } from "@/chat/agent-invocations/agent-types";
-import type { ChildAgentKind } from "@/chat/agent-invocations/types";
+import type { AgentType } from "@/chat/child-agents/agent-types";
+import type { ChildAgentKind } from "@/chat/child-agents/types";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -367,7 +367,7 @@ export type AgentRun = {
    * Optional agent capabilities disabled for this run slice.
    * `interactive-auth` blocks pausing to send an OAuth link; missing credentials
    * hard-fail instead. Default is enabled when omitted.
-   * TODO(dcramer): Issues #881 and #883 track a path for child invocations to
+   * TODO(dcramer): Issues #881 and #883 track a path for child agents to
    * force interactive auth when a delegated tool requires credentials the
    * parent can already request. Children currently disable it.
    */

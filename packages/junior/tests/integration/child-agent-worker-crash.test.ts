@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRun } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
+import { spawnChildAgent } from "@/chat/child-agents/create";
 import {
   getAgentReplyMessageId,
   getParentMessageId,
-} from "@/chat/agent-invocations/ids";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import { enqueueStarterUpdate } from "@/chat/agent-invocations/result";
+} from "@/chat/child-agents/ids";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
+import { enqueueStarterUpdate } from "@/chat/child-agents/result";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -27,12 +27,12 @@ import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   destination,
-  invocationInput,
+  spawnInput,
   loadSubagentEvents,
   parentConversationId,
   prepareParentConversation,
   createPublishChildTurn,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 import {
   createConversationWorkHarness,
   runHeartbeatAfterLeasesExpire,
@@ -74,7 +74,7 @@ async function spawnChild(
   return (
     await spawnChildAgent(
       {
-        ...invocationInput,
+        ...spawnInput,
         idempotencyKey,
         parentToolCallId: idempotencyKey,
         parentTurnId: "parent-turn",
@@ -147,7 +147,7 @@ describe("child agent worker crash", () => {
         } else {
           // The helper's `reply` wakes the child on the Conversation loop.
           await enqueueStarterUpdate({
-            actor: invocationInput.actor,
+            actor: spawnInput.actor,
             messageKey: "helper-reply",
             queue,
             update: { status: "done", text: "Helper fact." },
@@ -343,7 +343,7 @@ describe("child agent worker crash", () => {
               expect.objectContaining({
                 content: [
                   {
-                    text: expect.stringContaining(invocationInput.input),
+                    text: expect.stringContaining(spawnInput.input),
                     type: "text",
                   },
                 ],

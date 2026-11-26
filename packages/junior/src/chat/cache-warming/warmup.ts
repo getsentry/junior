@@ -18,7 +18,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";

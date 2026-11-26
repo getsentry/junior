@@ -1,5 +1,5 @@
 import type { AgentRun } from "@/chat/agent/types";
-import { parentResultActor } from "@/chat/agent-invocations/parent-result";
+import { parentResultActor } from "@/chat/child-agents/parent-result";
 import type {
   CompleteConversationTurnInput,
   ConversationTurnLifecycle,

@@ -717,6 +717,7 @@ export async function readConversationFeedFromSql(
       conversations
         .filter((conversation) => conversation.archivedAtMs === undefined)
         .map(({ conversationId }) => conversationId),
+      options.viewer?.id,
     ),
     readSpaceRefs(
       db,

@@ -114,8 +114,8 @@ export type TranscriptViewTurnContext = {
 export type TranscriptViewMessage = {
   cards?: MessageCard[];
   actorIdentity?: ActorIdentity;
-  /** Agent invocation whose input this is. An agent wrote it, not a person. */
-  agentInvocationId?: string;
+  /** Set on input that a parent agent wrote, not a person. */
+  fromParentAgent?: true;
   /** Identity id of the author. Conversation `authors` maps it to the person. */
   actorIdentityId?: string;
   contexts?: TranscriptViewTurnContext[];

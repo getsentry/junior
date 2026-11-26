@@ -95,8 +95,8 @@ import type {
   ConversationWorkQueue,
 } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindMessageAgent } from "@/chat/child-agents/message";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import {
   createVercelPluginTaskCallback,
   sendVercelPluginTask,

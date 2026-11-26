@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import { enqueueChildDismissToParent } from "@/chat/agent-invocations/result";
+import { enqueueChildDismissToParent } from "@/chat/child-agents/result";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, inArray, isNull } from "drizzle-orm";

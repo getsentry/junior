@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as z from "zod";
-import { enqueueChildWaitingToParent } from "@/chat/agent-invocations/result";
+import { enqueueChildWaitingToParent } from "@/chat/child-agents/result";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";

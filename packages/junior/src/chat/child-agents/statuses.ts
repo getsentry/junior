@@ -1,7 +1,7 @@
 // Kept apart from the Drizzle table so browser code that imports these
 // values does not bundle drizzle-orm and the table definitions.
 
-export const AGENT_INVOCATION_STATUSES = [
+export const CHILD_AGENT_STATUSES = [
   "pending",
   "running",
   "paused",

@@ -2,11 +2,8 @@ import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
-import {
-  messageChildAgent,
-  spawnChildAgent,
-} from "@/chat/agent-invocations/create";
-import type { SpawnChildAgentInput } from "@/chat/agent-invocations/types";
+import { messageChildAgent, spawnChildAgent } from "@/chat/child-agents/create";
+import type { SpawnChildAgentInput } from "@/chat/child-agents/types";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
@@ -26,7 +23,7 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
-import { loadMessageEvents } from "../fixtures/agent-invocations";
+import { loadMessageEvents } from "../fixtures/child-agents";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";

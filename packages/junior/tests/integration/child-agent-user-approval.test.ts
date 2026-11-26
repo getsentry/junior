@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import { readRootConversation } from "@/chat/child-agents/root-conversation";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
@@ -10,11 +10,11 @@ import {
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   prepareSlackParentConversation,
-  slackInvocationInput,
+  slackSpawnInput,
   slackParentConversationId,
-} from "../fixtures/agent-invocations";
+} from "../fixtures/child-agents";
 
-const user = slackInvocationInput.actor;
+const user = slackSpawnInput.actor;
 let messageCount = 0;
 
 /**

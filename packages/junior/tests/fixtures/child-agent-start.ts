@@ -1,7 +1,7 @@
 import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import { spawnChildAgent } from "@/chat/agent-invocations/create";
-import { buildParentMessage } from "@/chat/agent-invocations/parent-message";
+import { spawnChildAgent } from "@/chat/child-agents/create";
+import { buildParentMessage } from "@/chat/child-agents/parent-message";
 import type { AgentConfig } from "@/chat/conversations/agent-config";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -53,7 +53,7 @@ export async function sendParentMessage(args: {
  * Spawn a child agent as `startAgent` does: the child Conversation with its
  * agent config, and its task as a parent message in its mailbox.
  */
-export async function spawnChildWithoutAgentInvocation(args: {
+export async function startChildAgent(args: {
   actor: Actor;
   agentConfig?: AgentConfig;
   agentName?: string;

@@ -1,6 +1,6 @@
 import type { Identity, User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
+import { resultAuthorId } from "@/chat/child-agents/sender-actors";
 import type { AgentRun } from "@/chat/agent/types";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { getConversationEventStore, getDb } from "@/chat/db";
@@ -17,7 +17,7 @@ import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { slackParentConversationId } from "../fixtures/agent-invocations";
+import { slackParentConversationId } from "../fixtures/child-agents";
 import { signedInViewer } from "../fixtures/user";
 import {
   createHarness,

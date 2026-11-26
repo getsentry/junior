@@ -100,7 +100,7 @@ import {
 } from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
-import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import { readRootConversation } from "@/chat/child-agents/root-conversation";
 import { explainMissingToolResults } from "@/chat/tool-support/missing-tool-result";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 

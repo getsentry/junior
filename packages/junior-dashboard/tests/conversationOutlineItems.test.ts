@@ -50,7 +50,7 @@ describe("conversation outline", () => {
         {
           createdAt: "2026-01-01T00:00:00.000Z",
           actorIdentityId: "identity-asker",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true as const,
           seq: 2,
           text: "**old** question",
           reply: "_old_ answer",
@@ -86,7 +86,7 @@ describe("conversation outline", () => {
       {
         author: {
           actorIdentityId: "identity-asker",
-          agentInvocationId: "invocation-1",
+          fromParentAgent: true as const,
         },
         seq: 2,
         timestamp: Date.parse("2026-01-01T00:00:00.000Z"),

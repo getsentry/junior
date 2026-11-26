@@ -22,7 +22,8 @@ import { recordChildAgentEnded } from "./markers";
 import { dropWaitingParentMessages } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
 import { parentResultActor } from "./parent-result";
-import { getChildAgentLockName, isPersonStopTurnId } from "./ids";
+import { isStopResult } from "./child-input";
+import { getChildAgentLockName } from "./ids";
 
 /**
  * Stop one child agent of a parent Conversation and every child agent below
@@ -151,7 +152,7 @@ async function dropUnreadLoopReplies(
       const sender = readInboundMessageSender(message);
       // The `stopped` result of the stop itself stays: it reports the stop.
       return sender &&
-        !isPersonStopTurnId(sender.turnId) &&
+        !isStopResult(message) &&
         stopped.has(sender.conversationId)
         ? [message.inboundMessageId]
         : [];
