@@ -51,7 +51,7 @@ async function rootConversationId(
   const [row] = await getDb()
     .select({
       conversationId: juniorConversations.conversationId,
-      rootConversationId: juniorConversations.rootConversationId,
+      rootConversationId: juniorConversations.topLevelConversationId,
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
@@ -67,7 +67,7 @@ async function rootConversationIds(
   const rows = await getDb()
     .select({
       conversationId: juniorConversations.conversationId,
-      rootConversationId: juniorConversations.rootConversationId,
+      rootConversationId: juniorConversations.topLevelConversationId,
     })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, conversationIds));

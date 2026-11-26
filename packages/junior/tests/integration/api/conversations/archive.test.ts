@@ -282,7 +282,7 @@ describe("conversation archive API", () => {
         .from(juniorConversations)
         .where(
           and(
-            eq(juniorConversations.rootConversationId, rootId),
+            eq(juniorConversations.topLevelConversationId, rootId),
             isNotNull(juniorConversations.parentConversationId),
           ),
         )

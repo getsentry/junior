@@ -874,7 +874,7 @@ export async function searchInboxItems(
   const rows = await db
     .select({
       item: juniorInboxItems,
-      ownerRootConversationId: juniorConversations.rootConversationId,
+      ownerRootConversationId: juniorConversations.topLevelConversationId,
     })
     .from(juniorInboxItems)
     .leftJoin(

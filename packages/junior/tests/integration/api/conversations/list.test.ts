@@ -447,7 +447,11 @@ describe("conversation list API", () => {
       await fixture.sql
         .db()
         .update(juniorConversations)
-        .set({ rootConversationId: null, usage: { totalTokens: 9 } })
+        .set({
+          rootConversationId: null,
+          topLevelConversationId: null,
+          usage: { totalTokens: 9 },
+        })
         .where(
           eq(juniorConversations.conversationId, "slack:C1:provider-name"),
         );

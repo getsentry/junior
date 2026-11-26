@@ -34,7 +34,6 @@ import type {
   TranscriptViewSubagentPart,
 } from "../types";
 import { TranscriptTasksLine } from "./TranscriptTasksLine";
-import { TranscriptStartedConversation } from "./TranscriptStartedConversation";
 import { TranscriptThreadCard } from "./TranscriptThreadCard";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptActivityGroup } from "./TranscriptActivityGroup";
@@ -693,17 +692,7 @@ function TranscriptEntryList(
       }
       if (entry.kind === "failure") return renderFailure(entry);
       if (entry.kind === "reasoning") return renderReasoning(entry);
-      if (entry.kind === "tool") {
-        return entry.part.startedConversationId ? (
-          <TranscriptStartedConversation
-            conversationId={entry.part.startedConversationId}
-            input={entry.part.input}
-            timestamp={entry.timestamp}
-          />
-        ) : (
-          renderTool(entry)
-        );
-      }
+      if (entry.kind === "tool") return renderTool(entry);
       return renderMessage(entry, tasks ? renderTasks(tasks) : undefined);
     },
     [

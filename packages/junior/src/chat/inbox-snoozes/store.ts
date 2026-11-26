@@ -55,7 +55,7 @@ const queries = new QueryBuilder();
 function rowRootsOfItem(itemId: SQL | string) {
   return queries
     .select({
-      root: sql<string>`coalesce(${linkRoot.rootConversationId}, ${itemLink.conversationId})`,
+      root: sql<string>`coalesce(${linkRoot.topLevelConversationId}, ${itemLink.conversationId})`,
     })
     .from(itemLink)
     .leftJoin(linkRoot, eq(linkRoot.conversationId, itemLink.conversationId))
@@ -83,7 +83,7 @@ export function inboxItemInRow(rootConversationId: string): SQL {
           .where(
             or(
               eq(ownerRoot.conversationId, rootConversationId),
-              eq(ownerRoot.rootConversationId, rootConversationId),
+              eq(ownerRoot.topLevelConversationId, rootConversationId),
             ),
           ),
       ),

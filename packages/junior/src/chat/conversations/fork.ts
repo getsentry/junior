@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
+import { isTopLevelWork } from "@/chat/conversations/kind-behavior";
 import { alias } from "drizzle-orm/pg-core";
 import type { User } from "@sentry/junior-plugin-api";
 import {
@@ -129,7 +130,7 @@ export async function forkConversation(input: {
           "The source history is no longer available.",
         );
       }
-      if (source.parentConversationId) {
+      if (!isTopLevelWork(source)) {
         throw new ConversationForkError(
           "You cannot fork a child conversation.",
         );
