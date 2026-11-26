@@ -7,7 +7,6 @@ import {
 import {
   conversationFeedSchema,
   setConversationSpaceResponseSchema,
-  spaceConfigurationSchema,
   spaceListSchema,
   spaceMemberListSchema,
   spaceSchema,
@@ -29,8 +28,6 @@ const spaceKey = (spaceId: string | undefined) =>
   [...spacesKey, "space", spaceId] as const;
 const spaceMembersKey = (spaceId: string | undefined) =>
   [...spaceKey(spaceId), "members"] as const;
-const spaceConfigurationKey = (spaceId: string | undefined) =>
-  [...spaceKey(spaceId), "configuration"] as const;
 
 /** The query key of a Space's Lead. */
 export const spaceLeadKey = (spaceId: string | undefined) =>
@@ -100,21 +97,6 @@ export function useSpaceMembersData(spaceId: string | undefined) {
       fetchDashboardJson(
         spaceMemberListSchema,
         `${spaceApiPath(spaceId!)}/members`,
-        signal,
-      ),
-    retry: false,
-  });
-}
-
-/** Fetch a Space's configuration. */
-export function useSpaceConfigurationData(spaceId: string | undefined) {
-  return useQuery({
-    enabled: Boolean(spaceId),
-    queryKey: spaceConfigurationKey(spaceId),
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        spaceConfigurationSchema,
-        `${spaceApiPath(spaceId!)}/configuration`,
         signal,
       ),
     retry: false,

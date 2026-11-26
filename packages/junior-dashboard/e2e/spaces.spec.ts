@@ -54,11 +54,6 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   const details = page.getByRole("complementary", {
     name: "Conversation details",
   });
-  await expect(
-    details.getByText(
-      "Move invoicing to the new billing provider without double charges.",
-    ),
-  ).toBeVisible();
   // Both of its Threads are done, so they show once Done opens.
   const threads = details.getByRole("region", { exact: true, name: "Threads" });
   await threads.getByRole("button", { name: "Done · 2" }).click();
@@ -191,38 +186,6 @@ test("each pane row shows what its Space's Conversations need", async ({
   });
 });
 
-test("a Space's page shows its settings when they are opened", async ({
-  dashboard,
-  page,
-}) => {
-  await page.setViewportSize(desktop);
-  await page.goto(`${dashboard.baseURL}${BILLING}`);
-  const details = page.getByRole("complementary", {
-    name: "Conversation details",
-  });
-  const settings = details.getByRole("region", { name: "Space" });
-  // Settings load only when opened.
-  await expect(settings.getByText("github.repo")).toHaveCount(0);
-  await settings.getByRole("button", { name: "Settings" }).click();
-  await expect(settings.getByText("github.repo")).toBeVisible();
-  await expect(settings.getByText("getsentry/junior")).toBeVisible();
-  await screenshot(page, "space-settings", {
-    target: settings,
-    view: "desktop",
-  });
-  // Junior changes settings, so the page has no controls for them.
-  await expect(settings.getByRole("textbox")).toHaveCount(0);
-
-  await page.goto(`${dashboard.baseURL}${DOCS}`);
-  const docsSettings = page
-    .getByRole("complementary", { name: "Conversation details" })
-    .getByRole("region", { name: "Space" });
-  await docsSettings.getByRole("button", { name: "Settings" }).click();
-  await expect(
-    docsSettings.getByText("No settings. Ask Junior to set one."),
-  ).toBeVisible();
-});
-
 test("another Space's page does not show the last Space's Threads", async ({
   dashboard,
   page,
@@ -351,11 +314,6 @@ test("creating a Space opens it", async ({ dashboard, page }) => {
   await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}$/);
   await expect(
     page.getByRole("heading", { name: "Checkout reliability" }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("complementary", { name: "Conversation details" })
-      .getByText("Keep checkout fast and error-free."),
   ).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Spaces" }).getByRole("link", {

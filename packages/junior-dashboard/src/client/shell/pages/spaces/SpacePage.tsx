@@ -13,7 +13,6 @@ import { JoinSpaceButton } from "../../../spaces/SpaceActions";
 import { SpaceTile } from "../../../spaces/SpaceTile";
 import { ConversationPage } from "../../conversations/ConversationPage";
 import { ConversationDetailLoading } from "../../conversations/ConversationWorkspaceLoading";
-import { SpaceDetails } from "./SpaceDetails";
 
 /**
  * One Space, which shows its Lead as a Conversation page. Anyone can open a
@@ -74,7 +73,11 @@ function SpaceWithoutLead(props: { space: SpaceReport }) {
         <p className="m-0 px-1 pb-2 font-sans text-sm text-dashboard-text-muted">
           No member has talked to this Space&apos;s Lead yet.
         </p>
-        <SpaceDetails space={space} />
+        {space.description ? (
+          <p className="m-0 px-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+            {space.description}
+          </p>
+        ) : null}
       </div>
     </PageFrame>
   );

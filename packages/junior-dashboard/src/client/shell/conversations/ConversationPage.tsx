@@ -60,10 +60,7 @@ import { useSpaceActions } from "../../spaces/SpaceActions";
 import { useSpaceData } from "../../spaces/queries";
 import { SpaceChip } from "../../spaces/SpaceTile";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
-import {
-  SpaceDetails,
-  useSpaceParticipants,
-} from "../pages/spaces/SpaceDetails";
+import { useSpaceParticipants } from "../../spaces/useSpaceParticipants";
 import { ConversationDock } from "./ConversationDock";
 import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
 import { useZenMode } from "../../components/layout/PaneNav";
@@ -636,7 +633,6 @@ export function ConversationPage(props: {
           onClose={closeDetails}
           onOpenSubagent={setSubagentTarget}
           participants={spaceParticipants}
-          space={leadSpace ? <SpaceDetails space={leadSpace} /> : null}
           onSelectMemory={(entry) => {
             // Memory rows show only in the Conversation view, and search
             // can hide them.

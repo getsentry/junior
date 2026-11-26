@@ -2,7 +2,6 @@ import type {
   ActorIdentity,
   ConversationDetailReport,
 } from "@sentry/junior/api/schema";
-import type { ReactNode } from "react";
 
 import { ConversationDetails } from "./ConversationDetails";
 import { ConversationGlance } from "./ConversationGlance";
@@ -46,8 +45,6 @@ export function ConversationDetailsPanel(props: {
   participants?:
     | { invite: ParticipantInvite; participants: readonly ActorIdentity[] }
     | undefined;
-  /** A Lead's Space: its description and settings. */
-  space?: ReactNode;
 }) {
   const { conversation, detail } = props;
   const showUsageBreakdown = hasConversationUsageBreakdown({
@@ -81,7 +78,6 @@ export function ConversationDetailsPanel(props: {
       onSelectMemory={props.onSelectMemory}
       links={props.links}
       memoryList={props.memoryList}
-      space={props.space}
       overview={
         hasConversationStats({
           conversation,

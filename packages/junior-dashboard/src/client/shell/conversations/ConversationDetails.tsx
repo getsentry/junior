@@ -63,8 +63,6 @@ export function ConversationDetails(props: {
   overview: ReactNode;
   /** The Participants card, or null when it has nothing to show. */
   participants: ReactNode;
-  /** A Lead's Space: its description and settings. */
-  space?: ReactNode;
   usage: ReactNode;
 }) {
   const panel = useDetailsPanel();
@@ -189,7 +187,6 @@ export function ConversationDetails(props: {
             tasks={tasks}
           />
         ) : null}
-        {props.space}
         {props.participants}
         {props.usage}
         {props.overview != null ? (
