@@ -102,6 +102,7 @@ const holdBrief =
 const steeringBrief = `In ${repo}, close the parent/child steering gaps: let a parent steer a running child. Push a branch and open a draft PR.`;
 const steeringPr = `${repo}#710`;
 const statusQuestion = "how is the lead-children PR doing?";
+const statusFollowUp = "ok, and what's left on the steering one?";
 const rescopeRequest =
   "actually the steering Thread shouldn't open a PR, just have it write up what it finds";
 const rescopeBrief =
@@ -531,7 +532,7 @@ const CASES: DesignCase[] = [
     request: async () => ({
       actions: [
         await proposal({
-          context: privateWebContext(statusQuestion),
+          context: privateWebContext(statusFollowUp),
           input: {
             to: leadChild,
             text: `The member approved merging the lead-children PR. Merge ${repo}#702 now.`,
@@ -543,6 +544,7 @@ const CASES: DesignCase[] = [
               text: `${repo}#702 is green and approved. Want me to merge it?`,
             },
             { author: "other person", text: "yes" },
+            { author: "user", text: statusFollowUp },
           ],
           tool: "messageAgent",
         }),
