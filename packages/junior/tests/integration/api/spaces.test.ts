@@ -901,6 +901,8 @@ describe("Spaces API", () => {
     expect((await archiveConversation(done)).status).toBe(200);
 
     await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
+    // A repeat or concurrent archive keeps the first archive's time.
+    await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
     expect(await spaceFeed(ana, space.id)).toEqual([]);
     expect(
       (await spaceFeed(ana, space.id, "archived"))

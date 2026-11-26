@@ -34,9 +34,9 @@ export function createSpaceArchiveRoutes(options: {
       const { archived } = context.req.valid("json");
       const space = await requireMemberSpace(viewer.id, spaceId);
       const lead = await getSpaceLead(spaceId);
-      // Archiving again would write a new time to the Lead, so a restore
-      // would leave the Conversations of the first archive archived.
-      if (archived !== Boolean(space.archivedAt)) {
+      // A repeat archive keeps the Lead's time. A restore of an active Space
+      // would still turn off the viewer's auto-archive, so it does nothing.
+      if (archived || space.archivedAt) {
         await archiveConversation(viewer, lead.conversationId, {
           applyToChildren: true,
           archived,

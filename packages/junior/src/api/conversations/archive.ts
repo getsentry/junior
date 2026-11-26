@@ -69,11 +69,17 @@ export async function setConversationArchive(
           unarchivedChildCount: unarchived.length,
         };
       }
-      const archivedAt = new Date();
+      // An archived target keeps its time, so a repeat or concurrent archive
+      // writes the same time to what it adds, and one restore undoes both.
       // Descendants that are already archived keep their own time.
+      const current = tree.get(args.conversationId)?.archivedAt;
+      const archivedAt = current ?? new Date();
       await setArchivedAt(
         db,
-        [args.conversationId, ...unarchived.map((node) => node.conversationId)],
+        [
+          ...(current ? [] : [args.conversationId]),
+          ...unarchived.map((node) => node.conversationId),
+        ],
         archivedAt,
       );
       return {
