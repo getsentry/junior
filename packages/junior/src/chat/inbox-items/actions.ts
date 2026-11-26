@@ -27,6 +27,7 @@ import {
   hasAssigneeRoles,
   dismissPluginInboxItem,
   leavePluginInboxItem,
+  takeOverPluginClose,
 } from "./plugin-dismiss";
 import { matchReplyToInboxItems } from "./reply-match";
 import { closeHandledReplyNotices } from "./reply-notice";
@@ -36,7 +37,6 @@ import {
   listReplyActionItems,
   INBOX_ITEM_REPLIED_REASON,
   takeInboxItem,
-  takeOverAgentClose,
   type InboxItem,
 } from "./store";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
@@ -334,8 +334,8 @@ async function leavePluginItemOnDismiss(
   if (outcome === "closed") {
     // The provider's webhook for this removal can close the item first,
     // when it left nobody on it. That close is this dismiss.
-    const taken = await takeOverAgentClose(getDb(), {
-      id: item.id,
+    const taken = await takeOverPluginClose({
+      item,
       nowMs: Date.now(),
       sinceMs: nowMs,
       userId: user.id,

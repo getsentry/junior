@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, gte, isNull, ne, notExists } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { getDb } from "@/chat/db";
@@ -118,4 +118,57 @@ export async function leavePluginInboxItem(args: {
     await leaveInboxItem(db, { itemId: item.id, nowMs, userIds: [userId] });
   }
   return outcome;
+}
+
+/**
+ * Make a plugin's close since `sinceMs` the dismiss of `userId`. A plugin
+ * can close an item while a dismiss waits on its provider, because the
+ * removal left nobody on it, and that close is the dismiss. Return false
+ * when a person closed it, when it closed before the dismiss began, or
+ * when another person is still on it: then the provider closed it for
+ * another reason, such as a closed issue.
+ */
+export async function takeOverPluginClose(args: {
+  item: InboxItem;
+  nowMs: number;
+  sinceMs: number;
+  userId: string;
+}): Promise<boolean> {
+  const { item, userId } = args;
+  return await getDb().transaction(async (tx) => {
+    const taken = await tx
+      .update(juniorInboxItems)
+      .set({
+        closeReason: null,
+        closedByUserId: userId,
+        status: "dismissed",
+        updatedAt: new Date(args.nowMs),
+      })
+      .where(
+        and(
+          eq(juniorInboxItems.id, item.id),
+          eq(juniorInboxItems.status, "done"),
+          isNull(juniorInboxItems.closedByUserId),
+          gte(juniorInboxItems.closedAt, new Date(args.sinceMs)),
+          // A close keeps its assignees, so another one means that this
+          // removal did not leave the item empty.
+          notExists(
+            tx
+              .select({ userId: juniorInboxItemAssignees.userId })
+              .from(juniorInboxItemAssignees)
+              .where(
+                and(
+                  eq(juniorInboxItemAssignees.itemId, item.id),
+                  ne(juniorInboxItemAssignees.userId, userId),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: juniorInboxItems.id });
+    if (!taken[0]) return false;
+    const owner = ownerConversationId(item);
+    await touchConversationDetail(tx, owner ? [owner] : []);
+    return true;
+  });
 }

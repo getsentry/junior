@@ -269,6 +269,8 @@ describe("the Inbox item of an issue that Junior created", () => {
       const unassigned: unknown[] = [];
       const refuse = new Set<string>();
       let gone = false;
+      // Runs once while GitHub handles the next unassign.
+      let duringUnassign: (() => Promise<void>) | undefined;
       mswServer.use(
         http.delete(
           "https://api.github.com/repos/getsentry/junior/issues/4254/assignees",
@@ -287,6 +289,9 @@ describe("the Inbox item of an issue that Junior created", () => {
               );
             }
             unassigned.push(body);
+            const during = duringUnassign;
+            duringUnassign = undefined;
+            await during?.();
             return HttpResponse.json({ assignees: [] });
           },
         ),
@@ -441,6 +446,38 @@ describe("the Inbox item of an issue that Junior created", () => {
       await sendGitHubWebhook("issues", issueEvent(body, "deleted", ["sam"]));
       expect(await issueItem()).toMatchObject({ status: "done" });
 
+      // The issue closes while GitHub unassigns Pat. Sam is still on the
+      // item, so that close stays the issue's close, not Pat's dismiss.
+      gone = false;
+      await sendGitHubWebhook(
+        "issues",
+        issueEvent(body, "reopened", ["pat", "sam"]),
+      );
+      const closing = await issueItem();
+      expect(closing).toMatchObject({
+        assignees: ["pat@example.com", "sam@example.com"],
+        status: "open",
+      });
+      duringUnassign = () =>
+        sendGitHubWebhook("issues", issueEvent(body, "closed", ["pat", "sam"]));
+      expect(await dismissAs("pat@example.com", closing!.id)).toBe(409);
+      expect(await issueItem()).toMatchObject({ status: "done" });
+      // When Pat is alone, the webhook of Pat's own unassign can close the
+      // item first. That close is Pat's dismiss.
+      await sendGitHubWebhook("issues", issueEvent(body, "reopened", ["pat"]));
+      const alone = await issueItem();
+      expect(alone).toMatchObject({
+        assignees: ["pat@example.com"],
+        status: "open",
+      });
+      duringUnassign = () =>
+        sendGitHubWebhook(
+          "issues",
+          issueEvent(body, "unassigned", [], { assignee: { login: "pat" } }),
+        );
+      expect(await dismissAs("pat@example.com", alone!.id)).toBe(200);
+      expect(await issueItem()).toMatchObject({ status: "dismissed" });
+
       // The other Conversation's earlier link becomes a card, so it owns
       // the issue, and the footer does not name it. A new ask skips the
       // issue with no item, and GitHub gets no failure to retry.
@@ -461,7 +498,7 @@ describe("the Inbox item of an issue that Junior created", () => {
         "issues",
         issueEvent(body, "assigned", ["pat"], { assignee: { login: "pat" } }),
       );
-      expect(await issueItem()).toMatchObject({ status: "done" });
+      expect(await issueItem()).toMatchObject({ status: "dismissed" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

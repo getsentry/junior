@@ -5,10 +5,8 @@ import {
   desc,
   eq,
   gt,
-  gte,
   ilike,
   inArray,
-  isNull,
   lt,
   not,
   or,
@@ -660,39 +658,6 @@ export async function closeInboxItem(
   if (updated.length === 0) return false;
   await clearInboxItemDeliveries(db, [input.id], input.nowMs);
   return true;
-}
-
-/**
- * Make an agent's close since `sinceMs` the dismiss of `userId`. A plugin
- * can close an item while a dismiss waits on its provider, because the
- * removal left nobody on it, and that close is the dismiss. Return false
- * when a person closed it, or when it closed before the dismiss began.
- */
-export async function takeOverAgentClose(
-  db: JuniorDatabase,
-  input: { id: string; nowMs: number; sinceMs: number; userId: string },
-): Promise<boolean> {
-  return await db.transaction(async (tx) => {
-    const taken = await tx
-      .update(juniorInboxItems)
-      .set({
-        closeReason: null,
-        closedByUserId: input.userId,
-        status: "dismissed",
-        updatedAt: new Date(input.nowMs),
-      })
-      .where(
-        and(
-          eq(juniorInboxItems.id, input.id),
-          eq(juniorInboxItems.status, "done"),
-          isNull(juniorInboxItems.closedByUserId),
-          gte(juniorInboxItems.closedAt, new Date(input.sinceMs)),
-        ),
-      )
-      .returning(ownerColumns());
-    await touchConversationDetail(tx, ownerConversationIds(taken));
-    return taken.length > 0;
-  });
 }
 
 /**
