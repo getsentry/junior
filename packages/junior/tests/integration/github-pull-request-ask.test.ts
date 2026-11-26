@@ -508,22 +508,31 @@ describe("the ask of a Junior pull request", () => {
           pluginName: "github",
         },
       ]);
-      const github = { approved: false, refuse: true, reviewers: ["pat"] };
+      const github = {
+        approved: false,
+        gone: false,
+        refuse: true,
+        reviewers: ["pat"],
+      };
       const removed: unknown[] = [];
       mswServer.use(
         http.get(API, () =>
-          HttpResponse.json({
-            auto_merge: null,
-            draft: false,
-            head: { sha: "head-1" },
-            html_url: PULL_URL,
-            mergeable_state: "clean",
-            merged: false,
-            requested_reviewers: github.reviewers.map((login) => ({ login })),
-            state: "open",
-            title: "fix: Check",
-            user: { id: 264270552 },
-          }),
+          github.gone
+            ? HttpResponse.json({ message: "Not Found" }, { status: 404 })
+            : HttpResponse.json({
+                auto_merge: null,
+                draft: false,
+                head: { sha: "head-1" },
+                html_url: PULL_URL,
+                mergeable_state: "clean",
+                merged: false,
+                requested_reviewers: github.reviewers.map((login) => ({
+                  login,
+                })),
+                state: "open",
+                title: "fix: Check",
+                user: { id: 264270552 },
+              }),
         ),
         http.delete(`${API}/requested_reviewers`, async ({ request }) => {
           if (github.refuse) {
@@ -651,6 +660,19 @@ describe("the ask of a Junior pull request", () => {
         }),
       ]);
       expect(items[0]!.id).not.toBe(review!.id);
+
+      // Once the pull request is gone from GitHub, nobody is left to
+      // remove, so a dismiss still takes Pat off the item.
+      github.gone = true;
+      const dismissGone = await api.request(
+        `http://localhost/api/inbox-items/${items[0]!.id}/actions`,
+        {
+          body: JSON.stringify({ action: "dismiss" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(dismissGone.status).toBe(200);
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

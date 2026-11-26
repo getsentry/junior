@@ -446,7 +446,8 @@ const requestedReviewersSchema = z.object({
 
 /**
  * Remove one person from the requested reviewers of a pull request, with a
- * pull requests write token. Does nothing when GitHub does not list them.
+ * pull requests write token. Does nothing when GitHub does not list them
+ * or the pull request is gone.
  */
 export async function removeRequestedReviewer(
   env: GitHubInstallationEnv,
@@ -462,24 +463,39 @@ export async function removeRequestedReviewer(
     repositories: [name],
   });
   const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${input.number}`;
-  const pullRequest = requestedReviewersSchema.parse(
-    await githubRequest("https://api.github.com", path, {
-      token: token.token,
-    }),
-  );
-  const login = input.login.toLowerCase();
-  if (
-    !pullRequest.requested_reviewers.some(
-      (reviewer) => reviewer.login.toLowerCase() === login,
-    )
-  ) {
-    return;
+  try {
+    const pullRequest = requestedReviewersSchema.parse(
+      await githubRequest("https://api.github.com", path, {
+        token: token.token,
+      }),
+    );
+    const login = input.login.toLowerCase();
+    if (
+      !pullRequest.requested_reviewers.some(
+        (reviewer) => reviewer.login.toLowerCase() === login,
+      )
+    ) {
+      return;
+    }
+    await githubRequest(
+      "https://api.github.com",
+      `${path}/requested_reviewers`,
+      {
+        body: { reviewers: [input.login] },
+        method: "DELETE",
+        token: token.token,
+      },
+    );
+  } catch (error) {
+    // A gone pull request has nobody left to remove.
+    if (
+      error instanceof GitHubRequestError &&
+      (error.status === 404 || error.status === 410)
+    ) {
+      return;
+    }
+    throw error;
   }
-  await githubRequest("https://api.github.com", `${path}/requested_reviewers`, {
-    body: { reviewers: [input.login] },
-    method: "DELETE",
-    token: token.token,
-  });
 }
 
 /**
