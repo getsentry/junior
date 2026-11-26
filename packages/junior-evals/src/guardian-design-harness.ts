@@ -144,17 +144,24 @@ const ARMS: Record<string, GuardianArm> = {
 /**
  * Turn the facts of a case into the authority record that core gives. A
  * confirmed action gets the hash that core records with the person's answer.
+ * A case names only the tool and the input that the person confirmed, so
+ * the action gets a hash for each credential subject of the request.
  */
 function designAuthority(request: GuardianDesignRequest): AuthorityRecord {
   const facts = request.facts ?? {};
-  const credentialSubject =
-    request.actions[0]?.context.credential?.subject?.userId;
+  const subjects = new Set(
+    request.actions.map(
+      (proposal) => proposal.context.credential?.subject?.userId,
+    ),
+  );
   return {
     lines: (facts.personLines ?? []).map(({ text, via }) => ({ text, via })),
-    confirmations: (facts.confirmed ?? []).map((confirmed, index) => ({
-      actionHash: actionHash({ ...confirmed, credentialSubject }),
-      answerId: `inbox_answer_${index + 1}`,
-    })),
+    confirmations: (facts.confirmed ?? []).flatMap((confirmed, index) =>
+      [...subjects].map((credentialSubject) => ({
+        actionHash: actionHash({ ...confirmed, credentialSubject }),
+        answerId: `inbox_answer_${index + 1}`,
+      })),
+    ),
     created: (facts.createdByInstruction ?? []).map((ref) => ({ ref })),
     ...(facts.destinationReaders
       ? { destinationReaders: facts.destinationReaders }
