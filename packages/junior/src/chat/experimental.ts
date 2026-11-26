@@ -4,6 +4,7 @@
  * once they become stable defaults.
  */
 export const EXPERIMENTAL_FEATURES = [
+  "guardian-agent",
   "operator-tools",
   "passive-routing",
   "user-customization",

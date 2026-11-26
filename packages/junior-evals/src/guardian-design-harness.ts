@@ -18,6 +18,7 @@ import {
 } from "vitest-evals";
 import { completeObject } from "@/chat/core-model";
 import { mapBounded } from "@/chat/fan-out";
+import { createAgentGuardian } from "@/chat/guardian/agent/guardian";
 import {
   actionHash,
   reviewWithAuthority,
@@ -138,6 +139,15 @@ const ARMS: Record<string, GuardianArm> = {
   legacy: {
     authority: true,
     guardian: (modelId) => createLegacyGuardian(currentReviewer(modelId)),
+  },
+  agent: {
+    authority: true,
+    guardian: (modelId) =>
+      createAgentGuardian({
+        completeObject,
+        destinationFacts: destinationFacts(),
+        modelId,
+      }),
   },
 };
 

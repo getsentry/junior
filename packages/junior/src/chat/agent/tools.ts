@@ -90,7 +90,10 @@ import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/core-model";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
+import { createAgentGuardian } from "@/chat/guardian/agent/guardian";
 import { createCurrentGuardian } from "@/chat/guardian/current";
+import type { Guardian } from "@/chat/guardian/guardian";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
@@ -241,6 +244,30 @@ interface ToolWiringArgs {
 }
 
 /** Record optional reporting without changing the loadSkill outcome. */
+/**
+ * The Guardian that reviews tool actions. The `guardian-agent` experimental
+ * feature selects the agent Guardian. The current Guardian is the default.
+ */
+function selectedGuardian(): Guardian {
+  const destinationFacts = guardianPluginFacts(
+    pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+  );
+  if (isExperimentalFeatureEnabled("guardian-agent")) {
+    return createAgentGuardian({
+      completeObject,
+      destinationFacts,
+      modelId: botConfig.guardianModelId,
+    });
+  }
+  return createCurrentGuardian(
+    createGuardianActionReviewer({
+      completeObject,
+      destinationFacts,
+      modelId: botConfig.guardianModelId,
+    }),
+  );
+}
+
 async function tryRecordSkillLoadStat(skill: Skill) {
   if (!process.env["DATABASE_URL"]) return;
   try {
@@ -558,15 +585,7 @@ export async function wireAgentTools(
       }),
     onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
-    guardian: createCurrentGuardian(
-      createGuardianActionReviewer({
-        completeObject,
-        destinationFacts: guardianPluginFacts(
-          pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
-        ),
-        modelId: botConfig.guardianModelId,
-      }),
-    ),
+    guardian: selectedGuardian(),
   });
   const skills = loadableSkills(args.availableSkills, [
     ...args.invokedSkillNames,

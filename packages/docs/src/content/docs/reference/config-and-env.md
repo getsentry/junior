@@ -222,6 +222,9 @@ const app = await createApp({
     // with the updateUserCustomization tool. Junior adds it to each Turn of
     // that user as <user-customization>.
     "user-customization": true,
+    // The tiered Guardian that reviews tool actions in place of the current
+    // one. It is under evaluation and is not a stable default.
+    "guardian-agent": true,
   },
 });
 ```
