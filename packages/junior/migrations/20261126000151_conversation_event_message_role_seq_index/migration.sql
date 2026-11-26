@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_events_message_role_seq_idx" ON "junior_conversation_events" ("conversation_id",("payload"->>'role'),"seq") WHERE "type" = 'message';

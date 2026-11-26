@@ -21,7 +21,6 @@ import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
@@ -68,6 +67,7 @@ import { createSubmitFeedbackTool } from "@/chat/tools/submit-feedback";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
+import { createListSpacesTool } from "@/chat/tools/list-spaces";
 import { createMoveConversationToSpaceTool } from "@/chat/tools/move-conversation-to-space";
 import { createSetConfigurationTool } from "@/chat/tools/set-configuration";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
@@ -211,11 +211,6 @@ function isPublic(run: ToolRun): boolean {
 // The `satisfies` clause fails typecheck for a definition without a binder,
 // or a binder without a definition.
 const STATIC_TOOL_BINDERS = {
-  updateTodos: (run) =>
-    createUpdateTodosTool(
-      run.context,
-      run.inboxItemServices().findMentionedUserId,
-    ),
   reportProgress: () => createReportProgressTool(),
   systemTime: () => createSystemTimeTool(),
   submitFeedback: (run) => createSubmitFeedbackTool(run.context),
@@ -268,6 +263,7 @@ const STATIC_TOOL_BINDERS = {
     createUpdateUserCustomizationTool(run.context),
   setConversationSubscription: (run) =>
     createSetConversationSubscriptionTool(run.context),
+  listSpaces: (run) => createListSpacesTool(run.context),
   moveConversationToSpace: (run) =>
     createMoveConversationToSpaceTool(run.context),
   // The Turn keeps the tool listed, so its tool list stays the same, but only
@@ -425,6 +421,10 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.reportBlocked === "none"
       ? "This Turn cannot send a blocked report."
       : undefined,
+  [NO_REPLY_TOOL_NAME]: (turnTools) =>
+    turnTools.noReply
+      ? undefined
+      : "An agent's Turn in a Thread reports to its parent with its final text.",
   updateUserCustomization: (turnTools) =>
     turnTools.userCustomization
       ? undefined

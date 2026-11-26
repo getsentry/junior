@@ -27,7 +27,7 @@ function conversation(
   events: ConversationReportEvent[],
 ): ConversationTranscript {
   return {
-    kind: "root",
+    kind: "thread",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",

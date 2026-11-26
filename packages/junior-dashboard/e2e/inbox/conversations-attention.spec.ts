@@ -195,7 +195,7 @@ test.describe("new UI", () => {
         "Pin",
         "Rename",
         "Copy as Markdown",
-        "Subscribe",
+        "Join",
         "Open event log",
         "Archive",
       ]);

@@ -40,7 +40,7 @@ const VIEWER = { email: "ana@example.com", slackUserId: "UANA" };
 const OTHER = { email: "bob@example.com", slackUserId: "UBOB" };
 // The longest title that the add tool takes.
 const INBOX_ITEM_TITLE_MAX_LENGTH = 200;
-// The longest title that `updateTodos` takes.
+// The longest title that `todos_updateTodos` takes.
 const TODO_TITLE_MAX_LENGTH = 200;
 // Vectors of a stored size that the exact search reads.
 const MEMORY_VECTOR = [1, ...Array<number>(1_535).fill(0)];

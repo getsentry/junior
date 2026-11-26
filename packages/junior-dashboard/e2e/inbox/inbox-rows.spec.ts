@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { CONTENT_VERSION_HEADER } from "@sentry/junior/api/schema";
+import { mockFeedPage } from "../mock-reports";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
@@ -154,13 +154,7 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
-        const feed = (await response.json()) as {
-          conversations: Array<{
-            conversationId: string;
-            activityPreview?: { text: string };
-          }>;
-        };
+        const feed = await mockFeedPage(route);
         for (const row of feed.conversations) {
           if (
             row.conversationId === RELEASE_CONVERSATION_ID &&
@@ -170,7 +164,7 @@ test.describe("new UI", () => {
               "<@U123> asks for a review of https://github.com/getsentry/payments/pull/91";
           }
         }
-        await route.fulfill({ json: feed, response });
+        await route.fulfill({ json: feed });
       },
     );
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
@@ -269,15 +263,12 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
-        const feed = (await response.json()) as {
-          conversations: Array<{ displayTitle: string }>;
-        };
+        const feed = await mockFeedPage(route);
         for (const row of feed.conversations) {
           if (row.displayTitle === "Package release and self-update")
             row.displayTitle = long;
         }
-        await route.fulfill({ json: feed, response });
+        await route.fulfill({ json: feed });
       },
     );
     await comfortable(page);
@@ -304,34 +295,24 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        // Request the full page because this test changes it.
-        const response = await route.fetch({
-          headers: {
-            ...route.request().headers(),
-            [CONTENT_VERSION_HEADER]: "",
-          },
-        });
-        const feed = (await response.json()) as {
-          conversations: Array<{ displayTitle: string }>;
-        };
+        const feed = await mockFeedPage(route);
         for (const row of feed.conversations) {
           if (grown && row.displayTitle === CHECKOUT) row.displayTitle = long;
         }
-        await route.fulfill({ json: feed, response });
+        await route.fulfill({ json: feed });
       },
     );
     // The versions poll refreshes the feed once its token moves. Its first
     // answer is only the baseline, so that one must be the short token.
     await page.route("**/api/versions*", async (route) => {
-      const response = await route.fetch();
-      const versions = (await response.json()) as { conversations: string };
       const moved = grown;
       await route.fulfill({
         json: {
-          ...versions,
-          conversations: `${versions.conversations}${moved ? " title:grown" : ""}`,
+          conversationDetails: {},
+          conversations: moved ? "mock title:grown" : "mock",
+          inboxItems: "mock",
+          spend: "mock",
         },
-        response,
       });
       if (!moved) baseline = true;
     });
@@ -551,31 +532,25 @@ test.describe("new UI", () => {
       {
         key: "SEC-2172",
         label: "SEC-2172",
-        objectType: "task",
+        objectType: "task" as const,
         status: "open",
       },
       ...Array.from({ length: 35 }, (_, index) => ({
         key: `getsentry/sentry#${1000 + index}`,
         label: "sentry",
-        objectType: "code_change",
+        objectType: "code_change" as const,
         status: "open",
       })),
     ];
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
-        const feed = (await response.json()) as {
-          conversations: Array<{
-            displayTitle: string;
-            sidebarAnnotations?: unknown[];
-          }>;
-        };
+        const feed = await mockFeedPage(route);
         for (const row of feed.conversations) {
           if (row.displayTitle === "Package release and self-update")
             row.sidebarAnnotations = work;
         }
-        await route.fulfill({ json: feed, response });
+        await route.fulfill({ json: feed });
       },
     );
     for (const density of ["comfortable", "compact"] as const) {

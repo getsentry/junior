@@ -257,7 +257,7 @@ describe("static tool registry", () => {
       const [person, agent] = await Promise.all(
         [true, false].map((personInput) =>
           sentTurn(
-            turnBehavior({ kind: "thread", personInput }),
+            turnBehavior({ kind: "thread", hasParent: true, personInput }),
             turnRun("slack:T0:C0:1.0:thread", personInput, {
               kind: "parent_message",
             }),
@@ -302,6 +302,12 @@ describe("static tool registry", () => {
       await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
         "addInboxItem is disabled in this Turn.",
       );
+      // A person's Turn can end with no post. An agent's Turn reports to the
+      // parent with its final text, and the parent decides what to do.
+      expect(person.disabled).not.toContain("noReply");
+      await expect(callTool(agent, "noReply")).rejects.toThrow(
+        "noReply is disabled in this Turn.",
+      );
 
       expect(turnInputFact(person)).toContain(
         "<turn-input>\nA person sent the input of this Turn.\n</turn-input>",
@@ -314,6 +320,16 @@ describe("static tool registry", () => {
     }
   });
 
+  // Every Turn of a Task reports to the parent with its final text.
+  it("sends a Task Turn no noReply", async () => {
+    const task = await sentTurn(
+      turnBehavior({ kind: "task", hasParent: true, personInput: false }),
+      turnRun("slack:T0:C0:1.0:task", false, { kind: "parent_message" }),
+    );
+
+    expect(Object.keys(task.tools)).not.toContain("noReply");
+  });
+
   // A person replies in an Automation run's thread between the run's Turns.
   // Every switch must keep the cached tools and system prompt, but a
   // person's Turn still cannot answer for the run.
@@ -323,7 +339,7 @@ describe("static tool registry", () => {
     const [person, automation] = await Promise.all(
       [true, false].map((personInput) =>
         sentTurn(
-          turnBehavior({ kind: "automation", personInput }),
+          turnBehavior({ kind: "automation", hasParent: false, personInput }),
           turnRun(conversationId, personInput, runSource),
         ),
       ),
@@ -331,7 +347,11 @@ describe("static tool registry", () => {
     // An Automation with no outcomes posts nothing.
     const silentRun = turnRun(conversationId, false, runSource);
     const silent = await sentTurn(
-      turnBehavior({ kind: "automation", personInput: false }),
+      turnBehavior({
+        kind: "automation",
+        hasParent: false,
+        personInput: false,
+      }),
       {
         ...silentRun,
         run: { ...silentRun.run, dispatch: { id: "dispatch-1", outcomes: [] } },
@@ -366,14 +386,14 @@ describe("static tool registry", () => {
     );
   });
 
-  // A Lead finds, starts, and steers work, and never does it. A person's
-  // Turn and a Watch Turn send the same tools and system prompt.
+  // A Lead finds, starts, steers, and moves work, and never does it. A
+  // person's Turn and a Watch Turn send the same tools and system prompt.
   it("sends a Lead only the tools that steer work", async () => {
     const conversationId = "local:web:lead";
     const [person, watch] = await Promise.all(
       [true, false].map((personInput) =>
         sentTurn(
-          turnBehavior({ kind: "lead", personInput }),
+          turnBehavior({ kind: "lead", hasParent: false, personInput }),
           turnRun(
             conversationId,
             personInput,
@@ -391,8 +411,10 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
+        "listSpaces",
         "listWatches",
         "messageAgent",
+        "moveConversationToSpace",
         "noReply",
         "readConversationEvent",
         "searchConversationEvents",
@@ -411,6 +433,15 @@ describe("static tool registry", () => {
     // This Lead has no Slack channel and no Space, so it has no
     // configuration to change.
     expect(person.disabled).toEqual(["setConfiguration"]);
+    // Only a person's request moves a Conversation or changes configuration.
+    expect(watch.disabled).toEqual(
+      expect.arrayContaining(["moveConversationToSpace", "setConfiguration"]),
+    );
+    await expect(
+      callTool(watch, "moveConversationToSpace", {
+        conversation_id: "local:web:other",
+      }),
+    ).rejects.toThrow("moveConversationToSpace is disabled in this Turn.");
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(

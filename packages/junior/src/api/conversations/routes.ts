@@ -95,6 +95,7 @@ import { setConversationDeliveryForViewer } from "./delivery";
 import {
   archiveConversationOperation,
   cancelQueuedMessagesOperation,
+  leaveConversationOperation,
   archiveDoneConversationsOperation,
   pinConversationOperation,
   renameConversationOperation,
@@ -407,6 +408,12 @@ export function createConversationRoutes(
           context.req.valid("json"),
         ),
       ),
+  );
+
+  app.post(
+    "/:conversationId/leave",
+    requireViewer,
+    apiOperationHandler(leaveConversationOperation, options),
   );
 
   app.patch(

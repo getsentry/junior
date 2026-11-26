@@ -10,6 +10,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import {
   isPersonInput,
+  isTopLevel,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -60,6 +61,7 @@ async function isFirstRequest(
     !conversation ||
     !turnBehavior({
       kind: conversation.kind,
+      hasParent: !isTopLevel(conversation),
       personInput: isPersonInput(ctx.source.kind),
     }).relatedConversations
   ) {

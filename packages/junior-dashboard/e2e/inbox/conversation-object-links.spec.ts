@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockConversationDetail } from "../mock-reports";
 
 test.describe("new UI", () => {
   // The mock release Conversation saves Annotations for these pull requests,
@@ -21,8 +22,7 @@ test.describe("new UI", () => {
         url.pathname ===
         `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
       async (route) => {
-        const response = await route.fetch();
-        const detail = await response.json();
+        const detail = await mockConversationDetail(route);
         await route.fulfill({
           json: {
             ...detail,
@@ -30,7 +30,6 @@ test.describe("new UI", () => {
             annotations: [...extraAnnotations, ...(detail.annotations ?? [])],
             isParticipant: true,
           },
-          response,
         });
       },
     );
@@ -832,16 +831,17 @@ test.describe("new UI", () => {
     const conversationUrl = `https://junior.example.com/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`;
     // Move the two links of the reply apart, so that only one is in view.
     await page.route(
-      (url) => url.pathname.startsWith("/api/conversations/"),
+      (url) =>
+        url.pathname ===
+        `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
       async (route) => {
-        const response = await route.fetch();
-        const text = await response.text();
+        const text = JSON.stringify(await mockConversationDetail(route));
         // A pull request description also says "picks up", so match the reply.
         const body = text.replace(
           "dev%40example.com picks up ",
           `dev%40example.com picks up\\n\\n${"More release notes.\\n\\n".repeat(80)}`,
         );
-        await route.fulfill({ body, response });
+        await route.fulfill({ body, contentType: "application/json" });
       },
     );
     const requests: URL[] = [];

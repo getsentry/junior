@@ -26,8 +26,10 @@ import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver } from "./gateway";
 import {
+  createSpace,
   jsonRequest,
   postWebMessage,
+  readConversationSpace,
   readLeadConversationId,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
@@ -47,6 +49,7 @@ import type {
 import {
   hasHistory,
   loadHistory,
+  OTHER_WEB_VIEWER_EMAIL,
   WEB_VIEWER_EMAIL,
   webViewerActor,
   type LoadedConversation,
@@ -142,6 +145,15 @@ export interface FixtureAgent {
    */
   redeploy(options: JuniorAppOptions): Promise<void>;
   run: RunAgent;
+  /**
+   * Create a public Space as another person, from the Spaces page. The web
+   * person is not a member of it.
+   */
+  createOtherSpace(name: string): Promise<{ id: string }>;
+  /** Read the Space of a Conversation as the web person sees it. */
+  readConversationSpace(
+    conversationId: string,
+  ): Promise<{ id: string; name: string } | null>;
 }
 
 /** Create the Junior app for one test and the calls that drive it. */
@@ -913,5 +925,15 @@ export async function createFixtureAgent(
     app = await deploy(next);
   };
 
-  return { run, close, redeploy };
+  const createOtherSpace = (name: string) =>
+    createSpace(api, OTHER_WEB_VIEWER_EMAIL, name);
+
+  return {
+    run,
+    close,
+    redeploy,
+    createOtherSpace,
+    readConversationSpace: (conversationId) =>
+      readConversationSpace(api, WEB_VIEWER_EMAIL, conversationId),
+  };
 }

@@ -9,7 +9,7 @@ import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools"
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
-import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
+import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   invocationInput,
@@ -255,6 +255,33 @@ describe("updateTodos", () => {
       await harness.close();
     }
   });
+  it("rejects a change that makes the open To-dos too long", async () => {
+    const harness = await createHarness();
+    try {
+      const notes = "n".repeat(1_900);
+      const big = Array.from({ length: 5 }, (_, index) => ({
+        title: `Review part ${index}`,
+        notes,
+      }));
+      await expect(harness.updateTodos({ add: big })).rejects.toThrow(
+        /^The open To-dos would take \d+ characters, over the limit of 8000\. Close, remove, or shorten To-dos, then try again\.$/,
+      );
+      expect(await listTodos(getSqlExecutor(), parentConversationId)).toEqual(
+        [],
+      );
+
+      const { todos } = await harness.updateTodos({ add: big.slice(0, 4) });
+      await expect(
+        harness.updateTodos({ add: [{ title: "One more", notes }] }),
+      ).rejects.toThrow(ToolInputError);
+      await expect(
+        harness.updateTodos({ update: [{ id: todos[0]!.id, status: "done" }] }),
+      ).resolves.toMatchObject({ todos: [{ status: "done" }] });
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("lets a child close only its own To-dos of the parent", async () => {
     const harness = await createHarness();
     try {
@@ -308,10 +335,8 @@ describe("updateTodos", () => {
       ]);
       expect(renderTodoDelta(parentTodos, seen)).toBe(
         [
-          "<todo-delta>",
           `To-do version ${parentTodos[0]!.version}. Others changed these To-dos since you last saw them. Each To-do shows its current fields.`,
           `- ${draft!.id} (done, assignee Echo, changed by child agent Echo): Review the draft`,
-          "</todo-delta>",
         ].join("\n"),
       );
     } finally {

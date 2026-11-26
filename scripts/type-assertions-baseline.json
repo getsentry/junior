@@ -91,7 +91,7 @@
   "packages/junior/src/chat/event-automations/store.ts": 3,
   "packages/junior/src/chat/events/app-publisher.ts": 1,
   "packages/junior/src/chat/events/catalog.ts": 2,
-  "packages/junior/src/chat/events/notification.ts": 2,
+  "packages/junior/src/chat/events/mailbox-metadata.ts": 2,
   "packages/junior/src/chat/events/store.ts": 1,
   "packages/junior/src/chat/guardian/evidence.ts": 4,
   "packages/junior/src/chat/guardian/gate.ts": 1,

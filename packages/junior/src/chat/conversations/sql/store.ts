@@ -54,7 +54,7 @@ import {
 import { nextDetailVersion } from "./detail-version";
 import {
   copiesRootVisibility,
-  isTopLevelKind,
+  kindAllowsParent,
 } from "@/chat/conversations/kind-behavior";
 import {
   fillMissingTreeVisibility,
@@ -269,7 +269,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
-    kind: args.kind ?? "root",
+    kind: args.kind ?? "thread",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -536,7 +536,7 @@ export class SqlStore implements ConversationStore {
           schemaVersion: 1,
           conversationId: args.conversationId,
           createdAtMs: args.createdAtMs,
-          kind: existing?.kind ?? "root",
+          kind: existing?.kind ?? "thread",
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
           ...(existing?.parentConversationId
@@ -748,7 +748,7 @@ export class SqlStore implements ConversationStore {
   }): Promise<void> {
     const { conversation } = args;
     if (
-      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+      !kindAllowsParent(conversation.kind, !!conversation.parentConversationId)
     ) {
       throw new Error(
         `Conversation ${conversation.conversationId} kind does not match its parent`,
@@ -785,7 +785,7 @@ export class SqlStore implements ConversationStore {
     const destinationId = upsertedDestination?.id ?? args.destinationId;
     // A root takes the visibility of its Destination. A child copies its
     // root's, under the lock that `setConversationVisibility` waits on.
-    const visibility = copiesRootVisibility(conversation.kind)
+    const visibility = copiesRootVisibility(conversation)
       ? (
           await resolveRootVisibility(
             this.executor,
@@ -812,17 +812,18 @@ export class SqlStore implements ConversationStore {
       : conversation.conversationId;
     const db = this.executor.db();
     // Reads the row as it was before this statement, so a root that first
-    // gets a visibility here knows to fill its tree.
-    const prior = db
-      .$with("prior_conversation")
-      .as(
-        db
-          .select({ visibility: juniorConversations.visibility })
-          .from(juniorConversations)
-          .where(
-            eq(juniorConversations.conversationId, conversation.conversationId),
-          ),
-      );
+    // gets a visibility or an Actor here knows it.
+    const prior = db.$with("prior_conversation").as(
+      db
+        .select({
+          actorIdentityId: juniorConversations.actorIdentityId,
+          visibility: juniorConversations.visibility,
+        })
+        .from(juniorConversations)
+        .where(
+          eq(juniorConversations.conversationId, conversation.conversationId),
+        ),
+    );
     const rows = await db
       .with(prior)
       .insert(juniorConversations)
@@ -902,13 +903,14 @@ export class SqlStore implements ConversationStore {
         rootConversationId: juniorConversations.rootConversationId,
         visibility: juniorConversations.visibility,
         filledVisibility: sql<boolean>`exists (select 1 from ${prior} where ${prior.visibility} is null)`,
+        setActor: sql<boolean>`not exists (select 1 from ${prior} where ${prior.actorIdentityId} is not null)`,
       });
     const row = rows[0];
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
     }
     if (
-      !copiesRootVisibility(conversation.kind) &&
+      !copiesRootVisibility(conversation) &&
       row.visibility &&
       row.filledVisibility
     ) {
@@ -927,8 +929,14 @@ export class SqlStore implements ConversationStore {
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // The root Actor is a Participant before they author a message.
-    if (row.actorIdentityId && row.parentConversationId === null) {
+    // The root Actor is a Participant before they author a message. Only the
+    // write that sets the Actor adds them, so a later Turn does not undo
+    // their Leave.
+    if (
+      row.actorIdentityId &&
+      row.setActor &&
+      row.parentConversationId === null
+    ) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId: conversation.conversationId,

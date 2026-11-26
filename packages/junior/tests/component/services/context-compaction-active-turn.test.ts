@@ -185,7 +185,7 @@ describe("active-turn context compaction", () => {
           {
             type: "toolCall",
             id: "todos-active",
-            name: "updateTodos",
+            name: "todos_updateTodos",
             arguments: {
               add: [
                 { title: "Apply requested edit" },
@@ -200,7 +200,7 @@ describe("active-turn context compaction", () => {
       {
         role: "toolResult",
         toolCallId: "todos-active",
-        toolName: "updateTodos",
+        toolName: "todos_updateTodos",
         content: [{ type: "text", text: "To-dos updated" }],
         isError: false,
         timestamp: 5,
@@ -255,12 +255,14 @@ describe("active-turn context compaction", () => {
     expect(textOf(result.piMessages![2]!)).toContain("No outstanding asks.");
     // One snapshot of the open To-dos replaces them in summarized history.
     const summary = textOf(result.piMessages![2]!);
-    expect(summary.split("<todos>").length - 1).toBe(1);
+    expect(
+      summary.split('<plugin-contribution plugin="todos"').length - 1,
+    ).toBe(1);
     expect(summary).toContain(
       [
         `- TODO-${edit!.id} (in_progress, assignee self): Apply requested edit`,
         `- TODO-${test!.id} (open, assignee self): Run focused test`,
-        "</todos>",
+        "  </plugin-contribution>",
       ].join("\n"),
     );
     expect(summary).not.toContain("Read the file");

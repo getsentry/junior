@@ -132,7 +132,7 @@ export async function createTurnHarness({
   await db
     .insert(juniorConversations)
     .values(
-      buildJuniorSqlConversation({ conversationId, location, kind: "root" }),
+      buildJuniorSqlConversation({ conversationId, location, kind: "thread" }),
     );
 
   const queue = createInProcessQueue();

@@ -10,6 +10,7 @@ import {
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
+import { mockConversationDetail, mockFeedPage } from "../mock-reports";
 import { scrollListUntil } from "./scroll-until";
 
 test.describe("new UI", () => {
@@ -166,8 +167,10 @@ test.describe("new UI", () => {
       const url = new URL(route.request().url());
       if (url.searchParams.get("cursor") === "older") {
         olderPage += 1;
-        const response = await route.fetch({ url: url.origin + url.pathname });
-        const feed = await response.json();
+        const feed = await mockFeedPage(
+          route,
+          new URL(url.origin + url.pathname),
+        );
         const template = feed.conversations.at(-1);
         return route.fulfill({
           json: {
@@ -187,10 +190,8 @@ test.describe("new UI", () => {
         });
       }
       firstPage += 1;
-      const response = await route.fetch();
       return route.fulfill({
-        response,
-        json: { ...(await response.json()), nextCursor: "older" },
+        json: { ...(await mockFeedPage(route)), nextCursor: "older" },
       });
     });
     await mockInboxItems(page);
@@ -448,8 +449,7 @@ test.describe("new UI", () => {
     // Newer Conversations fill the first rows the list shows, so the linked
     // Conversation renders only after the list shows more.
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
-      const response = await route.fetch();
-      const feed = await response.json();
+      const feed = await mockFeedPage(route);
       const linked = feed.conversations.find(
         (conversation: { conversationId: string }) =>
           conversation.conversationId === rollout.owner.id,
@@ -462,7 +462,6 @@ test.describe("new UI", () => {
         status: "done",
       }));
       return route.fulfill({
-        response,
         json: {
           ...feed,
           conversations: [
@@ -506,8 +505,10 @@ test.describe("new UI", () => {
         }
       }
       if (cursor) {
-        const response = await route.fetch({ url: url.origin + url.pathname });
-        const feed = await response.json();
+        const feed = await mockFeedPage(
+          route,
+          new URL(url.origin + url.pathname),
+        );
         const template = feed.conversations.at(-1);
         const row = (id: string, title: string, day: number) => ({
           ...template,
@@ -536,10 +537,8 @@ test.describe("new UI", () => {
                 },
         });
       }
-      const response = await route.fetch();
       return route.fulfill({
-        response,
-        json: { ...(await response.json()), nextCursor: "older" },
+        json: { ...(await mockFeedPage(route)), nextCursor: "older" },
       });
     });
     await mockInboxItems(page);
@@ -793,10 +792,8 @@ test.describe("new UI", () => {
         url.pathname ===
         `/api/conversations/${encodeURIComponent(conversationId)}`,
       async (route) => {
-        const response = await route.fetch();
-        const report = await response.json();
-        if (!Array.isArray(report.events)) return route.fulfill({ response });
-        const last = report.events.at(-1);
+        const report = await mockConversationDetail(route);
+        const last = report.events.at(-1)!;
         const later = Array.from({ length: 40 }, (_, index) => ({
           createdAt: last.createdAt,
           data: {
@@ -809,7 +806,6 @@ test.describe("new UI", () => {
         }));
         // The reader has read them all, so the transcript opens at the latest.
         await route.fulfill({
-          response,
           json: {
             ...report,
             events: [...report.events, ...later],

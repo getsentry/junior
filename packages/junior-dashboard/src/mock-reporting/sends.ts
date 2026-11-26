@@ -283,7 +283,7 @@ function createdConversation(
     eventHistory: { status: "available" as const },
     generatedAt: startedAt,
     isParticipant: true,
-    kind: created.lead ? ("lead" as const) : ("root" as const),
+    kind: created.lead ? ("lead" as const) : ("thread" as const),
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,

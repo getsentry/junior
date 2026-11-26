@@ -133,7 +133,7 @@ async function parentMessageTexts() {
   return (await parentMessages()).map((message) => message.input.text);
 }
 
-/** The Conversation notes of the parent, such as a child's quiet update. */
+/** The Conversation notes of the parent. */
 async function parentNoteTexts() {
   const page = await getConversationEventStore().query(
     slackParentConversationId,
@@ -363,19 +363,19 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 
-  // A Turn that only the Thread's own Watch Events started, and that ends
-  // with `noReply`, gives its parent a quiet note and starts no parent Turn,
-  // whether or not a Watch is left. An Event that arrives during the Turn
-  // runs next, and gives its own note. The Turn's own input does not wait,
-  // even before the Turn acks it.
+  // A Turn that only the Thread's own Watch Events started sends its parent
+  // its final text, and the parent decides what to do, whether or not a
+  // Watch is left. An Event that
+  // arrives during the Turn runs next, and sends its own update. The Turn's
+  // own input does not wait, even before the Turn acks it.
   it.each([
-    { watchLeft: false, eventWaits: false, acked: true, notes: 1 },
-    { watchLeft: false, eventWaits: false, acked: false, notes: 1 },
-    { watchLeft: true, eventWaits: false, acked: true, notes: 1 },
-    { watchLeft: false, eventWaits: true, acked: true, notes: 2 },
+    { watchLeft: false, eventWaits: false, acked: true, updates: 1 },
+    { watchLeft: false, eventWaits: false, acked: false, updates: 1 },
+    { watchLeft: true, eventWaits: false, acked: true, updates: 1 },
+    { watchLeft: false, eventWaits: true, acked: true, updates: 2 },
   ])(
-    "gives the parent a quiet note when a Thread's Watch Turn ends with noReply (Watch left: $watchLeft, Event waits: $eventWaits, acked: $acked)",
-    async ({ watchLeft, eventWaits, acked, notes }) => {
+    "wakes the parent when a Thread's Watch Turn ends (Watch left: $watchLeft, Event waits: $eventWaits, acked: $acked)",
+    async ({ watchLeft, eventWaits, acked, updates }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -415,7 +415,7 @@ describe("child Turns on the Conversation loop", () => {
                     onInputCommitted: undefined,
                   },
                 },
-            { noReply: { note: "The deploy is green." } },
+            { finalText: "The deploy is green." },
           );
           if (eventWaits && harness.runs.length === runsBefore + 1) {
             await sendEvent("deploy-2");
@@ -439,62 +439,21 @@ describe("child Turns on the Conversation loop", () => {
           (await parentMessageTexts())
             .slice(before.length)
             .filter((text) => text.includes("The deploy is green.")),
-        ).toEqual([]);
+        ).toEqual(
+          Array.from({ length: updates }, () =>
+            expect.stringMatching(/status="done"/),
+          ),
+        );
         expect(
           (await parentNoteTexts()).filter((text) =>
-            text.includes("Its note: The deploy is green."),
+            text.includes("The deploy is green."),
           ),
-        ).toHaveLength(notes);
+        ).toEqual([]);
       } finally {
         await harness.close();
       }
     },
   );
-
-  // Final text is news for the parent, so a Watch Turn that ends with it
-  // wakes the parent even though only the Thread's own Event started it.
-  it("wakes the parent when a Thread's Watch Turn ends with final text", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const childId = await startIdleChild(harness, "thread");
-      const before = await parentMessageTexts();
-      await appendAndEnqueueInboundMessage({
-        message: createEventInboundMessage({
-          event: {
-            eventKey: "deploy-1",
-            eventType: "deployment.failed",
-            identifier: "getsentry/junior",
-            namespace: "github",
-            occurredAtMs: Date.now(),
-            trustedSummary: "A deployment failed.",
-          },
-          subscription: { conversationId: childId, id: "watch-1" },
-          text: "Deploy failed.",
-        }),
-        queue: harness.queue,
-        state: harness.state,
-      });
-      vi.setSystemTime(Date.now() + 60_000);
-      harness.onRun((run) =>
-        finishRun(run, { finalText: "The deploy is green again." }),
-      );
-      await harness.drain(childId);
-
-      expect(
-        (await parentMessageTexts())
-          .slice(before.length)
-          .filter((text) => text.includes("The deploy is green again.")),
-      ).toEqual([expect.stringMatching(/status="done"/)]);
-      expect(
-        (await parentNoteTexts()).filter((text) =>
-          text.includes("The deploy is green again."),
-        ),
-      ).toEqual([]);
-    } finally {
-      await harness.close();
-    }
-  });
 
   // The parent already watches the child agents it starts, so watching one
   // returns that Watch and stores no second one. Each update reaches the
@@ -552,9 +511,9 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 
-  // A quiet update reaches each Watch on the Thread as a note that carries
-  // the Thread's note, as the starter's note does.
-  it("gives a Watch on a Thread the Thread's note when its noReply end is quiet", async () => {
+  // A `noReply` end while the Thread's work goes on starts a Turn for each
+  // Watch on the Thread, with the Thread's note, as it does for the starter.
+  it("wakes a Watch on a Thread with the Thread's note when it ends with noReply", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -573,6 +532,7 @@ describe("child Turns on the Conversation loop", () => {
         },
         { state: harness.state },
       );
+      const before = await parentMessageTexts();
       await sendPersonMessage(harness, childId, "person-1");
       harness.onRun((run) =>
         finishRun(run, { noReply: { note: "The deploy is green." } }),
@@ -580,10 +540,20 @@ describe("child Turns on the Conversation loop", () => {
       await harness.drain(childId);
 
       expect(
-        (await parentNoteTexts()).filter((text) =>
-          text.includes("Deploy check thread"),
+        (await parentMessageTexts())
+          .slice(before.length)
+          .filter((text) => text.includes("The deploy is green.")),
+      ).toEqual([
+        expect.stringMatching(/^<agent-result [^>]*source="child_agent"/),
+        expect.stringMatching(
+          /^<task about="Deploy check thread"[\s\S]*<agent-result [^>]*source="watch"/,
         ),
-      ).toEqual([expect.stringContaining("Its note: The deploy is green.")]);
+      ]);
+      expect(
+        (await parentNoteTexts()).filter((text) =>
+          text.includes("The deploy is green."),
+        ),
+      ).toEqual([]);
     } finally {
       await harness.close();
     }
@@ -591,17 +561,44 @@ describe("child Turns on the Conversation loop", () => {
 
   // A person's Turn in a Thread reports to the parent like an agent's Turn.
   // The person also sees its final text. Final text while a helper works is
-  // a message, as a `reply` is. With a Watch left after `noReply`, the Thread
-  // still works and its parent waits. The parent runs it as the Event system
-  // Actor, never as the person.
+  // a message, as a `reply` is. A `noReply` end reports also when a Watch is
+  // left, and the parent decides. The parent runs it as the Event system
+  // Actor, never as the person. The parent's listing shows how the person's
+  // Turn ended.
   it.each([
-    { end: "final text", openWork: "none", sent: "agent-result" },
-    { end: "final text", openWork: "helper", sent: "agent-message" },
-    { end: "noReply", openWork: "none", sent: "agent-result" },
-    { end: "noReply", openWork: "Watch", sent: undefined },
+    {
+      end: "final text",
+      openWork: "none",
+      sent: "agent-result",
+      lastResult: "done",
+    },
+    {
+      end: "final text",
+      openWork: "helper",
+      sent: "agent-message",
+      lastResult: "done",
+    },
+    {
+      end: "noReply",
+      openWork: "none",
+      sent: "agent-result",
+      lastResult: "done",
+    },
+    {
+      end: "noReply",
+      openWork: "Watch",
+      sent: "agent-result",
+      lastResult: "done",
+    },
+    {
+      end: "blocked",
+      openWork: "none",
+      sent: "agent-result",
+      lastResult: "blocked",
+    },
   ] as const)(
     "reports a person's Turn in a Thread that ends with $end (open work: $openWork)",
-    async ({ end, openWork, sent }) => {
+    async ({ end, lastResult, openWork, sent }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -618,7 +615,9 @@ describe("child Turns on the Conversation loop", () => {
             run,
             end === "final text"
               ? { finalText: "The deploy is green." }
-              : { noReply: { note: "The deploy is green." } },
+              : end === "blocked"
+                ? { blocked: { missing: "The deploy is green." } }
+                : { noReply: { note: "The deploy is green." } },
           ),
         );
         await harness.drain(childId);
@@ -642,6 +641,10 @@ describe("child Turns on the Conversation loop", () => {
             ? [{ authorId: resultAuthorId(EVENT_SYSTEM_ACTOR), tag: sent }]
             : [],
         );
+        const { agents } = (await createListAgentsTool({
+          conversationId: slackParentConversationId,
+        }).execute!({}, {})) as { agents: Array<{ last_result?: string }> };
+        expect(agents[0]?.last_result).toBe(lastResult);
       } finally {
         await harness.close();
       }
@@ -712,6 +715,40 @@ describe("child Turns on the Conversation loop", () => {
             .slice(before.length)
             .filter((text) => text.includes("stop after reading the run")),
         ).toEqual([expect.stringMatching(/status="failed"/)]);
+        // The failure wins over the completed Turn before it.
+        const listLastResult = async () =>
+          (
+            (await createListAgentsTool({
+              conversationId: slackParentConversationId,
+            }).execute!({}, {})) as { agents: Array<{ last_result?: string }> }
+          ).agents[0]?.last_result;
+        await expect(listLastResult()).resolves.toBe("failed");
+
+        // A stopped Turn after the failure is not a result, so the failure
+        // stays the child's result.
+        harness.onRun(async (run) => {
+          await storeConversationStop(run.conversationId);
+          await run.durability?.checkStop?.();
+          run.signal?.throwIfAborted();
+          throw new Error("The stored stop did not abort the run");
+        });
+        await sendHelperReply(
+          harness,
+          await createHelper(harness, childId, {
+            idempotencyKey: "helper-after-failure",
+            parentToolCallId: "helper-after-failure",
+          }),
+        );
+        await harness.processUntilRun(childId);
+        await expect(loadTurnEvents(childId)).resolves.toContainEqual(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              outcome: "cancelled",
+              type: "turn_completed",
+            }),
+          }),
+        );
+        await expect(listLastResult()).resolves.toBe("failed");
       } finally {
         await harness.close();
       }
@@ -812,6 +849,11 @@ describe("child Turns on the Conversation loop", () => {
       // A stop is not a result, and it drops the child's unread result of
       // its task Turn, so the parent hears nothing.
       await expect(parentMessageTexts()).resolves.toEqual([]);
+      // The listing keeps the result of the task Turn before the stop.
+      const { agents } = (await createListAgentsTool({
+        conversationId: slackParentConversationId,
+      }).execute!({}, {})) as { agents: Array<{ last_result?: string }> };
+      expect(agents[0]?.last_result).toBe("done");
     } finally {
       await harness.close();
     }

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { waitForOutlineRead, waitForRequestsToEnd } from "../harness";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   // Link, file, and linked-work cards in comfortable Inbox rows.
@@ -17,16 +18,13 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
-        const feed = (await response.json()) as {
-          conversations: Array<{ displayTitle: string; links?: string[] }>;
-        };
+        const feed = await mockFeedPage(route);
         for (const row of feed.conversations) {
           if (row.displayTitle === "Investigate checkout latency") {
             row.links = [person, unknown];
           }
         }
-        await route.fulfill({ json: feed, response });
+        await route.fulfill({ json: feed });
       },
     );
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);

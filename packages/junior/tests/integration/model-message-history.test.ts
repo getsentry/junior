@@ -249,7 +249,9 @@ describe("model message history", () => {
       before: { messages: unknown[] },
       after: { messages: unknown[] },
     ) => JSON.stringify(after.messages.slice(before.messages.length));
-    const deltas = (text: string) => text.split("<todo-delta>").length - 1;
+    const deltas = (text: string) =>
+      text.split('<plugin-contribution plugin=\\"todos\\" id=\\"userPrompt:')
+        .length - 1;
 
     await agent.run("first");
     const first = agent.snapshot();
@@ -364,7 +366,11 @@ describe("model message history", () => {
     // The review is a To-do block, so it waits for the next interval.
     expect(
       [...turnText]
-        .filter(([, text]) => text.includes("<todos>"))
+        .filter(([, text]) =>
+          text.includes(
+            '<plugin-contribution plugin=\\"todos\\" id=\\"userPrompt:',
+          ),
+        )
         .map(([input]) => input),
     ).toEqual(["fourth"]);
     expect(turnText.get("fourth")).toContain(
