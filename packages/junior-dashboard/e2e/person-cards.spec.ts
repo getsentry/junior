@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
+import { mockObjectLinks } from "./mock-reports";
 
 // A mock Conversation where the viewer wrote, answered a question, and
 // Junior mentions Avery Chen as `<@U789>`.
@@ -101,9 +102,8 @@ test("a merged change with no size shows no size separator", async ({
   await page.setViewportSize(desktop);
   // The live cards of the merged changes have no size.
   await page.route("**/api/objects?*", async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    for (const item of body.objects ?? []) {
+    const body = await mockObjectLinks(route);
+    for (const item of body.objects) {
       const facts = item.object?.facts;
       if (facts?.type === "code_change") {
         delete facts.additions;
@@ -111,7 +111,7 @@ test("a merged change with no size shows no size separator", async ({
         delete facts.changedFiles;
       }
     }
-    await route.fulfill({ json: body, response });
+    await route.fulfill({ json: body });
   });
   await openConversation(page, dashboard.baseURL);
   await page

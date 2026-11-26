@@ -14,8 +14,8 @@ child agents add to this is in `./child-agents.md`.
 - One update. Every agent sends the same update when a Turn ends, waits on
   a person, is blocked, fails, or stops. The update carries the text that
   the receiver needs, so it can act without a read of history.
-- A watch is the same as a start. A watcher gets the same update, from the
-  same code, as the agent that started the target.
+- A watch is the same as a start. A watcher gets the same update as the
+  agent that started the target.
 - One contract. Every agent, except an Automation run, ends a Turn the same
   way. Its final text is its reply. A tool call ends the Turn with no reply
   or as blocked, and the update still carries what that call holds. So a
@@ -46,13 +46,9 @@ child agents add to this is in `./child-agents.md`.
   Space. Final text that was cut off, such as by a length limit or an
   abort, is a failure, not a reply. `messageAgent` sends text to another
   agent at any time. It is not the reply, and it does not end the Turn.
-- `noReply` ends the Turn with no reply. `reportBlocked` ends it as blocked
-  on what the agent that started it can give. Each still sends an update with its note or
-  the missing part.
-- An agent ends a Turn with no reply only when no person asked for
-  something in that Turn, nothing failed, nobody must decide or act, and
-  the receiver gets nothing new. Its note states the outcome in one
-  sentence, because a receiver can read it.
+- A child agent always tells the agent that started it how each Turn
+  ended: its reply, or what it is blocked on. Only a person's Turn or an
+  Automation run can end quietly.
 - Any agent, also a child, asks a person only with an Inbox item, and only
   for approval, access, or a decision that is the person's. The answer goes
   to the agent that asked, as the person's own input, and to no other
@@ -75,23 +71,15 @@ child agents add to this is in `./child-agents.md`.
 
 ## Gaps
 
-- Agents use different tools to start, find, and watch other agents:
-  `spawnAgent` and `startConversation`, `listAgents` and
-  `searchConversations`. This breaks "one toolset".
-- A Thread and a Task must call `reply`, and their final text goes nowhere.
-  Only some kinds have `reportBlocked`. This breaks "one contract".
+- A Lead starts and finds agents with `startConversation` and
+  `searchConversations`. Every other agent uses `startAgent` and
+  `listAgents`. This breaks "one toolset".
 - A child agent cannot ask a person. It reports blocked, and its parent
   asks and passes on the answer. This breaks "the agent that needs a person
   asks that person".
 - An Inbox answer goes, as the person, to every Conversation that the item
   links, not only to the agent that asked. This breaks "no agent passes on
   a question or an answer for another agent".
-- A Turn that ends with `noReply` while the agent has a Watch sends no
-  update, also after the Watch ends. This breaks "a quiet end still reaches
-  the receiver".
-- When a root, a Lead, or a person's Turn in a Thread ends with final text
-  that was cut off, Junior counts it as a reply. This breaks "final text
-  that was cut off is a failure".
 - A Lead asks people in its reply, not with an Inbox item. This breaks
   "one contract" and `./inbox.md`.
 - A root that a Lead starts stores no link to the Lead, and the Lead's task
@@ -101,8 +89,9 @@ child agents add to this is in `./child-agents.md`.
   can poll. This breaks "push, not poll".
 - A parent cannot make the updates of its child agents quiet. This breaks
   "a watch is the same as a start".
-- A Turn that only Watch Events started sends its watchers no update, also
-  when it replies. This breaks "one update".
+- A Turn that only Watch Events started sends no update to a Watch, also
+  when it replies. Only the agent that started it gets one. This breaks
+  "one update".
 - When a person's Turn in a Thread adds an Inbox item, the parent gets no
   `waiting` update. Only a watcher gets it. This breaks "the agent that
   started it gets a `waiting` update".

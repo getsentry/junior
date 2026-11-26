@@ -268,6 +268,7 @@ describe("static tool registry", () => {
       expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toContain("reportBlocked");
       expect(person.disabled).not.toContain("addInboxItem");
+      expect(person.disabled).not.toContain("moveConversationToSpace");
       // A person's Turn starts and messages child agents, as an agent's does.
       expect(person.disabled).not.toContain("startAgent");
       expect(person.disabled).not.toContain("messageAgent");
@@ -276,6 +277,7 @@ describe("static tool registry", () => {
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
+          "moveConversationToSpace",
           "addInboxItem",
           "searchInboxItems",
           "updateInboxItem",
@@ -300,6 +302,12 @@ describe("static tool registry", () => {
       await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
         "addInboxItem is disabled in this Turn.",
       );
+      // A person's Turn can end with no post. An agent's Turn reports to the
+      // parent with its final text, and the parent decides what to do.
+      expect(person.disabled).not.toContain("noReply");
+      await expect(callTool(agent, "noReply")).rejects.toThrow(
+        "noReply is disabled in this Turn.",
+      );
 
       expect(turnInputFact(person)).toContain(
         "<turn-input>\nA person sent the input of this Turn.\n</turn-input>",
@@ -310,6 +318,16 @@ describe("static tool registry", () => {
     } finally {
       await createApp({ plugins: plugins() });
     }
+  });
+
+  // Every Turn of a Task reports to the parent with its final text.
+  it("sends a Task Turn no noReply", async () => {
+    const task = await sentTurn(
+      turnBehavior({ kind: "task", personInput: false }),
+      turnRun("slack:T0:C0:1.0:task", false, { kind: "parent_message" }),
+    );
+
+    expect(Object.keys(task.tools)).not.toContain("noReply");
   });
 
   // A person replies in an Automation run's thread between the run's Turns.
@@ -397,7 +415,7 @@ describe("static tool registry", () => {
         "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
-        "setSpaceConfiguration",
+        "setConfiguration",
         "startConversation",
         "stopWatchingResources",
         "systemTime",
@@ -406,7 +424,9 @@ describe("static tool registry", () => {
         "watchTimer",
       ].sort(),
     );
-    expect(person.disabled).toEqual([]);
+    // This Lead has no Slack channel and no Space, so it has no
+    // configuration to change.
+    expect(person.disabled).toEqual(["setConfiguration"]);
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(

@@ -14,6 +14,7 @@ import {
   juniorAutomations,
   juniorConversationParticipants,
   juniorIdentities,
+  juniorInboxItems,
 } from "@/db/schema";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { listOpenAutomationQuestions } from "@/chat/inbox-items/automation-questions";
@@ -26,7 +27,7 @@ import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation
 
 type Context = Pick<
   ToolRuntimeContext,
-  "conversationId" | "resolveActorIdentity" | "source" | "turnId"
+  "actorIsApp" | "conversationId" | "resolveActorIdentity" | "source" | "turnId"
 >;
 
 // Parse the input first, as the agent runtime does.
@@ -260,6 +261,9 @@ describe("inbox item tools", () => {
       body: "The deploy key expires on Friday.",
     };
 
+    await expect(
+      execute(owner.add, { ...notice, assignees: ["everyone"] }),
+    ).rejects.toThrow("cannot be assigned to Everyone");
     // Ben never took part in the private Conversation.
     await expect(
       execute(owner.add, { ...notice, assignees: ["ben@example.com"] }),
@@ -489,12 +493,39 @@ describe("inbox item tools", () => {
     await conversation("slack:CPUB:1.000001", "CPUB", "public");
     await expect(
       execute(eventTurn("slack:CPUB:1.000001").add, ask),
-    ).rejects.toThrow("No person would see this item");
+    ).rejects.toThrow("Only people act on items");
     const everyone = await execute(eventTurn("slack:CPUB:1.000001").add, {
       ...ask,
       assignees: ["everyone"],
     });
     expect(everyone.item.assignees).toEqual(["everyone"]);
+
+    // A Slack app that mentions Junior can have a User, and it is then a
+    // Participant. It is not a person, so it gets no item.
+    const app = await user("alerts@example.com");
+    await conversation("slack:CPUB:1.000002", "CPUB", "public");
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date("2026-10-01T12:05:00.000Z"),
+        rootConversationId: "slack:CPUB:1.000002",
+        userId: app.id,
+      });
+    const appTurn = tools({
+      actorIsApp: true,
+      conversationId: "slack:CPUB:1.000002",
+      resolveActorIdentity: asActor(app),
+      source: { kind: "slack" } as any,
+    });
+    const before = await getDb()
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems);
+    await expect(execute(appTurn.add, ask)).rejects.toThrow(
+      "Only people act on items",
+    );
+    expect(
+      await getDb().select({ id: juniorInboxItems.id }).from(juniorInboxItems),
+    ).toEqual(before);
   });
 
   it("lets an agent close an item once, with a reason", async () => {

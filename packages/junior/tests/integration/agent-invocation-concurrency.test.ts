@@ -1,3 +1,4 @@
+import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
@@ -13,11 +14,7 @@ import { createListWatchesTool } from "@/chat/tools/list-watches";
 import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
 import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 import type { User } from "@sentry/junior-plugin-api";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getDb,
-} from "@/chat/db";
+import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
@@ -695,14 +692,12 @@ describe("child agent identity and concurrency", () => {
       await harness.drainQueuedWork();
 
       // A private item goes only to people in its Conversation, and a child
-      // has none, so make the child public.
-      await getConversationStore().recordActivity({
-        conversationId: child.childConversationId,
-        destination,
-        nowMs: clock(),
-        source: "local",
-        visibility: "public",
-      });
+      // has none, so make the child's root public.
+      await setConversationVisibility(
+        getSqlExecutor(),
+        parentConversationId,
+        "public",
+      );
       const alice = (await resolveViewerUserFromSql(
         getDb(),
         "alice@example.com",

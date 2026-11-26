@@ -17,9 +17,11 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { waitForRequestsToEnd } from "../harness";
 import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
@@ -583,16 +585,13 @@ test.describe("new UI", () => {
     // The card is not part of the clamped prose, and only one shows.
     await expect(clamp.getByRole("region", { name: card })).toHaveCount(0);
     await expect(page.getByRole("region", { name: card })).toHaveCount(1);
-    // In full means nothing clips it once it is scrolled to. On a slow CI
-    // runner the list can still move after one scroll, so scroll again
-    // until the card shows.
-    await expect(async () => {
-      await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
-      await expect(page.getByRole("region", { name: card })).toBeInViewport({
-        ratio: 1,
-        timeout: 1000,
-      });
-    }).toPass();
+    // In full means nothing clips it once it is scrolled to. The card's
+    // reads change its height, so scroll once they end.
+    await waitForRequestsToEnd(page);
+    await page.getByRole("region", { name: card }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole("region", { name: card })).toBeInViewport({
+      ratio: 1,
+    });
   });
 
   test("an item's subject card hides when its text already shows that card", async ({
@@ -809,10 +808,8 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
-        const feed = await response.json();
+        const feed = await mockFeedPage(route);
         await route.fulfill({
-          response,
           json: {
             ...feed,
             conversations: feed.conversations.filter(

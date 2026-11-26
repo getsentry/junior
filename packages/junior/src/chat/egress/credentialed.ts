@@ -611,6 +611,9 @@ export async function executeCredentialedEgressRequest(input: {
       })
         ? { bodyText: grantSelectionBodyText(body) }
         : undefined),
+      ...(credentialContext.conversationId
+        ? { conversationId: credentialContext.conversationId }
+        : undefined),
       ...(isGitReceivePack(request.method, upstreamUrl)
         ? { gitPush: readGitPush(body) }
         : undefined),
@@ -788,6 +791,9 @@ export async function executeCredentialedEgressRequest(input: {
     let pluginPermissionDenied: { message: string } | undefined;
     try {
       const effects = await onPluginEgressResponse({
+        ...(credentialContext.conversationId
+          ? { conversationId: credentialContext.conversationId }
+          : undefined),
         provider,
         grant: lease.grant,
         method: request.method,

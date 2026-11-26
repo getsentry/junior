@@ -188,6 +188,7 @@ function assertLeaseTransformsOwnedByProvider(
  */
 export async function selectSandboxEgressGrant(input: {
   bodyText?: string | undefined;
+  conversationId?: string;
   gitPush?: PluginGitPush;
   graphql?: PluginGraphqlRequest;
   method: string;
@@ -225,6 +226,9 @@ export async function selectSandboxEgressGrant(input: {
     ...(input.withoutCredential ? { withoutCredential: true } : undefined),
     ...(input.bodyText !== undefined
       ? { bodyText: input.bodyText }
+      : undefined),
+    ...(input.conversationId
+      ? { conversationId: input.conversationId }
       : undefined),
     ...(input.gitPush ? { gitPush: input.gitPush } : undefined),
     ...(input.graphql ? { graphql: input.graphql } : undefined),

@@ -20,6 +20,10 @@ import {
   personCardReportSchema,
   personalSpendReportSchema,
 } from "../schema/person";
+import {
+  userSearchQuerySchema,
+  userSearchReportSchema,
+} from "../schema/user-search";
 import { codePersonReportSchema, personCodeQuerySchema } from "../schema/code";
 import { pluginOperationalReportFeedSchema } from "../../reporting-schema";
 import { validateRequest } from "../validation";
@@ -31,6 +35,7 @@ import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfileFromSql } from "./profile.query";
 import { readPeopleSearchFromSql } from "./search.query";
 import { readPersonalSpendFromSql } from "./spend.query";
+import { searchUsersForViewer } from "./user-search";
 
 /** Create the HTTP routes owned by the People API. */
 export function createPeopleRoutes(options: {
@@ -71,7 +76,7 @@ export function createPeopleRoutes(options: {
     ),
   );
 
-  // Before `/:email`, which would also match `/search`.
+  // Before `/:email`, which would also match `/search` and `/user-search`.
   app.get(
     "/search",
     requireViewer,
@@ -93,6 +98,20 @@ export function createPeopleRoutes(options: {
         people: await readPeopleSearchFromSql(q, slackTeamId),
       });
     },
+  );
+
+  // The people picker: Users to add to one Space or Conversation.
+  app.get(
+    "/user-search",
+    requireViewer,
+    validateRequest("query", userSearchQuerySchema, "Invalid search query."),
+    async (context) =>
+      jsonResponse(userSearchReportSchema, {
+        users: await searchUsersForViewer(
+          context.get("viewer"),
+          context.req.valid("query"),
+        ),
+      }),
   );
 
   app.get(

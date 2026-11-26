@@ -3430,6 +3430,10 @@ export function readMockConversationDetail(
       !conversation.parentConversationId &&
       !isUnlistedMockConversation(conversationId) &&
       conversation.eventHistory.status !== "redacted",
+    // Match the API: anyone who can post in a public one may Invite.
+    ...(conversation.visibility === "public"
+      ? { canInvite: true as const }
+      : undefined),
     ...(conversation.isParticipant
       ? {
           autoArchive:

@@ -187,6 +187,25 @@ export const PULL_REQUEST_DRAFT_READINESS = githubGraphql(`
   }
 `);
 
+/**
+ * Read whether GitHub asks one person to review a pull request, and their
+ * latest submitted review. A pending review is not submitted.
+ */
+export const PULL_REQUEST_REVIEWER = githubGraphql(`
+  query PullRequestReviewer($owner: String!, $name: String!, $number: Int!, $login: String!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        reviewRequests(first: 100) {
+          nodes { requestedReviewer { __typename ... on User { login } } }
+        }
+        reviews(last: 1, author: $login, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) {
+          nodes { state }
+        }
+      }
+    }
+  }
+`);
+
 /** Read one page of a pull request search, with mergeability. */
 export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
   query OpenPullRequestMergeability($query: String!, $after: String) {
@@ -241,6 +260,7 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
     repository(owner: $owner, name: $name) {
       pullRequest(number: $number) {
         autoMergeRequest { enabledAt }
+        commits(last: 1) { nodes { commit { committedDate } } }
         isDraft
         mergeStateStatus
         state
@@ -253,12 +273,17 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
           pageInfo { hasPreviousPage startCursor }
           nodes { ...NextActionReview }
         }
-        timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, REVIEW_REQUESTED_EVENT]) {
+        timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, REVIEW_REQUESTED_EVENT, REVIEW_REQUEST_REMOVED_EVENT]) {
           nodes {
             __typename
             ... on IssueComment { createdAt author { __typename login } }
             ... on ReviewRequestedEvent {
               createdAt
+              requestedReviewer { __typename ... on User { login } }
+            }
+            ... on ReviewRequestRemovedEvent {
+              createdAt
+              actor { __typename login }
               requestedReviewer { __typename ... on User { login } }
             }
           }
@@ -271,6 +296,38 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
     state
     submittedAt
     author { __typename login }
+  }
+`);
+
+/**
+ * Read whether the required checks of a pull request's head commit pass:
+ * the checks of the head commit and the branch protection's required checks
+ * of the base branch. `PULL_REQUEST_REVIEW_AGAIN` reads the same fields.
+ */
+export const PULL_REQUEST_REQUIRED_CHECKS = githubGraphql(`
+  query PullRequestRequiredChecks($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        baseRefName
+        baseRef { refUpdateRule { requiredStatusCheckContexts } }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                contexts(first: 100) {
+                  pageInfo { hasNextPage }
+                  nodes {
+                    __typename
+                    ... on CheckRun { name status conclusion }
+                    ... on StatusContext { context state }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 `);
 

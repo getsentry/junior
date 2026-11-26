@@ -104,9 +104,10 @@ export async function findGitHubPullRequest(
 /**
  * Ask to check the next action of a Junior pull request, and claim the check
  * when no other webhook runs one. A claim older than `staleMs` is free.
- * Return the claim and the saved action, or undefined when another webhook
- * runs the check or Junior does not own the pull request. The webhook that
- * runs the check sees the new request in `releaseGitHubPullRequestReadySync`.
+ * Return the claim and the saved action, `held` when another webhook runs
+ * the check, or undefined when Junior does not own the pull request. The
+ * webhook that runs the check sees the new request in
+ * `releaseGitHubPullRequestReadySync`.
  */
 export async function claimGitHubPullRequestReadySync(
   db: GitHubDb,
@@ -118,6 +119,7 @@ export async function claimGitHubPullRequestReadySync(
       id: number;
       requests: number;
     }
+  | "held"
   | undefined
 > {
   const t = juniorGitHubPullRequests;
@@ -137,7 +139,8 @@ export async function claimGitHubPullRequestReadySync(
       id: t.readySyncId,
       requests: t.readySyncRequests,
     });
-  if (!row || row.id !== row.requests) return undefined;
+  if (!row) return undefined;
+  if (row.id !== row.requests) return "held";
   return {
     action: row.action ?? undefined,
     id: row.id,

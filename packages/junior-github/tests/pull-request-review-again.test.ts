@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { markGitHubReviewAsked } from "../src/pull-request-review-again";
 import { createGitHubFixture } from "./github-db";
 import { memoryState } from "./plugin-harness";
 import {
@@ -253,6 +254,31 @@ describe("review again after a change request", () => {
         }),
       );
       expect(calls).toHaveLength(2);
+
+      // Junior asks them a question. GitHub still asks them, so the tool
+      // removes and adds the request, and GitHub records a new ask. The item
+      // comes back with the question, and a later sync keeps it.
+      await markGitHubReviewAsked(
+        state,
+        { number: 946, repositoryFullName: "getsentry/junior" },
+        {
+          at: "2026-07-02T14:00:00.000Z",
+          reason: "question",
+          reviewer: "requester",
+        },
+      );
+      await webhook.handler(
+        reviewRequested(github, "requester", "2026-07-02T14:00:01Z"),
+      );
+      await webhook.handler(pullRequestAction("synchronize"));
+      expect(calls.slice(2)).toEqual([
+        {
+          ...asked,
+          notice: expect.objectContaining({
+            body: `A comment asks you a question.\n\n${PULL_URL}`,
+          }),
+        },
+      ]);
     } finally {
       await fixture.close();
     }
@@ -570,11 +596,6 @@ describe("review again after a change request", () => {
       webhookState: "approved" as const,
     },
     {
-      name: "a comment",
-      reviews: [{ id: 301, state: "COMMENTED" }],
-      webhookState: "commented" as const,
-    },
-    {
       // With auto-merge on, a push after the approval can merge with no
       // other person, so asking again would only bother the requester.
       autoMerge: true,
@@ -601,6 +622,7 @@ describe("review again after a change request", () => {
         reviews: reviews.map((review) => ({
           ...review,
           commit_id: "head-1",
+          submitted_at: "2026-07-02T11:00:00Z",
           user: { login: "requester" },
         })),
         state: "open",
@@ -620,4 +642,167 @@ describe("review again after a change request", () => {
       }
     },
   );
+
+  it("keeps the review ask open after the requester's comment-only review, and says so when Junior asks them a question", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const state = memoryState();
+    const github: GitHubState = {
+      draft: false,
+      // A clean merge state still waits on the open ask.
+      mergeableStates: ["clean"],
+      merged: false,
+      requestedReviewers: ["Requester"],
+      reviewRequests: [{ at: "2026-07-02T10:00:00Z", login: "Requester" }],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    const asks = () =>
+      requests.filter((request) => request.startsWith("request"));
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], state);
+      // A plain comment keeps GitHub's request.
+      await webhook.handler(
+        commented(github, "issue_comment", {
+          at: "2026-07-02T11:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Review requested · #946" } },
+      ]);
+
+      // A comment-only review neither approves nor requests changes. GitHub
+      // drops the request on it, but the ask stays open, so the item stays
+      // and Junior does not ask again on GitHub.
+      github.requestedReviewers = [];
+      github.reviews = [
+        {
+          state: "COMMENTED",
+          submitted_at: "2026-07-02T12:00:00Z",
+          user: { login: "Requester" },
+        },
+      ];
+      await webhook.handler(
+        reviewSubmitted("commented", {
+          at: "2026-07-02T12:00:00Z",
+          login: "Requester",
+        }),
+      );
+      // GitHub records a reply in a review thread as a comment-only review.
+      await webhook.handler(
+        commented(github, "pull_request_review_comment", {
+          at: "2026-07-02T13:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(asks()).toEqual([]);
+      expect(calls).toHaveLength(1);
+
+      // Junior answers with a question, and `github_commentOnPullRequest`
+      // marks why before GitHub asks for the review. The open item now
+      // says that Junior asked, once.
+      await markGitHubReviewAsked(
+        state,
+        { number: 946, repositoryFullName: "getsentry/junior" },
+        {
+          at: "2026-07-02T13:30:00.000Z",
+          reason: "question",
+          reviewer: "Requester",
+        },
+      );
+      github.requestedReviewers = ["Requester"];
+      await webhook.handler(
+        reviewRequested(github, "Requester", "2026-07-02T13:30:01Z"),
+      );
+      await webhook.handler(pullRequestAction("synchronize"));
+      expect(calls.slice(1)).toMatchObject([
+        {
+          kind: "upsert",
+          notice: {
+            body: `A comment asks you a question.\n\n${PULL_URL}`,
+            title: "Review requested · #946",
+          },
+        },
+      ]);
+
+      // An approval answers the ask, so the PR is ready to merge. GitHub
+      // drops the request on it.
+      github.requestedReviewers = [];
+      github.reviews.push({
+        state: "APPROVED",
+        submitted_at: "2026-07-02T14:00:00Z",
+        user: { login: "Requester" },
+      });
+      await webhook.handler(
+        reviewSubmitted("approved", {
+          at: "2026-07-02T14:00:00Z",
+          login: "Requester",
+        }),
+      );
+      expect(asks()).toEqual([]);
+      expect(calls.slice(2)).toMatchObject([
+        { kind: "upsert", notice: { title: "Ready to merge · #946" } },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps the question mark while removing the requester's review request closes the item, so the request that follows shows it", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const state = memoryState();
+    // A draft, so the removal leaves nobody asked: the limbo ask is only
+    // for a pull request that is ready.
+    const github: GitHubState = {
+      draft: true,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["requester"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], state);
+      await webhook.handler(
+        reviewRequested(github, "requester", "2026-07-02T10:00:00Z"),
+      );
+      expect(calls).toHaveLength(1);
+
+      // Junior asks a question. The tool removes the request that GitHub
+      // already has, and that removal's sync closes the item.
+      await markGitHubReviewAsked(
+        state,
+        { number: 946, repositoryFullName: "getsentry/junior" },
+        {
+          at: "2026-07-02T11:00:00.000Z",
+          reason: "question",
+          reviewer: "requester",
+        },
+      );
+      github.requestedReviewers = [];
+      await webhook.handler(pullRequestAction("review_request_removed"));
+      expect(calls.at(-1)).toMatchObject({ kind: "close" });
+
+      // GitHub asks again, and the item says why.
+      github.requestedReviewers = ["requester"];
+      await webhook.handler(
+        reviewRequested(github, "requester", "2026-07-02T11:00:01Z"),
+      );
+      expect(calls.at(-1)).toMatchObject({
+        kind: "upsert",
+        notice: {
+          body: expect.stringMatching(/^A comment asks you a question\. /),
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 });

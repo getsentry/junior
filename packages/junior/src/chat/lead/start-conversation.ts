@@ -2,8 +2,8 @@
  * Start one Conversation from a Space's Lead. The new Conversation is a web
  * root in the Lead's Space, with the Space's visibility. It runs as the
  * member who asked, like any root, and the Lead's task is its first Message.
- * The start is not reviewed. Action review judges the new root's own tool
- * calls, as it does a child agent's.
+ * Action review judges the task of the `startConversation` call, then the
+ * new root's own tool calls, as it does a child agent's.
  */
 import type { User } from "@sentry/junior-plugin-api";
 import {

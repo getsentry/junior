@@ -52,6 +52,14 @@ export function useMemberSpacesData(enabled: boolean) {
 }
 
 /**
+ * Refresh the pane's Spaces, whose rows roll up the state of their
+ * Conversations.
+ */
+export function invalidateMemberSpaces(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({ queryKey: memberSpacesKey });
+}
+
+/**
  * Fetch one Space. Anyone can read a public Space, and only members read a
  * private one.
  */
@@ -133,6 +141,40 @@ export function useCreateSpace() {
 }
 
 /**
+ * Rename a Space or change its description. Conversation rows and details
+ * show the Space's name, and its Lead has the same name, so they read again.
+ */
+export function useUpdateSpace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      spaceId,
+      ...body
+    }: {
+      description: string | null;
+      name: string;
+      spaceId: string;
+    }) => patch(spaceSchema, spaceApiPath(spaceId), body),
+    onSuccess: (space) =>
+      Promise.all([
+        storeSpace(queryClient, space),
+        invalidateConversationFeeds(queryClient),
+        ...queryClient
+          .getQueriesData<ConversationSnapshot | undefined>({
+            queryKey: ["conversation"],
+          })
+          .filter(
+            ([queryKey, detail]) =>
+              queryKey[2] === "detail" && detail?.space?.id === space.id,
+          )
+          .map(([queryKey]) =>
+            queryClient.invalidateQueries({ queryKey, exact: true }),
+          ),
+      ]),
+  });
+}
+
+/**
  * Join or leave one Space as the viewer. A member's read makes the Lead, so
  * the Lead reads again too.
  */
@@ -184,10 +226,17 @@ export function useAddSpaceMember(spaceId: string) {
   return useMutation({
     mutationFn: (email: string) =>
       post(spaceSchema, `${spaceApiPath(spaceId)}/members`, { email }),
-    onSuccess: (space) =>
+    // The people picker adds several people at once, and their responses
+    // can arrive in any order. So refetch the Space instead of storing a
+    // response, which can hold an older member count.
+    onSuccess: () =>
       Promise.all([
-        storeSpace(queryClient, space),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: spaceKey(spaceId),
+        }),
         queryClient.invalidateQueries({ queryKey: spaceMembersKey(spaceId) }),
+        queryClient.invalidateQueries({ queryKey: memberSpacesKey }),
       ]),
   });
 }
@@ -222,6 +271,8 @@ export function useMoveConversationToSpace(conversationId: string) {
     onSuccess: () =>
       Promise.all([
         invalidateConversationFeeds(queryClient),
+        // The roll-up of the Space it left and the one it joined.
+        invalidateMemberSpaces(queryClient),
         queryClient.invalidateQueries({
           queryKey: conversationDetailQueryKey(conversationId),
         }),

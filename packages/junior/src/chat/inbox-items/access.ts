@@ -30,7 +30,6 @@ import {
   juniorAutomationRuns,
   juniorConversationParticipants,
   juniorConversations,
-  juniorDestinations,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
@@ -122,7 +121,6 @@ export function inboxItemOwnedByConversation(
 
 const todoOwner = alias(juniorConversations, "todo_owner");
 const todoRoot = alias(juniorConversations, "todo_root");
-const todoDestination = alias(juniorDestinations, "todo_destination");
 
 /** SQL: the User is a Participant of this root Conversation. */
 function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
@@ -171,7 +169,6 @@ function ownerConversationOpenTo(
           ),
         ),
       )
-      .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
       .where(
         and(
           eq(todoOwner.conversationId, ownerConversationId),
@@ -183,7 +180,7 @@ function ownerConversationOpenTo(
             and(
               isNotNull(todoRoot.conversationId),
               or(
-                eq(todoDestination.visibility, "public"),
+                eq(todoRoot.visibility, "public"),
                 participantOf(userId, todoRoot.conversationId),
               ),
             ),
@@ -438,9 +435,11 @@ export async function inboxItemReaderForUserInConversation(
 export interface InboxItemAgentScope {
   /**
    * Whether the Actor of the Turn is a person. A system Actor, such as the
-   * Actor of an event Turn, is not.
+   * Actor of an event Turn, is not, and an app Actor is not.
    */
   actorIsPerson: boolean;
+  /** User of an app Actor. An app is not a person, so it gets no item. */
+  appUserId?: string;
   /** Whether the current Conversation is not public. */
   inPrivateConversation: boolean;
   reader: InboxItemReader;
@@ -457,11 +456,14 @@ export interface InboxItemAgentScope {
 export async function readInboxItemAgentScope(
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "resolveActorIdentity" | "source"
+    "actorIsApp" | "conversationId" | "resolveActorIdentity" | "source"
   >,
 ): Promise<InboxItemAgentScope> {
-  // Only a user Identity resolves, so a system Actor has none.
-  const actor = await context.resolveActorIdentity?.();
+  // Only a user Identity resolves, so a system Actor has none. An app can
+  // have a user Identity and a User, but it is not a person.
+  const resolved = await context.resolveActorIdentity?.();
+  const actor = context.actorIsApp ? undefined : resolved;
+  const appUserId = context.actorIsApp ? resolved?.user?.id : undefined;
   const user = actor?.user;
   const automationId =
     context.source.kind === "scheduled_automation" ||
@@ -474,6 +476,7 @@ export async function readInboxItemAgentScope(
   const tenant = current?.tenant;
   return {
     actorIsPerson: actor !== undefined,
+    ...(appUserId ? { appUserId } : undefined),
     inPrivateConversation: current?.visibility !== "public",
     reader: {
       conversationId: context.conversationId,
@@ -573,8 +576,11 @@ export async function requireInboxItemLinks(args: {
 }
 
 /**
- * Check who an agent assigns a private item to. Everyone means the people
- * who can see its owner (`inboxItemForEveryoneOfOwner`). Each User must be the current Actor, a Participant of one of the given
+ * Check who an agent assigns a private item to. It cannot go to Everyone
+ * yet: the old visibility check stays for the release before this one
+ * (migration `20261125223025_inbox_item_owners`), and a later release lets
+ * it go to the people who can see its owner (`inboxItemForEveryoneOfOwner`).
+ * Each User must be the current Actor, a Participant of one of the given
  * Conversations (the current one and, for an existing item, the one that
  * added it), or the creator of the Automation that added the item. An
  * Automation run often has no Actor and no people yet, and its creator wrote
@@ -588,6 +594,11 @@ export async function requireInboxItemAssignees(args: {
   visibility: InboxItemVisibility;
 }): Promise<void> {
   if (args.visibility === "public") return;
+  if (args.assignees.everyone) {
+    throw new ToolInputError(
+      "A private item cannot be assigned to Everyone. Assign Users instead.",
+    );
+  }
   const creatorId = args.automationId
     ? await automationCreatorUserId(getDb(), args.automationId)
     : undefined;

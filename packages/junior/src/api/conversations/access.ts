@@ -1,7 +1,10 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { canExposeConversationPayload } from "@/chat/conversation-privacy";
+import {
+  canExposeConversationPayload,
+  type ConversationPrivacy,
+} from "@/chat/conversation-privacy";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -9,7 +12,6 @@ import {
   juniorSpaceMembers,
   juniorSpaces,
 } from "@/db/schema";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { conversationIdsWithParticipantUser } from "./membership";
 
 const rootConversation = alias(juniorConversations, "access_root_conversation");
@@ -37,7 +39,8 @@ export interface ConversationAccess {
   rootConversationId?: string | undefined;
   /** Provider tenant of the root Location, such as a Slack workspace. */
   tenant?: ProviderTenant;
-  visibility: JuniorDestinationVisibility | null;
+  /** Visibility of the root. Null is private. */
+  visibility: ConversationPrivacy | null;
 }
 
 /** A provider tenant, such as one Slack workspace. */
@@ -103,15 +106,15 @@ export async function readPrivateSpaceMemberships(
   return new Set(members.map((member) => member.spaceId));
 }
 
-/** The stored tree and root Destination that access reads. */
+/** The stored tree, visibility, and root Destination that access reads. */
 type ConversationAccessRow = Awaited<
   ReturnType<typeof readConversationAccessRows>
 >[number];
 
 /**
- * Read the stored tree and root Destination of each conversation. A caller
- * that reads the viewer's participant rows itself passes these rows to
- * `conversationAccessFromRows`.
+ * Read the stored tree, visibility, and root Destination of each
+ * conversation. A caller that reads the viewer's participant rows itself
+ * passes these rows to `conversationAccessFromRows`.
  */
 export async function readConversationAccessRows(
   db: JuniorDatabase,
@@ -127,7 +130,7 @@ export async function readConversationAccessRows(
       rootParentConversationId: rootConversation.parentConversationId,
       rootRootConversationId: rootConversation.rootConversationId,
       destinationId: rootDestination.id,
-      visibility: rootDestination.visibility,
+      visibility: juniorConversations.visibility,
       provider: rootDestination.provider,
       providerTenantId: rootDestination.providerTenantId,
       spaceId: rootSpace.id,
@@ -241,6 +244,44 @@ export function canAddConversationMessages(
 ): boolean {
   if (access?.privateSpaceId) return access.canViewPrivateContent;
   return Boolean(access?.isParticipant || access?.visibility === "public");
+}
+
+/**
+ * Whether the viewer may add a person to a Conversation's Participants. In a
+ * public one, anyone who can post may Invite; it grants no access. In a
+ * private one, only a Participant may, and it shares the Conversation. A
+ * private Space owns its audience, and a Slack-backed private Conversation
+ * follows its Slack channel, so neither takes Invites.
+ */
+export function canInviteToConversation(
+  access: ConversationAccess | undefined,
+): boolean {
+  if (!access?.rootConversationId || access.privateSpaceId) return false;
+  if (access.visibility === "public") return true;
+  return access.isParticipant && !isSlackBacked(access);
+}
+
+/**
+ * Whether Leave ends the viewer's access: it removes their own Participant
+ * row. Only a private Conversation with an explicit Participant list has
+ * one. Elsewhere Leave only takes it out of their feed, because the
+ * Conversation is public, or a private Space or Slack channel decides who
+ * reads it.
+ */
+export function leaveEndsAccess(
+  access: ConversationAccess | undefined,
+): boolean {
+  return Boolean(
+    access?.rootConversationId &&
+    access.visibility !== "public" &&
+    !access.privateSpaceId &&
+    access.isParticipant &&
+    !isSlackBacked(access),
+  );
+}
+
+function isSlackBacked(access: ConversationAccess): boolean {
+  return access.tenant?.provider === "slack";
 }
 
 /**

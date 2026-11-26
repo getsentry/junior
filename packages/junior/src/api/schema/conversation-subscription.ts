@@ -21,7 +21,21 @@ export const conversationSubscriptionResponseSchema = z
   })
   .strict();
 
-/** Invite one mentioned person, by Slack user id, to a public Conversation. */
+/**
+ * The root after the viewer left it. `archivedAt` is set when the viewer
+ * was the last subscriber, so leaving archived it for everyone.
+ */
+export const conversationLeaveResponseSchema = z
+  .object({
+    archivedAt: z
+      .string()
+      .datetime()
+      .nullable()
+      .describe("Set when the conversation is archived for everyone."),
+  })
+  .strict();
+
+/** Invite one mentioned person, by Slack user id, to a Conversation. */
 export const conversationInviteBodySchema = z
   .object({ slackUserId: z.string().min(1).max(64) })
   .strict();
@@ -36,6 +50,9 @@ export type ConversationInviteBody = z.infer<
 >;
 export type ConversationInviteResponse = z.infer<
   typeof conversationInviteResponseSchema
+>;
+export type ConversationLeaveResponse = z.infer<
+  typeof conversationLeaveResponseSchema
 >;
 export type ConversationSubscriptionBody = z.infer<
   typeof conversationSubscriptionBodySchema

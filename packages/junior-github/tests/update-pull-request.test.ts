@@ -379,6 +379,122 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     );
   });
 
+  it("asks only the requester to review a draft, once", async () => {
+    const actor = { platform: "system", userId: "system" };
+    const { fetch, tool } = toolContext(undefined, {
+      actor,
+      workOwner: {
+        kind: "person",
+        user: { identities: [{ provider: "github", handle: "BYK" }] },
+      },
+    });
+    const draftPull = {
+      base: { ref: "main" },
+      body: "Body",
+      draft: true,
+      merged: false,
+      html_url: "https://github.com/getsentry/junior/pull/691",
+      number: 691,
+      state: "open",
+      title: "Title",
+    };
+    const reviewer = (input: {
+      requested: string[];
+      reviews: Array<{ state: string }>;
+    }) =>
+      new Response(
+        JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                reviewRequests: {
+                  nodes: input.requested.map((login) => ({
+                    requestedReviewer: { __typename: "User", login },
+                  })),
+                },
+                reviews: { nodes: input.reviews },
+              },
+            },
+          },
+        }),
+      );
+    const request = { repo: "getsentry/junior", pull_request: 691 } as const;
+
+    // A dismissed review counts as no review, so GitHub asks them.
+    fetch
+      .mockResolvedValueOnce(new Response(JSON.stringify(draftPull)))
+      .mockResolvedValueOnce(
+        reviewer({ requested: [], reviews: [{ state: "DISMISSED" }] }),
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 201 }));
+    await expect(
+      tool.execute?.(
+        { ...request, request_review: true },
+        { toolCallId: "ask-requester" },
+      ),
+    ).resolves.toMatchObject({ draft: true, review_requested: true });
+    const ask = fetch.mock.calls.at(-1)?.[0] as {
+      operation: string;
+      request: Request;
+    };
+    expect(ask.operation).toBe("github.pull.request_reviewers");
+    expect(ask.request.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/pulls/691/requested_reviewers",
+    );
+    await expect(ask.request.clone().json()).resolves.toEqual({
+      reviewers: ["BYK"],
+    });
+
+    // A comment-only review ends GitHub's request but is not a review that
+    // the query reads, so GitHub asks them again.
+    fetch
+      .mockResolvedValueOnce(new Response(JSON.stringify(draftPull)))
+      .mockResolvedValueOnce(reviewer({ requested: [], reviews: [] }))
+      .mockResolvedValueOnce(new Response("{}", { status: 201 }));
+    await expect(
+      tool.execute?.(
+        { ...request, request_review: true },
+        { toolCallId: "ask-requester-after-comment" },
+      ),
+    ).resolves.toMatchObject({ review_requested: true });
+    expect(fetch.mock.calls.at(-1)?.[0]).toMatchObject({
+      operation: "github.pull.request_reviewers",
+    });
+
+    // GitHub already asks them, their approved draft's item asks them to
+    // mark it ready, or the review-again flow owns their change request: no
+    // new request.
+    for (const state of [
+      { requested: ["byk"], reviews: [] },
+      { requested: [], reviews: [{ state: "APPROVED" }] },
+      { requested: [], reviews: [{ state: "CHANGES_REQUESTED" }] },
+    ]) {
+      fetch
+        .mockResolvedValueOnce(new Response(JSON.stringify(draftPull)))
+        .mockResolvedValueOnce(reviewer(state));
+      const calls = fetch.mock.calls.length;
+      const result = await tool.execute?.(
+        { ...request, request_review: true },
+        { toolCallId: "ask-requester-again" },
+      );
+      expect(result).toMatchObject({
+        review_requested: state.requested.length > 0,
+      });
+      expect(fetch.mock.calls.length - calls).toBe(2);
+    }
+  });
+
+  it("does not ask for a review when the requester has no linked GitHub account", async () => {
+    const { fetch, tool } = toolContext();
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", pull_request: 691, request_review: true },
+        { toolCallId: "ask-unlinked" },
+      ),
+    ).rejects.toThrow("has no linked GitHub account");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("converts to draft through GraphQL and skips no-op draft changes", async () => {
     const { fetch, tool } = toolContext();
     const readyPull = {

@@ -19,6 +19,7 @@ import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { InboxItemPayload } from "@/api/schema";
 import {
+  juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorInboxItemAssignees,
@@ -182,9 +183,10 @@ async function inboxOf(email: string): Promise<InboxItemPayload[]> {
   return ((await response.json()) as { items: InboxItemPayload[] }).items;
 }
 
-/** Give the issue's Conversation a private Destination. */
+/** Make the issue's Conversation and its Destination private. */
 async function makeConversationPrivate(): Promise<void> {
   await getDb().update(juniorDestinations).set({ visibility: "private" });
+  await getDb().update(juniorConversations).set({ visibility: "private" });
 }
 
 describe("the Inbox item of an issue that Junior created", () => {

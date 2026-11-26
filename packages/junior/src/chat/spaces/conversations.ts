@@ -7,6 +7,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { stopConversation } from "@/chat/conversations/stop";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -55,7 +56,7 @@ export type SpaceMoveRefusal =
 
 /**
  * Put one root in a Space, or take it out of every Space with null. The root
- * gets the Space's visibility on its own Location. The caller checks who may
+ * gets the Space's visibility, on itself and on its own Location. The caller checks who may
  * move it out of `fromSpaceId`, the Space that it read before the move.
  */
 export async function setConversationSpace(
@@ -114,6 +115,7 @@ export async function setConversationSpace(
         .update(juniorDestinations)
         .set({ visibility: "private", updatedAt: new Date() })
         .where(eq(juniorDestinations.id, root.locationId));
+      await setConversationVisibility(executor, conversationId, "private");
     }
     await db
       .update(juniorConversations)

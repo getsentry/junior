@@ -6,7 +6,11 @@ import {
   slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  toolOutput,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 const alice = {
@@ -104,6 +108,8 @@ describe("Event automation credentials", () => {
 
     expect(completedToolCalls("createAutomation", conversation)).toEqual([]);
     expect(completedToolCalls("deleteAutomation", conversation)).toEqual([]);
+    // Alice is not in the Conversation and did not ask, so nothing asks her.
+    expect(toolCallsOf("addInboxItem", conversation)).toEqual([]);
     expect(
       conversation.toolCalls.filter(
         (call) =>

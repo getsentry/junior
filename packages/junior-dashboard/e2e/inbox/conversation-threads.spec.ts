@@ -3,6 +3,7 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { waitForOutlineRead } from "../harness";
+import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   const ROOT_ID = "internal:dashboard-qa";
@@ -473,10 +474,8 @@ test.describe("new UI", () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
-        const feed = await response.json();
+        const feed = await mockFeedPage(route);
         await route.fulfill({
-          response,
           json: {
             ...feed,
             conversations: feed.conversations.map(

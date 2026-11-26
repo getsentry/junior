@@ -47,6 +47,7 @@ import {
   juniorDestinations,
   juniorSpaces,
 } from "@/db/schema";
+import { isPublicConversation } from "@/chat/conversations/sql/privacy";
 
 const MAX_LINKS = 5;
 // Lowest cosine similarity that admits a Conversation with no word match.
@@ -198,8 +199,7 @@ export async function searchConversations(
     );
   const { team } = search;
   const conditions: (SQL | undefined)[] = [
-    // The root decides visibility. Lists hide an unkept Quick question and
-    // its children.
+    // Lists hide an unkept Quick question and its children.
     isNull(roots.quickQuestionAt),
     isNull(conversations.quickQuestionAt),
     search.rootsOnly
@@ -212,7 +212,7 @@ export async function searchConversations(
       ? ne(conversations.conversationId, requesterConversationId)
       : ne(conversations.rootConversationId, requesterRootId),
     or(
-      eq(juniorDestinations.visibility, "public"),
+      isPublicConversation(conversations),
       // Conversations share a Destination only when they share an audience.
       eq(
         roots.destinationId,

@@ -27,6 +27,16 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+  // The outline builds after the transcript. Its list scrolls only as far as
+  // it must to show the active item, so where the jump leaves that item
+  // depends on where the list was. Wait for the list to show the active
+  // item at the end first, as a person sees it before they jump. Its
+  // message holds the top of the transcript viewport.
+  const latest = page
+    .getByRole("navigation", { name: "Conversation outline" })
+    .getByRole("button", { name: "Transcript message 1992 " });
+  await expect(latest).toHaveAttribute("aria-current", "location");
+  await expect(latest).toBeInViewport();
 
   // A memory jump mounts the far row of its Turn before it scrolls there.
   const details = page.getByRole("complementary", {
@@ -45,6 +55,18 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${MEMORY_CAPTURE_SEQ - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+  // The outline marks the person message at the top of the transcript, and
+  // scrolls its list to it, a few frames after the jump. Wait for both, so
+  // the shot does not catch the outline before the jump.
+  const activeItem = page
+    .getByRole("navigation", { name: "Conversation outline" })
+    .getByRole("button", { name: "Transcript message 996 with" });
+  await expect(activeItem).toHaveAttribute("aria-current", "location");
+  await expect(activeItem).toBeInViewport();
+  // The jump mark goes on a timer, so the shot waits for it to go.
+  await expect(row(transcript, MEMORY_CAPTURE_SEQ - 1)).not.toHaveAttribute(
+    "data-highlighted",
+  );
   await screenshot(page, "conversation-long-transcript-memory", {
     view: "desktop",
   });
@@ -303,6 +325,50 @@ test("keeps the current search match while earlier pages load", async ({
   ).toBeInViewport();
   releaseNext();
   await mock.pageReadsLanded();
+
+  // The jump left the latest, so clearing the search does not pin to it.
+  await search.fill("");
+  // Rows that do not match come back.
+  await expect(
+    transcript.getByText(/^Transcript message \d+[0-8] with/).first(),
+  ).toBeAttached();
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).not.toBeInViewport();
+});
+
+test("keeps the last search match in view when the search clears", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: false,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).toBeInViewport();
+
+  await page.keyboard.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Search transcript…");
+  // Every tenth message matches, so the matches sit far apart once the
+  // search clears.
+  await search.fill("9 with");
+  await expect(page.getByText("1/200", { exact: true })).toBeVisible();
+  for (let step = 0; step < 10; step++) await search.press("Enter");
+  await expect(page.getByText("11/200", { exact: true })).toBeVisible();
+  const match = transcript.getByText("Transcript message 109 ");
+  await expect(match).toBeInViewport();
+
+  await search.fill("");
+  // Rows that do not match come back.
+  await expect(
+    transcript.getByText(/^Transcript message \d+[0-8] with/).first(),
+  ).toBeAttached();
+  await expect(match).toBeInViewport();
 });
 
 test("opens far behind at the marker and jumps to the latest", async ({

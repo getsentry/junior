@@ -190,6 +190,8 @@ export interface GitHubState {
   draft: boolean;
   /** The commit at the head of the pull request. */
   headSha?: string;
+  /** When the head commit was made, as the time of the last push. */
+  headCommittedAt?: string;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
   /** When set, the next pull request read waits for it. */
@@ -200,6 +202,8 @@ export interface GitHubState {
   requestedTeams?: string[];
   /** The review requests on the pull request's timeline. */
   reviewRequests?: Array<{ at: string; login: string }>;
+  /** The review requests that a person removed, on the timeline. */
+  reviewRequestRemovals?: Array<{ actor: string; at: string; login: string }>;
   reviews: Array<{
     body?: string;
     commit_id?: string;
@@ -485,6 +489,11 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
           },
         });
       }
+      if (operationName === "PullRequestRequiredChecks") {
+        return HttpResponse.json({
+          data: { repository: { pullRequest: reviewAgainPull(github, "") } },
+        });
+      }
       if (operationName === "ReviewReactions") {
         return HttpResponse.json({
           data: {
@@ -512,7 +521,11 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                 autoMergeRequest: github.autoMerge
                   ? { enabledAt: "2026-07-02T00:00:00Z" }
                   : null,
-                commits: { nodes: [] },
+                commits: {
+                  nodes: github.headCommittedAt
+                    ? [{ commit: { committedDate: github.headCommittedAt } }]
+                    : [],
+                },
                 headRefOid: github.headSha ?? "head-1",
                 isDraft: github.draft,
                 mergeStateStatus: (mergeableState ?? "unknown").toUpperCase(),
@@ -539,6 +552,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                     })),
                     ...(github.reviewRequests ?? []).map((event) => ({
                       __typename: "ReviewRequestedEvent",
+                      createdAt: event.at,
+                      requestedReviewer: {
+                        __typename: "User",
+                        login: event.login,
+                      },
+                    })),
+                    ...(github.reviewRequestRemovals ?? []).map((event) => ({
+                      __typename: "ReviewRequestRemovedEvent",
+                      actor: graphqlActor(event.actor),
                       createdAt: event.at,
                       requestedReviewer: {
                         __typename: "User",
@@ -620,6 +642,34 @@ export async function markFeedback(
     { toolCallId: `${status}-${target.kind}-${target.id}` },
   );
 }
+
+/** The requester, who linked the GitHub account `Requester`. */
+export const requesterUsers = {
+  // Nobody else linked a GitHub account.
+  findLinkedIdentityIds: async (): Promise<Map<string, string>> => new Map(),
+  readIdentity: async (identityId: string) =>
+    identityId === "identity-requester"
+      ? {
+          identity: {
+            id: identityId,
+            provider: "slack",
+            providerSubjectId: "U123",
+          },
+          user: {
+            email: "requester@example.com",
+            id: "user-requester",
+            identities: [
+              {
+                handle: "Requester",
+                id: "identity-github",
+                provider: "github",
+                providerSubjectId: "1001",
+              },
+            ],
+          },
+        }
+      : undefined,
+};
 
 export type InboxItemCall =
   | { conversationId: string; kind: "upsert"; notice: unknown }
@@ -737,6 +787,7 @@ export function route(
     // The requester linked the GitHub account `Requester`, and each
     // reviewer in `linkedReviewers` linked theirs.
     users: {
+      ...requesterUsers,
       findLinkedIdentityIds: async (logins) =>
         new Map(
           logins.flatMap((login) => {
@@ -746,28 +797,6 @@ export function route(
               : [];
           }),
         ),
-      readIdentity: async (identityId: string) =>
-        identityId === "identity-requester"
-          ? {
-              identity: {
-                id: identityId,
-                provider: "slack",
-                providerSubjectId: "U123",
-              },
-              user: {
-                email: "requester@example.com",
-                id: "user-requester",
-                identities: [
-                  {
-                    handle: "Requester",
-                    id: "identity-github",
-                    provider: "github",
-                    providerSubjectId: "1001",
-                  },
-                ],
-              },
-            }
-          : undefined,
     },
   });
   if (!webhook) throw new Error("The GitHub plugin has no webhook route");
