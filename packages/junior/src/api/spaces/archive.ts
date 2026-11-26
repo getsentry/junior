@@ -36,9 +36,9 @@ export function createSpaceArchiveRoutes(options: {
       const { spaceId } = context.req.valid("param");
       const space = await requireMemberSpace(viewerUserId, spaceId);
       const archived = context.req.valid("json").archived;
+      const lead = await readSpaceLead(spaceId);
+      if (!lead) throwApiError(404, "Space was not found.");
       if (archived !== (space.archivedAt !== null)) {
-        const lead = await readSpaceLead(spaceId);
-        if (!lead) throwApiError(404, "Space was not found.");
         const result = await setConversationArchive(
           archived
             ? {
@@ -57,10 +57,10 @@ export function createSpaceArchiveRoutes(options: {
         if (result.status === "conflict") {
           throwApiError(409, "The Space received new activity.");
         }
-        if (result.status === "archived") {
-          await stopArchivedWork(result.archivedConversationIds, options.queue);
-        }
       }
+      // A retry after a failed stop finds the Space archived, so it stops
+      // what is still running.
+      if (archived) await stopArchivedWork(lead.conversationId, options.queue);
       return await spaceResponse(viewerUserId, spaceId);
     },
   );

@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
@@ -26,12 +26,7 @@ type ArchiveResult =
   | { status: "conflict" | "missing" }
   | { archivedAncestorId: string; status: "archived_ancestor" }
   | { status: "unarchived_children"; unarchivedChildCount: number }
-  | {
-      archivedAt: string;
-      /** The target and each descendant that this archive archived. */
-      archivedConversationIds: string[];
-      status: "archived";
-    }
+  | { archivedAt: string; status: "archived" }
   | { status: "restored" };
 
 /**
@@ -78,15 +73,14 @@ export async function setConversationArchive(
         };
       }
       const archivedAt = new Date();
-      const archivedConversationIds = [
-        args.conversationId,
-        ...unarchived.map((node) => node.conversationId),
-      ];
       // Descendants that are already archived keep their own time.
-      await setArchivedAt(db, archivedConversationIds, archivedAt);
+      await setArchivedAt(
+        db,
+        [args.conversationId, ...unarchived.map((node) => node.conversationId)],
+        archivedAt,
+      );
       return {
         archivedAt: archivedAt.toISOString(),
-        archivedConversationIds,
         status: "archived" as const,
       };
     }
@@ -142,20 +136,44 @@ export async function setConversationArchive(
 }
 
 /**
- * Stop the running work of the Conversations that an archive archived.
- * Archived work is done, so nothing in the archived tree keeps running.
+ * Stop the running work of an archived Conversation and of the archived
+ * Conversations below it. Archived work is done, so nothing in the archived
+ * tree keeps running. It reads the tree each time, so a retry stops what an
+ * earlier call left running.
  */
 export async function stopArchivedWork(
-  conversationIds: string[],
+  conversationId: string,
   queue: ConversationWorkQueue,
 ): Promise<void> {
-  const running = await getDb()
+  const db = getDb();
+  const [target] = await db
+    .select({ rootConversationId: juniorConversations.rootConversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .limit(1);
+  if (!target) return;
+  const tree = await readConversationTrees(db, [
+    target.rootConversationId ?? conversationId,
+  ]);
+  const archivedIds = [
+    tree.get(conversationId),
+    ...conversationDescendants(tree, conversationId),
+  ].flatMap((node) => (node?.archivedAt ? [node.conversationId] : []));
+  if (archivedIds.length === 0) return;
+  // A stop also stops the child agents below it, and only a direct stop of
+  // a child agent reports to its parent. So stop the target and each
+  // Conversation that is not a child agent, and let the stop reach the rest.
+  const running = await db
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
     .where(
       and(
-        inArray(juniorConversations.conversationId, conversationIds),
+        inArray(juniorConversations.conversationId, archivedIds),
         isNull(juniorConversations.stoppedAt),
+        or(
+          eq(juniorConversations.conversationId, conversationId),
+          isNull(juniorConversations.agentConfig),
+        ),
       ),
     );
   await mapBounded(running, ({ conversationId }) =>
@@ -195,7 +213,7 @@ export async function archiveConversation(
   );
   switch (result.status) {
     case "archived":
-      await stopArchivedWork(result.archivedConversationIds, services.queue);
+      await stopArchivedWork(conversationId, services.queue);
       // Archive also reads the conversation to the end for the person who
       // archived it. The archive saw no newer activity, so the end is what
       // they saw. Other participants keep their read position.
