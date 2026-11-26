@@ -1,6 +1,9 @@
 import type { User } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getDb } from "@/chat/db";
 import { setConversationSpace } from "@/chat/spaces/conversations";
+import { juniorConversations } from "@/db/schema";
 import { createSpace } from "@/chat/spaces/store";
 import { spawnChildAgent } from "../../../fixtures/agent-invocations";
 import {
@@ -98,6 +101,17 @@ describe("inbox items of a Space", () => {
     ]);
     expect(await needsYou(fixture, bob, space.id)).toEqual([
       "Name the rollback owner",
+    ]);
+
+    // A root with no stored root id is its own root, so it is still in the
+    // Space.
+    await getDb()
+      .update(juniorConversations)
+      .set({ rootConversationId: null })
+      .where(eq(juniorConversations.conversationId, ROOT));
+    expect(await needsYou(fixture, ana, space.id)).toEqual([
+      "Pick the migration window",
+      "Approve the first batch",
     ]);
   });
 

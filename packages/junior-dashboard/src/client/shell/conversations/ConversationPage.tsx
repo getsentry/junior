@@ -625,6 +625,14 @@ export function ConversationPage(props: {
     setTurnContext(undefined);
     trigger?.focus({ preventScroll: true });
   };
+  // Details show in place of the panels that hide them.
+  const revealDetails = () => {
+    if (eventOpen) setSelectedEventSeq(undefined);
+    setTurnContext(undefined);
+    quickQuestion.close();
+    focusDetailsOnOpen.current = true;
+    openDetails();
+  };
 
   const sidePanel = (
     <>
@@ -719,17 +727,9 @@ export function ConversationPage(props: {
                 leave.error ? "Could not leave." : "",
                 delivery.error ? "Could not change Slack updates." : "",
               ].filter(Boolean)}
-              onDetailsClick={() => {
-                if (eventOpen) setSelectedEventSeq(undefined);
-                setTurnContext(undefined);
-                quickQuestion.close();
-                if (showDetails) {
-                  closeDetails();
-                } else {
-                  focusDetailsOnOpen.current = true;
-                  openDetails();
-                }
-              }}
+              onDetailsClick={() =>
+                showDetails ? closeDetails() : revealDetails()
+              }
               forks={
                 detail.data?.forkedFromConversationId ||
                 detail.data?.forks?.length ? (
@@ -880,7 +880,7 @@ export function ConversationPage(props: {
                       pill={
                         lead && spaceId && !detailsShown ? (
                           <SpaceNeedsYouPill
-                            onOpen={openDetails}
+                            onOpen={revealDetails}
                             spaceId={spaceId}
                           />
                         ) : undefined

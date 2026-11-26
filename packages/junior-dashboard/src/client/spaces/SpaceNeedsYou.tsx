@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { useDetailsPanel } from "../components/DetailsPanel";
+import { useZenMode } from "../components/layout/PaneNav";
 import { DetailsCard, DetailsRow } from "../conversations/DetailsList";
 import { buildConversations, conversationDisplayTitle } from "../format";
 import { codeChangeHead } from "../inbox/codeChangeHead";
@@ -197,6 +198,7 @@ export function SpaceNeedsYouPill(props: { onOpen(): void; spaceId: string }) {
   );
   // Beside the Lead, the details list the items themselves.
   const panel = useDetailsPanel();
+  const zen = useZenMode();
   if (panel || count === 0) return null;
   return (
     <TranscriptPill
@@ -206,7 +208,11 @@ export function SpaceNeedsYouPill(props: { onOpen(): void; spaceId: string }) {
           className="size-1.5 rounded-full bg-dashboard-text-solid"
         />
       }
-      onClick={props.onOpen}
+      onClick={() => {
+        // In Zen mode, the details show once it ends.
+        if (zen.active) zen.toggle();
+        props.onOpen();
+      }}
     >
       {count} need you
     </TranscriptPill>

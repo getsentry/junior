@@ -253,7 +253,11 @@ export function inboxItemInSpace(spaceId: string): SQL {
         .from(spaceOwner)
         .innerJoin(
           spaceRoot,
-          eq(spaceRoot.conversationId, spaceOwner.rootConversationId),
+          // An older row can store no root. It is its own root.
+          eq(
+            spaceRoot.conversationId,
+            sql`coalesce(${spaceOwner.rootConversationId}, ${spaceOwner.conversationId})`,
+          ),
         )
         .where(
           and(

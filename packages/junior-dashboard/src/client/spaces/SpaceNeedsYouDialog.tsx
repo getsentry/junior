@@ -82,6 +82,9 @@ export function SpaceNeedsYouDialog(props: {
     try {
       await action.mutateAsync({ body, id: acted.id });
     } catch (failure) {
+      // The item comes back to the list, so the dialog shows it again,
+      // with the answer's draft (`useFailedInboxItemAnswer`).
+      props.onShow(acted.id, index);
       toast.add({
         description: inboxItemTitleText(acted),
         title: FAILED_TITLES[body.action],
