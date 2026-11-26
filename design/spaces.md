@@ -75,8 +75,6 @@ not need a home stays a one-off Conversation.
 
 - A Space's Lead cannot archive a Conversation that it started. This breaks
   "a Space's Lead coordinates and does not do the work".
-- A Space's Lead has no To-do list. This breaks "a Space and its Lead share
-  one name, description, and To-do list".
 - The public MCP server does not show a Conversation's Space, so the iOS app
   cannot show it. This breaks "every Conversation knows its Space".
 - A Conversation in a private Space cannot move out, and only a public
