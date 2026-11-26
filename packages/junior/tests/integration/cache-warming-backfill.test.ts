@@ -38,7 +38,7 @@ import {
 } from "@/chat/db";
 import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import { resolveGatewayModel } from "@/chat/pi/client";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { juniorConversationEvents } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
