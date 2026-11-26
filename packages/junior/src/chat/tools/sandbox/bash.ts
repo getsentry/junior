@@ -5,7 +5,9 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 // Agents waited on CI and background work with `sleep 240; check`, which
 // blocks the Turn for the whole guess. Short sleeps in wait loops are fine.
 const hasLongSleep = (command: string) =>
-  [...command.matchAll(/\bsleep\s+(\d+)/g)].some(([, s]) => Number(s) > 30);
+  [...command.matchAll(/\bsleep\s+(\d+)([mhd])?/g)].some(
+    ([, n, unit]) => Number(n) > (unit ? 0 : 30),
+  );
 
 export const bashToolDefinition = zodToolDefinition({
   annotations: {
