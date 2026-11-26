@@ -65,22 +65,38 @@ inputs:
       while the viewer's latest review still requests changes, so a viewer
       who approved since is not asked, and it drops the ask once the viewer
       comments or reviews after it.
-  viewer.requests_changes:
+  viewer.feedback:
     values: bool
     phrases:
-      true: a change request is open
-      false: no change request is open
+      true: their latest review waits for Junior's answer
+      false: their latest review does not wait for Junior's answer
+    text: >-
+      The viewer's latest review requests changes, or it is a comment-only
+      review, which Junior handles like a change request. After the viewer
+      approves, or after their review is dismissed, only a comment-only
+      review after a later ask counts. A draft never waits, because it
+      cannot merge.
+  viewer.approved:
+    values: bool
+    phrases:
+      true: they approved it
+      false: they did not approve it
+    text: >-
+      The viewer's latest review that approves or requests changes approves
+      it. The source reads it for drafts too.
   viewer.replied:
     values: bool
     phrases:
-      true: they commented or reviewed last
-      false: they did not comment or review last
+      true: they commented or reviewed after GitHub last asked them
+      false: they did not comment or review after GitHub last asked them
   viewer.shown:
-    values: [nothing, merge, review]
+    values: [nothing, merge, review, review_draft, mark_ready]
     phrases:
       nothing: they have no output
       merge: they have "Ready to merge"
       review: they have "Review requested"
+      review_draft: they have "Review requested" for the draft
+      mark_ready: they have "Review requested" to mark it ready
 commands:
   remove-reviewer: removes them from the reviewers on GitHub
 rules:
@@ -97,6 +113,7 @@ rules:
           draft: false
           auto_merge: false
           review_pending: false
+          viewer.feedback: false
           merge_state: clean
           review_outcome: not(changes_requested)
           viewer.requester: true
@@ -106,6 +123,7 @@ rules:
           draft: false
           auto_merge: false
           review_pending: false
+          viewer.feedback: false
           merge_state: unknown
           viewer.shown: merge
         output: keep
@@ -114,6 +132,7 @@ rules:
           draft: false
           auto_merge: false
           review_pending: false
+          viewer.feedback: false
           merge_state: unknown
           viewer.asked_again: false
         output: keep
@@ -130,14 +149,33 @@ rules:
   - id: pr-review-again
     rows:
       - when:
+          draft: true
+          viewer.asked_again: true
+          viewer.requester: true
+        output:
+          ask:
+            label: Review requested
+            step: to review it, then mark it ready for review
+      - when:
           viewer.asked_again: true
           viewer.requester: true
         output: { ask: { label: Review requested } }
   - id: pr-review
     rows:
+      - when: { viewer.requested: true, draft: true }
+        output:
+          ask:
+            label: Review requested
+            step: to review it, then mark it ready for review
+            dismiss: remove-reviewer
       - when: { viewer.requested: true, viewer.requester: false }
         output: { ask: { label: Review requested, dismiss: remove-reviewer } }
-      - when: { viewer.requested: true, viewer.requests_changes: false }
+      - when: { viewer.requested: true, viewer.feedback: false }
         output: { ask: { label: Review requested, dismiss: remove-reviewer } }
       - when: { viewer.requested: true, viewer.replied: false }
         output: { ask: { label: Review requested, dismiss: remove-reviewer } }
+  - id: pr-mark-ready
+    rows:
+      - when: { draft: true, viewer.approved: true, viewer.requester: true }
+        output:
+          ask: { label: Review requested, step: to mark it ready for review }

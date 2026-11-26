@@ -143,7 +143,7 @@ export function rootAggregateColumns(roots: PersonRoots) {
     active: sql<number>`(count(*) FILTER (WHERE ${conversationIsActiveSql(turnRoot)}))::integer`,
     conversations: sql<number>`count(*)::integer`,
     durationMs: sql<number>`COALESCE(sum(${roots.durationMs}), 0)::double precision`,
-    failed: sql<number>`(count(*) FILTER (WHERE ${conversationTurnFailedSql(turnRoot)} AND ${turnRoot.stoppedAt} IS NULL))::integer`,
+    failed: sql<number>`(count(*) FILTER (WHERE ${turnRoot.stoppedAt} IS NULL AND ${conversationTurnFailedSql(turnRoot)}))::integer`,
     tokens: sql<number | null>`sum(${roots.tokens})::double precision`,
   };
 }

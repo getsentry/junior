@@ -99,7 +99,10 @@ function outputPhrase(output) {
   }
   const { ask } = output;
   return {
-    gets: ask.label === undefined ? ask.content : `"${ask.label}"`,
+    gets: [
+      ask.label === undefined ? ask.content : `"${ask.label}"`,
+      ...(ask.step ? [ask.step] : []),
+    ].join(" "),
     extra: [
       ...(ask.choices ?? []).map((choice) => [choice.label, choice.command]),
       ...(ask.dismiss ? [["Dismiss", ask.dismiss]] : []),

@@ -17,6 +17,7 @@ import { useLocation, useNavigate } from "react-router";
 import { buildConversations } from "../format";
 import { patch } from "../http";
 import { withoutVersion } from "../revalidation";
+import { invalidateMemberSpaces } from "../spaces/queries";
 import type { Conversation } from "../types";
 import {
   conversationFeedCacheRows,
@@ -392,6 +393,8 @@ export function archiveConversationMutationOptions(
     onSettled: async () => {
       await Promise.all([
         invalidateConversationFeeds(queryClient),
+        // An archived Conversation leaves its Space's roll-up.
+        invalidateMemberSpaces(queryClient),
         // Location and Person pages count and list archived Conversations.
         // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The client does not know which Location lists it.
         queryClient.invalidateQueries({ queryKey: ["dashboard", "locations"] }),

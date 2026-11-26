@@ -38,16 +38,38 @@ also wake a Conversation or run an Event automation.
   each comment of that change request addressed or declined and the
   required checks pass. A comment that Junior pushes back on or defers is
   declined. Pushes, merges of the base branch, and replies do not ask.
-  When the requester comments or reviews, Junior acts next, and the Inbox
-  stops asking. A requester who approved since is not asked. The Inbox
-  item says why it asks: every comment is handled, or the checks now pass.
+  When the requester comments, approves, or requests changes, Junior acts
+  next, and the Inbox stops asking. A requester who approved since is not
+  asked. The Inbox item says why it asks: every comment is handled, or the
+  checks now pass.
+- A comment-only review is not an answer to a review ask. Junior handles
+  it like a change request: the ask closes while Junior works, and once
+  Junior answers and the checks pass, Junior asks the requester to review
+  again.
+- A ready Junior PR always has an Inbox ask (review or merge) or a pending
+  GitHub review request for its requester. When it asks nothing of the
+  requester, Junior asks for the requester's review on GitHub once the
+  required checks pass.
+  A push does not ask a requester who has already reviewed or commented.
+- When the requester removes their own review request, Junior does not ask
+  them again until someone asks them again on GitHub.
 - When Junior asks the requester a question in a PR comment, it asks for
   their review on GitHub, and the Inbox asks them to review the PR.
+- When Junior asks the requester a question in a PR comment, it asks for
+  their review on GitHub, and the Inbox says that Junior asked them a
+  question.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
+- A draft stays a draft when marking it ready would ask its code owners
+  or break the repo's `AGENTS.md`, unless the requester said to mark it
+  ready. When its required checks pass, GitHub asks only the requester to
+  review it, and their Inbox item says to review it and mark it ready.
+  Junior posts no message about the draft. When the requester approves a
+  draft that Junior held, Junior marks it ready, so GitHub asks its code
+  owners only after the requester has looked.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When GitHub says that it can merge
   and no reviewer requests changes, the requester gets a "Ready to merge"
@@ -55,6 +77,9 @@ also wake a Conversation or run an Event automation.
   it too, and the item tells the requester to review it before they merge.
   When a review is requested and still pending, the PR asks for that review
   instead, even where the repo allows merging without one.
+- When GitHub fails the next-action read for a while (rate limit or
+  outage), Junior syncs the pull request again later, after the rate limit
+  resets. A failed webhook never leaves a stale action in place.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 - GitHub is the source of truth for GitHub state. When GitHub is down,
@@ -65,22 +90,32 @@ also wake a Conversation or run an Event automation.
 <!-- Generated from inbox-kinds/github-pull-request.yaml. -->
 - `pr-ended` When it merged or closed, nobody gets it.
 - `pr-merge` When it is open, it is not a draft, auto-merge is off, no
-  review is pending, GitHub reports that it can merge, and no reviewer
-  requests changes, the requester gets "Ready to merge". When it is open, it
-  is not a draft, auto-merge is off, no review is pending, GitHub still
-  computes its merge state, and either they have "Ready to merge" or Junior
-  does not ask them to review again, their output stays as it is.
+  review is pending, their latest review does not wait for Junior's answer,
+  GitHub reports that it can merge, and no reviewer requests changes, the
+  requester gets "Ready to merge". When it is open, it is not a draft,
+  auto-merge is off, no review is pending, their latest review does not wait
+  for Junior's answer, GitHub still computes its merge state, and either
+  they have "Ready to merge" or Junior does not ask them to review again,
+  their output stays as it is.
 - `pr-merge-reviewer` When it is approved, GitHub reports that it can merge,
   it is not a draft, auto-merge is off, and GitHub still requests their
   review, a reviewer gets "Ready to merge".
-- `pr-review-again` When Junior handled every comment of their change
-  request, the required checks pass, they did not approve after it, and they
-  did not comment or review after Junior asked, the requester gets "Review
-  requested".
-- `pr-review` When GitHub still requests their review and either they are
-  not the requester, no change request is open, or they did not comment or
-  review last, they get "Review requested". Dismiss removes them from the
-  reviewers on GitHub.
+- `pr-review-again` When it is a draft and Junior handled every comment of
+  their change request, the required checks pass, they did not approve after
+  it, and they did not comment or review after Junior asked, the requester
+  gets "Review requested" to review it, then mark it ready for review. When
+  Junior handled every comment of their change request, the required checks
+  pass, they did not approve after it, and they did not comment or review
+  after Junior asked, the requester gets "Review requested".
+- `pr-review` When GitHub still requests their review and it is a draft,
+  they get "Review requested" to review it, then mark it ready for review.
+  Dismiss removes them from the reviewers on GitHub. When GitHub still
+  requests their review and either they are not the requester, their latest
+  review does not wait for Junior's answer, or they did not comment or
+  review after GitHub last asked them, they get "Review requested". Dismiss
+  removes them from the reviewers on GitHub.
+- `pr-mark-ready` When it is a draft and they approved it, the requester
+  gets "Review requested" to mark it ready for review.
 <!-- End of inbox-kinds/github-pull-request.yaml. -->
 
 **`github:merge_conflict`**. Source: the pull request in the GitHub cache,
@@ -102,9 +137,8 @@ and Junior's conflict fixes.
 - A pull request that Junior opens ready for review asks for a review at
   once, before the required checks pass. This breaks "asks for a review
   only when the required checks pass".
-- Some asks are only a reply in the Conversation: a draft PR that waits
-  for the requester's review, and a decision on a watched issue. They add
-  no Inbox item. This breaks "there is one way to ask a person"
+- A decision on a watched issue is only a reply in the Conversation. It
+  adds no Inbox item. This breaks "there is one way to ask a person"
   ([Inbox](./inbox.md)).
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior

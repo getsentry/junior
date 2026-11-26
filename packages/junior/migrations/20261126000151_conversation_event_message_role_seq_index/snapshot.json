@@ -1,0 +1,69 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "d643f037-e1f1-41fd-a368-e705f2818a34",
+  "prevIds": ["df7b3240-6223-4c94-ab4c-da5347b0d335"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_message_role_seq_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_message_role_seq_idx",
+        "n|idx|public.junior_conversation_events_message_role_seq_idx",
+        "e|idx|public.junior_conversation_events_message_role_seq_idx",
+        "n|rel|public.junior_conversation_events_message_role_seq_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.seq"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_message_role_seq_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "(\"payload\"->>'role')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "seq",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"type\" = 'message'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

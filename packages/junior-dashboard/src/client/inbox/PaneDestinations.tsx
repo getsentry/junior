@@ -39,11 +39,17 @@ const ICONS: Record<InboxView, LucideIcon> = {
  * list that opened the page keeps the accent text without the fill, so only
  * the page's own row is lit.
  */
-export const paneEntryClass = (mark?: PaneRowMark, phone?: boolean) =>
+export const paneEntryClass = (
+  mark?: PaneRowMark,
+  phone?: boolean,
+  /** False when the row has no leading icon, so its title takes that room. */
+  icon = true,
+) =>
   cn(
     // A count adds its own column, so a row without one gives its title the
     // full width, with no gap left for a count.
-    "grid min-w-0 grid-flow-col grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+    icon ? "grid-cols-[1rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]",
+    "grid min-w-0 grid-flow-col items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
     phone ? "h-11" : "h-8",
     mark === "page"
       ? "bg-dashboard-accent/[0.12]"

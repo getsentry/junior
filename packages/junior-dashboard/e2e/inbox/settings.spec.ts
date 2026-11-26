@@ -12,6 +12,7 @@ import {
 import { showPlainTextPush } from "../push-notification";
 import { screenshot } from "../screenshot";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../../src/mock-reporting/fixtures";
+import { mockNotificationSettings } from "../mock-reports";
 
 // Hold the API token list until `release`, so the sections above MCP grow
 // after the page opens.
@@ -133,21 +134,19 @@ test.describe("new UI", () => {
     });
     // The e2e install has no Web Push keys, so return a configured install.
     await page.route("**/api/notifications", async (route) => {
-      const response = await route.fetch();
       await route.fulfill({
-        json: { ...(await response.json()), publicKey: "test-public-key" },
-        response,
+        json: {
+          ...(await mockNotificationSettings()),
+          publicKey: "test-public-key",
+        },
       });
     });
     const subscriptions: unknown[] = [];
     await page.route("**/api/notifications/subscriptions", async (route) => {
       subscriptions.push(route.request().postDataJSON());
-      const response = await page.request.get(
-        `${dashboard.baseURL}/api/notifications`,
-      );
       await route.fulfill({
         json: {
-          ...(await response.json()),
+          ...(await mockNotificationSettings()),
           deviceCount: 1,
           publicKey: "test-public-key",
         },

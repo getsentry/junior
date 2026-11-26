@@ -1,4 +1,3 @@
-import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
@@ -8,6 +7,7 @@ import { waitForRequestsToEnd, waitForSettingsReads } from "../harness";
 import { desktop, mobile, screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
 import { expectRequestBudget } from "../request-budget";
+import { mockConversationDetail } from "../mock-reports";
 
 test.describe("new UI", () => {
   const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
@@ -61,14 +61,8 @@ test.describe("new UI", () => {
     await page.route(
       `**/api/conversations/${encodeURIComponent(conversationId)}*`,
       async (route) => {
-        const response = await route.fetch({
-          headers: {
-            ...route.request().headers(),
-            [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-          },
-        });
-        const detail = await response.json();
-        const last = detail.events.at(-1);
+        const detail = await mockConversationDetail(route);
+        const last = detail.events.at(-1)!;
         const events = inboxItemId
           ? [
               ...detail.events,
@@ -90,7 +84,6 @@ test.describe("new UI", () => {
             ]
           : detail.events;
         await route.fulfill({
-          response,
           json: { ...detail, events, isParticipant: true },
         });
       },

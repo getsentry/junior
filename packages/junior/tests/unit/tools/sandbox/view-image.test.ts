@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
@@ -92,5 +93,24 @@ describe("viewImage", () => {
     await expect(tool.execute?.({ path: "large.png" }, {})).rejects.toThrow(
       "image exceeds 5242880 bytes",
     );
+  });
+
+  it("scales a wide image and says how its pixel coordinates changed", async () => {
+    const wide = await sharp({
+      create: { width: 4200, height: 288, channels: 3, background: "#000" },
+    })
+      .png()
+      .toBuffer();
+    const tool = createViewImageTool(workspace(wide), () => true);
+
+    const result = await tool.execute?.({ path: "wide.png" }, {});
+
+    expect(result?.content).toEqual([
+      {
+        type: "text",
+        text: "Scaled from 4200x288 to 2576x177 px to fit model image limits. Pixel coordinates refer to the scaled image.",
+      },
+      expect.objectContaining({ type: "image", mimeType: "image/png" }),
+    ]);
   });
 });

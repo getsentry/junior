@@ -65,8 +65,9 @@ describe("nested child agents", () => {
       const child = await spawn(harness, "nested-child");
       const helper = await spawn(harness, "nested-helper", child);
       const grandHelper = await spawn(harness, "nested-grand-helper", helper);
-      // Each child's own child agent still works, so these Turns end with no
-      // result.
+      // Each child's own child agent still works. These Turns end with no
+      // reply, and the child's update still reaches its parent as a
+      // message.
       for (const conversationId of [child, helper]) {
         await finishTask(harness, conversationId);
       }
@@ -101,11 +102,12 @@ describe("nested child agents", () => {
             conversationId: slackParentConversationId,
           })
         )?.messages ?? [];
-      expect(parentMessages).toHaveLength(1);
-      expect(parentMessages[0]!.input.text).toMatch(
-        /^<agent-result [^>]*status="done"/,
-      );
-      expect(parentMessages[0]!.input.text).toContain("Final answer: 42.");
+      expect(parentMessages.map((message) => message.input.text)).toEqual([
+        expect.stringMatching(/^<agent-message [^>]*source="child_agent"/),
+        expect.stringMatching(
+          /^<agent-result [^>]*status="done"[\s\S]*Final answer: 42\./,
+        ),
+      ]);
     } finally {
       await harness.close();
     }
@@ -171,7 +173,7 @@ describe("nested child agents", () => {
     }
   });
 
-  it("reports a Task whose helper ended its work with noReply", async () => {
+  it("reports a Task after its helper ends its work", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     const endWith = async (
@@ -192,7 +194,7 @@ describe("nested child agents", () => {
       // The child replies while its helper works, so the parent reads a
       // message, not the child's result.
       await endWith(child, { finalText: "Partial findings." });
-      await endWith(helper, { noReply: { note: "Helper found nothing." } });
+      await endWith(helper, { finalText: "Helper found nothing." });
       await expect(texts(child)).resolves.toEqual([
         expect.stringMatching(
           /^<agent-result [^>]*status="done">\n[\s\S]*\nHelper found nothing\.\n/,
@@ -201,7 +203,7 @@ describe("nested child agents", () => {
 
       // The helper's result waits out its batch window.
       vi.setSystemTime(Date.now() + 60_000);
-      await endWith(child, { noReply: { note: "The findings stand." } });
+      await endWith(child, { finalText: "The findings stand." });
       await expect(texts(slackParentConversationId)).resolves.toEqual([
         expect.stringMatching(
           /^<agent-message [^>]*>\n[\s\S]*\nPartial findings\.\n/,

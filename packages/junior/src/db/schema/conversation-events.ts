@@ -113,6 +113,13 @@ export const juniorConversationEvents = pgTable(
         table.seq,
       )
       .where(sql`${table.type} = 'message'`),
+    // The newest Message with one role in transcript order, for status.
+    // A newest-first read stops at the first entry; in message_role_idx
+    // `created_at` comes before `seq`, so that read sorts every Message of
+    // the role.
+    index("junior_conversation_events_message_role_seq_idx")
+      .on(table.conversationId, sql`(${table.payload}->>'role')`, table.seq)
+      .where(sql`${table.type} = 'message'`),
     // The newest user instruction, for each listed Conversation. With the
     // provenance check in the predicate, a newest-first read stops at the
     // first entry. A filter on the scan instead made Postgres misestimate

@@ -85,7 +85,7 @@ export type UpdateKey =
   | { type: "stopped"; stoppedAtMs: number };
 
 /** The Event key of one update, so a retry delivers it once. */
-export function updateEventKey(conversationId: string, key: UpdateKey): string {
+function updateEventKey(conversationId: string, key: UpdateKey): string {
   const prefix = `${CORE_EVENT_NAMESPACE}:${AGENT_RESOURCE_TYPE}:${conversationId}`;
   switch (key.type) {
     case "turn":
@@ -159,7 +159,6 @@ export async function publishAgentUpdate(
     await deliverToStarter({
       actor: options.starter,
       conversationId,
-      eventKey,
       key,
       nowMs,
       queue: options.queue,

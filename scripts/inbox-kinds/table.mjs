@@ -51,6 +51,8 @@ const outputSchema = z.union([
       .strictObject({
         label: z.string().min(1).optional(),
         content: z.string().min(1).optional(),
+        // What the ask tells the person to do, such as "to mark it ready".
+        step: z.string().min(1).optional(),
         choices: z
           .array(z.strictObject({ label: z.string().min(1), command }))
           .min(1)

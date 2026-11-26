@@ -792,7 +792,7 @@ test.describe("new UI", () => {
       cumulativeDurationMs: 1_000,
       displayTitle: "Long history",
       isParticipant: true,
-      kind: "root",
+      kind: "thread",
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,

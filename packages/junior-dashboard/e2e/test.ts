@@ -51,11 +51,9 @@ export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
         await requests.expectNoneOpen();
       }
     } finally {
-      // The check lets a background read stay open, so one can still be in
-      // a route handler here. Closing the page then disposes its response,
-      // and the handler throws. Handler errors during the test still fail
-      // it.
-      await page.unrouteAll({ behavior: "ignoreErrors" });
+      // The check lets a background read stay open, so a handler can still
+      // hold its route here. Remove the handlers before the page closes.
+      await page.unrouteAll();
     }
   },
 });

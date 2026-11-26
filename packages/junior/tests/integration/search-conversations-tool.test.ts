@@ -92,7 +92,7 @@ describe("searchConversations", () => {
           channel_name: "archive",
           conversation_id: conversationId,
           excerpt: expect.stringContaining("**launch**"),
-          kind: "root",
+          kind: "thread",
           links: [
             {
               label: "getsentry/junior#1805",

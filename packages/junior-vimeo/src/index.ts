@@ -34,7 +34,6 @@ export function vimeoPlugin(
 ): PluginRegistration {
   const settings = vimeoSettings(options);
   return defineJuniorPlugin({
-    packageName: "@sentry/junior-vimeo",
     manifest: {
       name: "vimeo",
       displayName: "Vimeo",

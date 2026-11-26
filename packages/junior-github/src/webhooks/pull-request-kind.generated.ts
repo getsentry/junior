@@ -21,9 +21,21 @@ export interface Inputs {
      * comments or reviews after it.
      */
     asked_again: boolean;
-    requests_changes: boolean;
+    /**
+     * The viewer's latest review requests changes, or it is a comment-only
+     * review, which Junior handles like a change request. After the viewer
+     * approves, or after their review is dismissed, only a comment-only
+     * review after a later ask counts. A draft never waits, because it
+     * cannot merge.
+     */
+    feedback: boolean;
+    /**
+     * The viewer's latest review that approves or requests changes approves
+     * it. The source reads it for drafts too.
+     */
+    approved: boolean;
     replied: boolean;
-    shown: "nothing" | "merge" | "review";
+    shown: "nothing" | "merge" | "review" | "review_draft" | "mark_ready";
   };
 }
 
@@ -41,12 +53,31 @@ export type Outcome =
   | { kind: "ask"; rule: "pr-merge"; label: "Ready to merge" }
   | { kind: "keep"; rule: "pr-merge" }
   | { kind: "ask"; rule: "pr-merge-reviewer"; label: "Ready to merge" }
+  | {
+      kind: "ask";
+      rule: "pr-review-again";
+      label: "Review requested";
+      step: "to review it, then mark it ready for review";
+    }
   | { kind: "ask"; rule: "pr-review-again"; label: "Review requested" }
   | {
       kind: "ask";
       rule: "pr-review";
       label: "Review requested";
+      step: "to review it, then mark it ready for review";
       dismiss: "remove-reviewer";
+    }
+  | {
+      kind: "ask";
+      rule: "pr-review";
+      label: "Review requested";
+      dismiss: "remove-reviewer";
+    }
+  | {
+      kind: "ask";
+      rule: "pr-mark-ready";
+      label: "Review requested";
+      step: "to mark it ready for review";
     };
 
 /** Return the output of the first rule that matches the inputs. */
@@ -67,7 +98,8 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.review_pending &&
     inputs.merge_state === "clean" &&
     inputs.review_outcome !== "changes_requested" &&
-    inputs.viewer.requester
+    inputs.viewer.requester &&
+    !inputs.viewer.feedback
   ) {
     return { kind: "ask", rule: "pr-merge", label: "Ready to merge" };
   }
@@ -78,6 +110,7 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.auto_merge &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
+    !inputs.viewer.feedback &&
     inputs.viewer.shown === "merge"
   ) {
     return { kind: "keep", rule: "pr-merge" };
@@ -89,7 +122,8 @@ export function decide(inputs: Inputs): Outcome {
     !inputs.auto_merge &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
-    !inputs.viewer.asked_again
+    !inputs.viewer.asked_again &&
+    !inputs.viewer.feedback
   ) {
     return { kind: "keep", rule: "pr-merge" };
   }
@@ -105,10 +139,29 @@ export function decide(inputs: Inputs): Outcome {
     return { kind: "ask", rule: "pr-merge-reviewer", label: "Ready to merge" };
   }
   // `pr-review-again` row 1
+  if (inputs.draft && inputs.viewer.requester && inputs.viewer.asked_again) {
+    return {
+      kind: "ask",
+      rule: "pr-review-again",
+      label: "Review requested",
+      step: "to review it, then mark it ready for review",
+    };
+  }
+  // `pr-review-again` row 2
   if (inputs.viewer.requester && inputs.viewer.asked_again) {
     return { kind: "ask", rule: "pr-review-again", label: "Review requested" };
   }
   // `pr-review` row 1
+  if (inputs.draft && inputs.viewer.requested) {
+    return {
+      kind: "ask",
+      rule: "pr-review",
+      label: "Review requested",
+      step: "to review it, then mark it ready for review",
+      dismiss: "remove-reviewer",
+    };
+  }
+  // `pr-review` row 2
   if (!inputs.viewer.requester && inputs.viewer.requested) {
     return {
       kind: "ask",
@@ -117,8 +170,8 @@ export function decide(inputs: Inputs): Outcome {
       dismiss: "remove-reviewer",
     };
   }
-  // `pr-review` row 2
-  if (inputs.viewer.requested && !inputs.viewer.requests_changes) {
+  // `pr-review` row 3
+  if (inputs.viewer.requested && !inputs.viewer.feedback) {
     return {
       kind: "ask",
       rule: "pr-review",
@@ -126,13 +179,22 @@ export function decide(inputs: Inputs): Outcome {
       dismiss: "remove-reviewer",
     };
   }
-  // `pr-review` row 3
+  // `pr-review` row 4
   if (inputs.viewer.requested && !inputs.viewer.replied) {
     return {
       kind: "ask",
       rule: "pr-review",
       label: "Review requested",
       dismiss: "remove-reviewer",
+    };
+  }
+  // `pr-mark-ready` row 1
+  if (inputs.draft && inputs.viewer.requester && inputs.viewer.approved) {
+    return {
+      kind: "ask",
+      rule: "pr-mark-ready",
+      label: "Review requested",
+      step: "to mark it ready for review",
     };
   }
   return { kind: "nothing" };

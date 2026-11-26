@@ -43,7 +43,9 @@ struct RootView: View {
       } else {
         // Half-screen Split View and Stage Manager windows can be regular
         // but too narrow for the list beside the open item.
-        GeometryReader { shell(split: sizeClass == .regular && $0.size.width >= splitMinWidth) }
+        GeometryReader {
+          shell(split: sizeClass == .regular && ($0.size.width >= splitMinWidth || $0.bookFold != nil))
+        }
       }
     }
     .background(Tokens.bg.ignoresSafeArea())

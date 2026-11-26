@@ -26,6 +26,7 @@
     "provider-state:check": "node scripts/check.mjs provider-state",
     "reply-rendering:check": "node scripts/check.mjs reply-rendering",
     "lockfile-families:check": "node scripts/check.mjs lockfile-families",
+    "path-case:check": "node scripts/check.mjs path-case",
     "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts packages/junior-dashboard/oxlint/*.test.ts",
     "test-architecture:check": "node scripts/check.mjs test-architecture",
     "type-assertions:check": "node scripts/check.mjs type-assertions",
@@ -55,7 +56,8 @@
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck-coverage:check": "node scripts/check.mjs typecheck-coverage",
     "typecheck": "pnpm -r run typecheck && tsc --noEmit -p tools/oxlint && tsc --noEmit -p tools/configs",
-    "skills:check": "pnpm --filter @sentry/junior skills:check"
+    "skills:check": "pnpm --filter @sentry/junior skills:check",
+    "plugin-package-content:check": "node scripts/check.mjs plugin-package-content"
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged",

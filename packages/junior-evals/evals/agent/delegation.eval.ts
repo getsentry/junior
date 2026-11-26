@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { mockDatabaseDocs } from "@junior-evals/fixture/database-docs";
-import { slackMention } from "@junior-evals/fixture/inputs";
+import { slackMention, webMessage } from "@junior-evals/fixture/inputs";
 import {
   completedToolCalls,
   type ToolCall,
@@ -19,7 +19,7 @@ type TodosInput = {
   update?: Array<{ assignee?: string | null }> | null;
 };
 
-/** Assignees that `updateTodos` calls set on new or changed To-dos. */
+/** Assignees that `todos_updateTodos` calls set on new or changed To-dos. */
 function todoAssignees(calls: ToolCall[]): string[] {
   return calls.flatMap((call) => {
     const input = (call.input as TodosInput | undefined) ?? {};
@@ -70,7 +70,7 @@ describe("Implicit Delegation", () => {
     // The checklist waits on the first task. Only a To-do keeps it if
     // history is compacted before the result arrives.
     expect(
-      todoAssignees(completedToolCalls("updateTodos", conversation)),
+      todoAssignees(completedToolCalls("todos_updateTodos", conversation)),
     ).toEqual(expect.arrayContaining([expect.not.stringMatching(/^self$/i)]));
   });
 
@@ -91,7 +91,7 @@ describe("Implicit Delegation", () => {
     );
 
     // To-dos hold only work that outlives the Turn.
-    expect(completedToolCalls("updateTodos", conversation)).toEqual([]);
+    expect(completedToolCalls("todos_updateTodos", conversation)).toEqual([]);
     expect(conversation.replies).toHaveLength(1);
   });
 
@@ -104,5 +104,32 @@ describe("Implicit Delegation", () => {
 
     expect(completedToolCalls("startAgent", conversation)).toEqual([]);
     expect(conversation.replies).toHaveLength(1);
+  });
+
+  // A Lead's `startConversation` makes a web root whose first message is the
+  // brief, sent as the person, so this web message is that root's first
+  // Turn. The case measures only whether the root hands its one work item to
+  // a child agent, which it does in its first calls, so a budget of 3 keeps
+  // the build short.
+  test("when a Conversation is asked for one long code change, do it here and do not hand it to a child agent", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 3 } });
+    const conversation = await run(
+      webMessage(
+        [
+          "In acme/storefront, build one reusable coupon-code input for the cart and checkout pages. Today each page has its own copy, and neither shows why a code was rejected.",
+          "",
+          "Do this:",
+          "1. Find every place the UI takes a coupon code today.",
+          "2. Build one component on the existing design system: validation on submit, an error message from the API, and a clear button. It must work on a phone.",
+          "3. Replace both copies with it.",
+          "4. Add unit tests for the component.",
+          "5. Open a pull request and bring it to me only once it is ready for review: checks passing, not a draft.",
+        ].join("\n"),
+      ),
+    );
+
+    expect(completedToolCalls("startAgent", conversation)).toEqual([]);
   });
 });

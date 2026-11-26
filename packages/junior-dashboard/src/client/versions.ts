@@ -1,20 +1,8 @@
-import {
-  type QueryClient,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import {
-  type RefObject,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import {
   type Versions,
   VERSIONS_CONVERSATION_LIMIT,
-  VERSIONS_STREAM_HEADER,
-  VERSIONS_STREAM_KEEPALIVE_EVENT,
   versionsSchema,
 } from "@sentry/junior/api/schema";
 
@@ -23,10 +11,11 @@ import {
   conversationDetailIsLive,
   conversationDetailQueryKey,
 } from "./conversations/queries";
-import { readDashboardResponse } from "./http";
-import { readResponseJson, recordMovedVersions } from "./sentry";
+import { fetchDashboardJson } from "./http";
+import { recordMovedVersions } from "./sentry";
 import { INBOX_ITEMS_QUERY_KEY } from "./inbox/queries";
 import { invalidateConversationFeeds } from "./conversations/conversationFeedCache";
+import { invalidateMemberSpaces } from "./spaces/queries";
 
 const VERSIONS_QUERY_KEY = ["dashboard", "versions"] as const;
 
@@ -56,30 +45,6 @@ const AWAY_POLL_MS = 10_000;
  */
 const HIDDEN_POLL_MS = 60_000;
 
-/**
- * Poll interval while the versions stream is healthy. The stream pushes each
- * change, so the poll is only a safety net.
- */
-const STREAMING_POLL_MS = 60_000;
-
-/**
- * A stream that sent nothing for this long is not healthy. The server sends a
- * keepalive each 15 s.
- */
-const STREAM_STALE_MS = 30_000;
-
-/**
- * After this many stream errors in a row with no open in between, the tab
- * polls at full speed and tries the stream again later. Each stream ends by
- * itself after about two minutes, which counts as one error before the
- * reconnect opens.
- */
-const STREAM_MAX_FAILURES = 3;
-const STREAM_RETRY_AFTER_MS = 5 * 60_000;
-
-/** On-screen details settle for this long before the stream follows them. */
-const STREAM_IDS_SETTLE_MS = 250;
-
 const READER_INPUT_EVENTS = [
   "focus",
   "keydown",
@@ -91,16 +56,6 @@ const READER_INPUT_EVENTS = [
 
 function readerIsAway(lastInputAtMs: number) {
   return Date.now() - lastInputAtMs >= AWAY_AFTER_MS;
-}
-
-function streamIsHealthy(lastStreamEventAtMs: number) {
-  return Date.now() - lastStreamEventAtMs < STREAM_STALE_MS;
-}
-
-function versionsPath(path: string, conversationIds: readonly string[]) {
-  return conversationIds.length
-    ? `${path}?${new URLSearchParams({ conversationIds: conversationIds.join(",") })}`
-    : path;
 }
 
 /** Name the feed-row inputs whose `name:token` part differs between tokens. */
@@ -147,7 +102,7 @@ export function onScreenConversationIds(
 /**
  * Read again each detail on screen whose last read failed. No timer polls
  * an idle detail, and a detail with no good read has no token to compare, so
- * the poll and each stream event retry it here.
+ * this check is its retry.
  */
 function retryFailedDetails(client: QueryClient) {
   for (const query of client.getQueryCache().findAll({
@@ -189,9 +144,11 @@ function refreshChangedReads(
       ? movedFeedInputs(previous.conversations, next.conversations)
       : [],
   );
-  // Waiting Conversations outside the newest page join the feed.
+  // Waiting Conversations outside the newest page join the feed. The
+  // pane's Spaces roll up the same Conversations.
   if (moved("conversations") || moved("inboxItems")) {
     void invalidateConversationFeeds(client);
+    void invalidateMemberSpaces(client);
   }
   if (moved("inboxItems")) {
     // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- The token does not say which item moved, and each row reads its own item.
@@ -234,127 +191,14 @@ function refreshChangedReads(
 }
 
 /**
- * Keep the versions stream open while the tab shows, and apply each pushed
- * `Versions` like a poll result. The stream follows the details on screen:
- * when they change, it opens again with the new ids. `lastEventAtMs` holds
- * when the stream last spoke, 0 while it is closed. `onDown` runs when the
- * stream gives up, so the poll can speed up at once.
- */
-function useVersionsStream(args: {
-  conversationId: string | undefined;
-  enabled: boolean;
-  lastEventAtMs: RefObject<number>;
-  onDown: () => void;
-}) {
-  const { conversationId, enabled, lastEventAtMs, onDown } = args;
-  const client = useQueryClient();
-  const [idsKey, setIdsKey] = useState(() =>
-    onScreenConversationIds(client, conversationId).join(","),
-  );
-  const [blocked, setBlocked] = useState(false);
-
-  useEffect(() => {
-    let settle: ReturnType<typeof setTimeout> | undefined;
-    const update = () =>
-      setIdsKey(onScreenConversationIds(client, conversationId).join(","));
-    update();
-    const unsubscribe = client.getQueryCache().subscribe(() => {
-      clearTimeout(settle);
-      settle = setTimeout(update, STREAM_IDS_SETTLE_MS);
-    });
-    return () => {
-      clearTimeout(settle);
-      unsubscribe();
-    };
-  }, [client, conversationId]);
-
-  useEffect(() => {
-    if (!blocked) return;
-    const retry = setTimeout(() => setBlocked(false), STREAM_RETRY_AFTER_MS);
-    return () => clearTimeout(retry);
-  }, [blocked]);
-
-  useEffect(() => {
-    if (!enabled || blocked) return;
-    const conversationIds = idsKey ? idsKey.split(",") : [];
-    let source: EventSource | undefined;
-    const close = () => {
-      source?.close();
-      source = undefined;
-      lastEventAtMs.current = 0;
-    };
-    const open = () => {
-      if (source) return;
-      const opened = new EventSource(
-        versionsPath("/api/versions/stream", conversationIds),
-      );
-      source = opened;
-      let failures = 0;
-      // The slow poll would wait up to a minute to read a failed detail
-      // again, so each stream event, at least one per keepalive, retries it.
-      const heard = () => {
-        lastEventAtMs.current = Date.now();
-        failures = 0;
-        retryFailedDetails(client);
-      };
-      // Not on `open`: a stream that connects and then closes at once, such
-      // as one whose first read fails, must count as a failure.
-      opened.addEventListener(VERSIONS_STREAM_KEEPALIVE_EVENT, heard);
-      opened.addEventListener("message", (event: MessageEvent<string>) => {
-        heard();
-        const next = versionsSchema.safeParse(JSON.parse(event.data));
-        if (!next.success) return;
-        refreshChangedReads(
-          client,
-          client.getQueryData<Versions>(VERSIONS_QUERY_KEY),
-          next.data,
-          conversationIds,
-        );
-        client.setQueryData(VERSIONS_QUERY_KEY, next.data);
-      });
-      // A stream that ends at its cap fires `error` and reconnects. A refused
-      // stream, such as a 204 when push is off, closes for good.
-      opened.addEventListener("error", () => {
-        failures += 1;
-        if (
-          opened.readyState !== EventSource.CLOSED &&
-          failures < STREAM_MAX_FAILURES
-        ) {
-          return;
-        }
-        close();
-        setBlocked(true);
-        onDown();
-      });
-    };
-    // Visibility opens and closes the stream here, not through state: a
-    // render would reset the poll's timer, and a hidden tab still gets the
-    // check that was due.
-    const sync = () =>
-      document.visibilityState === "visible" ? open() : close();
-    sync();
-    document.addEventListener("visibilitychange", sync);
-    return () => {
-      document.removeEventListener("visibilitychange", sync);
-      close();
-    };
-  }, [blocked, client, enabled, idsKey, lastEventAtMs, onDown]);
-}
-
-/**
  * Poll one cheap change check for the whole tab, in place of separate polls
  * of the feed, spend, Inbox items, and each idle Conversation on screen.
- * When the server can push the same tokens, a stream carries them and the
- * poll slows to a safety net. When the stream fails, the poll runs at full
- * speed again.
  */
 export function useVersionsPoll(
   conversationId: string | undefined,
   enabled: boolean,
 ) {
   const lastInputAtMs = useRef(Date.now());
-  const lastStreamEventAtMs = useRef(0);
-  const [streamAvailable, setStreamAvailable] = useState(false);
   // The Conversations on screen change the request, not the cached tokens,
   // so they stay out of the key. Each detail token is compared with its
   // detail.
@@ -365,41 +209,28 @@ export function useVersionsPoll(
     queryFn: async ({ client, signal }) => {
       const previous = client.getQueryData<Versions>(VERSIONS_QUERY_KEY);
       const conversationIds = onScreenConversationIds(client, conversationId);
-      const response = await readDashboardResponse(
-        versionsPath("/api/versions", conversationIds),
+      const next = await fetchDashboardJson(
+        versionsSchema,
+        conversationIds.length
+          ? `/api/versions?${new URLSearchParams({ conversationIds: conversationIds.join(",") })}`
+          : "/api/versions",
         signal,
       );
-      const next = await readResponseJson(response, versionsSchema);
-      setStreamAvailable(response.headers.get(VERSIONS_STREAM_HEADER) === "1");
-      retryFailedDetails(client);
-      // The stream wrote tokens while this check was in flight and refreshed
-      // their reads. This answer can be older, so keep the stream's.
-      const current = client.getQueryData<Versions>(VERSIONS_QUERY_KEY);
-      if (current && current !== previous) return current;
       refreshChangedReads(client, previous, next, conversationIds);
+      retryFailedDetails(client);
       return next;
     },
     // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The versions poll tells every other query when to refresh.
     refetchInterval: () =>
       document.visibilityState !== "visible"
         ? HIDDEN_POLL_MS
-        : streamIsHealthy(lastStreamEventAtMs.current)
-          ? STREAMING_POLL_MS
-          : readerIsAway(lastInputAtMs.current)
-            ? AWAY_POLL_MS
-            : VERSIONS_POLL_MS,
+        : readerIsAway(lastInputAtMs.current)
+          ? AWAY_POLL_MS
+          : VERSIONS_POLL_MS,
     refetchIntervalInBackground: true,
     retry: false,
     // Check at once when the tab shows again.
     staleTime: 0,
-  });
-  // `refetch` keeps its identity, so the stream does not open again.
-  const pollNow = useCallback(() => void refetch(), [refetch]);
-  useVersionsStream({
-    conversationId,
-    enabled: enabled && streamAvailable,
-    lastEventAtMs: lastStreamEventAtMs,
-    onDown: pollNow,
   });
   useEffect(() => {
     const onInput = () => {

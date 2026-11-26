@@ -700,6 +700,20 @@ import {
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { recordTurnStart } from "../../fixtures/turn-start";
+import { coreSystemPromptRegistrations } from "@/chat/plugins/core-system-prompts";
+import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
+import { buildPluginSystemPromptContributions } from "@/chat/prompt";
+
+// The mocked core blocks, then the guidance of core registrations.
+async function coreSystemPrompt(): Promise<string> {
+  const guidance = buildPluginSystemPromptContributions(
+    await getPluginSystemPromptContributions(
+      coreSystemPromptRegistrations(),
+      "slack",
+    ),
+  );
+  return `System prompt\n\n${guidance}`;
+}
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -916,10 +930,8 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[1]).toContain("searchTools");
     expect(agentInitialToolNames[1]).toContain("executeTool");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
-    expect(agentInitialSystemPrompts).toEqual([
-      "System prompt",
-      "System prompt",
-    ]);
+    const systemPrompt = await coreSystemPrompt();
+    expect(agentInitialSystemPrompts).toEqual([systemPrompt, systemPrompt]);
     expect(resumeTurnContextCounts).toEqual([1]);
     expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
     expect(turnContextInputs).toHaveLength(1);
@@ -966,7 +978,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("searchTools");
     expect(agentInitialToolNames[0]).toContain("executeTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
-    expect(agentInitialSystemPrompts).toEqual(["System prompt"]);
+    expect(agentInitialSystemPrompts).toEqual([await coreSystemPrompt()]);
     expect(capabilitySectionInputs[0]?.activeMcpCatalogs).toEqual([]);
     expect(searchMcpToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(

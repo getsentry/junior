@@ -251,7 +251,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
             input.conversationId,
             turnStartedKey(input.turnId),
           );
-          const update = await readTurnUpdate(this.events, {
+          return await readTurnUpdate(this.events, {
             conversationId: input.conversationId,
             outcome,
             // A Turn ended before it started holds none of its own events.
@@ -260,19 +260,6 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
             turnId: input.turnId,
             ...(input.answer ? { answerText: input.answer.text } : undefined),
           });
-          if (!update || outcome !== "no_reply") return update;
-          // Loaded on use: its graph reaches the agent prompt, which every
-          // importer of the lifecycle would load at startup.
-          const { childWorkGoesOn } =
-            await import("@/chat/agent-invocations/parent-result");
-          // A `noReply` end has nothing new while a child's work goes on, or
-          // when only the Conversation's own Watch Events started the Turn.
-          return {
-            ...update,
-            quiet:
-              (await startedByEventsOnly()) ||
-              (await childWorkGoesOn(input.conversationId)),
-          };
         },
       },
     );
