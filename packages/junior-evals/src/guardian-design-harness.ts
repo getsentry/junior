@@ -6,8 +6,9 @@
  * new Guardian plugs in as another arm with no change to the cases.
  * `GUARDIAN_DESIGN_ARM` picks the arm. The current Guardian is the default.
  *
- * Expected failures are the point of this suite: a failing case names a gap
- * between the design and the arm. Its CI job never gates a merge.
+ * These cases run in `evals:guardian` and gate like the rest of it. A failing
+ * case names a gap between the design and the arm, so the check stays red
+ * until an arm meets the design. Do not mark a case as an expected failure.
  */
 import {
   createHarness,
