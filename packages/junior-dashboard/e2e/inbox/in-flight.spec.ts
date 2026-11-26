@@ -31,18 +31,25 @@ test.describe("new UI", () => {
       name: /Roll out payments-v42/,
     });
     await expect(pinned).toBeVisible();
-    // On hover, its `⋯` takes the place of its state on the right.
-    const pinnedState = inFlight
+    // Its pin leads the row and stays on hover, while the `⋯` shows on
+    // the right.
+    const pin = inFlight
       .getByRole("listitem")
       .filter({
         has: page.getByRole("link", { name: /Roll out payments-v42/ }),
       })
       .getByRole("img", { name: "Pinned" });
-    await expect(pinnedState).toBeVisible();
+    await expect(pin).toHaveCount(1);
+    await expect(pin).toBeVisible();
     // The shot keeps the pointer only at its own size.
     await page.setViewportSize(desktop);
     await pinned.hover();
-    await expect(pinnedState).toBeHidden();
+    await expect(
+      inFlight.getByRole("button", {
+        name: /^Open menu for Roll out payments-v42/,
+      }),
+    ).toBeVisible();
+    await expect(pin).toBeVisible();
     await screenshot(page, "inbox-in-flight-hover", {
       lightTheme: true,
       target: inFlight,

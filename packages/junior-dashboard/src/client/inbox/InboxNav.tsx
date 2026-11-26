@@ -43,6 +43,8 @@ function InFlightRow(props: {
   selected: boolean;
 }) {
   const { conversation } = props;
+  const pinned = Boolean(conversation.pinnedAt);
+  const state = conversationDisplayState(conversation);
   const drag = usePinnedRowDrag(conversation.id);
   const actions = useInboxRowActions(conversation, {
     move: drag?.move,
@@ -65,12 +67,13 @@ function InFlightRow(props: {
           aria-current={props.selected ? "page" : undefined}
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
-            // The state sits on the right, as on a Space row, so the title
-            // takes the icon column.
+            // A pin leads the row, as a Space row's tile does. A row
+            // without one gives its title the icon column. The state sits
+            // on the right.
             paneEntryClass(
               props.selected ? "page" : undefined,
               props.phone,
-              false,
+              pinned,
             ),
             // Phones always show the `⋯`, so the title stops before it.
             "max-sm:pr-10",
@@ -84,6 +87,12 @@ function InFlightRow(props: {
           draggable={drag ? false : undefined}
           to={conversationPath(conversation.id)}
         >
+          {pinned ? (
+            <ConversationStateIcon
+              className="justify-self-center"
+              state="pinned"
+            />
+          ) : null}
           <span
             className={cn(fadeOverflowClass, "text-dashboard-text")}
             ref={fadeWhenOverflowing}
@@ -91,10 +100,10 @@ function InFlightRow(props: {
             {conversation.displayTitle}
           </span>
           {/* The `⋯` takes the state's place while it shows. Phones show
-              both. */}
+              both. The pin leads the row, so it does not show here too. */}
           <ConversationStateIcon
             className="sm:group-focus-within:invisible sm:group-hover:invisible sm:group-has-data-popup-open:invisible"
-            state={conversationDisplayState(conversation)}
+            state={state === "pinned" ? undefined : state}
           />
         </Link>
         <DropdownMenu modal={false} onOpenChange={actions.onMenuOpenChange}>
