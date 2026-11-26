@@ -37,12 +37,13 @@ const CHILD_AGENT_LIST_LIMIT = 200;
 /**
  * List the direct child agents of one parent Conversation, with the newest
  * activity first. The state comes from each child's Turns and mailbox, not
- * from model output. Advisor histories from before child agents also have a
- * parent edge, but only child agents store an agent config, so the listing
- * reads the agent config to leave those stored rows out. A child is
- * `running` while a Turn or mailbox input that answers its parent is open,
- * and is `failed` when its last Turn failed, also when the Turn ended with a
- * model error and execution went back to idle.
+ * from model output. Work that a person starts in a Space and advisor
+ * histories from before child agents also have a parent edge, but only
+ * child agents store an agent config, so the listing reads the agent config
+ * to leave them out. A child is `running` while a Turn or mailbox input that
+ * answers its parent is open, and is `failed` when its last Turn failed,
+ * also when the Turn ended with a model error and execution went back to
+ * idle.
  * `lastResult` is how its newest finished Turn that was not stopped ended:
  * the status that `readTurnUpdate` gives it, or `failed`.
  */

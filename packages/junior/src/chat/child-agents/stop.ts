@@ -5,7 +5,7 @@ import {
   getConversationStoppedAtMs,
   stopConversationTree,
 } from "@/chat/conversations/session-stop";
-import { isTopLevel } from "@/chat/conversations/kind-behavior";
+import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -240,8 +240,13 @@ export async function reportPersonStopToParent(
     stoppedAtMs: number;
   },
 ): Promise<void> {
+  // Only a child agent stores an agent config. Work that a person starts in
+  // a Space also has a parent edge, the Lead, but it is not a child agent.
+  if (!(await readAgentConfig(conversationId))) {
+    return;
+  }
   const conversation = await getConversationStore().get({ conversationId });
-  if (!conversation || isTopLevel(conversation)) {
+  if (!conversation) {
     return;
   }
   const work = await getConversationWorkState({

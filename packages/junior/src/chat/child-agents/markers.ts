@@ -83,8 +83,8 @@ export async function recordChildAgentEnded(
     state?: StateAdapter | undefined;
   } = {},
 ): Promise<void> {
-  // Only a child agent has a parent edge. Its parent messages are the only
-  // input with these markers.
+  // Only parent messages to a child agent have these markers, keyed by the
+  // message id, so other input of a Conversation with a parent finds none.
   const sender = await readChildConversationSender(childConversationId);
   if (!sender) {
     return;
