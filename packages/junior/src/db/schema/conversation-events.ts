@@ -7,10 +7,12 @@ import {
   primaryKey,
   text,
   uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
+import { juniorTurns } from "./turns";
 import { timestamptz } from "./timestamps";
 
 /**
@@ -34,6 +36,12 @@ export const juniorConversationEvents = pgTable(
     actorIdentityId: text("actor_identity_id").references(
       () => juniorIdentities.id,
     ),
+    // The Turn that wrote the row, such as a step's agent history. Null for a
+    // row that no Turn wrote, such as a person's message: an input can move
+    // to another Turn, so its Turn is in `junior_turn_inbox`.
+    turnId: uuid("turn_id").references(() => juniorTurns.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [
@@ -88,6 +96,10 @@ export const juniorConversationEvents = pgTable(
       table.conversationId,
       table.seq,
     ),
+    // The rows of one Turn, and the delete of a Turn, which sets them null.
+    index("junior_conversation_events_turn_idx")
+      .on(table.turnId, table.seq)
+      .where(sql`${table.turnId} is not null`),
     // Message authors of a set of Conversations. The dashboard reads them for
     // each Conversation list and detail request.
     index("junior_conversation_events_author_idx")

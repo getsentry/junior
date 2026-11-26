@@ -24,7 +24,8 @@
 // | supersedeTurn (queued) | queued                | +1          |          |          |          |
 //
 // commitStep (completed) queues the Turn instead, like commitStep (continue),
-// while the Turn has an input that no step has read.
+// while the Turn has an input that no step has read. The first claimTurn sets
+// `started_at`; later claims keep it.
 //
 // Superseded: supersedeTurn cancels a queued Turn. A running Turn instead
 // moves to normal priority, behind the Turn that supersedes it. Its next
@@ -352,6 +353,7 @@ export async function claimTurn(
         leaseExpiresAt: leaseExpiry(leaseMs),
         leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
         attempts: sql`${juniorTurns.attempts} + 1`,
+        startedAt: sql`coalesce(${juniorTurns.startedAt}, now())`,
         updatedAt: sql`now()`,
       })
       .where(
@@ -531,7 +533,7 @@ export async function commitStep(
       if (rows.length === 0) {
         return undefined;
       }
-      await appendAgentHistory(executor, turn.conversationId, [
+      await appendAgentHistory(executor, turn.conversationId, turn.turnId, [
         ...prompt.map((entry, index) =>
           entry.source === "input"
             ? {

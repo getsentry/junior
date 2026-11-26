@@ -53,6 +53,8 @@ export const juniorTurns = pgTable(
     failureEventId: text("failure_event_id"),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
     updatedAt: timestamptz("updated_at").defaultNow().notNull(),
+    // Set by the first claim. A Turn that ends while queued never starts.
+    startedAt: timestamptz("started_at"),
     endedAt: timestamptz("ended_at"),
   },
   (table) => [
