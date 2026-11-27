@@ -303,6 +303,13 @@ test.describe("new UI", () => {
         name: "Open Fix failing checks and address requested changes on the dashboard PR.",
       }),
     ).toHaveAttribute("href", /\/pull\/21572/);
+    // What blocks work leads. To-dos only inform, so they come last.
+    await expect(details.getByRole("heading", { level: 3 })).toHaveText([
+      "Agents",
+      "Waiting on",
+      "To-dos",
+      "Linked work",
+    ]);
     await screenshot(page, "conversation-details-watched-linked-work");
   });
 
@@ -451,6 +458,42 @@ test.describe("new UI", () => {
     // An archived child stays listed, with nothing left to change.
     await expect(menu).toHaveCount(0);
     await expect(child.getByRole("img", { name: "Done" })).toBeVisible();
+  });
+
+  test("Needs you lists a child's Inbox items on its parent", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA456:1770028800.000900")}`,
+    );
+    const details = page.getByRole("complementary", {
+      exact: true,
+      name: "Conversation details",
+    });
+    // A child's ask blocks its parent's work, so the parent shows it, with
+    // the child's name.
+    const card = details
+      .getByRole("region", { name: "Needs you" })
+      .getByRole("button", { name: /Pause canary rollouts/ });
+    await expect(card).toContainText(
+      /Question for you · Check the last ten Sentaur pipeline runs · /,
+    );
+    // The child keeps its row in Agents, waiting on the viewer.
+    await expect(
+      details
+        .getByRole("region", { exact: true, name: "Agents" })
+        .getByRole("listitem")
+        .filter({ hasText: "Check the last ten Sentaur pipeline runs" })
+        .getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+    await card.click();
+    await expect(
+      page
+        .getByRole("dialog")
+        .getByText("Pause canary rollouts until #418 lands?"),
+    ).toBeVisible();
   });
 
   test("a viewer who is not a Participant sees To-dos without actions", async ({

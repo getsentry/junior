@@ -253,6 +253,8 @@ const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const MANY_TURNS_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const BUSY_CONVERSATION_ID = "slack:CQA456:1770028800.000800";
 const SENTAUR_CONVERSATION_ID = "slack:CQA456:1770028800.000900";
+const SENTAUR_RUNS_THREAD_ID = "slack:CQA456:1770028800.000901";
+const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 /** Event automation run. Its trigger message id equals the conversation id. */
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
@@ -2488,7 +2490,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     sentaurConversation(nowMs),
     threadConversation(
       nowMs,
-      "slack:CQA456:1770028800.000901",
+      SENTAUR_RUNS_THREAD_ID,
       "Check the last ten Sentaur pipeline runs",
       "Check the last ten Sentaur pipeline runs for lost agents.",
       -25.5 * 60 * 60_000,
@@ -2496,7 +2498,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     ),
     threadConversation(
       nowMs,
-      "slack:CQA456:1770028800.000902",
+      SENTAUR_LOGS_THREAD_ID,
       "Read the canary agent logs",
       "Read the GoCD agent logs from the failed canary stages.",
       -25.4 * 60 * 60_000,
@@ -3408,6 +3410,16 @@ export function readMockConversationChildAgents(
   if (conversationId === DASHBOARD_QA_THREAD_ID) {
     return {
       agents: [thread(DASHBOARD_QA_NESTED_THREAD_ID)],
+      conversationId,
+    };
+  }
+  // Both Sentaur Threads have Inbox items that wait on the viewer.
+  if (conversationId === SENTAUR_CONVERSATION_ID) {
+    return {
+      agents: [SENTAUR_RUNS_THREAD_ID, SENTAUR_LOGS_THREAD_ID].map((id) => ({
+        ...thread(id),
+        treeState: "needs_you" as const,
+      })),
       conversationId,
     };
   }

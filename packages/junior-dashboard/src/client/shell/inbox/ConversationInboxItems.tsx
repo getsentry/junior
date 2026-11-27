@@ -9,12 +9,16 @@ import { formatCompactAge } from "../../time";
 import { InboxItemDialog, InboxItemSheet } from "../../inbox/InboxItemSheet";
 import { AskKindIcon, askIcon } from "../../inbox/askKind";
 import { inboxItemKind } from "../../inbox/inboxModel";
+import { useDashboardCoreData } from "../../api";
+import { useConversationChildAgents } from "../../conversations/ConversationChildAgents";
 import { useInboxItemsData } from "../../inbox/queries";
 import { inboxItemTitleText } from "../../inbox/inboxItemFormat";
 
 /**
- * Load the open Inbox items linked to a Conversation that the viewer can
- * act on: questions, approvals, reviews, and their own To-dos. Notices and
+ * Load the open Inbox items that the viewer can act on for a Conversation:
+ * questions, approvals, reviews, and their own To-dos. Items of its child
+ * Conversations count too, since they block its work: on a root, every item
+ * of its tree; on a child, the items of its own child agents. Notices and
  * items that the viewer snoozed stay out.
  */
 export function useConversationNeedsYou(conversationId: string) {
@@ -24,8 +28,31 @@ export function useConversationNeedsYou(conversationId: string) {
     forViewer: true,
     sort: "waiting",
   });
+  // The Inbox already reads the viewer's waiting items, so the child items
+  // come from that read, with no read of their own.
+  const signedIn = Boolean(useDashboardCoreData().data?.me.user.email);
+  const waiting = useInboxItemsData({
+    enabled: signedIn,
+    forViewer: true,
+    sort: "waiting",
+  }).items;
+  const childIds = new Set(
+    (useConversationChildAgents(conversationId).data?.agents ?? []).map(
+      (child) => child.conversationId,
+    ),
+  );
+  const ids = new Set(items.map((item) => item.id));
+  const fromChildren = waiting.filter(
+    (item) =>
+      !ids.has(item.id) &&
+      item.owner.kind === "conversation" &&
+      item.owner.id !== conversationId &&
+      (item.rootConversationId === conversationId ||
+        childIds.has(item.owner.id) ||
+        item.conversationIds.some((id) => childIds.has(id))),
+  );
   return {
-    items: items.filter(
+    items: [...items, ...fromChildren].filter(
       (item) =>
         item.status === "open" &&
         !item.snoozedByViewer &&
@@ -74,6 +101,11 @@ export function ConversationInboxItems(props: {
     >
       {items.map((item) => (
         <NeedsYouCard
+          child={
+            item.owner.id === props.conversationId
+              ? undefined
+              : item.addedByLabel
+          }
           highlight={props.highlight && !only}
           item={item}
           key={item.id}
@@ -97,6 +129,8 @@ export function ConversationInboxItems(props: {
 }
 
 function NeedsYouCard(props: {
+  /** The child Conversation that added the item, by its label. */
+  child: string | undefined;
   highlight: boolean;
   item: InboxItemPayload;
   onOpen(): void;
@@ -125,7 +159,8 @@ function NeedsYouCard(props: {
           {inboxItemTitleText(item)}
         </span>
         <span className="text-xs leading-4 text-dashboard-text-muted">
-          {needsYouLabel(kind)} · {formatCompactAge(item.createdAt)}
+          {needsYouLabel(kind)} · {props.child ? `${props.child} · ` : null}
+          {formatCompactAge(item.createdAt)}
         </span>
       </span>
       <span className="grid size-5 place-items-center text-dashboard-text-muted">

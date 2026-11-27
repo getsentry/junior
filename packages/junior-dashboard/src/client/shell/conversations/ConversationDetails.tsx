@@ -95,7 +95,10 @@ export function ConversationDetails(props: {
     needsYou.query.isPlaceholderData
       ? []
       : needsYou.items.flatMap((item) =>
-          item.todoId === undefined ? [] : [item.todoId],
+          // A child's To-do is not in this Conversation's list.
+          item.todoId === undefined || item.owner.id !== props.conversationId
+            ? []
+            : [item.todoId],
         ),
   );
   const canEdit = detail?.isParticipant === true;
@@ -207,15 +210,16 @@ export function ConversationDetails(props: {
             props.onOpenSubagent(target);
           }}
         />
+        <ConversationWaitingOn
+          canEdit={canEdit}
+          conversationId={props.conversationId}
+        />
+        {/* To-dos only inform, so they come after what blocks work. */}
         <ConversationTodoList
           canEdit={canEdit}
           conversationId={props.conversationId}
           key={`todos:${props.conversationId}`}
           needsYouTodoIds={needsYouTodoIds}
-        />
-        <ConversationWaitingOn
-          canEdit={canEdit}
-          conversationId={props.conversationId}
         />
         <ConversationLinkedWork
           key={`links:${props.conversationId}`}
