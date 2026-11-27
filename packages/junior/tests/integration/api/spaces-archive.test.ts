@@ -2,10 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { spaceSchema } from "@/api/schema";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import { eq } from "drizzle-orm";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationStore } from "@/chat/db";
 import { getSpaceLead } from "@/chat/lead/conversation";
-import { juniorSpaces } from "@/db/schema";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import {
   apiFor,
@@ -16,14 +14,6 @@ import {
   startConversation,
   startThread,
 } from "../../fixtures/spaces-api";
-
-async function legacySpaceColumns(spaceId: string) {
-  const [row] = await getDb()
-    .select({ archivedAt: juniorSpaces.archivedAt, name: juniorSpaces.name })
-    .from(juniorSpaces)
-    .where(eq(juniorSpaces.id, spaceId));
-  return row;
-}
 
 describe("Space archive API", () => {
   afterEach(async () => {
@@ -108,17 +98,12 @@ describe("Space archive API", () => {
     ).toEqual([first, second].sort());
 
     // The Space's archive is its Lead's, so archiving the Lead as any root
-    // archives the Space. Nothing writes the Space row's legacy name or
-    // archive, which a later migration drops.
+    // archives the Space.
     expect((await archiveConversation(lead.conversationId)).status).toBe(200);
     expect(
       spaceSchema.parse(await (await send(ana, "GET", `/${space.id}`)).json())
         .archivedAt,
     ).not.toBeNull();
-    expect(await legacySpaceColumns(space.id)).toEqual({
-      archivedAt: null,
-      name: null,
-    });
 
     // A retry after a failed stop stops the tree again, though the stop
     // added activity after what the page saw.
