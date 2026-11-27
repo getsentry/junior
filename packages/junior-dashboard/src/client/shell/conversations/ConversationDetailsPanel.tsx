@@ -1,5 +1,9 @@
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ActorIdentity,
+  ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 
+import { useDashboardCoreData } from "../../api";
 import { ConversationDetails } from "./ConversationDetails";
 import { singleGitHubRepository } from "../../conversations/ConversationContextTags";
 import type { ConversationLink } from "../../conversations/ConversationLinkedWork";
@@ -38,6 +42,7 @@ export function ConversationDetailsPanel(props: {
   onSelectMemory(entry: ConversationMemoryEntry): void;
 }) {
   const { conversation, detail } = props;
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const showUsageBreakdown = hasConversationUsageBreakdown({
     conversation,
     detail,
@@ -78,7 +83,11 @@ export function ConversationDetailsPanel(props: {
       onClose={props.onClose}
       onOpenSubagent={props.onOpenSubagent}
       onSelectMemory={props.onSelectMemory}
-      participants={conversationParticipants(conversation)}
+      participants={withoutViewerWhoLeft(
+        conversationParticipants(conversation),
+        detail,
+        viewerEmail,
+      )}
       repository={repository?.label}
       usage={
         hasConversationStats(stats) || showUsageBreakdown ? (
@@ -94,5 +103,21 @@ export function ConversationDetailsPanel(props: {
         ) : null
       }
     />
+  );
+}
+
+/**
+ * The API always lists the root actor. A viewer who left the Conversation
+ * is not a participant, so their own avatar leaves the footer.
+ */
+function withoutViewerWhoLeft(
+  participants: readonly ActorIdentity[],
+  detail: ConversationDetailReport | undefined,
+  viewerEmail: string | undefined,
+): readonly ActorIdentity[] {
+  if (detail?.isParticipant !== false || !viewerEmail) return participants;
+  const viewer = viewerEmail.toLowerCase();
+  return participants.filter(
+    (participant) => participant.email?.toLowerCase() !== viewer,
   );
 }
