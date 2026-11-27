@@ -62,6 +62,12 @@ test("keeps trailing comments out of blocks", () => {
   assert.deepEqual(counts["block-lines"], {});
 });
 
+test("measures a multiline block comment that starts after code", () => {
+  const body = Array.from({ length: MAX_BLOCK_LINES + 1 }, (_, i) => ` * ${i}`);
+  const counts = measure(["const a = 1; /* start", ...body, " */"]);
+  assert.deepEqual(counts["block-lines"], { [FILE]: 2 });
+});
+
 test("counts wide comment lines, except links and directives", () => {
   const long = "x".repeat(MAX_LINE_WIDTH);
   const counts = measure([

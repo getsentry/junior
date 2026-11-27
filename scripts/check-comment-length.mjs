@@ -74,8 +74,9 @@ export function measureComments(root, targets) {
       for (let line = start.line; line <= end.line; line++) {
         commentLines.add(line);
       }
-      // A trailing comment after code is not part of a block.
-      if (!source[start.line].slice(0, start.column).trim()) {
+      // A one-line comment after code is not part of a block.
+      const codeBefore = source[start.line].slice(0, start.column).trim();
+      if (!codeBefore || end.line > start.line) {
         ownLineRanges.push([start.line, end.line]);
       }
     }
