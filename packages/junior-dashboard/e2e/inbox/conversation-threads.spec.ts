@@ -417,6 +417,11 @@ test.describe("new UI", () => {
     });
     await expect(refused).toContainText("Refused");
     await expect(refused).toContainText('"designer" is not "parent"');
+    // The viewer started this private Conversation and is no longer a
+    // Participant, so the dock says how to get back in.
+    await expect(
+      page.getByText("You left. A participant can invite you back."),
+    ).toBeVisible();
     await sent.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-agent-messages", { lightTheme: true });
 

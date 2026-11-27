@@ -55,7 +55,7 @@ export function ConversationDock(
           data.visibility === "public"
             ? "Join the conversation this one started from to reply."
             : left
-              ? "You left this conversation. A participant can invite you back."
+              ? "You left. A participant can invite you back."
               : "Only participants can reply to a private conversation."
         }
       />

@@ -35,22 +35,21 @@ const tones: Record<ChildStatus, StatusChipTone> = {
   working: "info",
 };
 
-// A stop is not a result, so a stopped child is done.
-const subagentStatuses: Record<
-  TranscriptViewSubagentPart["status"],
-  ChildStatus
+// A stop is not a result, so a stopped child is done. A start with no end
+// yet may be stale, so it gives no status.
+const subagentStatuses: Partial<
+  Record<TranscriptViewSubagentPart["status"], ChildStatus>
 > = {
   aborted: "done",
   blocked: "blocked",
   completed: "done",
   error: "failed",
-  running: "working",
 };
 
-/** Read the status that the parent recorded for a child. */
+/** Read the result that the parent recorded when a child's work ended. */
 export function subagentChildStatus(
   status: TranscriptViewSubagentPart["status"],
-): ChildStatus {
+): ChildStatus | undefined {
   return subagentStatuses[status];
 }
 

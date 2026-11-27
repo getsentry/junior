@@ -33,13 +33,9 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   ).toBeVisible();
 
   // The Lead's children show as child agent rows, as in any parent's
-  // transcript. The status and age tell them from the agent update rows.
+  // transcript. The duration tells them from the agent update rows.
   const child = (title: string) =>
-    transcript.getByRole("link", {
-      name: new RegExp(
-        `^${title} (Done|Working|Needs input|Blocked|Failed) \\d+[smh]`,
-      ),
-    });
+    transcript.getByRole("link", { name: new RegExp(`^${title} \\d+[smh]`) });
   const working = child("Investigate checkout latency");
   await expect(child("Triage Sentaur GoCD deployment failures")).toBeVisible();
   await expect(child("Deployment investigation failed")).toBeVisible();
