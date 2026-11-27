@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseAllDocuments } from "yaml";
 
 /**
  * Baselines let a check fail only on new violations, so a baseline may only
@@ -23,6 +24,7 @@ const BASELINE_PATTERNS = [
   "scripts/*-exceptions.mjs",
   "packages/*/scripts/*-baseline.{json,txt}",
   "packages/*/scripts/*-exceptions.mjs",
+  "ast-grep/rules/*-baseline.yml",
 ];
 // Files that match a pattern but are allowed to grow.
 const GROWABLE = new Set([
@@ -67,6 +69,17 @@ export function baselineEntries(value) {
 /** Parse baseline file source into entries, by file type. */
 export async function parseBaseline(filePath, source) {
   if (filePath.endsWith(".json")) return baselineEntries(JSON.parse(source));
+  // An ast-grep baseline: each rule's `ignores` lists the files it still
+  // allows.
+  if (filePath.endsWith(".yml")) {
+    return baselineEntries(
+      Object.fromEntries(
+        parseAllDocuments(source)
+          .map((document) => document.toJS())
+          .map((rule) => [rule.id, rule.ignores ?? []]),
+      ),
+    );
+  }
   if (filePath.endsWith(".mjs")) {
     const module = await import(
       `data:text/javascript,${encodeURIComponent(source)}`

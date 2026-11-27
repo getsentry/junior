@@ -206,11 +206,15 @@ describe("the ask of a Junior pull request", () => {
           return HttpResponse.json({
             data: {
               repository: {
+                defaultBranchRef: { name: "main" },
                 pullRequest: {
                   autoMergeRequest: null,
+                  baseRef: null,
+                  baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,
+                  isInMergeQueue: false,
                   mergeStateStatus: "CLEAN",
                   reviewRequests: { nodes: [] },
                   reviews: {
@@ -353,11 +357,15 @@ describe("the ask of a Junior pull request", () => {
           return HttpResponse.json({
             data: {
               repository: {
+                defaultBranchRef: { name: "main" },
                 pullRequest: {
                   autoMergeRequest: null,
+                  baseRef: null,
+                  baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,
+                  isInMergeQueue: false,
                   mergeStateStatus: "CLEAN",
                   reviewRequests: {
                     nodes: github.approved
@@ -589,11 +597,15 @@ describe("the ask of a Junior pull request", () => {
           HttpResponse.json({
             data: {
               repository: {
+                defaultBranchRef: { name: "main" },
                 pullRequest: {
                   autoMergeRequest: null,
+                  baseRef: null,
+                  baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,
+                  isInMergeQueue: false,
                   mergeStateStatus: "CLEAN",
                   reviewRequests: {
                     nodes: github.reviewers.map((login) => ({
@@ -827,13 +839,18 @@ describe("the ask of a Junior pull request", () => {
           return HttpResponse.json({
             data: {
               repository: {
+                defaultBranchRef: { name: "main" },
                 pullRequest: {
                   autoMergeRequest: null,
-                  baseRef: { refUpdateRule: null },
+                  baseRef: {
+                    associatedPullRequests: { totalCount: 0 },
+                    refUpdateRule: null,
+                  },
                   baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,
+                  isInMergeQueue: false,
                   mergeStateStatus: "CLEAN",
                   reviewRequests: {
                     nodes: github.reviewers.map((login) => ({

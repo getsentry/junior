@@ -49,6 +49,12 @@ each rule, so new code cannot drift from it.
   condition. A known full scan with a fix on the way gets a named `allowed`
   entry with a reason. An entry that matches nothing fails, so the fix
   removes it.
+- Do not filter with `or()` over two or more `inArray(column, subquery)`
+  terms. Postgres cannot turn `IN (subquery)` under `OR` into a join, so it
+  can read the whole table. Match each column with `= any(array(subquery))`,
+  like `inParticipantRoot` in
+  `packages/junior/src/api/conversations/membership.ts`. Check: oxlint
+  `junior/no-or-in-array-subqueries`.
 - Keep the estimated plan cost of each statement of a polled API route inside
   a budget. Integration tests check it with `expectPlanCost` from the same
   file. A statement that does work for each item of a list, such as one

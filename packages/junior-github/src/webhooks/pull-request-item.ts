@@ -46,9 +46,18 @@ function closeReason(
     if (state.autoMerge) {
       return { reason: "Auto-merge is on.", status: "dismissed" };
     }
+    if (state.inMergeQueue) {
+      return { reason: "It is in the merge queue.", status: "done" };
+    }
     if (mergeAccess === false) {
       return {
         reason: "Only a person with write access can merge it.",
+        status: "dismissed",
+      };
+    }
+    if (state.baseOpen) {
+      return {
+        reason: "It merges after the pull request below it.",
         status: "dismissed",
       };
     }

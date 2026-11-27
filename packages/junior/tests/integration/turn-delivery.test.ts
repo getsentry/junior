@@ -245,6 +245,48 @@ describe("Turn delivery", () => {
     ]);
   });
 
+  it("keeps a Destination it does not know, as the Source wrote it", async () => {
+    const { engineCtx, conversationId } = harness;
+    const destination = { platform: "carrier-pigeon", coop: 3 };
+    await setModelReplies([reply("Three.")]);
+
+    const { turnId } = await harness.send({
+      text: "How many Turns?",
+      destination,
+    });
+    await harness.runUntilIdle();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
+      expect.objectContaining({ destination }),
+    ]);
+  });
+
+  it("fails a reply whose Destination is not valid, without sending it", async () => {
+    const { engineCtx, conversationId, location } = harness;
+    await setModelReplies([reply("Three.")]);
+
+    const { turnId } = await harness.send({
+      text: "How many Turns?",
+      destination: { platform: "slack", teamId: location.teamId },
+    });
+    await harness.runUntilIdle();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
+      expect.objectContaining({
+        state: "failed",
+        attempts: 0,
+        error: "The Destination is not valid",
+      }),
+    ]);
+    expect(harness.sends()).toEqual([]);
+  });
+
   it("fails a reply whose send throws an error that is not retryable", async () => {
     const { engineCtx, conversationId } = harness;
     harness.failNextSend(new Error("channel_not_found"));
