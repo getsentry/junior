@@ -13,7 +13,6 @@ import type {
 import { getDb } from "@/chat/db";
 import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
 import {
-  fieldAnswerValues,
   formatUserInputAnswer,
   normalizeUserInputAnswer,
   type UserInputAnswer,
@@ -27,19 +26,17 @@ import { askToolCallId, inboxItemQuestion } from "@/chat/inbox-items/request";
 
 const QUESTION_MAX_LENGTH = 512;
 
-// The words that the person typed: text fields, their own answers, and the
-// additional notes. Choice labels and the question are the agent's words.
+// The words that the person typed: text fields and the additional notes.
+// Choice labels and the question are the agent's words.
 function typedAnswerText(
   request: UserInputRequest,
   answer: UserInputAnswer,
 ): string {
   const normalized = normalizeUserInputAnswer(request, answer);
   return [
-    ...request.fields.flatMap((field) => {
-      if (field.kind === "text") return normalized.values[field.id] ?? [];
-      const own = normalized.custom?.[field.id];
-      return own ? [own] : [];
-    }),
+    ...request.fields.flatMap((field) =>
+      field.kind === "text" ? (normalized.values[field.id] ?? []) : [],
+    ),
     ...(normalized.other ? [normalized.other] : []),
   ].join("\n\n");
 }
@@ -63,7 +60,7 @@ function questionAnswerLines(
   const { other } = normalized;
   const pairs = request.fields.map(
     (field) =>
-      `"${shortQuestion(field.description ?? field.label)}"="${fieldAnswerValues(field, normalized).join(", ") || "(no answer)"}"`,
+      `"${shortQuestion(field.description ?? field.label)}"="${normalized.values[field.id]?.join(", ") || "(no answer)"}"`,
   );
   return [
     `The person has answered your questions: ${pairs.join(", ")}`,

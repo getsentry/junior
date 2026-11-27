@@ -183,13 +183,14 @@ test.describe("new UI", () => {
     // Playwright's retry scrolls the option to the bottom edge, which also
     // leaves the latest message.
     await expect(card).toBeInViewport({ ratio: 1 });
-    // The reader's own answer counts, and a pick then replaces it.
-    const other = card.getByRole("textbox", { name: /^Decision: Other$/ });
-    await other.fill("Approve after legal signs off.");
-    await expect(card.getByText("1 of 2 answered")).toBeVisible();
     const approve = card.getByRole("radio", { name: "Approve" });
     await approve.click();
-    await expect(other).toHaveValue("");
+    await expect(card.getByText("1 of 2 answered")).toBeVisible();
+    // A click on the picked radio takes the pick back.
+    await approve.click();
+    await expect(approve).not.toBeChecked();
+    await expect(card.getByText("0 of 2 answered")).toBeVisible();
+    await approve.click();
     await expect(card.getByText("1 of 2 answered")).toBeVisible();
     const composer = page.getByLabel("Continue this conversation");
 

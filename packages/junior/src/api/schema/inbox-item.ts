@@ -15,7 +15,6 @@ import {
 
 const answerSchema = z
   .object({
-    custom: z.record(z.string(), z.string().max(4000)).optional(),
     other: z.string().max(4000).optional(),
     requestId: z.string().min(1),
     values: z.record(z.string(), z.array(z.string().max(4000)).max(20)),

@@ -1,7 +1,6 @@
 import * as z from "zod";
 import {
   ASK_TOOL_NAMES,
-  fieldAnswerValues,
   inboxItemQuestion,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
@@ -133,8 +132,8 @@ export function answerRows(
 ): Array<{ label: string; value: string }> {
   const normalized = normalizeUserInputAnswer(request, answer);
   const rows = request.fields.flatMap((field) => {
-    const values = fieldAnswerValues(field, normalized);
-    return values.length
+    const values = normalized.values[field.id];
+    return values?.length
       ? [{ label: field.label, value: values.join(", ") }]
       : [];
   });

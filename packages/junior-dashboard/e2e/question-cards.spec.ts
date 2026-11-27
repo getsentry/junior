@@ -153,40 +153,6 @@ test("a second click takes the pick back, and a note alone answers", async ({
   await expect(card).toContainText("Wait for the EU team on Monday.");
 });
 
-test("Other takes the reader's own answer in place of a pick", async ({
-  dashboard,
-  page,
-}) => {
-  await page.setViewportSize(desktop);
-  const actions = recordActions(page);
-  await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
-  const card = page.getByRole("region", {
-    name: "Asked Approve the payments-v42 rollout",
-  });
-  const hold = card.getByRole("button", { name: "Hold", exact: true });
-  await hold.click();
-  await expect(hold).toHaveAttribute("aria-pressed", "true");
-  // Writing an own answer takes the pick back, as one question has one
-  // answer.
-  await card
-    .getByRole("textbox", { name: /: Other$/ })
-    .fill("Roll out to the EU first.");
-  await expect(hold).toHaveAttribute("aria-pressed", "false");
-  await card.getByRole("button", { name: "Send", exact: true }).click();
-  await expect
-    .poll(() => actions)
-    .toEqual([
-      {
-        action: "submit",
-        answer: {
-          custom: { go: "Roll out to the EU first." },
-          values: {},
-        },
-      },
-    ]);
-  await expect(card).toContainText("Roll out to the EU first.");
-});
-
 // A phone shows each card as one line, so this short transcript fits on
 // the screen there and needs no pill.
 test("the questions pill goes to each waiting question", async ({

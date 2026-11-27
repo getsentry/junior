@@ -229,9 +229,6 @@ export function InboxItemActions(props: {
           ) : null}
           <InboxItemRelated item={item} />
           <UserInputForm
-            // Only a question that an agent asked offers its own Other
-            // choice.
-            custom={item.subject.kind === "question"}
             draft={draft}
             mentions={item.mentions}
             onUnsentChange={setUnsent}
@@ -240,7 +237,6 @@ export function InboxItemActions(props: {
                 action: "submit",
                 answer: {
                   values: answer.values,
-                  ...(answer.custom ? { custom: answer.custom } : undefined),
                   ...(answer.other ? { other: answer.other } : undefined),
                 },
               })

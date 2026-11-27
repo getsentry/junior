@@ -16,11 +16,9 @@ export {
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
-  fieldAnswerValues,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
-  USER_INPUT_OTHER_LABEL,
   userInputQuestionText,
 } from "../chat/inbox-items/user-input-request";
 export { ASK_TOOL_NAMES, inboxItemQuestion } from "../chat/inbox-items/request";

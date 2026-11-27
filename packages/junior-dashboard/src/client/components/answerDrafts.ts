@@ -9,19 +9,15 @@ const STORAGE_KEY = "junior:review-desk:answer-drafts";
 const MAX_DRAFTS = 50;
 
 const draftSchema = z.object({
-  custom: z.record(z.string(), z.string()).default({}),
   other: z.string(),
   values: z.record(z.string(), z.array(z.string())),
 });
 const draftsSchema = z.record(z.string(), draftSchema);
 
-/**
- * Picks and own answers by field id, and the notes, that the reader has not
- * sent.
- */
-export type AnswerDraft = z.output<typeof draftSchema>;
+/** Picks by field id, and the note, that the reader has not sent. */
+export type AnswerDraft = z.infer<typeof draftSchema>;
 
-const EMPTY_DRAFT: AnswerDraft = { custom: {}, other: "", values: {} };
+const EMPTY_DRAFT: AnswerDraft = { other: "", values: {} };
 
 function readDrafts(): Record<string, AnswerDraft> {
   try {
@@ -46,7 +42,6 @@ function writeDrafts(drafts: Record<string, AnswerDraft>) {
 function isEmptyDraft(draft: AnswerDraft): boolean {
   return (
     !draft.other &&
-    Object.values(draft.custom).every((text) => !text) &&
     Object.values(draft.values).every((values) =>
       values.every((value) => !value),
     )
@@ -59,7 +54,7 @@ export function readAnswerDraft(itemId: string): AnswerDraft {
 }
 
 /**
- * Save a change to the unsent answers of an Inbox item. The notes and the
+ * Save a change to the unsent answers of an Inbox item. The note and the
  * fields that the change leaves out keep their saved value, so a second
  * form for the same item cannot write back its older picks. An empty
  * draft is removed.
@@ -68,7 +63,6 @@ export function saveAnswerDraft(itemId: string, change: Partial<AnswerDraft>) {
   const drafts = readDrafts();
   const saved = drafts[itemId] ?? EMPTY_DRAFT;
   const draft = {
-    custom: { ...saved.custom, ...change.custom },
     other: change.other ?? saved.other,
     values: { ...saved.values, ...change.values },
   };

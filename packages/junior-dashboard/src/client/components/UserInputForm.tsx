@@ -13,7 +13,6 @@ import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
-  USER_INPUT_OTHER_LABEL,
   type UserInputAnswer,
   type UserInputField,
   type UserInputRequest,
@@ -69,27 +68,6 @@ function QuestionText(props: {
   return <DisplayText inline mentions={props.mentions} text={props.text} />;
 }
 
-// The Other choice of a question: the person's own answer. Typing in it
-// replaces the pick of a single choice question.
-function OtherInput(props: {
-  disabled: boolean;
-  label: string;
-  onChange(value: string): void;
-  value: string;
-}) {
-  return (
-    <Textarea
-      aria-label={`${props.label}: ${USER_INPUT_OTHER_LABEL}`}
-      className="min-h-9 py-1.5"
-      disabled={props.disabled}
-      onChange={(event) => props.onChange(event.target.value)}
-      placeholder={USER_INPUT_OTHER_LABEL}
-      rows={1}
-      value={props.value}
-    />
-  );
-}
-
 // Each choice is a choice card, so the hit area and the selected state read
 // at a glance. The control inside keeps its own focus ring.
 function ChoiceOption(props: {
@@ -120,7 +98,6 @@ function ChoiceOption(props: {
 }
 
 function ChoiceField(props: {
-  custom?: { onChange(value: string): void; value: string } | undefined;
   disabled: boolean;
   field: Extract<UserInputField, { kind: "choice" | "multi_choice" }>;
   mentions: readonly ActorIdentity[] | undefined;
@@ -145,14 +122,6 @@ function ChoiceField(props: {
       <QuestionText mentions={props.mentions} text={field.description} />
     </FieldDescription>
   ) : null;
-  const other = props.custom ? (
-    <OtherInput
-      disabled={props.disabled}
-      label={field.label}
-      onChange={props.custom.onChange}
-      value={props.custom.value}
-    />
-  ) : null;
   const describedBy = field.description ? `${id}-help` : undefined;
   if (field.kind === "choice") {
     return (
@@ -169,13 +138,23 @@ function ChoiceField(props: {
         >
           {field.options.map((option) => (
             <ChoiceOption
-              control={<RadioGroupItem value={option.label} />}
+              control={
+                <RadioGroupItem
+                  // A click on the picked radio takes the pick back, so a
+                  // person can leave the question for the notes.
+                  onClick={(event) => {
+                    if (props.values[0] !== option.label) return;
+                    event.preventDefault();
+                    props.onChange([]);
+                  }}
+                  value={option.label}
+                />
+              }
               key={option.label}
               option={option}
             />
           ))}
         </RadioGroup>
-        {other}
       </FieldSet>
     );
   }
@@ -204,7 +183,6 @@ function ChoiceField(props: {
           />
         ))}
       </div>
-      {other}
     </FieldSet>
   );
 }
@@ -242,14 +220,12 @@ function TextField(props: {
 /**
  * Render the answer controls of an action item request: one button per
  * choice for a single short choice field, otherwise every field, then the
- * additional notes. `custom` adds Other to each choice question. `draft`, or
- * else the unsent answers saved by `requestId`, fills the form on mount.
+ * additional notes. `draft`, or else the unsent answers saved by
+ * `requestId`, fills the form on mount.
  */
 export function UserInputForm(props: {
-  /** Each choice question takes the reader's own answer too. */
-  custom?: boolean;
   /** An answer to start from, such as one that failed to send. */
-  draft?: Pick<UserInputAnswer, "custom" | "other" | "values">;
+  draft?: Pick<UserInputAnswer, "other" | "values">;
   /** People that the question text mentions. */
   mentions?: readonly ActorIdentity[] | undefined;
   onSubmit(answer: UserInputAnswer): Promise<void>;
@@ -276,44 +252,18 @@ export function UserInputForm(props: {
   const [draft] = useState(() =>
     props.draft
       ? {
-          custom: props.draft.custom ?? {},
           other: props.draft.other ?? "",
           values: props.draft.values,
         }
       : readAnswerDraft(props.requestId),
   );
   const [values, setValues] = useState(draft.values);
-  const [custom, setCustom] = useState(draft.custom);
   const [other, setOther] = useState(draft.other);
 
   function changeValues(fieldId: string, fieldValues: string[]) {
     setValues((current) => ({ ...current, [fieldId]: fieldValues }));
     saveAnswerDraft(props.requestId, { values: { [fieldId]: fieldValues } });
   }
-  function changeCustom(fieldId: string, text: string) {
-    setCustom((current) => ({ ...current, [fieldId]: text }));
-    saveAnswerDraft(props.requestId, { custom: { [fieldId]: text } });
-  }
-  // A single choice question has one answer: a pick or the reader's own.
-  function pick(field: UserInputField, fieldValues: string[]) {
-    changeValues(field.id, fieldValues);
-    if (field.kind === "choice" && fieldValues.length && custom[field.id]) {
-      changeCustom(field.id, "");
-    }
-  }
-  function write(field: UserInputField, text: string) {
-    changeCustom(field.id, text);
-    if (field.kind === "choice" && text.trim() && values[field.id]?.length) {
-      changeValues(field.id, []);
-    }
-  }
-  const customOf = (field: UserInputField) =>
-    props.custom
-      ? {
-          onChange: (text: string) => write(field, text),
-          value: custom[field.id] ?? "",
-        }
-      : undefined;
   function changeOther(next: string) {
     setOther(next);
     saveAnswerDraft(props.requestId, { other: next });
@@ -345,7 +295,6 @@ export function UserInputForm(props: {
   }
 
   const answer: UserInputAnswer = {
-    ...(props.custom ? { custom } : undefined),
     other,
     requestId: props.requestId,
     values,
@@ -353,7 +302,7 @@ export function UserInputForm(props: {
   const normalized = normalizeUserInputAnswer(props.request, answer);
   const empty = isEmptyUserInputAnswer(normalized);
   const answeredCount = props.request.fields.filter(
-    (field) => normalized.values[field.id] || normalized.custom?.[field.id],
+    (field) => normalized.values[field.id],
   ).length;
   const fieldCount = props.request.fields.length;
   // An action sends on click, so only the form can hold unsent input.
@@ -410,8 +359,7 @@ export function UserInputForm(props: {
   const picked = choiceField ? values[choiceField.id]?.[0] : undefined;
   // A second click on the picked choice takes the pick back.
   const toggle = (field: UserInputField, label: string) =>
-    pick(field, picked === label ? [] : [label]);
-  const choiceOther = choiceField ? customOf(choiceField) : undefined;
+    changeValues(field.id, picked === label ? [] : [label]);
   const described = choiceField?.options.some((option) => option.description);
   return (
     <form
@@ -419,77 +367,67 @@ export function UserInputForm(props: {
       onSubmit={submit}
     >
       {choiceField ? (
-        <>
-          <div
-            aria-label={choiceField.label}
-            className={described ? "grid gap-2" : "flex flex-wrap gap-2"}
-            role="group"
-          >
-            {choiceField.options.map((option, index) =>
-              described ? (
-                <button
-                  aria-describedby={
-                    option.description ? `${choicesId}-${index}` : undefined
-                  }
-                  aria-labelledby={`${choicesId}-${index}-label`}
-                  aria-pressed={picked === option.label}
-                  className={choiceButtonClass}
-                  data-picked={picked === option.label ? "" : undefined}
-                  disabled={sending}
-                  key={option.label}
-                  onClick={() => toggle(choiceField, option.label)}
-                  type="button"
-                >
-                  <span className="grid min-w-0 flex-1 gap-0.5 break-words">
-                    <span
-                      className="font-medium text-dashboard-text"
-                      id={`${choicesId}-${index}-label`}
-                    >
-                      {option.label}
-                      {option.recommended ? <SuggestedLabel /> : null}
-                    </span>
-                    {option.description ? (
-                      <span
-                        className="text-xs text-dashboard-text-muted"
-                        id={`${choicesId}-${index}`}
-                      >
-                        {option.description}
-                      </span>
-                    ) : null}
+        <div
+          aria-label={choiceField.label}
+          className={described ? "grid gap-2" : "flex flex-wrap gap-2"}
+          role="group"
+        >
+          {choiceField.options.map((option, index) =>
+            described ? (
+              <button
+                aria-describedby={
+                  option.description ? `${choicesId}-${index}` : undefined
+                }
+                aria-labelledby={`${choicesId}-${index}-label`}
+                aria-pressed={picked === option.label}
+                className={choiceButtonClass}
+                data-picked={picked === option.label ? "" : undefined}
+                disabled={sending}
+                key={option.label}
+                onClick={() => toggle(choiceField, option.label)}
+                type="button"
+              >
+                <span className="grid min-w-0 flex-1 gap-0.5 break-words">
+                  <span
+                    className="font-medium text-dashboard-text"
+                    id={`${choicesId}-${index}-label`}
+                  >
+                    {option.label}
+                    {option.recommended ? <SuggestedLabel /> : null}
                   </span>
-                  <Check
-                    aria-hidden="true"
-                    className="shrink-0 text-dashboard-accent-text opacity-0 group-data-[picked]:opacity-100"
-                    size={16}
-                  />
-                </button>
-              ) : (
-                <Button
-                  aria-pressed={picked === option.label}
-                  className="data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10"
-                  data-picked={picked === option.label ? "" : undefined}
-                  disabled={sending}
-                  key={option.label}
-                  onClick={() => toggle(choiceField, option.label)}
-                  variant="outline"
-                >
-                  {option.label}
-                  {option.recommended ? (
-                    <SuggestedLabel className="ml-0" />
+                  {option.description ? (
+                    <span
+                      className="text-xs text-dashboard-text-muted"
+                      id={`${choicesId}-${index}`}
+                    >
+                      {option.description}
+                    </span>
                   ) : null}
-                </Button>
-              ),
-            )}
-          </div>
-          {choiceOther ? (
-            <OtherInput
-              disabled={sending}
-              label={choiceField.label}
-              onChange={choiceOther.onChange}
-              value={choiceOther.value}
-            />
-          ) : null}
-        </>
+                </span>
+                <Check
+                  aria-hidden="true"
+                  className="shrink-0 text-dashboard-accent-text opacity-0 group-data-[picked]:opacity-100"
+                  size={16}
+                />
+              </button>
+            ) : (
+              <Button
+                aria-pressed={picked === option.label}
+                className="data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10"
+                data-picked={picked === option.label ? "" : undefined}
+                disabled={sending}
+                key={option.label}
+                onClick={() => toggle(choiceField, option.label)}
+                variant="outline"
+              >
+                {option.label}
+                {option.recommended ? (
+                  <SuggestedLabel className="ml-0" />
+                ) : null}
+              </Button>
+            ),
+          )}
+        </div>
       ) : (
         props.request.fields.map((field) =>
           field.kind === "text" ? (
@@ -504,12 +442,11 @@ export function UserInputForm(props: {
             />
           ) : (
             <ChoiceField
-              custom={customOf(field)}
               disabled={sending}
               field={field}
               key={field.id}
               mentions={props.mentions}
-              onChange={(next) => pick(field, next)}
+              onChange={(next) => changeValues(field.id, next)}
               values={values[field.id] ?? []}
             />
           ),
