@@ -615,11 +615,6 @@ const conversationReportSubagentEventDataSchema = z
     task: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
     parentToolCallId: z.string().min(1).optional(),
-    /**
-     * Set when an earlier Parent message started the child, so this one is
-     * a later message to it.
-     */
-    laterParentMessage: z.literal(true).optional(),
     status: z.enum(["running", "completed", "blocked", "error", "aborted"]),
   })
   .strict();

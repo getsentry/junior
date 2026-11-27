@@ -4,6 +4,7 @@ import type {
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
+import { isAgentMessageTool } from "./agentMessage";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
@@ -48,18 +49,26 @@ function eventMessage(
 }
 
 /**
- * The tool calls that started a child, which its card replaces. A later
- * Parent message to the child keeps its tool call, so it shows like any
- * other message to an agent.
+ * The tool calls that a child's card replaces: each one that a subagent
+ * marker names, unless it sends an agent message. A message to a child,
+ * such as a later task or a Lead's message to a Conversation that moved into
+ * its Space, stays a message row.
  */
-function childStartToolIds(events: ConversationReportEvent[]): Set<string> {
+function childCardToolIds(events: ConversationReportEvent[]): Set<string> {
+  const toolNames = new Map<string, string>();
+  for (const event of events) {
+    if (event.data.type !== "tool_calls") continue;
+    for (const call of event.data.calls) {
+      toolNames.set(call.toolCallId, call.name);
+    }
+  }
   const ids = new Set<string>();
   for (const event of events) {
     const data = event.data;
     if (
       data.type === "subagent" &&
       data.parentToolCallId &&
-      !data.laterParentMessage
+      !isAgentMessageTool(toolNames.get(data.parentToolCallId))
     ) {
       ids.add(data.parentToolCallId);
     }
@@ -159,7 +168,7 @@ export function transcriptMessagesFromEvents(
   annotations: ConversationTranscript["annotations"],
   pendingMessages?: readonly PendingTranscriptInput[],
 ): TranscriptViewMessage[] {
-  const replacedToolIds = childStartToolIds(events);
+  const replacedToolIds = childCardToolIds(events);
   const tools = new Map<
     string,
     Extract<TranscriptViewPart, { type: "tool_call" }>
@@ -403,9 +412,16 @@ export function transcriptMessagesFromEvents(
       }
       let part = subagents.get(childId);
       if (!part) {
-        // The child's start places its card. When that start is on an
-        // earlier page, its card comes with that page.
-        if (data.laterParentMessage) continue;
+        // A message to the child shows as its message row and starts no
+        // card. The card comes with the call that started the child, which
+        // may be on an earlier page or, for a Conversation that moved into
+        // a Space, in no transcript.
+        if (
+          data.parentToolCallId &&
+          !replacedToolIds.has(data.parentToolCallId)
+        ) {
+          continue;
+        }
         part = {
           type: "subagent" as const,
           id: childId,

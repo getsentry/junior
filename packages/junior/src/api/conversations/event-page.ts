@@ -9,7 +9,6 @@ import {
   inArray,
   lt,
   max,
-  min,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -134,9 +133,12 @@ function readLatestTurnsPageStart(
     );
 }
 
-/** The children that the page's subagent starts name. */
-function subagentChildIds(events: readonly ConversationEvent[]): string[] {
-  return [
+/** Read which children that the page's subagent events name are Threads. */
+async function readThreadIds(
+  executor: JuniorSqlDatabase,
+  events: readonly ConversationEvent[],
+): Promise<Set<string>> {
+  const ids = [
     ...new Set(
       events.flatMap((event) =>
         event.data.type === "subagent_started"
@@ -145,13 +147,6 @@ function subagentChildIds(events: readonly ConversationEvent[]): string[] {
       ),
     ),
   ];
-}
-
-/** Read which of the children are Threads. */
-async function readThreadIds(
-  executor: JuniorSqlDatabase,
-  ids: readonly string[],
-): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
   const rows = await executor
     .db()
@@ -165,34 +160,6 @@ async function readThreadIds(
       ),
     );
   return new Set(rows.map((row) => row.conversationId));
-}
-
-/**
- * Read the seq of each child's first `subagent_started`, which may be on an
- * earlier page, so every page marks the same later Parent messages.
- */
-async function readChildStartSeqs(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-  ids: readonly string[],
-): Promise<Map<string, number>> {
-  if (ids.length === 0) return new Map();
-  const childId = sql<string>`${juniorConversationEvents.payload}->>'childConversationId'`;
-  const rows = await executor
-    .db()
-    .select({ childId, seq: min(juniorConversationEvents.seq) })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.conversationId, conversationId),
-        eq(juniorConversationEvents.type, "subagent_started"),
-        inArray(childId, [...ids]),
-      ),
-    )
-    .groupBy(childId);
-  return new Map(
-    rows.flatMap((row) => (row.seq === null ? [] : [[row.childId, row.seq]])),
-  );
 }
 
 /** Read the first event, which marks history inherited from a fork. */
@@ -296,14 +263,12 @@ async function projectConversationEvents(
 
   const subagentStartEvents = subagentStartRows.map(eventFromRow);
   // Ended events name their child only through the start they resolve.
-  const childIds = subagentChildIds([...events, ...subagentStartEvents]);
-  const [threadIds, childStartSeqs] = await Promise.all([
-    readThreadIds(executor, childIds),
-    readChildStartSeqs(executor, args.conversationId, childIds),
+  const threadIds = await readThreadIds(executor, [
+    ...events,
+    ...subagentStartEvents,
   ]);
   return projectEventPage({
     canExposePayload: args.canExposePayload,
-    childStartSeqs,
     events,
     ...(args.firstEvent ? { firstEvent: args.firstEvent } : undefined),
     subagentStartEvents,

@@ -657,7 +657,6 @@ describe("canonical event transcript reduction", () => {
       startedSeq: number,
       parentToolCallId: string,
       status: "completed" | "error" | "running",
-      later = false,
     ) =>
       event(seq, `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`, {
         type: "subagent",
@@ -666,7 +665,6 @@ describe("canonical event transcript reduction", () => {
         startedAt: `2026-01-01T00:00:${String(startedSeq).padStart(2, "0")}.000Z`,
         parentToolCallId,
         status,
-        ...(later ? { laterParentMessage: true as const } : undefined),
       });
     const call = (
       seq: number,
@@ -701,7 +699,7 @@ describe("canonical event transcript reduction", () => {
       marker(2, 2, "start-1", "running"),
       call(3, "start-1", "startAgent", "completed"),
       call(4, "message-1", "messageAgent", "running"),
-      marker(5, 5, "message-1", "running", true),
+      marker(5, 5, "message-1", "running"),
       call(6, "message-1", "messageAgent", "completed"),
       // The child ends its first task while the second waits for it.
       marker(7, 2, "start-1", "completed"),
@@ -719,11 +717,13 @@ describe("canonical event transcript reduction", () => {
       { key: "subagent:child-1", status: "running" },
       { key: "tool:message-1" },
     ]);
-    expect(rows([...events, marker(8, 5, "message-1", "error", true)])).toEqual(
-      [{ key: "subagent:child-1", status: "error" }, { key: "tool:message-1" }],
-    );
-    // A page that starts after the child's start shows no card for a later
-    // Parent message. The card comes with the earlier page.
+    expect(rows([...events, marker(8, 5, "message-1", "error")])).toEqual([
+      { key: "subagent:child-1", status: "error" },
+      { key: "tool:message-1" },
+    ]);
+    // A message to a child whose start this page does not hold starts no
+    // card: the start is on an earlier page, or the child is a Conversation
+    // that moved into the Lead's Space.
     expect(rows(events.slice(3, 6))).toEqual([{ key: "tool:message-1" }]);
   });
 

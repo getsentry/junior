@@ -569,18 +569,6 @@ function reportSubagentLabel(
   };
 }
 
-// A start after the child's first one is a later Parent message to it.
-function laterParentMessage(
-  childStartSeqs: ReadonlyMap<string, number> | undefined,
-  data: Extract<ConversationEvent["data"], { type: "subagent_started" }>,
-  seq: number,
-): { laterParentMessage: true } | undefined {
-  const first = childStartSeqs?.get(data.childConversationId);
-  return first !== undefined && first < seq
-    ? { laterParentMessage: true }
-    : undefined;
-}
-
 // A child with no row, or a page counted before its kinds are read, shows as
 // a Task: only a Thread links to a page of its own.
 function childKind(
@@ -600,11 +588,6 @@ export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
   /** Child Conversations that subagent events name and that are Threads. */
   threadIds?: ReadonlySet<string>;
-  /**
-   * The seq of the first `subagent_started` of each child that subagent
-   * events name. A later start is a later Parent message to that child.
-   */
-  childStartSeqs?: ReadonlyMap<string, number>;
   events: ConversationEvent[];
   /** The Conversation's first event. */
   firstEvent?: ConversationEvent;
@@ -722,7 +705,6 @@ export function projectConversationReportEventPage(args: {
         ...(event.data.parentToolCallId
           ? { parentToolCallId: event.data.parentToolCallId }
           : undefined),
-        ...laterParentMessage(args.childStartSeqs, event.data, event.seq),
       };
     } else if (event.data.type === "subagent_ended") {
       const started = subagentStarts.get(event.data.subagentInvocationId);
@@ -741,7 +723,6 @@ export function projectConversationReportEventPage(args: {
           ...(started.data.parentToolCallId
             ? { parentToolCallId: started.data.parentToolCallId }
             : undefined),
-          ...laterParentMessage(args.childStartSeqs, started.data, started.seq),
           status:
             event.data.outcome === "success" ? "completed" : event.data.outcome,
         };

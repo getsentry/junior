@@ -61,6 +61,15 @@ const deliveryByToolResult = {
   started: "delivered",
 } as const satisfies Record<string, AgentMessageDelivery>;
 
+/**
+ * True for a tool that sends a message to another agent. Its call always
+ * shows as a message row, never as a child's card, even when its arguments
+ * are hidden.
+ */
+export function isAgentMessageTool(name: string | undefined): boolean {
+  return name === MESSAGE_AGENT_TOOL_NAME;
+}
+
 /** True for a `messageAgent` call whose arguments the viewer can read. */
 export function isSentAgentMessage(part: TranscriptViewToolCallPart): boolean {
   return sentAgentMessage(part) !== undefined;
@@ -74,7 +83,7 @@ export function isSentAgentMessage(part: TranscriptViewToolCallPart): boolean {
 export function sentAgentMessage(
   part: TranscriptViewToolCallPart,
 ): AgentMessage | undefined {
-  if (part.name !== MESSAGE_AGENT_TOOL_NAME) return undefined;
+  if (!isAgentMessageTool(part.name)) return undefined;
   const input = messageAgentInputSchema.safeParse(part.input);
   if (!input.success) return undefined;
   const output =
