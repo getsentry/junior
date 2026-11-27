@@ -18,7 +18,12 @@ import { inboxItemTitleText } from "../../inbox/inboxItemFormat";
  * items that the viewer snoozed stay out.
  */
 export function useConversationNeedsYou(conversationId: string) {
-  const { items, query } = useInboxItemsData({ conversationId });
+  // Items that wait on the viewer page first, so the first page holds them.
+  const { items, query } = useInboxItemsData({
+    conversationId,
+    forViewer: true,
+    sort: "waiting",
+  });
   return {
     items: items.filter(
       (item) =>

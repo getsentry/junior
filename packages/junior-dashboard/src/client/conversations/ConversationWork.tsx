@@ -191,7 +191,14 @@ function WorkRow(props: {
         icon={icon}
         menu={
           props.canEdit && !item.child.redacted ? (
-            <ChildMenu child={item.child}>{watchItems}</ChildMenu>
+            <ChildMenu
+              child={item.child}
+              lastSeenAt={
+                feedThreads.get(item.child.conversationId)?.lastSeenAt
+              }
+            >
+              {watchItems}
+            </ChildMenu>
           ) : null
         }
         title={
@@ -350,13 +357,18 @@ function ChildMenu(props: {
   /** More entries, such as Cancel for the child's Watches. */
   children?: ReactNode;
   child: ConversationChildAgent;
+  /**
+   * The child's last activity, which a feed Thread has. A Task has none,
+   * so its archive does not check for newer activity.
+   */
+  lastSeenAt: string | undefined;
 }) {
   const { child } = props;
   const archive = useArchiveConversation(child.conversationId);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const archived = Boolean(child.archivedAt);
   const setArchived = (value: boolean) =>
-    archive.mutate({ archived: value, lastSeenAt: child.updatedAt });
+    archive.mutate({ archived: value, lastSeenAt: props.lastSeenAt });
   return (
     <>
       <RowMenu

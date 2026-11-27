@@ -159,11 +159,12 @@ function LinkRow(props: {
   const { link } = props;
   const status = linkStatusLabel(link.status);
   // The shape shows the state, so only a failure that has no shape for it,
-  // such as a failed deployment or a failing monitor, keeps its color.
+  // a failed deployment or a failing monitor, keeps its color. The icon
+  // also covers a deployment saved as an Item.
   const presentation = objectPresentation(link);
   const tone =
     presentation.tone === "danger" &&
-    (link.objectType === "deployment" || link.objectType === "monitor")
+    (presentation.icon === "rocket" || presentation.icon === "bell")
       ? undefined
       : "neutral";
   const icon = (
