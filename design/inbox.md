@@ -61,11 +61,11 @@ groups and acts on its rows.
   the message, because the sheet covers the transcript. The card has no subject
   preview: the row head and Related link the subject. In the transcript, a
   waiting card spans the transcript width.
-- A click on a choice picks it. Each choice question also has Other, where
-  the person writes their own answer, which replaces a pick. A card has one
-  Additional notes box: Enter adds a line, and Send or Cmd/Ctrl+Enter sends
-  the answers with the notes. An action that takes no words, such as a
-  plugin's Resume, is one click.
+- A click on a choice picks it, and a click on the picked choice of a
+  single-choice question clears it. A card has one Additional notes box,
+  where the person can also write an answer that no choice fits: Enter adds
+  a line, and Send or Cmd/Ctrl+Enter sends the answers with the notes. An
+  action that takes no words, such as a plugin's Resume, is one click.
 - The first answer closes the item for everyone, and the item records who
   closed it and when.
 - A dismiss closes the item for everyone, unless its subject gives each
@@ -200,3 +200,5 @@ groups and acts on its rows.
   that User. This breaks "when the item closes, its push goes away on every
   device".
 - An item from a private Conversation cannot go to Everyone yet.
+- In Slack, a picked single choice cannot be cleared; the person closes and
+  reopens the modal.
