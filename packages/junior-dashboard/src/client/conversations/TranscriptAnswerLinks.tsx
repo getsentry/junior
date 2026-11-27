@@ -1,8 +1,7 @@
 import { createContext, use, useSyncExternalStore } from "react";
 
-import type { InboxItemPayload } from "@sentry/junior/api/schema";
-
 import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
+import type { WaitingQuestion } from "../inbox/WaitingQuestions";
 import { cn } from "../styles";
 import type { TranscriptListRow } from "./transcriptListRows";
 
@@ -154,7 +153,7 @@ export function useAnswerInView(itemId: string): boolean {
  * page loads the history around the row when it is not loaded.
  */
 export const TranscriptShowQuestion = createContext<
-  ((item: InboxItemPayload) => void) | undefined
+  ((question: WaitingQuestion) => void) | undefined
 >(undefined);
 
 // Lanes sit inside the avatar column (1.5rem, 2rem from md), so each line

@@ -83,6 +83,7 @@ import {
   todoParamsSchema,
   todoStatusBodySchema,
 } from "../schema/todos";
+import { conversationQuestionsReportSchema } from "../schema/conversation-questions";
 import { apiOperationHandler } from "../operation";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
@@ -132,6 +133,7 @@ import {
   requireConversationWatches,
 } from "./watches";
 import { requireConversationTodos, setConversationTodoStatus } from "./todos";
+import { requireConversationQuestions } from "./questions";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(
@@ -665,6 +667,25 @@ export function createConversationRoutes(
       return jsonResponse(
         conversationTodosReportSchema,
         await requireConversationTodos(conversationId, { viewer }),
+      );
+    },
+  );
+
+  app.get(
+    "/:conversationId/questions",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      return jsonResponse(
+        conversationQuestionsReportSchema,
+        await requireConversationQuestions(
+          conversationId,
+          context.get("viewer"),
+        ),
       );
     },
   );

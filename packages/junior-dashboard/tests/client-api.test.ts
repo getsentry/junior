@@ -1,8 +1,6 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { createHash } from "node:crypto";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient } from "@tanstack/react-query";
 import { webMessageId } from "@sentry/junior/api/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
@@ -30,7 +28,6 @@ import { conversationSideReadQueryKey } from "../src/client/conversations/conver
 import {
   INBOX_ITEMS_QUERY_KEY,
   inboxItemListQueryKey,
-  useConversationInboxItemData,
 } from "../src/client/inbox/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
 import { fetchDashboardJson } from "../src/client/http";
@@ -207,37 +204,6 @@ describe("dashboard client API", () => {
     ).rejects.toThrow("Conversation history cursor did not advance");
   });
 
-  it("reads a transcript Inbox item from its Conversation's list", () => {
-    const conversationId = "slack:C1:123";
-    const client = new QueryClient();
-    client.setQueryData(inboxItemListQueryKey({ conversationId }), {
-      pageParams: [undefined],
-      pages: [{ items: [{ id: "listed", title: "Listed item" }] }],
-    });
-    const detail = (id: string) =>
-      client.getQueryCache().find({
-        exact: true,
-        queryKey: [...INBOX_ITEMS_QUERY_KEY, "detail", id],
-      });
-    const render = (id: string) =>
-      renderToStaticMarkup(
-        createElement(
-          QueryClientProvider,
-          { client },
-          createElement(function Row() {
-            const { data } = useConversationInboxItemData(conversationId, id);
-            return data?.title ?? "loading";
-          }),
-        ),
-      );
-
-    expect(render("listed")).toBe("Listed item");
-    expect(detail("listed")).toBeUndefined();
-    // An item that the list leaves out, such as a closed one, loads by itself.
-    expect(render("closed")).toBe("loading");
-    expect(detail("closed")).toBeDefined();
-  });
-
   it("revalidates detail without caching the mailbox or bypassing sign-in", async () => {
     let signedIn = true;
     const sessionAuth = auth({
@@ -263,48 +229,26 @@ describe("dashboard client API", () => {
     const client = new QueryClient();
     const options = conversationDetailQueryOptions(ARCHIVED_CONVERSATION_ID);
     const detailPath = `/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}`;
-    // The details panel reads these beside the detail report, and the
-    // transcript reads its open items from the list. An Inbox list that
-    // shows an item of this Conversation shows its subject from this
-    // detail, so it refreshes with it. The versions poll refreshes the other
-    // Inbox item reads.
-    const inbox = inboxItemListQueryKey({ forViewer: true, sort: "waiting" });
-    const otherInbox = inboxItemListQueryKey({ forViewer: true });
+    // The details panel and the transcript's questions read these beside
+    // the detail report. The versions poll, not the detail, refreshes the
+    // Inbox item reads, also a list that shows an item of this Conversation.
     const sideReads = [
       conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "agents"),
+      conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "questions"),
       inboxItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
-      inbox,
+      inboxItemListQueryKey({ forViewer: true, sort: "waiting" }),
       [...INBOX_ITEMS_QUERY_KEY, "detail", "item-1"],
-      inboxItemListQueryKey({ conversationId: "slack:C1:other" }),
-      otherInbox,
       [...INBOX_ITEMS_QUERY_KEY, "count"],
       [...INBOX_ITEMS_QUERY_KEY, "waiting-conversations"],
     ];
-    const listOf = (ownerId: string) => ({
-      pageParams: [undefined],
-      // The API names the root of an owner that the viewer can see.
-      pages: [
-        {
-          items: [
-            {
-              owner: { id: ownerId, kind: "conversation" },
-              rootConversationId: ownerId,
-            },
-          ],
-        },
-      ],
-    });
     const sideReadsInvalidated = () =>
       sideReads.map((key) => client.getQueryState(key)?.isInvalidated);
     try {
       const first = await client.fetchQuery(options);
       for (const key of sideReads) client.setQueryData(key, {});
-      client.setQueryData(inbox, listOf(ARCHIVED_CONVERSATION_ID));
-      client.setQueryData(otherInbox, listOf("slack:C1:other"));
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
       expect(sideReadsInvalidated()).toEqual([
-        false,
         false,
         false,
         false,
@@ -329,7 +273,6 @@ describe("dashboard client API", () => {
       expect(changed.detailEtag).not.toBe(first.detailEtag);
       expect(reads.at(-1)).toEqual([`${detailPath}?mailbox=true`, 200]);
       expect(sideReadsInvalidated()).toEqual([
-        true,
         true,
         true,
         false,

@@ -5,6 +5,7 @@
  */
 import {
   inboxItemQuestion,
+  type ConversationQuestionsReport,
   type InboxItemActionBody,
   type InboxItemPayload,
   type InboxSnoozeCreateBody,
@@ -331,6 +332,40 @@ export function actOnMockInboxItem(
       : undefined),
   });
   return readMockInboxItem(nowMs, id);
+}
+
+/**
+ * List the questions that agents asked in one mock Conversation, with the
+ * viewer's answers, like `GET /api/conversations/:id/questions`. A mock
+ * question has its item's id, so the mock tool results name no subject.
+ */
+export function readMockConversationQuestions(
+  nowMs: number,
+  conversationId: string,
+): ConversationQuestionsReport {
+  const all = seeds(nowMs);
+  return {
+    conversationId,
+    questions: all
+      .filter(
+        (seed) =>
+          seed.conversationId === conversationId &&
+          subjectOf(seed).kind === "question",
+      )
+      .map((seed) => payload(seed, all, nowMs))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .map((item) => ({
+        body: item.body,
+        createdAt: item.createdAt,
+        id: item.id,
+        title: item.title,
+        updatedAt: item.updatedAt,
+        ...(item.answer ? { answer: item.answer } : undefined),
+        ...(item.mentions ? { mentions: item.mentions } : undefined),
+        ...(item.request ? { request: item.request } : undefined),
+        ...(item.addedByTurnId ? { turnId: item.addedByTurnId } : undefined),
+      })),
+  };
 }
 
 /**

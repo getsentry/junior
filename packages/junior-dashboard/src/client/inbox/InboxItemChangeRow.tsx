@@ -1,21 +1,19 @@
-import {
-  CircleCheck,
-  CircleSlash,
-  Clock3,
-  Inbox,
-  Info,
-  type LucideIcon,
-} from "lucide-react";
+import { CircleCheck, Inbox, Info, type LucideIcon } from "lucide-react";
 import { use, useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
 import {
   inboxItemQuestion,
+  type ConversationQuestion,
   type InboxItemChangeRecord,
-  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { HoverPreview } from "../components/ui/hover-preview";
 import { cn, dashboardMessageCardClass } from "../styles";
+import {
+  useAskedQuestionId,
+  useConversationQuestion,
+  waitingQuestionItem,
+} from "../conversations/conversationQuestions";
 import {
   TranscriptShowQuestion,
   useAnswerInView,
@@ -23,25 +21,19 @@ import {
 } from "../conversations/TranscriptAnswerLinks";
 import { DisplayText } from "../display-text/DisplayText";
 import { useMobileLayout } from "../layoutMedia";
-import { useConversationInboxItemData } from "./queries";
+import { useViewerWaits } from "./queries";
 import { AnswerSummary, InboxItemActions } from "./InboxItemActions";
 import { InboxItemObjects } from "./InboxItemObjects";
 import { InboxItemSheet } from "./InboxItemSheet";
-import {
-  InboxItemAssignees,
-  InboxItemCloser,
-  InboxItemTitle,
-  inboxItemCloser,
-} from "./InboxItemPeople";
+import { InboxItemTitle } from "./InboxItemPeople";
 import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
 import { useQuestionInViewRef } from "./WaitingQuestions";
 import {
   answerLine,
   answerRows,
-  itemConversationId,
   inboxItemPath,
   inboxItemTitleText,
-  inboxItemWaitsForAnswer,
+  type InboxItemAsk,
 } from "./inboxItemFormat";
 
 // The verb stays muted. The title is the link, so it reads apart from it.
@@ -55,16 +47,18 @@ const CHANGE_VERBS = {
 } as const satisfies Record<InboxItemChangeRecord["kind"], string>;
 
 /**
- * Show what an item asked, and its answer, when the reader hovers or focuses
- * its title. A transcript record names the item only by its title.
+ * Show what a question asked, and its answer, when the reader hovers or
+ * focuses its title. A transcript record names the question only by its
+ * title.
  */
-function InboxItemPreview(props: {
+function QuestionPreview(props: {
   children: ReactNode;
-  item: InboxItemPayload;
+  conversationId: string;
+  question: ConversationQuestion;
   trigger: ReactElement;
 }) {
-  const { answer } = props.item;
-  const request = inboxItemQuestion(props.item.request);
+  const { answer } = props.question;
+  const request = inboxItemQuestion(props.question.request);
   return (
     <HoverPreview
       className="grid gap-3 p-4 font-sans text-sm text-dashboard-text"
@@ -72,13 +66,13 @@ function InboxItemPreview(props: {
         <>
           {/* A quote line can truncate the title, so the card repeats it. */}
           <p className="m-0 break-words text-base font-semibold leading-snug">
-            <InboxItemTitle item={props.item} links />
+            <InboxItemTitle item={props.question} links />
           </p>
-          {/* A notice or a plugin item has no question: its text is the ask. */}
-          <InboxItemObjects conversationId={itemConversationId(props.item)}>
+          {/* A notice has no question: its text is the ask. */}
+          <InboxItemObjects conversationId={props.conversationId}>
             <DisplayText
-              mentions={props.item.mentions}
-              text={request?.question ?? props.item.body}
+              mentions={props.question.mentions}
+              text={request?.question ?? props.question.body}
             />
           </InboxItemObjects>
           {request && answer ? (
@@ -99,49 +93,50 @@ function InboxItemPreview(props: {
 // changed the row height, and the rows below it moved.
 function ChangeRow(props: {
   conversationId: string;
-  item: InboxItemPayload;
+  question: ConversationQuestion;
   record: InboxItemChangeRecord;
 }) {
-  const { item, record } = props;
+  const { question, record } = props;
+  const itemId = record.reviewItemId;
   const showQuestion = use(TranscriptShowQuestion);
   const verb = CHANGE_VERBS[record.kind];
-  // An answer is final, so the item's answer is this message's answer.
-  const question = inboxItemQuestion(item.request);
+  // An answer is final, so the question's answer is this message's answer.
+  const form = inboxItemQuestion(question.request);
   const rows =
-    record.kind === "submitted" && question && item.answer
-      ? answerRows(question, item.answer)
+    record.kind === "submitted" && form && question.answer
+      ? answerRows(form, question.answer)
       : [];
-  const askLinked = useAnswerLinked(item.id);
+  const askLinked = useAnswerLinked(itemId);
   // The page can show a question that has a row here, or load the history
-  // around the Turn that asked it. A plugin item has neither, so it opens on
-  // the Inbox, as does an item from another Conversation.
+  // around the Turn that asked it. Otherwise it opens on the Inbox.
   const scrollsToQuestion =
-    showQuestion !== undefined &&
-    itemConversationId(item) === props.conversationId &&
-    (askLinked || item.addedByTurnId !== undefined);
+    showQuestion !== undefined && (askLinked || question.turnId !== undefined);
   return (
     <section
-      aria-label={`${verb} ${inboxItemTitleText(item)}`}
+      aria-label={`${verb} ${inboxItemTitleText(question)}`}
       className="grid min-w-0 gap-1.5"
     >
       <p className="m-0 flex min-w-0 items-center gap-1.5 border-l-2 border-dashboard-border-emphasis pl-2 text-sm text-dashboard-text-muted">
         <span className="shrink-0">{verb}</span>
-        <InboxItemPreview
-          item={item}
+        <QuestionPreview
+          conversationId={props.conversationId}
+          question={question}
           trigger={
             showQuestion && scrollsToQuestion ? (
               <button
                 className={QUOTE_TITLE_CLASS}
-                onClick={() => showQuestion(item)}
+                onClick={() =>
+                  showQuestion({ itemId, turnId: question.turnId })
+                }
                 type="button"
               />
             ) : (
-              <Link className={QUOTE_TITLE_CLASS} to={inboxItemPath(item.id)} />
+              <Link className={QUOTE_TITLE_CLASS} to={inboxItemPath(itemId)} />
             )
           }
         >
-          <InboxItemTitle item={item} />
-        </InboxItemPreview>
+          <InboxItemTitle item={question} />
+        </QuestionPreview>
       </p>
       {rows.length ? (
         <dl
@@ -174,27 +169,43 @@ function ChangeRow(props: {
 }
 
 /**
+ * Read the question of the item that a change record names, from the ask
+ * in the loaded transcript. `unavailable` is true when no loaded tool call
+ * added the item, or the viewer cannot read the question.
+ */
+function useRecordQuestion(
+  conversationId: string,
+  record: InboxItemChangeRecord,
+) {
+  return useConversationQuestion(
+    conversationId,
+    useAskedQuestionId(conversationId, record.reviewItemId),
+  );
+}
+
+/**
  * Show the Inbox item change that a message records as one row: what the
- * message did and the item it did it to. The row shows the change from the
- * message, not the item's current state, so a take stays a take after a
- * later answer. Shows `fallback` when the viewer cannot read the item.
+ * message did and the question it did it to. The row shows the change from
+ * the message, not the question's current state, so a take stays a take
+ * after a later answer. Shows `fallback` when the question is not loaded
+ * or the viewer cannot read it.
  */
 export function InboxItemChangeRow(props: {
   conversationId: string;
   fallback: ReactNode;
   record: InboxItemChangeRecord;
 }) {
-  const { data, isError } = useConversationInboxItemData(
+  const { question, unavailable } = useRecordQuestion(
     props.conversationId,
-    props.record.reviewItemId,
+    props.record,
   );
-  if (isError) return props.fallback;
-  // The row replaces the text, so wait for the item before showing it.
-  if (!data) return null;
+  if (unavailable) return props.fallback;
+  // The row replaces the text, so wait for the question before showing it.
+  if (!question) return null;
   return (
     <ChangeRow
       conversationId={props.conversationId}
-      item={data}
+      question={question}
       record={props.record}
     />
   );
@@ -202,23 +213,20 @@ export function InboxItemChangeRow(props: {
 
 /**
  * Name the Inbox item change that a queued message records, on one line.
- * Shows `fallback` until the item loads or when the viewer cannot read it.
+ * Shows `fallback` until the question loads or when it is not available.
  */
 export function InboxItemChangeLabel(props: {
   conversationId: string;
   fallback: ReactNode;
   record: InboxItemChangeRecord;
 }) {
-  const { data } = useConversationInboxItemData(
-    props.conversationId,
-    props.record.reviewItemId,
-  );
-  if (!data) return props.fallback;
+  const { question } = useRecordQuestion(props.conversationId, props.record);
+  if (!question) return props.fallback;
   return (
     <>
       {CHANGE_VERBS[props.record.kind]}{" "}
       <span className="font-medium text-dashboard-text">
-        <InboxItemTitle item={data} />
+        <InboxItemTitle item={question} />
       </span>
     </>
   );
@@ -227,125 +235,96 @@ export function InboxItemChangeLabel(props: {
 type AskStatus = {
   icon: LucideIcon;
   iconClassName: string;
-  label: ReactNode;
+  label?: string;
   /** The answer, while the reader cannot see its answer row. */
   answer?: string;
   waitingOnYou?: boolean;
 };
 
-/** Say where an item stands: who it waits on, or how it closed and by whom. */
-function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
-  if (item.status === "open") {
-    // The viewer snoozed it. It still waits on the others.
-    if (item.snoozedByViewer) {
-      return {
-        icon: Clock3,
-        iconClassName: "text-dashboard-text-faint",
-        label: "Snoozed",
-      };
-    }
-    if (item.kind === "notice") {
-      return {
-        icon: Info,
-        iconClassName: "text-dashboard-text-muted",
-        label: (
-          <>
-            Added for <InboxItemAssignees item={item} />
-          </>
-        ),
-      };
-    }
-    return item.canAct
-      ? {
-          icon: Inbox,
-          iconClassName: "text-dashboard-accent-text",
-          label: "Waiting on you",
-          waitingOnYou: true,
-        }
-      : {
-          icon: Clock3,
-          iconClassName: "text-amber-400",
-          label: (
-            <>
-              Waiting on <InboxItemAssignees item={item} />
-            </>
-          ),
-        };
-  }
-  const by = inboxItemCloser(item) ? (
-    <>
-      {" "}
-      by <InboxItemCloser item={item} />
-    </>
-  ) : null;
-  if (item.status === "dismissed") {
+/**
+ * Say where a question stands, from the question and the Inbox overlay
+ * only: it waits on the viewer, it has an answer, or neither. Who else it
+ * waits on, and a dismiss or a snooze, are Inbox facts that the transcript
+ * does not read.
+ */
+function askStatus(
+  question: ConversationQuestion,
+  waitingOnYou: boolean,
+  answerShown: boolean,
+): AskStatus {
+  const form = inboxItemQuestion(question.request);
+  if (waitingOnYou) {
     return {
-      icon: CircleSlash,
-      iconClassName: "text-dashboard-text-faint",
-      label: <>Dismissed{by}</>,
+      icon: Inbox,
+      iconClassName: "text-dashboard-accent-text",
+      label: "Waiting on you",
+      waitingOnYou: true,
     };
   }
-  const question = inboxItemQuestion(item.request);
+  if (form && question.answer) {
+    return {
+      answer: answerShown ? undefined : answerLine(form, question.answer),
+      icon: CircleCheck,
+      iconClassName: "text-emerald-500",
+      label: "Answered",
+    };
+  }
   return {
-    answer:
-      !answerShown && question && item.answer
-        ? answerLine(question, item.answer)
-        : undefined,
-    icon: CircleCheck,
-    iconClassName: "text-emerald-500",
-    label: (
-      <>
-        {item.answer ? "Answered" : "Done"}
-        {by}
-      </>
-    ),
+    icon: form ? Inbox : Info,
+    iconClassName: "text-dashboard-text-muted",
   };
 }
 
 /**
- * Show the Inbox item that a tool call added as a card in the transcript:
- * the title, where it stands, and the answer. A question that waits on the
- * reader stands out and shows its question and form, as its Inbox card
- * does, so the reader answers in place. On a phone, the record keeps to its
- * lines, and a tap opens the item in a sheet (`InboxItemSheet`). Shows
- * `fallback` when the viewer cannot read the item.
+ * Show the question that a tool call added as a card in the transcript. A
+ * question that waits on the reader, as the Inbox's waiting read says,
+ * stands out and shows its form, so the reader answers in place. On a
+ * phone, a tap on it opens a sheet. Shows `fallback` when the viewer cannot
+ * read the question.
  */
 export function InboxItemAskRow(props: {
+  ask: InboxItemAsk;
   conversationId: string;
   fallback: ReactNode;
-  itemId: string;
 }) {
-  const { data: item, isError } = useConversationInboxItemData(
+  const { itemId } = props.ask;
+  const { question, unavailable } = useConversationQuestion(
     props.conversationId,
-    props.itemId,
+    props.ask.questionId,
   );
+  const { itemIds } = useViewerWaits();
   // The record repeats the answer only while its answer row is out of view.
-  const answerShown = useAnswerInView(props.itemId);
-  // Only a question from this Conversation shows its form here. Another
-  // Conversation's question is answered there, or in the Inbox.
+  const answerShown = useAnswerInView(itemId);
   const waiting = Boolean(
-    item &&
-    inboxItemWaitsForAnswer(item) &&
-    itemConversationId(item) === props.conversationId,
+    question &&
+    !question.answer &&
+    inboxItemQuestion(question.request) &&
+    itemIds.has(itemId),
   );
   // The questions pill shows while a card is not in full view.
-  const inViewRef = useQuestionInViewRef(props.itemId, waiting);
-  // A phone keeps the record to its lines. A tap opens the item in a sheet,
-  // where its form has the room it needs.
+  const inViewRef = useQuestionInViewRef(itemId, waiting);
+  // A phone keeps the record to its lines. A tap opens a waiting question
+  // in a sheet, where its form has the room it needs.
   const mobile = useMobileLayout();
   const [sheet, setSheet] = useState(false);
   // A desktop shows the form in place, so a resize past a phone's width
-  // closes the sheet.
-  if (sheet && !mobile) setSheet(false);
-  if (isError) return props.fallback;
-  if (!item) return null;
-  const verb = item.kind === "action" ? "Asked" : "Added";
-  const status = askStatus(item, answerShown);
+  // closes the sheet. An answer elsewhere closes it too.
+  if (sheet && !(mobile && waiting)) setSheet(false);
+  if (unavailable) return props.fallback;
+  if (!question) return null;
+  const verb = inboxItemQuestion(question.request) ? "Asked" : "Added";
+  const status = askStatus(question, waiting, answerShown);
   const Icon = status.icon;
+  const item = waiting
+    ? waitingQuestionItem(question, {
+        conversationId: props.conversationId,
+        itemId,
+      })
+    : undefined;
   return (
     // The transcript marks the card for a moment when the reader goes to it.
     <section
-      aria-label={`${verb} ${inboxItemTitleText(item)}`}
+      aria-label={`${verb} ${inboxItemTitleText(question)}`}
       className={cn(
         "relative grid w-full min-w-0 gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
         // A card with a form spans the transcript. A closed record is as
@@ -355,7 +334,7 @@ export function InboxItemAskRow(props: {
           ? "border-violet-400/40 bg-violet-500/[0.07]"
           : "border-dashboard-border-subtle bg-dashboard-surface-panel",
       )}
-      data-inbox-item-ask={item.id}
+      data-inbox-item-ask={itemId}
       ref={inViewRef}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -373,79 +352,75 @@ export function InboxItemAskRow(props: {
           />
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          {mobile ? (
+          {mobile && item ? (
             // The button covers the whole record, so a tap anywhere on it
             // opens the sheet.
             // The title truncates in its own span: a clipped button would
             // clip its cover too.
             <button
               aria-haspopup="dialog"
-              className={cn(
-                "flex min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left font-medium underline decoration-dashboard-border-heavy underline-offset-2 after:absolute after:inset-0 after:rounded-[inherit] hover:decoration-current focus-visible:outline-dashboard-focus",
-                item.status === "dismissed"
-                  ? "text-dashboard-text-muted"
-                  : "text-dashboard-text",
-              )}
+              className="flex min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left font-medium text-dashboard-text underline decoration-dashboard-border-heavy underline-offset-2 after:absolute after:inset-0 after:rounded-[inherit] hover:decoration-current focus-visible:outline-dashboard-focus"
               onClick={() => setSheet(true)}
               type="button"
             >
               <span className="min-w-0 truncate">
-                <InboxItemTitle item={item} />
+                <InboxItemTitle item={question} />
               </span>
             </button>
           ) : (
-            <InboxItemPreview
-              item={item}
+            <QuestionPreview
+              conversationId={props.conversationId}
+              question={question}
               trigger={
                 <Link
-                  className={cn(
-                    "min-w-0 truncate font-medium no-underline hover:underline focus-visible:outline-dashboard-focus",
-                    item.status === "dismissed"
-                      ? "text-dashboard-text-muted"
-                      : "text-dashboard-text",
-                  )}
-                  to={inboxItemPath(item.id)}
+                  className="min-w-0 truncate font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
+                  to={inboxItemPath(itemId)}
                 />
               }
             >
-              <InboxItemTitle item={item} />
-            </InboxItemPreview>
+              <InboxItemTitle item={question} />
+            </QuestionPreview>
           )}
-          <p className="m-0 flex min-w-0 gap-1 text-xs">
-            <span
-              className={
-                status.waitingOnYou
-                  ? "shrink-0 font-medium text-dashboard-accent-text"
-                  : "shrink-0 text-dashboard-text-muted"
-              }
-            >
-              {status.label}
-            </span>
-            {status.answer ? (
-              <>
-                <span aria-hidden="true" className="text-dashboard-text-faint">
-                  ·
-                </span>
-                <span
-                  className="min-w-0 truncate text-dashboard-text-subtle"
-                  title={status.answer}
-                >
-                  {status.answer}
-                </span>
-              </>
-            ) : null}
-          </p>
+          {status.label ? (
+            <p className="m-0 flex min-w-0 gap-1 text-xs">
+              <span
+                className={
+                  status.waitingOnYou
+                    ? "shrink-0 font-medium text-dashboard-accent-text"
+                    : "shrink-0 text-dashboard-text-muted"
+                }
+              >
+                {status.label}
+              </span>
+              {status.answer ? (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="text-dashboard-text-faint"
+                  >
+                    ·
+                  </span>
+                  <span
+                    className="min-w-0 truncate text-dashboard-text-subtle"
+                    title={status.answer}
+                  >
+                    {status.answer}
+                  </span>
+                </>
+              ) : null}
+            </p>
+          ) : null}
         </div>
       </div>
-      {waiting && !mobile ? (
+      {item && !mobile ? (
         <InboxItemActions
           context={<InboxItemTurnMessage item={item} />}
           item={item}
         />
       ) : null}
-      {sheet && mobile ? (
+      {item && sheet && mobile ? (
         <InboxItemSheet
-          context={waiting ? <InboxItemTurnMessage item={item} /> : undefined}
+          context={<InboxItemTurnMessage item={item} />}
           item={item}
           onClose={() => setSheet(false)}
         />

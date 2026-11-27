@@ -147,6 +147,7 @@ export const audit = {
   createdAt: "2026-08-07T09:10:00.000Z",
   id: "item-audit",
   title: "Review the globex license entry",
+  subject: { id: "item-audit", kind: "question" as const },
 };
 
 export const prReady = {
@@ -177,6 +178,7 @@ export const answered = {
   id: "item-initech",
   status: "done" as const,
   title: "Review the initech license entry",
+  subject: { id: "item-initech", kind: "question" as const },
 };
 
 const dismissedNotice = {
@@ -202,6 +204,7 @@ export const migration = {
   createdAt: "2026-08-07T10:20:00.000Z",
   id: "item-migration",
   title: "Pick the billing migration window",
+  subject: { id: "item-migration", kind: "question" as const },
 };
 
 // The Events of a GitHub pull request subject, as the API lists them.
@@ -379,6 +382,82 @@ export function failedRunAlert(automationId: string, title: string) {
   };
 }
 
+/** The fields of an item that its question and its wait come from. */
+type AskItem = {
+  answer?: unknown;
+  assignedToEveryone: boolean;
+  body: string;
+  canAct: boolean;
+  conversationIds: readonly string[];
+  createdAt: string;
+  id: string;
+  kind: string;
+  owner: { id: string };
+  request?: unknown;
+  rootConversationId?: string;
+  subject?: { id?: string; kind?: string };
+  title: string;
+  updatedAt: string;
+};
+
+/**
+ * The questions that `items` ask in `conversationId`, as
+ * `/api/conversations/:id/questions` sends them.
+ */
+export function conversationQuestions(
+  conversationId: string,
+  items: readonly AskItem[],
+) {
+  return {
+    conversationId,
+    questions: items
+      .filter(
+        (item) =>
+          item.subject?.kind === "question" && item.owner.id === conversationId,
+      )
+      .map((item) => ({
+        body: item.body,
+        createdAt: item.createdAt,
+        id: item.subject?.id ?? item.id,
+        title: item.title,
+        updatedAt: item.updatedAt,
+        ...(item.answer ? { answer: item.answer } : undefined),
+        ...(item.request ? { request: item.request } : undefined),
+      })),
+  };
+}
+
+/**
+ * The viewer's waiting read for open `items`: one entry per root
+ * Conversation, as the server groups the items that wait on the viewer.
+ */
+export function waitingConversations(items: readonly AskItem[]) {
+  const roots = new Map<string, AskItem[]>();
+  for (const item of items) {
+    if (item.kind !== "action" || !item.canAct || item.assignedToEveryone)
+      continue;
+    const root = item.rootConversationId;
+    if (root) roots.set(root, [...(roots.get(root) ?? []), item]);
+  }
+  return {
+    conversations: [...roots].map(([conversationId, waiting]) => ({
+      conversationId,
+      conversationIds: [
+        ...new Set([conversationId, ...waiting.map((i) => i.owner.id)]),
+      ],
+      items: waiting.map((i) => ({
+        conversationId: i.owner.id,
+        id: i.id,
+        title: i.title,
+      })),
+      waitingSince: waiting
+        .map((i) => i.createdAt)
+        .sort()
+        .at(0)!,
+    })),
+  };
+}
+
 /** The fields of an item that the mock reads or changes. */
 type MockItem = Omit<typeof license, "status"> & {
   status: string;
@@ -520,9 +599,25 @@ export async function mockInboxItems(
         title: i.title,
       })),
   });
+  // The transcript reads the questions of its Conversation, which hold the
+  // answers given in this test.
+  await page.route("**/api/conversations/*/questions", (route) => {
+    const id = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").at(-2)!,
+    );
+    return route.fulfill({
+      json: conversationQuestions(id, [...open, ...closedNow, ...archived]),
+    });
+  });
   await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
+    if (path === "/waiting-conversations") {
+      const sleeping = await snoozedRows();
+      return route.fulfill({
+        json: waitingConversations(open.filter((i) => !asleep(sleeping, i))),
+      });
+    }
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
       const sleeping = await snoozedRows();
@@ -623,7 +718,12 @@ export async function mockInboxItems(
       }
       if (options.keepOpen) return route.fulfill({ json: item });
       open = open.filter((i) => i.id !== id);
-      if (item) closedNow.push({ ...item, status: "done" });
+      if (item)
+        closedNow.push({
+          ...item,
+          ...(body?.action === "submit" ? { answer: body.answer } : undefined),
+          status: "done",
+        });
       return route.fulfill({ json: { ...item, status: "done" } });
     }
     const item = [...open, ...closedNow, ...archived].find(
