@@ -5,7 +5,6 @@ import {
   expectNoFullScan,
   expectPlanCost,
   expectSqlBudget,
-  TODO_OWNER_SCAN,
 } from "../../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
@@ -265,13 +264,18 @@ describe("inbox item actions API", () => {
     // The names and photos come with the items, in one more statement.
     await seedDashboardScale();
     const { items } = await (
-      await expectNoFullScan(
+      await expectPlanCost(
         () =>
-          expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
-            statements: 6,
-            serialRounds: 4,
-          }),
-        { todoOwner: TODO_OWNER_SCAN },
+          expectNoFullScan(() =>
+            expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
+              statements: 6,
+              serialRounds: 4,
+            }),
+          ),
+        // About 68,000, mostly the visibility and owner of each item, which
+        // its subject decides. A To-do check on each item costs about
+        // 100,000.
+        85_000,
       )
     ).json();
     expect(items).toMatchObject([

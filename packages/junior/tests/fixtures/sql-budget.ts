@@ -234,17 +234,6 @@ type FullScanAllowance = {
 };
 
 /**
- * The To-do check of Inbox item access reads `junior_conversations` as
- * `todo_owner` with no index condition, for each item that it checks.
- */
-export const TODO_OWNER_SCAN: FullScanAllowance = {
-  reason:
-    "The To-do check of an Inbox item finds its owner with no index. It needs a fix of its own.",
-  statement: '"todo_owner"',
-  table: "junior_conversations",
-};
-
-/**
  * Assert that the statements of `call` read no big table in full. A big table
  * grows with use, such as `junior_conversation_metrics`.
  *
