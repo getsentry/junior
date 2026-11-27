@@ -272,8 +272,7 @@ describe("advanceTurn", () => {
       await expect(modelCalls()).resolves.toEqual([]);
       await expect(harness.turn(turnId)).resolves.toEqual(before);
       await expect(harness.history()).resolves.toEqual([]);
-      // Only the stop's own message.
-      expect(pendingSteps(turnId)).toBe(state === "cancelled" ? 1 : 0);
+      expect(pendingSteps(turnId)).toBe(0);
     },
   );
 
@@ -389,8 +388,8 @@ describe("advanceTurn with tools", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
-    // The stop's message. The tool step's own message was delivered.
-    expect(pendingSteps(cancelledTurnId)).toBe(1);
+    // The tool step's own message was delivered.
+    expect(pendingSteps(cancelledTurnId)).toBe(0);
   });
 
   it("runs a tool that must not run twice on the first attempt of its step", async () => {
@@ -709,8 +708,7 @@ describe("advanceTurn with a test step", () => {
       leaseOwner: null,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    // Only the stop's own message.
-    expect(engine.sentStepMessages()).toBe(1);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it("writes nothing when the model request throws its own error after a cancel", async () => {
@@ -732,8 +730,7 @@ describe("advanceTurn with a test step", () => {
       state: "cancelled",
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    // Only the stop's own message.
-    expect(engine.sentStepMessages()).toBe(1);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it("stops the step when another invocation takes over the Turn during it, and writes nothing", async () => {
