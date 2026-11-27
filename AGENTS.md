@@ -92,7 +92,7 @@ One simulator can use about 10 GB of memory, so:
 
 - `TERMINOLOGY.md`: canonical words for code and docs.
 - `TELEMETRY.md`: span, metric, and attribute names.
-- `design/`: the goals and rules of each major system.
+- `design/`: the jobs and rules of each major system.
 - `policies/correctness-complexity.md`: how much design a fix needs.
 - `policies/interface-design.md`: module shape, file layout, lifecycle state.
 - `policies/error-handling.md`: where failures are caught or retried.

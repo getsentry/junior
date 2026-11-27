@@ -1,6 +1,6 @@
 # Junior verification map
 
-This directory is the maintained source for verifying the user-facing behavior of Junior. Read the index before you drive Junior, then use the matching feature file as the recipe. Design docs in `design/` state the goals and rules of a system, and name a behavior only by its sub-feature ID here.
+This directory is the maintained source for verifying the user-facing behavior of Junior. Read the index before you drive Junior, then use the matching feature file as the recipe. Design docs in `design/` state the jobs and rules of a system, and name a behavior only by its sub-feature ID here.
 
 ## Baseline preconditions
 
