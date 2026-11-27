@@ -6,7 +6,7 @@ import type { EngineContext } from "@/core/engine-context";
 import { readTurnEndedMessages } from "@/core/turn/ended";
 import { deliverTurn, type Delivery } from "@/delivery/deliver";
 import { createSlackSender } from "@/delivery/slack";
-import { compat__writeTurnEnded } from "@/turn-steps/compat__turn-ended";
+import { compat__writeTurnEnded } from "@/delivery/compat__turn-ended";
 import { recordTurnMetrics } from "@/turn-steps/metrics";
 
 /**

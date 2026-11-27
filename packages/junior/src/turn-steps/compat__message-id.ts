@@ -4,6 +4,6 @@
 // input's inbox row.
 
 /** The visible message id of a core Turn's input, for main's readers. */
-export function compat__inputMessageId(inputId: string): string {
+export function compat__personMessageId(inputId: string): string {
   return `inbox:${inputId}`;
 }

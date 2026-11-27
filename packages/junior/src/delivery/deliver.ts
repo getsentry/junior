@@ -10,7 +10,7 @@ import { logException } from "@/chat/logging";
 import type { EngineContext } from "@/core/engine-context";
 import { publishTurnEnded, type TurnEndedMessage } from "@/core/turn/ended";
 import { replyText } from "@/core/turn/replies";
-import { compat__writeReplyDelivered } from "@/turn-steps/compat__turn-ended";
+import { compat__writeReplyDelivered } from "@/delivery/compat__turn-ended";
 import {
   juniorConversationEvents,
   juniorTurnOutbox,

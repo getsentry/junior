@@ -11,7 +11,7 @@ import {
 import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { juniorConversationBindings, juniorTurnOutbox } from "@/db/schema";
-import { compat__inputMessageId } from "@/turn-steps/compat__message-id";
+import { compat__personMessageId } from "@/turn-steps/compat__message-id";
 import { turnEndedConsumer } from "@/turn-steps/turn-ended";
 import {
   modelCalls,
@@ -173,7 +173,7 @@ describe("Turn delivery", () => {
     const { turnId, inputId } = await sendForReply("Three.");
     // The person's visible message, as main's readers need it before the
     // reply marks it handled. Nothing on this path writes it yet.
-    const inputMessageId = compat__inputMessageId(inputId);
+    const inputMessageId = compat__personMessageId(inputId);
     await createSqlConversationEventStore(engineCtx.executor).append(
       conversationId,
       [

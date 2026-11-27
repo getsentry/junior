@@ -19,7 +19,7 @@ import { findTurnDestination, findTurnInputs } from "@/core/turn/inbox";
 import { findTurnReplies, replyText } from "@/core/turn/replies";
 import { findTurn, type TurnRecord } from "@/core/turn/state";
 import { juniorConversationEvents, juniorTurnOutbox } from "@/db/schema";
-import { compat__inputMessageId } from "./compat__message-id";
+import { compat__personMessageId } from "@/turn-steps/compat__message-id";
 
 type Executor = Pick<EngineContext, "executor">;
 
@@ -152,7 +152,7 @@ async function compatReplyEvents(
     return [];
   }
   const inputMessageIds = (await findTurnInputs({ executor }, turnId)).map(
-    (input) => compat__inputMessageId(input.inputId),
+    (input) => compat__personMessageId(input.inputId),
   );
   const stored = await executor
     .db()
