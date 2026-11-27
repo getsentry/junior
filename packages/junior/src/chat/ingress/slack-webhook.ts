@@ -71,7 +71,6 @@ import { isTrustedSlackAuthor } from "@/chat/identities/trust";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import { postSlackMovedNotice } from "@/chat/slack/moved-notice";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
@@ -430,8 +429,6 @@ async function routeParsedMessage(args: {
     installation: args.installation,
   });
 
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
-  const slackThread = parseSlackThreadId(canonicalThreadId);
   if (stopDecision) {
     const { inbound } = await buildSlackInput({
       adapter: args.adapter,
@@ -449,7 +446,8 @@ async function routeParsedMessage(args: {
       conversationStore: args.conversationStore,
       queue: args.queue,
       request: inbound,
-      slackThread,
+      // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
+      slackThread: parseSlackThreadId(canonicalThreadId),
       state: args.state,
       stopMessage: {
         message,
@@ -467,19 +465,6 @@ async function routeParsedMessage(args: {
     await pushConversationInboxItemsNow(conversationId);
   }
 
-  // After the message is saved, tell the thread once when its Conversation
-  // moved to the web.
-  const noticeMove = async () => {
-    if (!slackThread) return;
-    await postSlackMovedNotice({
-      channelId: slackThread.channelId,
-      conversationId,
-      conversationStore: args.conversationStore ?? getConversationStore(),
-      threadConversationId: canonicalThreadId,
-      threadTs: slackThread.threadTs,
-    });
-  };
-
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
   // Write to the Conversation that owns the thread, which mention Turns read.
@@ -489,7 +474,6 @@ async function routeParsedMessage(args: {
       message,
       skippedReason: `${SubscribedReplyReason.PassiveDisabled}:passive-routing`,
     });
-    await noticeMove();
     return;
   }
 
@@ -544,7 +528,6 @@ async function routeParsedMessage(args: {
     throw error;
   }
   args.runAfterUnlock(closeAnswered);
-  await noticeMove();
 }
 
 /**

@@ -40,6 +40,9 @@ import {
 } from "../../fixtures/spaces-api";
 import { signedInViewer } from "../../fixtures/user";
 import { patchConfig } from "../../fixtures/config";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { chatPostMessageOk } from "../../fixtures/slack/factories/api";
+import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
 
 async function detail(app: Hono<JuniorApiEnv>, conversationId: string) {
   const response = await request(
@@ -625,13 +628,21 @@ describe("Spaces API", () => {
     expect(await detailSpace(bo, inSpace)).toBeNull();
   });
 
-  it("keeps a Slack Conversation out of a private Space", async () => {
+  it("keeps a Slack Conversation out of a private Space and tells its thread once when it moves", async () => {
+    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
     const ana = apiFor("spaces-slack-ana@example.com");
     const conversationId = "slack:CSPACES:1700000000.000100";
     await getConversationStore().recordActivity({
       conversationId,
       destination: { platform: "slack", teamId: "T123", channelId: "CSPACES" },
       nowMs: 1_000,
+      sessionSource: {
+        kind: "slack",
+        visibility: "public",
+        teamId: "T123",
+        channelId: "CSPACES",
+        threadTs: "1700000000.000100",
+      },
       source: "slack",
       visibility: "public",
     });
@@ -652,6 +663,25 @@ describe("Spaces API", () => {
       ).json(),
     );
     expect((await moveTo(ana, conversationId, hidden.id)).status).toBe(409);
+    expect(slackApiOutbox.messages()).toHaveLength(0);
+
+    // The move into a public Space drops the Slack Location, so the thread
+    // hears about it once. Later moves find no Slack thread to tell.
+    const open = await createSpace(ana, "Escalations");
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({ channel: "CSPACES", ts: "1700000000.000200" }),
+    });
+    expect((await moveTo(ana, conversationId, open.id)).status).toBe(200);
+    expect((await moveTo(ana, conversationId, null)).status).toBe(200);
+    expect((await moveTo(ana, conversationId, open.id)).status).toBe(200);
+    const link = `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`;
+    expect(slackApiOutbox.messages().map((call) => call.params)).toEqual([
+      expect.objectContaining({
+        channel: "CSPACES",
+        text: `This conversation moved to the web: <${link}|${link}>`,
+        thread_ts: "1700000000.000100",
+      }),
+    ]);
   });
 
   it("lets members ask Junior to set the configuration that a Space's Conversations use", async () => {

@@ -27,17 +27,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { juniorConversations } from "@/db/schema";
 import { inArray } from "drizzle-orm";
 import type { StateAdapter } from "chat";
-import {
-  SLACK_BOT_USER_ID,
-  createConversationWorkHarness,
-  createNoopSlackWebhookRuntime,
-  createSlackAdapterFixture,
-  handleSlackWebhookAndFlush,
-  slackEnvelope,
-  slackWebhookRequest,
-} from "../fixtures/conversation-work";
-import { patchConfig } from "../fixtures/config";
-import { slackApiOutbox } from "../fixtures/slack-api-outbox";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { recordSlackRoot } from "../fixtures/conversation-status";
 import { signedInViewer } from "../fixtures/user";
 
@@ -455,82 +445,6 @@ describe("Lead", () => {
       location: null,
       parentConversationId: null,
     });
-  });
-
-  it("tells a Slack thread once that its Conversation moved to the web", async () => {
-    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
-    const harness = await createConversationWorkHarness(
-      readRunsAgentRunner().agentRunner,
-    );
-    const ana = await signedInViewer("lead-slack-notice@example.com");
-    const { lead, space } = await spaceLead(ana);
-    const target = {
-      leadConversationId: lead.conversationId,
-      spaceId: space.id,
-    };
-    const movedIn = await recordSlackRoot(
-      getConversationStore(),
-      "1700000000.000810",
-    );
-    const left = await recordSlackRoot(
-      getConversationStore(),
-      "1700000000.000820",
-    );
-    await setConversationSpace(movedIn, target, null);
-    await setConversationSpace(left, target, null);
-    await setConversationSpace(left, null, space.id);
-
-    const mention = (threadTs: string, ts: string) =>
-      handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(
-          slackEnvelope({
-            channel: "CSTATUS",
-            text: `<@${SLACK_BOT_USER_ID}> any news?`,
-            threadTs,
-            ts,
-          }),
-        ),
-        services: {
-          getSlackAdapter: () => createSlackAdapterFixture(),
-          queue: harness.queue,
-          runtime: createNoopSlackWebhookRuntime(),
-          state: harness.state,
-        },
-      });
-    const notices = () =>
-      slackApiOutbox
-        .messages()
-        .filter((call) =>
-          String(call.params["text"]).startsWith(
-            "This conversation moved to the web: ",
-          ),
-        );
-
-    // The first Slack message in each thread gets the notice, with the link
-    // to the Conversation, and is still saved. Later messages get nothing.
-    for (const [conversationId, threadTs] of [
-      [movedIn, "1700000000.000810"],
-      [left, "1700000000.000820"],
-    ] as const) {
-      const link = `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`;
-      expect((await mention(threadTs, `${threadTs}1`)).status).toBe(200);
-      expect((await mention(threadTs, `${threadTs}2`)).status).toBe(200);
-      expect(
-        notices().filter((call) => call.params["thread_ts"] === threadTs),
-      ).toEqual([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel: "CSTATUS",
-            text: `This conversation moved to the web: <${link}|${link}>`,
-          }),
-        }),
-      ]);
-      const work = await getConversationWorkState({
-        conversationId,
-        state: harness.state,
-      });
-      expect(work?.execution.inboundMessageIds).toHaveLength(2);
-    }
   });
 
   it("starts a Lead Turn for each result of its child, as for any parent", async () => {
