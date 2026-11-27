@@ -33,7 +33,7 @@ function armModelId(reviewUnavailable: boolean | undefined): string {
 }
 
 /** The facts that production gives for the installed plugins. */
-function installedPluginFacts() {
+export function installedPluginFacts() {
   return guardianPluginFacts(
     getAppContext()
       .catalog.getProviders()

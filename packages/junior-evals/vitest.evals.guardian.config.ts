@@ -15,7 +15,10 @@ function pluginSource(name: string): string {
   return path.resolve(packagesRoot, name, "src/index.ts");
 }
 // Leave room for provider retry inside the separate 60-second review budget.
-const GUARDIAN_EVAL_TEST_TIMEOUT_MS = 90_000;
+// The input audit (\`GUARDIAN_ABLATIONS\`) runs many samples for each case.
+const GUARDIAN_EVAL_TEST_TIMEOUT_MS = process.env["GUARDIAN_ABLATIONS"]
+  ? 900_000
+  : 90_000;
 const evalReportPath = path.resolve(
   evalsPackageRoot,
   process.env["VITEST_EVALS_OUTPUT_FILE"] ?? "guardian-results.json",

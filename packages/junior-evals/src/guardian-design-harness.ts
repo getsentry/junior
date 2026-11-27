@@ -10,6 +10,11 @@ import {
   type JsonValue,
 } from "vitest-evals";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
+import {
+  auditCase,
+  selectedAblations,
+  type AblationAudit,
+} from "./guardian-design-ablation";
 import { agentGuardianArm, currentGuardianArm } from "./guardian-design-arms";
 
 const SAMPLE_TIMEOUT_MS = 60_000;
@@ -159,6 +164,8 @@ export interface GuardianDesignOutput extends Record<string, JsonValue> {
   passes: number;
   rule: DesignRuleId;
   samples: number;
+  /** The input audit of this case, when `GUARDIAN_ABLATIONS` is set. */
+  audit: AblationAudit | null;
 }
 
 /**
@@ -206,14 +213,23 @@ export const guardianDesignHarness = createHarness<
   run: async ({ input, signal }) => {
     const { arm, name } = selectedArm();
     const samples = sampleCount();
-    const results = await Promise.allSettled(
-      Array.from({ length: samples }, () => {
-        const timeout = AbortSignal.timeout(SAMPLE_TIMEOUT_MS);
-        return arm(input.request, {
-          signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-        });
-      }),
-    );
+    const sampleSignal = () => {
+      const timeout = AbortSignal.timeout(SAMPLE_TIMEOUT_MS);
+      return signal ? AbortSignal.any([signal, timeout]) : timeout;
+    };
+    const ablations = name === "agent" ? selectedAblations() : [];
+    const audited =
+      ablations.length > 0
+        ? await auditCase(input.request, samples, ablations, sampleSignal)
+        : undefined;
+    const results =
+      audited?.baseline ??
+      (await Promise.allSettled(
+        Array.from({ length: samples }, () => {
+          const sampleOptions = { signal: sampleSignal() };
+          return arm(input.request, sampleOptions);
+        }),
+      ));
     signal?.throwIfAborted();
     // A sample that throws fails alone, so one provider error does not hide
     // the decisions of the other samples.
@@ -231,6 +247,7 @@ export const guardianDesignHarness = createHarness<
       passes: samples - failures.length,
       rule: input.rule,
       samples,
+      audit: audited?.audit ?? null,
     };
     return {
       output,
