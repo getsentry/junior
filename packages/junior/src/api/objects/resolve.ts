@@ -58,8 +58,8 @@ const DEFAULT_HTTP_CACHE = { staleIfError: true, ttlMs: OBJECT_LINK_TTL_MS };
 // Links resolve outside a Turn, so no person is the credential subject. This
 // system Actor gets only credentials that a plugin owns, never the viewer's.
 // Each plugin checks that the viewer may see an object before it returns it.
-// A card is not worth a longer wait, so a card read's provider call ends
-// after this, body included. Egress also has its own, longer deadline.
+// A card is not worth a longer wait, so each provider call of a card read,
+// through egress or MCP, ends after this, body included.
 const CARD_READ_DEADLINE_MS = 10_000;
 
 const cardReadFetch: typeof fetch = async (input, init) => {
@@ -233,7 +233,7 @@ function objectLinkContext(
       pluginAuth: { async handleAuthRequired() {} },
       userOAuthOnly: true,
     }),
-    viewerMcp: createViewerMcp(name, viewer.id),
+    viewerMcp: createViewerMcp(name, viewer.id, { fetch: cardReadFetch }),
     replaceSubjectId: (subject) =>
       replaceAnnotationSubjectId(getDb(), { ...subject, plugin: name }),
     ...(read.cacheOnly
