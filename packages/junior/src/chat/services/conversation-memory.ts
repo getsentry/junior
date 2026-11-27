@@ -31,6 +31,9 @@ const THREAD_CONTEXT_OMITTED_NOTE =
   "Older Messages of this thread are not shown. Find them with a searchConversationEvents query, then read them with readConversationEvent.";
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 
+/** Skip reason on the Message that saves input a stopped Conversation holds. */
+export const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
+
 /** Normalize message boundaries without changing transcript formatting. */
 export function normalizeConversationText(text: string): string {
   return text.replace(/\r\n?/g, "\n").trim();
@@ -253,7 +256,10 @@ function isUntaggedThreadMessage(message: ConversationMessage): boolean {
   return (
     message.role === "user" &&
     !message.meta?.explicitMention &&
-    !isEventConversationMessage(message)
+    // A Turn read each other Event as its input, so agent history has it.
+    // No Turn read held input.
+    (!isEventConversationMessage(message) ||
+      message.meta?.skippedReason === STOPPED_CONVERSATION_SKIP_REASON)
   );
 }
 

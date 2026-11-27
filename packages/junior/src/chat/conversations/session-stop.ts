@@ -11,7 +11,10 @@ import {
   renderEventBatchInputs,
 } from "@/chat/events/notification";
 import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
-import { normalizeConversationText } from "@/chat/services/conversation-memory";
+import {
+  normalizeConversationText,
+  STOPPED_CONVERSATION_SKIP_REASON,
+} from "@/chat/services/conversation-memory";
 import {
   appendAndEnqueueInboundMessage,
   stopConversationWork,
@@ -30,9 +33,6 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
-
-/** Skip reason on the Message that saves input a stopped Conversation holds. */
-const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
 export async function getConversationStoppedAtMs(
