@@ -26,8 +26,9 @@ constraints:
 utils:
   host-module:
     any:
-      # A relative path that leaves its directory. Core uses `@/core/...`.
-      - regex: ^["']\.\./
+      # Any `..` segment, such as `../chat/x` or `@/core/../chat/x`, can leave
+      # core. Core imports its own modules as `@/core/...`.
+      - regex: (^["']|/)\.\.(/|["']$)
       - all:
           - regex: ^["']@/
           - not:
