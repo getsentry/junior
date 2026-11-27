@@ -692,6 +692,7 @@ vi.mock("@/app/context", () => {
     plugins: [],
     catalog,
     slackTeamDomains: { entries: new Map(), inflight: new Map() },
+    slackUsers: new Map(),
   };
   return { getAppContext: () => context };
 });
