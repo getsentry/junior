@@ -683,7 +683,7 @@ export async function closeInboxItem(
  * closes them. It sends no message and does not change the Slack cards. A
  * close by Conversations skips the items of an Automation, because a later
  * run of the Automation can still change them. An Automation delete closes
- * those.
+ * those. Callers run it in their transaction, which closes the questions.
  */
 export async function dismissOpenInboxItems(
   db: JuniorDatabase,
@@ -695,40 +695,37 @@ export async function dismissOpenInboxItems(
 ): Promise<void> {
   if ("ids" in input && input.ids.length === 0) return;
   const now = new Date(input.nowMs);
-  const dismissed = await db.transaction(async (tx) => {
-    const items = await tx
-      .update(juniorInboxItems)
-      .set({
-        closeReason: input.reason,
-        closedAt: now,
-        status: "dismissed",
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(juniorInboxItems.status, "open"),
-          "ids" in input
-            ? inArray(juniorInboxItems.id, [...input.ids])
-            : "automationId" in input
-              ? inboxItemAddedByAutomation(input.automationId)
-              : and(
-                  inArray(inboxItemOwnerConversationId(), [
-                    ...input.ownerConversationIds,
-                  ]),
-                  not(inboxItemAddedByAnyAutomation()),
-                ),
-        ),
-      )
-      .returning({
-        ...ownerColumns(),
-        id: juniorInboxItems.id,
-        subjectId: juniorInboxItems.subjectId,
-        subjectKind: juniorInboxItems.subjectKind,
-      });
-    await closeItemQuestions(tx, items, { now });
-    await touchConversationDetail(tx, ownerConversationIds(items));
-    return items;
-  });
+  const dismissed = await db
+    .update(juniorInboxItems)
+    .set({
+      closeReason: input.reason,
+      closedAt: now,
+      status: "dismissed",
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(juniorInboxItems.status, "open"),
+        "ids" in input
+          ? inArray(juniorInboxItems.id, [...input.ids])
+          : "automationId" in input
+            ? inboxItemAddedByAutomation(input.automationId)
+            : and(
+                inArray(inboxItemOwnerConversationId(), [
+                  ...input.ownerConversationIds,
+                ]),
+                not(inboxItemAddedByAnyAutomation()),
+              ),
+      ),
+    )
+    .returning({
+      ...ownerColumns(),
+      id: juniorInboxItems.id,
+      subjectId: juniorInboxItems.subjectId,
+      subjectKind: juniorInboxItems.subjectKind,
+    });
+  await closeItemQuestions(db, dismissed, { now });
+  await touchConversationDetail(db, ownerConversationIds(dismissed));
   await clearInboxItemDeliveries(
     db,
     dismissed.map((item) => item.id),

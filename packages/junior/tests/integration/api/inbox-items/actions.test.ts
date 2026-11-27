@@ -197,18 +197,16 @@ describe("inbox item actions API", () => {
       await (
         await expectSqlBudget(
           () => api(fixture, ana).get("/waiting-conversations"),
-          // The items, then the trees of their Conversations.
-          { statements: 2, serialRounds: 2 },
+          { statements: 1, serialRounds: 1 },
         )
       ).json(),
     ).toEqual({
       conversations: [
         {
           conversationId: "slack:CPUB:1.000001",
-          conversationIds: ["slack:CPUB:1.000001"],
           items: [
-            expect.objectContaining({ title: "Review globex entry" }),
-            expect.objectContaining({ title: "Review acme entry" }),
+            { title: "Review globex entry" },
+            { title: "Review acme entry" },
           ],
           // The wait began with the oldest item.
           waitingSince: (await getInboxItem(
@@ -218,14 +216,7 @@ describe("inbox item actions API", () => {
         },
         {
           conversationId: "slack:CPUB:1.000004",
-          // The child that the item links waits too, so its row shows it.
-          conversationIds: ["slack:CPUB:1.000004", "agent:child-of-4"],
-          items: [
-            expect.objectContaining({
-              conversationId: "agent:child-of-4",
-              title: "Review initech entry",
-            }),
-          ],
+          items: [{ title: "Review initech entry" }],
           waitingSince: expect.any(String),
         },
       ],
@@ -336,14 +327,12 @@ describe("inbox item actions API", () => {
       conversations: [
         {
           conversationId: "slack:CPUB:1.000001",
-          conversationIds: ["slack:CPUB:1.000001"],
-          items: [expect.objectContaining({ title: "Review acme entry" })],
+          items: [{ title: "Review acme entry" }],
           waitingSince: expect.any(String),
         },
         {
           conversationId: "slack:CPUB:1.000002",
-          conversationIds: ["slack:CPUB:1.000002"],
-          items: [expect.objectContaining({ title: "Review acme entry" })],
+          items: [{ title: "Review acme entry" }],
           waitingSince: expect.any(String),
         },
       ],
@@ -895,10 +884,7 @@ describe("inbox item actions API", () => {
       conversations: [
         {
           conversationId: "slack:CPUB:1.000001",
-          conversationIds: ["slack:CPUB:1.000001"],
-          items: [
-            expect.objectContaining({ title: "Pull request needs review" }),
-          ],
+          items: [{ title: "Pull request needs review" }],
           waitingSince: expect.any(String),
         },
       ],

@@ -161,10 +161,7 @@ describe("plugin inbox items", () => {
     expect(await listWaitingConversations(getDb(), ana.user.id)).toEqual([
       {
         conversationId: "slack:C1:1.000001",
-        conversationIds: ["slack:C1:1.000001"],
-        items: [
-          expect.objectContaining({ plugin: "github", title: NOTICE.title }),
-        ],
+        items: [{ plugin: "github", title: NOTICE.title }],
         waitingSince: expect.any(String),
       },
     ]);

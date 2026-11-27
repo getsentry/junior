@@ -20,16 +20,6 @@ mockMcpDashboardConfig();
 
 const CONVERSATION_ID = "slack:C123:1700000000.000300";
 
-// A sign-in wait on someone who is not the viewer.
-const SIGN_IN = {
-  actorId: "UOTHER",
-  authorizationId: "mcp-sign-in",
-  conversationId: CONVERSATION_ID,
-  delivery: "private_link_sent" as const,
-  kind: "mcp" as const,
-  provider: "notion",
-};
-
 describe("getConversation MCP tool", () => {
   it("returns the metadata, the summary, and only the last assistant reply", async () => {
     await seedMcpConversation({
@@ -83,33 +73,10 @@ describe("getConversation MCP tool", () => {
       .update(juniorConversations)
       .set({ executionStatus: "running" })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-    // A sign-in wait reads `needs_input` while the Turn runs.
-    await recordAuthorizationRequested(SIGN_IN);
-
-    const running = await call("getConversation", {
-      conversationId: CONVERSATION_ID,
-    });
-
-    expect(idle.structuredContent).toMatchObject({
-      conversation: { turnActive: false },
-    });
-    expect(running.structuredContent).toMatchObject({
-      conversation: { status: "needs_input", turnActive: true },
-    });
-  });
-
-  it("returns the viewer state apart from the status, and no Inbox state", async () => {
-    await seedMcpConversation({
-      conversationId: CONVERSATION_ID,
-      email: MCP_TEST_VIEWER,
-      title: "Viewer incident",
-    });
-    // It waits on another person, so it does not need the viewer.
-    await recordAuthorizationRequested(SIGN_IN);
-    // An Inbox item is the Inbox's fact: `searchInboxItems` lists it.
+    // An open action item reads `needs_input` while the Turn runs.
     await insertInboxItem(getDb(), {
-      subject: { id: "everyone-ask", kind: "question" },
-      owner: { id: CONVERSATION_ID, kind: "conversation" },
+      subject: { id: "running-ask", kind: "question" },
+      owner: { id: CONVERSATION_ID, kind: "conversation" as const },
       assignedToEveryone: true,
       assigneeUserIds: [],
       body: "Pick one.",
@@ -129,21 +96,85 @@ describe("getConversation MCP tool", () => {
       },
       title: "Ship the release?",
     });
+
+    const running = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(idle.structuredContent).toMatchObject({
+      conversation: { turnActive: false },
+    });
+    expect(running.structuredContent).toMatchObject({
+      conversation: { status: "needs_input", turnActive: true },
+    });
+  });
+
+  it("returns the viewer state apart from the status", async () => {
+    await seedMcpConversation({
+      conversationId: CONVERSATION_ID,
+      email: MCP_TEST_VIEWER,
+      title: "Viewer incident",
+    });
+    const ask = {
+      owner: { id: CONVERSATION_ID, kind: "conversation" as const },
+      body: "Pick one.",
+      conversationIds: [CONVERSATION_ID],
+      kind: "action" as const,
+      nowMs: Date.now(),
+      request: {
+        question: "Ship now?",
+        fields: [
+          {
+            id: "decision",
+            kind: "choice" as const,
+            label: "Decision",
+            options: [{ label: "Ship" }, { label: "Wait" }],
+          },
+        ],
+      },
+      title: "Ship the release?",
+      visibility: "public" as const,
+    };
+    // A sign-in waits on another person, so it does not need the viewer.
+    await recordAuthorizationRequested({
+      actorId: "UOTHER",
+      authorizationId: "mcp-sign-in",
+      conversationId: CONVERSATION_ID,
+      delivery: "private_link_sent",
+      kind: "mcp",
+      provider: "notion",
+    });
     const call = await connectMcpTools();
-    const detail = await call("getConversation", {
+
+    const forOther = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+    });
+    // A waiting question needs every viewer, whoever it asks.
+    await insertInboxItem(getDb(), {
+      subject: { id: "other-ask", kind: "question" },
+      ...ask,
+      assignedToEveryone: false,
+      assigneeUserIds: [],
+    });
+    const asked = await call("getConversation", {
       conversationId: CONVERSATION_ID,
     });
     const list = await call("searchConversations");
 
-    expect(detail.structuredContent).toMatchObject({
+    expect(forOther.structuredContent).toMatchObject({
       conversation: {
         status: "needs_input",
         treeState: "done",
         watching: false,
       },
     });
+    expect(asked.structuredContent).toMatchObject({
+      conversation: { status: "needs_input", treeState: "needs_you" },
+    });
     expect(list.structuredContent).toMatchObject({
-      conversations: [{ conversationId: CONVERSATION_ID, treeState: "done" }],
+      conversations: [
+        { conversationId: CONVERSATION_ID, treeState: "needs_you" },
+      ],
     });
   });
 

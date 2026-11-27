@@ -244,11 +244,15 @@ describe("versions API", () => {
       },
       title: "Approve",
     });
-    // An open item is the Inbox's fact: the feed token reads no Inbox
-    // table, so it stays. The Inbox's write touches its owner's detail
-    // version, so the transcript refreshes its ask.
+    // An open question is a status input, so the detail moves too. The feed
+    // row moves from `working` to `needs_input`, which outranks it. Neither
+    // token reads an Inbox table: they read the question.
     const withItem = await read();
-    expect(changed(withPin, withItem)).toEqual(["conversation", "inboxItems"]);
+    expect(changed(withPin, withItem)).toEqual([
+      "conversation",
+      "conversations",
+      "inboxItems",
+    ]);
     for (const query of [
       conversationFeedVersionQuery(getDb(), viewer.id),
       conversationVersionsQuery(getDb(), [OWN], viewer.id),
@@ -261,7 +265,11 @@ describe("versions API", () => {
       status: "done",
     });
     const closed = await read();
-    expect(changed(withItem, closed)).toEqual(["conversation", "inboxItems"]);
+    expect(changed(withItem, closed)).toEqual([
+      "conversation",
+      "conversations",
+      "inboxItems",
+    ]);
 
     // A recorded Turn changes the viewer's spend. It starts on a whole
     // minute in the past, so the Events below stay in the spend window and
@@ -451,8 +459,8 @@ describe("versions API", () => {
     const taskRunning = await taskTurn("running", nowMs + 300_000);
     expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
     // A take changes whom a running Task's item up for grabs waits on. That
-    // is the Inbox's fact, so the feed token stays. The Conversation is
-    // private, so the item has no assignees: it cannot name Everyone yet.
+    // is the Inbox's fact; the question still waits, so the feed stays. The
+    // Conversation is private, so the item has no assignees.
     const everyone = await insertInboxItem(getDb(), {
       owner: { id: `${OWN}:child`, kind: "conversation" },
       assignedToEveryone: false,

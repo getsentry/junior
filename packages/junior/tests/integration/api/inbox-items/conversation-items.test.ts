@@ -171,7 +171,10 @@ describe("inbox items of a Conversation", () => {
         answer: expect.objectContaining({
           values: { decision: ["Approve"] },
         }),
+        answeredAt: expect.any(String),
+        answeredBy: expect.objectContaining({ userId: cal.id }),
         body: "The pull request merged.",
+        closedAt: expect.any(String),
         id: item.subject.id,
         request: expect.objectContaining({ question: REQUEST.question }),
         title: "Close the tracking issue?",

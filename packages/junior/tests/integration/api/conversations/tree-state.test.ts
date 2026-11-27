@@ -7,7 +7,6 @@ import {
   acceptedConversationMessageSchema,
   conversationDetailReportSchema,
   conversationFeedSchema,
-  inboxItemWaitingConversationsSchema,
   spaceListSchema,
 } from "@/api/schema";
 import { getSpaceLead } from "@/chat/lead/conversation";
@@ -19,10 +18,8 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import {
-  recordAuthorizationCompleted,
-  recordAuthorizationRequested,
-} from "@/chat/conversations/projection";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import {
   spawnChildAgent,
@@ -40,6 +37,7 @@ import {
   SLACK_VIEWER,
   SLACK_DESTINATION,
   failingAgentRunner,
+  REQUEST,
   ACTION_ITEM,
   detailPath,
   createStatusFixture,
@@ -53,26 +51,6 @@ import {
 } from "../../../fixtures/conversation-status";
 
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
-
-/** Record a sign-in wait on a person, named by their Slack user id. */
-async function signIn(
-  conversationId: string,
-  authorizationId: string,
-  actorId: string = SLACK_VIEWER.slackUserId,
-) {
-  const wait = {
-    actorId,
-    authorizationId,
-    conversationId,
-    kind: "mcp" as const,
-    provider: "notion",
-  };
-  await recordAuthorizationRequested({
-    ...wait,
-    delivery: "private_link_sent",
-  });
-  return async () => await recordAuthorizationCompleted(wait);
-}
 
 /** Read the viewer's feed version token. */
 async function feedToken(fixture: StatusFixture): Promise<string> {
@@ -125,21 +103,51 @@ describe("conversation tree state", () => {
       idempotencyKey: "tree-asking-child",
     });
     fixture.queue.takeMessageFor(asking.childConversationId);
-    // A wait on another person is not shown to the viewer.
-    await signIn(asking.childConversationId, "tree-sign-in-bob", "UBOB");
+    // An item for another person is not shown to the viewer.
+    const other = await resolveViewerUser("bob@example.com");
+    const forOther = await insertInboxItem(getDb(), {
+      subject: { id: "for-other", kind: "question" },
+      owner: { id: asking.childConversationId, kind: "conversation" },
+      assignedToEveryone: false,
+      assigneeUserIds: [other!.id],
+      body: "Bob decides.",
+      conversationIds: [asking.childConversationId],
+      kind: "action",
+      nowMs: Date.now(),
+      request: REQUEST,
+      title: "Bob's call",
+    });
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",
     );
+    // A waiting question shows to every viewer, whoever it asks.
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "working",
+      treeState: "needs_you",
     });
-    // An Inbox item is the Inbox's fact: the tree state does not read it.
-    await addItem(asking.childConversationId, ACTION_ITEM);
+    await closeInboxItem(getDb(), {
+      id: forOther!.id,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
+
+    // An item for Everyone needs the viewer too.
+    const everyone = await addItem(asking.childConversationId, {
+      ...ACTION_ITEM,
+      assignees: ["everyone"],
+    });
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    await closeInboxItem(getDb(), {
+      id: everyone,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "working",
     });
 
-    const end = await signIn(asking.childConversationId, "tree-sign-in");
+    const item = await addItem(asking.childConversationId, ACTION_ITEM);
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
@@ -151,7 +159,11 @@ describe("conversation tree state", () => {
       watching: false,
     });
 
-    await end();
+    await closeInboxItem(getDb(), {
+      id: item,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
     await expect(fixture.feedTree(conversationId)).resolves.toEqual({
       treeState: "working",
       watching: true,
@@ -193,7 +205,7 @@ describe("conversation tree state", () => {
       fixture.queue.takeMessageFor(child.childConversationId);
     }
 
-    await signIn(grandchild.childConversationId, "tree-depth-sign-in");
+    await addItem(grandchild.childConversationId, ACTION_ITEM);
 
     await expect(fixture.feedTree(rootId)).resolves.toMatchObject({
       treeState: "needs_you",
@@ -227,7 +239,7 @@ describe("conversation tree state", () => {
       });
     }
 
-    await signIn("agent:feed-ask", "tree-feed-sign-in");
+    await addItem("agent:feed-ask", ACTION_ITEM);
 
     const row = await fixture.feedRow(rootId);
     // The sidebar orders a root's Threads by these, as the Threads panel
@@ -399,7 +411,7 @@ describe("conversation tree state", () => {
       kind: "task",
       parentConversationId: childConversationId,
     });
-    await signIn(grandchildConversationId, "tree-archived-sign-in");
+    await addItem(grandchildConversationId, ACTION_ITEM);
     await watchDeployment(childConversationId);
     const needsYou = { treeState: "needs_you", watching: true };
     await expect(fixture.tree(conversationId)).resolves.toEqual(needsYou);
@@ -432,7 +444,15 @@ describe("conversation tree state", () => {
       fixture.conversationStore,
       "1700000000.000590",
     );
-    await signIn(conversationId, "token-sign-in-bob", "UBOB");
+    // Bob's sign-in is a wait that the viewer does not see.
+    await recordAuthorizationRequested({
+      actorId: "UBOB",
+      authorizationId: "token-sign-in-bob",
+      conversationId,
+      delivery: "private_link_sent",
+      kind: "mcp",
+      provider: "notion",
+    });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
     const before = await feedToken(fixture);
@@ -485,7 +505,7 @@ describe("conversation tree state", () => {
     }) => {
       const feed = await expectSqlBudget(
         () => expectNoInboxSql(() => fixture.request("/api/conversations")),
-        { statements: 16, serialRounds: 3 },
+        { statements: 17, serialRounds: 3 },
       );
       const row = conversationFeedSchema
         .parse(await feed.json())
@@ -514,8 +534,6 @@ describe("conversation tree state", () => {
       "agent:tree-budget-d",
     ]);
     await addItem("agent:tree-budget-d", ACTION_ITEM);
-    await expectBudget({ treeState: "done", watching: true });
-    await signIn("agent:tree-budget-d", "tree-budget-sign-in");
     await expectBudget({ treeState: "needs_you", watching: true });
   });
 
@@ -557,7 +575,9 @@ describe("conversation tree state", () => {
         treeState: row?.treeState,
       };
     };
-    const asViewer = () => spaceRow((path) => fixture.request(path));
+    // The Space list reads no Inbox table.
+    const asViewer = () =>
+      expectNoInboxSql(() => spaceRow((path) => fixture.request(path)));
     const asBob = () =>
       spaceRow(async (path) => await bobApp.request(`http://localhost${path}`));
     const idle = { latestTurnFailed: false, treeState: "done" };
@@ -595,21 +615,6 @@ describe("conversation tree state", () => {
       treeState: "working",
     });
 
-    // An ask in the Space waits in the Inbox. The Space list does not read
-    // it; the Inbox's own read names the Space, and the dashboard overlays it.
-    await addItem(conversationId, ACTION_ITEM);
-    const waiting = inboxItemWaitingConversationsSchema.parse(
-      await (
-        await fixture.request("/api/inbox-items/waiting-conversations")
-      ).json(),
-    );
-    expect(waiting.conversations).toEqual([
-      expect.objectContaining({
-        conversationIds: expect.arrayContaining([conversationId]),
-        spaceId: space.id,
-      }),
-    ]);
-
     const [row] = await getDb()
       .select({ lastActivityAt: juniorConversations.lastActivityAt })
       .from(juniorConversations)
@@ -626,8 +631,5 @@ describe("conversation tree state", () => {
     const leadWorking = { latestTurnFailed: false, treeState: "working" };
     await expect(asViewer()).resolves.toEqual(leadWorking);
     await expect(asBob()).resolves.toEqual(leadWorking);
-
-    // The Space list reads no Inbox table.
-    await expectNoInboxSql(asViewer);
   });
 });
