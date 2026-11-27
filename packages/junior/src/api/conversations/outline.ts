@@ -109,6 +109,9 @@ function readMessages(
         string | null
       >`coalesce(${payload}->>'authorIdentityId', ${juniorConversationEvents.actorIdentityId})`,
       authorUserId: sql<string | null>`${payload}->'meta'->'author'->>'userId'`,
+      fromParentAgent: sql<
+        boolean | null
+      >`(${payload}->'meta'->'fromParentAgent')::boolean`,
       createdAt: juniorConversationEvents.createdAt,
       messageId: sql<string>`${payload}->>'messageId'`,
       seq: juniorConversationEvents.seq,

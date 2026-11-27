@@ -11,7 +11,6 @@ import {
   failedTurnUpdate,
   readTurnUpdate,
 } from "@/chat/conversations/turn-update";
-import { isEventInboundMessageId } from "@/chat/events/inbound-message-id";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
@@ -24,6 +23,8 @@ export interface StartConversationTurnInput {
   /** Highest Message seq known when the Turn built its thread context. */
   threadContextThroughSeq?: number | undefined;
   turnId: string;
+  /** Only Watch Events started the Turn, so no Watch hears its end. */
+  watchEventsOnly?: true | undefined;
 }
 
 /** The text of a Turn's answer, and whether it is final text or a note. */
@@ -129,6 +130,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
           ...(input.threadContextThroughSeq === undefined
             ? undefined
             : { threadContextThroughSeq: input.threadContextThroughSeq }),
+          ...(input.watchEventsOnly ? { watchEventsOnly: true } : undefined),
         },
       },
     ]);
@@ -226,15 +228,16 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
     let eventOnly: Promise<boolean> | undefined;
     // A Turn that only Watch Events started, such as GitHub feedback.
     const startedByEventsOnly = () =>
-      (eventOnly ??= this.loadInputMessageIds(
-        input.conversationId,
-        input.turnId,
-      ).then(
-        (inputs) =>
-          inputs !== undefined &&
-          inputs.length > 0 &&
-          inputs.every(isEventInboundMessageId),
-      ));
+      (eventOnly ??= this.events
+        .loadByIdempotencyKey(
+          input.conversationId,
+          turnStartedKey(input.turnId),
+        )
+        .then(
+          (start) =>
+            start?.data.type === "turn_started" &&
+            start.data.watchEventsOnly === true,
+        ));
     await publishAgentUpdate(
       input.conversationId,
       { type: "turn", turnId: input.turnId },

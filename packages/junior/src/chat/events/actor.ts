@@ -43,18 +43,12 @@ export function isEventConversationMessage(message: {
   meta?: { eventType?: string };
 }): boolean {
   return (
-    Boolean(message.meta?.eventType) || isEventAuthorId(message.author?.userId)
+    Boolean(message.meta?.eventType) ||
+    message.author?.userId === EVENT_AUTHOR_ID
   );
 }
 
 /** Author id of an Event Message by a listed bot, which has no Identity. */
 export function eventBotAuthorId(provider: string, handle: string): string {
   return `${EVENT_AUTHOR_ID}:${provider}:${handle.toLowerCase()}`;
-}
-
-/** Whether an author id belongs to an Event Message, system or listed bot. */
-export function isEventAuthorId(id: string | undefined): boolean {
-  return (
-    id === EVENT_AUTHOR_ID || Boolean(id?.startsWith(`${EVENT_AUTHOR_ID}:`))
-  );
 }

@@ -383,6 +383,20 @@ describe("child Turns on the Conversation loop", () => {
         if (watchLeft) {
           await createDeployWatch(harness, childId);
         }
+        // A Watch on the Thread hears none of these Turns.
+        await createWatch(
+          {
+            conversationId: slackParentConversationId,
+            events: ["agent.update"],
+            expiresAtMs: Date.now() + 600_000,
+            identifier: childId,
+            intent: "Follow the deploy check.",
+            label: "Deploy check thread",
+            namespace: "junior",
+            resourceType: "agent",
+          },
+          { state: harness.state },
+        );
         const sendEvent = (eventKey: string) =>
           appendAndEnqueueInboundMessage({
             message: createEventInboundMessage({
@@ -444,6 +458,11 @@ describe("child Turns on the Conversation loop", () => {
             expect.stringMatching(/status="done"/),
           ),
         );
+        expect(
+          (await parentMessageTexts()).filter((text) =>
+            text.includes('source="watch"'),
+          ),
+        ).toEqual([]);
         expect(
           (await parentNoteTexts()).filter((text) =>
             text.includes("The deploy is green."),

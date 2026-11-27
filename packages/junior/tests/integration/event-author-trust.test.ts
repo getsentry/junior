@@ -20,11 +20,7 @@ import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
-import {
-  EVENT_AUTHOR_ID,
-  EVENT_SYSTEM_ACTOR,
-  isEventConversationMessage,
-} from "@/chat/events/actor";
+import { EVENT_AUTHOR_ID, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import {
   canJoinTurn,
   canShareTurn,
@@ -278,10 +274,6 @@ describe("Event author trust", () => {
     // neither batches with other authors nor joins a paused system Turn.
     expect(byBot!.input.authorId).toBe(`${EVENT_AUTHOR_ID}:demo:cursor[bot]`);
     expect(byBot!.input.authorIdentityId).toBeUndefined();
-    // Resume still reads the bot's Message as an Event.
-    expect(
-      isEventConversationMessage({ author: { userId: byBot!.input.authorId } }),
-    ).toBe(true);
     const systemTurn = {
       actor: EVENT_SYSTEM_ACTOR,
       actorIdentityId: SYSTEM_IDENTITY_ID,

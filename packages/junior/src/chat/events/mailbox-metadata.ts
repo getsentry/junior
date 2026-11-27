@@ -60,3 +60,10 @@ export function isEventMailboxMetadata(
     (fields["status"] === undefined || typeof fields["status"] === "string")
   );
 }
+
+/** Whether mailbox metadata is the delivery of a Watch Event. */
+export function isWatchEventMailboxMetadata(value: unknown): boolean {
+  return (
+    isEventMailboxMetadata(value) && value.event.subscriptionId !== undefined
+  );
+}
