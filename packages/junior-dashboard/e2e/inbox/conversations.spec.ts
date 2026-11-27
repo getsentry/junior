@@ -683,10 +683,10 @@ test.describe("new UI", () => {
     // A row opens the same Task transcript drawer as the transcript row.
     await tasks
       .getByRole("button", {
-        name: /^blocked reviewer/,
+        name: /^blocked Advisor review/,
       })
       .click();
-    const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
+    const reviewerDrawer = page.getByRole("dialog", { name: "Advisor review" });
     await expect(
       reviewerDrawer.getByText("blocked", { exact: true }),
     ).toBeVisible();
@@ -724,7 +724,7 @@ test.describe("new UI", () => {
     await copy.click();
     await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
     const markdown = await readClipboard(page);
-    expect(markdown).toContain("# Advisor review");
+    expect(markdown).toContain("# Review the dashboard plan");
     expect(markdown).toContain("Review the dashboard plan before editing.");
     expect(markdown).toContain("Review complete; no blocking issues found.");
     // Child Conversations cannot be forked, so their replies offer only copy.

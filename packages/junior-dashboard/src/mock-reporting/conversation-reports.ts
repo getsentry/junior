@@ -125,23 +125,24 @@ export function readMockChildAgentsReport(
     spaceId,
   ).conversations;
   return {
-    agents: rows.map((row) => ({
-      archivedAt: row.archivedAt ?? null,
-      conversationId: row.conversationId,
-      cumulativeDurationMs: row.cumulativeDurationMs,
-      ...(row.cumulativeUsage
-        ? { cumulativeUsage: row.cumulativeUsage }
-        : undefined),
-      kind: "thread" as const,
-      lastResult: row.latestTurnFailed
-        ? ("failed" as const)
-        : ("done" as const),
-      status: row.turnActive ? ("running" as const) : ("idle" as const),
-      title: row.displayTitle,
-      treeState: mockTreeState(row),
-      updatedAt: row.lastMessageAt ?? row.lastProgressAt,
-      watching: row.watching ?? false,
-    })),
+    // Like the API: each child is its feed row, with its agent facts.
+    conversations: rows.map(
+      ({
+        links: _links,
+        media: _media,
+        omittedThreadCount: _omittedThreadCount,
+        threads: _threads,
+        viewerAnswer: _viewerAnswer,
+        ...row
+      }) => ({
+        ...row,
+        agentStatus: row.turnActive ? ("running" as const) : ("idle" as const),
+        lastResult: row.latestTurnFailed
+          ? ("failed" as const)
+          : ("done" as const),
+        treeState: mockTreeState(row),
+      }),
+    ),
     conversationId,
   };
 }

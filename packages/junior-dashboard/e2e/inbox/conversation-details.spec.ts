@@ -413,9 +413,9 @@ test.describe("new UI", () => {
     // A Task opens over the details, and Back goes back to them.
     const reviewerRow = details
       .getByRole("region", { name: "Tasks" })
-      .getByRole("button", { name: /^blocked reviewer/ });
+      .getByRole("button", { name: /^blocked Advisor review/ });
     await reviewerRow.click();
-    const reviewer = page.getByRole("dialog", { name: "reviewer" });
+    const reviewer = page.getByRole("dialog", { name: "Advisor review" });
     await expect(
       reviewer.getByRole("link", { name: "Open conversation" }),
     ).toBeVisible();

@@ -8,7 +8,12 @@ import {
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { setConversationTitle } from "@/chat/conversations/sql/title";
-import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getDb,
+  getSqlExecutor,
+} from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import {
   spawnInput,
@@ -119,6 +124,19 @@ describe("conversation child agents API", () => {
       })
       .where(eq(juniorConversations.conversationId, helper));
 
+    // A child row shows its newest message, like a feed row.
+    await getConversationEventStore().append(reviewer, [
+      {
+        createdAtMs: 1_200,
+        data: {
+          messageId: "reviewer-reply",
+          role: "assistant",
+          text: "The plan holds.",
+          type: "message",
+        },
+      },
+    ]);
+
     const response = await expectSqlBudget(
       () => requestChildAgents(slackParentConversationId),
       // Each running child also checks, in one read, that its waiting task
@@ -131,23 +149,32 @@ describe("conversation child agents API", () => {
     );
 
     expect(response.status).toBe(200);
+    // Each row is the child's Conversation feed row, with its agent facts.
     expect(
       conversationChildAgentsReportSchema.parse(await response.json()),
     ).toEqual({
-      agents: [
-        {
+      conversationId: slackParentConversationId,
+      conversations: [
+        expect.objectContaining({
+          agentStatus: "stopped",
           archivedAt: new Date(3_500).toISOString(),
           conversationId: stopped,
           cumulativeDurationMs: 0,
+          displayTitle: "Private repo read",
           kind: "task",
-          status: "stopped",
-          title: "Private repo read",
+          parentConversationId: slackParentConversationId,
           // The test stops it without clearing its queued Turn.
           treeState: "working",
-          updatedAt: new Date(3_000).toISOString(),
           watching: false,
-        },
-        {
+        }),
+        expect.objectContaining({
+          activityPreview: {
+            createdAt: new Date(1_200).toISOString(),
+            role: "assistant",
+            text: "The plan holds.",
+          },
+          agentStatus: "running",
+          archivedAt: null,
           childAgentTotals: {
             count: 1,
             cumulativeDurationMs: 8_000,
@@ -157,7 +184,6 @@ describe("conversation child agents API", () => {
               outputTokens: 50,
             },
           },
-          archivedAt: null,
           conversationId: reviewer,
           cumulativeDurationMs: 50_000,
           cumulativeUsage: {
@@ -165,28 +191,20 @@ describe("conversation child agents API", () => {
             inputTokens: 1_200,
             outputTokens: 150,
           },
+          displayTitle: "Plan review",
           kind: "task",
           name: "reviewer",
-          status: "running",
-          title: "Plan review",
           // The reviewer's Turn is queued.
           treeState: "working",
-          updatedAt: new Date(1_000).toISOString(),
-          watching: false,
-        },
-        {
-          conversationId: thread,
-          cumulativeDurationMs: 0,
-          kind: "thread",
-          status: "running",
-          title: null,
+        }),
+        expect.objectContaining({
+          agentStatus: "running",
           archivedAt: new Date(4_000).toISOString(),
+          conversationId: thread,
+          kind: "thread",
           treeState: "working",
-          updatedAt: new Date(500).toISOString(),
-          watching: false,
-        },
+        }),
       ],
-      conversationId: slackParentConversationId,
     });
     expect(reviewerDetail).toMatchObject({
       childAgentTotals: { count: 1, cumulativeDurationMs: 8_000 },
@@ -293,17 +311,24 @@ describe("conversation child agents API", () => {
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      agents: [
+      conversations: [
         {
+          agentStatus: "running",
           archivedAt: null,
           conversationId: child,
           cumulativeDurationMs: 0,
+          isParticipant: false,
           kind: "task",
+          lastProgressAt: new Date(1_000).toISOString(),
+          lastSeenAt: new Date(1_000).toISOString(),
+          parentConversationId,
           redacted: true,
-          status: "running",
-          // Status shows no content, so a redacted row keeps it.
+          startedAt: new Date(1_000).toISOString(),
+          // State shows no content, so a redacted row keeps it.
+          status: "working",
+          surface: "internal",
           treeState: "working",
-          updatedAt: new Date(1_000).toISOString(),
+          turnActive: true,
           watching: false,
         },
       ],

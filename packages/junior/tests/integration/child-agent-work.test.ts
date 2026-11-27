@@ -702,8 +702,11 @@ describe("child agent task work", () => {
           `http://localhost/api/conversations/${encodeURIComponent(parentConversationId)}/agents`,
         );
         expect(
-          conversationChildAgentsReportSchema.parse(await report.json()).agents,
-        ).toEqual([expect.objectContaining({ lastResult, status: "idle" })]);
+          conversationChildAgentsReportSchema.parse(await report.json())
+            .conversations,
+        ).toEqual([
+          expect.objectContaining({ agentStatus: "idle", lastResult }),
+        ]);
       } finally {
         await fixture.close();
       }

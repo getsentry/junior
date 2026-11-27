@@ -506,11 +506,13 @@ describe("dashboard canonical-event mock routes", () => {
         ).json(),
       );
       expect(
-        childAgents.agents.map(({ conversationId, kind, archivedAt }) => ({
-          conversationId,
-          kind,
-          archivedAt,
-        })),
+        childAgents.conversations.map(
+          ({ conversationId, kind, archivedAt }) => ({
+            conversationId,
+            kind,
+            archivedAt,
+          }),
+        ),
       ).toEqual([
         {
           conversationId: DASHBOARD_QA_THREAD_ID,

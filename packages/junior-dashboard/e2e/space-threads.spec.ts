@@ -27,34 +27,43 @@ async function seedThreads(page: Page) {
         index: number,
         title: string,
         fields: Partial<ConversationChildAgent>,
-      ): ConversationChildAgent => ({
-        archivedAt: null,
-        conversationId: `internal:space-thread-${index}`,
-        cumulativeDurationMs: (index + 1) * 60_000,
-        kind: "thread",
-        lastResult: "done",
-        status: "idle",
-        title,
-        treeState: "done",
-        updatedAt: new Date(NOW_MS - index * 3_600_000).toISOString(),
-        watching: false,
-        ...fields,
-      });
+      ): ConversationChildAgent => {
+        const movedAt = new Date(NOW_MS - index * 3_600_000).toISOString();
+        return {
+          agentStatus: "idle",
+          archivedAt: null,
+          conversationId: `internal:space-thread-${index}`,
+          cumulativeDurationMs: (index + 1) * 60_000,
+          displayTitle: title,
+          isParticipant: true,
+          kind: "thread",
+          lastProgressAt: movedAt,
+          lastResult: "done",
+          lastSeenAt: movedAt,
+          startedAt: movedAt,
+          status: "done",
+          surface: "internal",
+          treeState: "done",
+          turnActive: false,
+          watching: false,
+          ...fields,
+        };
+      };
       return route.fulfill({
         json: {
-          agents: [
+          conversations: [
             row(0, "Close out the dry run", {}),
             // A Thread that the mock API can open.
             row(1, "Check refund webhooks", {
+              agentStatus: "running",
               conversationId: "internal:questions-qa",
-              status: "running",
               treeState: "working",
             }),
             row(2, "Backfill invoice IDs", { watching: true }),
             row(3, "Approve the cutover window", { treeState: "needs_you" }),
             row(4, "Reconcile Stripe balances", { lastResult: "failed" }),
             row(5, "Migrate tax settings", {
-              status: "running",
+              agentStatus: "running",
               treeState: "working",
             }),
             row(6, "Map plan IDs", {}),

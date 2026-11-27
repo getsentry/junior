@@ -84,7 +84,8 @@ export function ConversationDetails(props: {
     setMemoriesOpen(false);
     setTask(undefined);
   }
-  const agents = useConversationChildAgents(props.conversationId).data?.agents;
+  const agents = useConversationChildAgents(props.conversationId).data
+    ?.conversations;
   const threads = agents?.filter((agent) => agent.kind === "thread") ?? [];
   const tasks = agents?.filter((agent) => agent.kind === "task") ?? [];
   // The last node is this Conversation, so the one before it is the parent.

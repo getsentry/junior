@@ -194,11 +194,12 @@ function useTaskSource(
     conversationId ?? "",
     Boolean(conversationId) && wanted,
   );
-  const rows = (agents.data?.agents ?? [])
+  const rows = (agents.data?.conversations ?? [])
     .flatMap((agent) => {
       if (agent.redacted) return [];
       const title =
-        linkLabel(agent.title ?? agent.name ?? "") || agent.conversationId;
+        linkLabel(agent.displayTitle ?? agent.name ?? "") ||
+        agent.conversationId;
       const match = quickOpenMatch(title, query);
       return match ? [{ agent, match, title }] : [];
     })

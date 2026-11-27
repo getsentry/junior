@@ -13,16 +13,23 @@ function thread(
   hour: number,
   fields: Partial<ConversationChildAgent> = {},
 ): ConversationChildAgent {
+  const movedAt = `2026-08-03T${String(hour).padStart(2, "0")}:00:00.000Z`;
   return {
+    agentStatus: "idle",
     archivedAt: null,
     conversationId: `internal:${title.toLowerCase().replaceAll(" ", "-")}`,
     cumulativeDurationMs: 0,
+    displayTitle: title,
+    isParticipant: true,
     kind: "thread",
+    lastProgressAt: movedAt,
     lastResult: "done",
-    status: "idle",
-    title,
+    lastSeenAt: movedAt,
+    startedAt: movedAt,
+    status: "done",
+    surface: "internal",
     treeState: "done",
-    updatedAt: `2026-08-03T${String(hour).padStart(2, "0")}:00:00.000Z`,
+    turnActive: false,
     watching: false,
     ...fields,
   };
@@ -47,7 +54,7 @@ describe("a Conversation's Threads", () => {
   const threads = [
     thread("Map plan IDs", 1),
     thread("Check refund webhooks", 5, {
-      status: "running",
+      agentStatus: "running",
       treeState: "working",
     }),
     thread("Backfill invoice IDs", 4, { watching: true }),

@@ -177,6 +177,7 @@ function conversationSpaceFilter(
 async function conversationRows(
   db: JuniorDatabase,
   {
+    children,
     codeRepository,
     conversationIds,
     cursor,
@@ -190,6 +191,11 @@ async function conversationRows(
     status,
     waitingForUserId,
   }: {
+    /**
+     * Read only these children of one parent, in place of the top-level and
+     * membership filters. The caller checks what the viewer may see.
+     */
+    children?: { conversationIds: string[]; parentConversationId: string };
     codeRepository?: { id: string; viewerUserId?: string };
     /** Read only these root conversations. */
     conversationIds?: string[];
@@ -239,10 +245,23 @@ async function conversationRows(
     .leftJoin(juniorUsers, conversationRecordJoins.user)
     .where(
       and(
-        listedConversation(),
-        space
-          ? conversationSpaceFilter(space.id, status, space.viewerUserId)
-          : conversationFeedMembershipFilter(status, filter),
+        children
+          ? and(
+              eq(
+                juniorConversations.parentConversationId,
+                children.parentConversationId,
+              ),
+              inArray(
+                juniorConversations.conversationId,
+                children.conversationIds,
+              ),
+            )
+          : and(
+              listedConversation(),
+              space
+                ? conversationSpaceFilter(space.id, status, space.viewerUserId)
+                : conversationFeedMembershipFilter(status, filter),
+            ),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
           : undefined,
@@ -534,6 +553,11 @@ function conversationFeedFilter(options: {
 export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
+    /**
+     * List these children of one parent, archived ones too, in place of the
+     * viewer's feed. Their rows hold no nested Threads.
+     */
+    children?: { conversationIds: string[]; parentConversationId: string };
     codeRepositoryId?: string;
     /** `nextCursor` of the previous page. */
     cursor?: string | undefined;
@@ -551,12 +575,14 @@ export async function readConversationFeedFromSql(
   const nowMs = Date.now();
   const db = getDb();
   const filter =
-    options.codeRepositoryId || options.spaceId
+    options.children || options.codeRepositoryId || options.spaceId
       ? undefined
       : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
   const status: "active" | "archived" | "all" =
-    query || options.codeRepositoryId ? "all" : (options.status ?? "active");
+    query || options.codeRepositoryId || options.children
+      ? "all"
+      : (options.status ?? "active");
   const cursor = options.cursor
     ? decodeConversationFeedCursor(options.cursor)
     : undefined;
@@ -567,6 +593,7 @@ export async function readConversationFeedFromSql(
   const pinsFirst = filter?.kind === "viewer" && status === "active";
   const include = options.include ?? [];
   const feedQuery = {
+    ...(options.children ? { children: options.children } : undefined),
     ...(options.codeRepositoryId
       ? {
           codeRepository: {
@@ -716,11 +743,15 @@ export async function readConversationFeedFromSql(
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     readConversationTreeStates(db, conversationIds, options.viewer?.id),
-    // A Thread shows only while its root is not archived.
+    // A Thread shows only while its root is not archived. A child list
+    // shows only the direct children.
     readFeedThreadRecords(
       db,
       conversations
-        .filter((conversation) => conversation.archivedAtMs === undefined)
+        .filter(
+          (conversation) =>
+            !options.children && conversation.archivedAtMs === undefined,
+        )
         .map(({ conversationId }) => conversationId),
       options.viewer?.id,
     ),

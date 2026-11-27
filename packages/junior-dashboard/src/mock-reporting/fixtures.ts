@@ -7,6 +7,7 @@ import type {
   ActorProfileReport,
   ActorSummaryReport,
   ActorWindowMetrics,
+  ConversationChildAgent,
   ConversationChildAgentsReport,
   ConversationDetailReport,
   ConversationEventPage,
@@ -1327,6 +1328,7 @@ function dashboardQaAgentMessages(
 function advisorConversation(
   nowMs: number,
   conversationId: string,
+  displayTitle: string,
   text: string,
   metrics: Pick<
     ConversationDetailReport,
@@ -1337,7 +1339,7 @@ function advisorConversation(
   const startedAt = iso(nowMs, -10 * 60_000);
   const conversation = detail(nowMs, {
     conversationId,
-    displayTitle: "Advisor review",
+    displayTitle,
     // The viewer takes part, so QA shows that a Task still has no composer.
     isParticipant: true,
     // A child keeps the Actor who started it, but that person did not write
@@ -2391,6 +2393,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     advisorConversation(
       nowMs,
       DASHBOARD_QA_PLAN_ID,
+      "Review the dashboard plan",
       "Review the dashboard plan before editing.",
       {
         childAgentTotals: {
@@ -2414,6 +2417,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     advisorConversation(
       nowMs,
       DASHBOARD_QA_PLAN_CHECK_ID,
+      "Check one plan claim",
       "Check one claim in the dashboard plan.",
       {
         cumulativeDurationMs: 6_200,
@@ -2428,6 +2432,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     advisorConversation(
       nowMs,
       DASHBOARD_QA_REVIEW_ID,
+      "Advisor review",
       "Review the implementation after the first advisor pass.",
       {
         cumulativeDurationMs: 9_800,
@@ -3341,94 +3346,39 @@ export function readMockConversationChildAgents(
   conversationId: string,
 ): ConversationChildAgentsReport | undefined {
   const conversations = mockConversations(NOW_MS);
-  const conversation = conversations.find(
-    (candidate) => candidate.conversationId === conversationId,
-  );
-  if (!conversation) return undefined;
-  const startedAtMs = NOW_MS - 5 * 60 * 60_000;
-  // Match the API: each row has the usage of its child Conversation and of
-  // that child's own subagents.
-  const childMetrics = (childConversationId: string) => {
-    const child = conversations.find(
-      (candidate) => candidate.conversationId === childConversationId,
-    )!;
-    return {
-      ...(child.childAgentTotals
-        ? { childAgentTotals: child.childAgentTotals }
-        : undefined),
-      archivedAt: mockArchivedAt.get(childConversationId) ?? null,
-      cumulativeDurationMs: child.cumulativeDurationMs,
-      cumulativeUsage: child.cumulativeUsage,
-      treeState: "done" as const,
-      watching: false,
-    };
-  };
-  if (conversationId === DASHBOARD_QA_PLAN_ID) {
-    return {
-      agents: [
-        {
-          ...childMetrics(DASHBOARD_QA_PLAN_CHECK_ID),
-          conversationId: DASHBOARD_QA_PLAN_CHECK_ID,
-          kind: "task",
-          lastResult: "done",
-          status: "idle",
-          title: "Check one plan claim",
-          updatedAt: iso(startedAtMs, 16_000),
-        },
-      ],
-      conversationId,
-    };
+  if (!conversations.some((item) => item.conversationId === conversationId)) {
+    return undefined;
   }
-  // Match the API: archived children stay in the report.
-  const thread = (childConversationId: string) => {
-    const child = conversations.find(
-      (candidate) => candidate.conversationId === childConversationId,
-    )!;
-    return {
-      ...childMetrics(childConversationId),
-      conversationId: childConversationId,
-      kind: "thread",
-      lastResult: "done",
-      status: "idle",
-      title: child.displayTitle,
-      updatedAt: child.lastProgressAt,
-    } as const;
-  };
-  if (conversationId === DASHBOARD_QA_THREAD_ID) {
-    return {
-      agents: [thread(DASHBOARD_QA_NESTED_THREAD_ID)],
-      conversationId,
-    };
-  }
-  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
-    return { agents: [], conversationId };
-  }
-  return {
-    agents: [
-      thread(DASHBOARD_QA_THREAD_ID),
-      thread(DASHBOARD_QA_ARCHIVED_THREAD_ID),
-      {
-        ...childMetrics(DASHBOARD_QA_REVIEW_ID),
-        conversationId: DASHBOARD_QA_REVIEW_ID,
-        kind: "task",
+  // Match the API: each row is the child's feed row, with its agent facts.
+  // Archived children stay in the report.
+  const child = (
+    childConversationId: string,
+    facts: Partial<ConversationChildAgent> = {},
+  ): ConversationChildAgent => ({
+    ...summaryFromConversation(
+      conversations.find(
+        (candidate) => candidate.conversationId === childConversationId,
+      )!,
+    ),
+    agentStatus: "idle",
+    archivedAt: mockArchivedAt.get(childConversationId) ?? null,
+    lastResult: "done",
+    ...facts,
+  });
+  const children: Record<string, ConversationChildAgent[]> = {
+    [DASHBOARD_QA_PLAN_ID]: [child(DASHBOARD_QA_PLAN_CHECK_ID)],
+    [DASHBOARD_QA_THREAD_ID]: [child(DASHBOARD_QA_NESTED_THREAD_ID)],
+    [DASHBOARD_QA_CONVERSATION_ID]: [
+      child(DASHBOARD_QA_THREAD_ID),
+      child(DASHBOARD_QA_ARCHIVED_THREAD_ID),
+      child(DASHBOARD_QA_REVIEW_ID, {
         lastResult: "blocked",
         name: "reviewer",
-        status: "idle",
-        title: null,
-        updatedAt: iso(startedAtMs, 44_000),
-      },
-      {
-        ...childMetrics(DASHBOARD_QA_PLAN_ID),
-        conversationId: DASHBOARD_QA_PLAN_ID,
-        kind: "task",
-        lastResult: "done",
-        status: "idle",
-        title: "Review the dashboard plan",
-        updatedAt: iso(startedAtMs, 20_000),
-      },
+      }),
+      child(DASHBOARD_QA_PLAN_ID),
     ],
-    conversationId,
   };
+  return { conversationId, conversations: children[conversationId] ?? [] };
 }
 
 /** Agent types and forks of mock children. Other children start fresh. */
@@ -3466,12 +3416,14 @@ function mockAgentTree(
     }
     const agent = readMockConversationChildAgents(
       item.parentConversationId,
-    )?.agents.find((child) => child.conversationId === item.conversationId);
+    )?.conversations.find(
+      (child) => child.conversationId === item.conversationId,
+    );
     return {
       conversationId: item.conversationId,
       kind: item.kind,
       label:
-        agent?.title ??
+        agent?.displayTitle ??
         agent?.name ??
         (item.kind === "thread" ? "Thread" : "Task"),
       ...MOCK_CHILD_AGENTS[item.conversationId],

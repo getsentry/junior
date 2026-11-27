@@ -10,7 +10,7 @@ import {
   LockKeyhole,
   type LucideIcon,
 } from "lucide-react";
-import { useContext, useState } from "react";
+import { useState } from "react";
 import {
   conversationChildAgentsReportSchema,
   type ConversationChildAgent,
@@ -24,7 +24,6 @@ import { revalidatedJsonQuery } from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
 import { ConversationStateIcon } from "./ConversationStateIcon";
-import { FeedThreads } from "./feedThreads";
 import { cn } from "../styles";
 import { attentionSort, type Attention } from "./conversationSections";
 import {
@@ -57,11 +56,11 @@ export function subagentStatusTone(status: string): StatusChipTone {
  * more, such as `blocked`.
  */
 export function childAgentStatusLabel(
-  agent: Pick<ConversationChildAgent, "lastResult" | "status">,
+  agent: Pick<ConversationChildAgent, "agentStatus" | "lastResult">,
 ): string {
-  return agent.status === "idle"
-    ? (agent.lastResult ?? agent.status)
-    : agent.status;
+  return agent.agentStatus === "idle"
+    ? (agent.lastResult ?? agent.agentStatus)
+    : agent.agentStatus;
 }
 
 /** Load the child agents of one Conversation with runtime status. */
@@ -100,7 +99,7 @@ function childAgentAttention(agent: ConversationChildAgent): Attention {
           : agent.watching || status === "paused"
             ? "waiting"
             : "done",
-    time: Date.parse(agent.updatedAt),
+    time: Date.parse(agent.lastProgressAt),
   };
 }
 
@@ -142,7 +141,6 @@ function ThreadRows(props: {
   expanded: boolean;
   threads: readonly ConversationChildAgent[];
 }) {
-  const feedThreads = useContext(FeedThreads);
   return (
     <DetailsList
       defaultExpanded={props.expanded}
@@ -151,9 +149,6 @@ function ThreadRows(props: {
       renderItem={(thread) => (
         <ChildAgentRow
           agent={thread}
-          // The report title is the task title, so the Thread's
-          // own title wins. Archived Threads are not in the feed.
-          title={feedThreads.get(thread.conversationId)?.displayTitle}
           to={conversationPath(thread.conversationId)}
         />
       )}
@@ -191,7 +186,7 @@ export function ConversationTasks(props: {
                     ? undefined
                     : {
                         ...(task.name ? { agentName: task.name } : undefined),
-                        label: task.title ?? task.name,
+                        label: task.displayTitle ?? task.name,
                       }),
                   status: childAgentStatusLabel(task),
                 })
@@ -299,12 +294,10 @@ function ChildAgentStatusIcon(props: { agent: ConversationChildAgent }) {
 function ChildAgentRow(props: {
   agent: ConversationChildAgent;
   onOpen?(): void;
-  /** The Conversation's own title, when known. It wins over the report title. */
-  title?: string | undefined;
   to?: string;
 }) {
   const { agent } = props;
-  const headline = props.title ?? agent.title;
+  const headline = agent.displayTitle;
   const kindLabel = agent.kind === "thread" ? "Thread" : "Task";
   const name = agent.redacted
     ? `Private ${kindLabel.toLowerCase()}`
@@ -326,7 +319,7 @@ function ChildAgentRow(props: {
       onClick={props.onOpen}
       title={headline ?? name ?? kindLabel}
       to={props.to}
-      tooltip={`Updated ${formatTime(agent.updatedAt, {
+      tooltip={`Updated ${formatTime(agent.lastProgressAt, {
         dateStyle: "medium",
         timeStyle: "short",
       })}`}

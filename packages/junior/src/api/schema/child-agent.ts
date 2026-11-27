@@ -1,65 +1,83 @@
 import * as z from "zod";
 import { CHILD_AGENT_RESULTS } from "@/chat/child-agents/results";
 import { AGENT_STATUSES } from "@/chat/conversations/agent-status";
-import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
-import { conversationTreeStateSchema } from "./conversation-tree-state";
-import {
-  conversationAuxiliaryCostsSchema,
-  conversationUsageSchema,
-} from "./conversation";
+import { conversationSummaryReportSchema } from "./conversation";
 
 /**
- * One direct child agent of a Conversation, from its stored agent config.
- *
- * Viewers who cannot see private content get the status, time, and usage, but
- * not the name or title. A visible child always has a title, null when its
- * spawn gave none. Usage covers the child Conversation and all its own child
- * agents, like the detail of that child Conversation. Archived children stay
- * in the report.
+ * The only fields of a redacted child agent: its state, time, and usage.
+ * Every other field can hold private content.
  */
-export const conversationChildAgentSchema = z
-  .object({
-    auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
-    /** When the child was archived for everyone, or null. */
-    archivedAt: z.string().datetime().nullable(),
-    childAgentTotals: conversationChildAgentTotalsSchema.optional(),
-    conversationId: z.string().min(1),
-    cumulativeDurationMs: z.number(),
-    cumulativeUsage: conversationUsageSchema.optional(),
-    kind: z.enum(["thread", "task"]),
+const REDACTED_CHILD_AGENT_FIELDS: ReadonlySet<string> = new Set([
+  "agentStatus",
+  "archivedAt",
+  "auxiliaryCosts",
+  "childAgentTotals",
+  "conversationId",
+  "cumulativeDurationMs",
+  "cumulativeUsage",
+  "isParticipant",
+  "kind",
+  "lastMessageAt",
+  "lastProgressAt",
+  "lastResult",
+  "lastSeenAt",
+  "latestTurnFailed",
+  "parentConversationId",
+  "redacted",
+  "startedAt",
+  "status",
+  "surface",
+  "treeState",
+  "turnActive",
+  "watching",
+]);
+
+/**
+ * One direct child agent of a Conversation: the row that the Conversation
+ * feed lists, plus the facts that only a child agent has. Usage covers the
+ * child and all its own child agents, like a feed row. Archived children
+ * stay in the report.
+ *
+ * A viewer who cannot see private content gets `redacted` and only the
+ * state, time, and usage fields: no title, name, summary, or preview.
+ */
+export const conversationChildAgentSchema = conversationSummaryReportSchema
+  .extend({
+    /** What the agent does now, as the `listAgents` tool reports it. */
+    agentStatus: z.enum(AGENT_STATUSES),
+    /** Set on every child agent that is not redacted. */
+    displayTitle: z.string().optional(),
     /** How its newest finished Turn that was not stopped ended. */
     lastResult: z.enum(CHILD_AGENT_RESULTS).optional(),
     name: z.string().min(1).optional(),
     redacted: z.literal(true).optional(),
-    status: z.enum(AGENT_STATUSES),
-    title: z.string().min(1).nullable().optional(),
-    /** What the child and its own children wait on, for the viewer. */
-    treeState: conversationTreeStateSchema,
-    updatedAt: z.string().datetime(),
-    /** The child or one of its own children watches for an Event or Timer. */
-    watching: z.boolean(),
   })
   .strict()
   .superRefine((data, context) => {
-    if ((data.title === undefined) === (data.redacted !== true)) {
-      context.addIssue({
-        code: "custom",
-        message: "child agent title must be set or explicitly redacted",
-      });
+    if (!data.redacted) {
+      if (data.displayTitle === undefined) {
+        context.addIssue({
+          code: "custom",
+          message: "child agent title must be set or explicitly redacted",
+        });
+      }
+      return;
     }
-    if (data.redacted && data.name) {
-      context.addIssue({
-        code: "custom",
-        message: "redacted child agents must not expose a name",
-      });
+    for (const field of Object.keys(data)) {
+      if (!REDACTED_CHILD_AGENT_FIELDS.has(field)) {
+        context.addIssue({
+          code: "custom",
+          message: `redacted child agents must not expose ${field}`,
+        });
+      }
     }
   });
 
 /** Direct child agents of one Conversation, newest activity first. */
 export const conversationChildAgentsReportSchema = z
   .object({
-    agents: z.array(conversationChildAgentSchema),
     conversationId: z.string().min(1),
+    conversations: z.array(conversationChildAgentSchema),
   })
   .strict();
 
