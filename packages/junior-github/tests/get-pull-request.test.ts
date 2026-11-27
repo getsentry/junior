@@ -435,4 +435,28 @@ describe("getPullRequest", () => {
       name: "Error",
     });
   });
+
+  it("reports GraphQL errors of the checks lookup with GitHub's message", async () => {
+    const { tool } = toolContext(true, [
+      pullRequestResponse(),
+      {
+        body: {
+          errors: [
+            { type: "RATE_LIMITED", message: "API rate limit exceeded" },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", pull_request: 691 },
+        { toolCallId: "pr-checks-graphql-error" },
+      ),
+    ).rejects.toMatchObject({
+      message:
+        "GitHub pull request checks lookup failed: API rate limit exceeded",
+      name: "Error",
+    });
+  });
 });
