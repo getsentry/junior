@@ -36,7 +36,7 @@ export function ConversationIcon(props: {
   /** Picks the color. See `conversationIconId`. */
   iconId: string;
   name: string;
-  /** Set only where nothing else on the surface shows the visibility. */
+  /** Set only on Space surfaces, where nothing else shows the visibility. */
   visibility?: "private" | "public" | undefined;
   size: keyof typeof ICON_SIZES;
 }) {
@@ -56,7 +56,7 @@ export function ConversationIcon(props: {
       <span aria-hidden="true">{initials}</span>
       {props.visibility === "private" ? (
         <LockKeyhole
-          aria-label="Private"
+          aria-label="Private Space"
           className={cn(
             "absolute -right-1 -bottom-1 rounded-full bg-dashboard-bg text-dashboard-text-muted",
             LOCK_SIZES[props.size],
