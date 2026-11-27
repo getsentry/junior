@@ -171,6 +171,7 @@
     {
       "files": ["packages/*/src/**/*.ts"],
       "rules": {
+        "junior/no-or-in-array-subqueries": "error",
         "junior/no-raw-sql-queries": "error",
         "junior/no-regex-markdown": "error",
         "junior/no-regex-url-parsing": "error",
@@ -202,6 +203,15 @@
       ],
       "rules": {
         "junior/no-service-fallback": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/src/api/conversations/membership.ts",
+        "packages/junior/src/api/spaces/state.ts"
+      ],
+      "rules": {
+        "junior/no-or-in-array-subqueries": "off"
       }
     },
     {
