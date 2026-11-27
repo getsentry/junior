@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState } from "react";
+import { Plus, X } from "lucide-react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   conversationInviteResponseSchema,
@@ -10,7 +11,6 @@ import {
 import { ParticipantAvatarStack } from "../components/ParticipantAvatarStack";
 import { Button } from "../components/ui/button";
 import { post } from "../http";
-import { DetailsCard } from "./DetailsList";
 import { conversationDetailQueryKey } from "./queries";
 
 // The picker opens only after a click, so it loads with the first open
@@ -32,18 +32,19 @@ function canInvite(detail: ConversationDetailReport | undefined): boolean {
 }
 
 /**
- * The Participants of a Conversation, and Invite where the viewer may add
- * people to it.
+ * Close Conversation details with one row: the Participants and Invite on
+ * the left, and `trailing`, such as cost and Usage, on the right. Invite
+ * opens the people picker above the row.
  */
 export function ConversationParticipants(props: {
   conversationId: string;
   detail: ConversationDetailReport | undefined;
   participants: readonly ActorIdentity[];
+  trailing?: ReactNode;
 }) {
   const [inviting, setInviting] = useState(false);
   const invitable = canInvite(props.detail);
   const queryClient = useQueryClient();
-  if (props.participants.length === 0 && !invitable) return null;
   const invite = async (user: UserSearchResult) => {
     await post(
       conversationInviteResponseSchema,
@@ -52,23 +53,7 @@ export function ConversationParticipants(props: {
     );
   };
   return (
-    <DetailsCard
-      action={
-        invitable ? (
-          <Button
-            aria-expanded={inviting}
-            className="rounded-md px-1.5 py-0.5 text-xs"
-            onClick={() => setInviting((value) => !value)}
-            size="bare"
-            variant="ghost"
-          >
-            {inviting ? "Cancel" : "Invite"}
-          </Button>
-        ) : null
-      }
-      label="Participants"
-      title="Participants"
-    >
+    <section aria-label="Participants" className="grid min-w-0 gap-3">
       {inviting ? (
         <Suspense fallback={null}>
           <PeoplePicker
@@ -87,12 +72,34 @@ export function ConversationParticipants(props: {
           />
         </Suspense>
       ) : null}
-      {props.participants.length > 0 ? (
-        <ParticipantAvatarStack
-          participants={props.participants}
-          size="detail"
-        />
-      ) : null}
-    </DetailsCard>
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          {props.participants.length > 0 ? (
+            <ParticipantAvatarStack
+              participants={props.participants}
+              size="detail"
+            />
+          ) : null}
+          {invitable ? (
+            <Button
+              aria-expanded={inviting}
+              aria-label={inviting ? "Cancel invite" : "Invite"}
+              className="size-6 rounded-full text-dashboard-text-muted hover:text-dashboard-text"
+              onClick={() => setInviting((value) => !value)}
+              size="bare"
+              title={inviting ? "Cancel invite" : "Invite"}
+              variant="ghost"
+            >
+              {inviting ? (
+                <X aria-hidden="true" size={14} />
+              ) : (
+                <Plus aria-hidden="true" size={14} />
+              )}
+            </Button>
+          ) : null}
+        </div>
+        {props.trailing}
+      </div>
+    </section>
   );
 }

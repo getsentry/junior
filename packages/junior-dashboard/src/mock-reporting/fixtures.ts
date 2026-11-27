@@ -3375,7 +3375,15 @@ export function readMockConversationChildAgents(
         lastResult: "blocked",
         name: "reviewer",
       }),
-      child(DASHBOARD_QA_PLAN_ID),
+      // Running, so Work shows what it says now under its To-do.
+      child(DASHBOARD_QA_PLAN_ID, {
+        activityPreview: {
+          createdAt: iso(NOW_MS, -60_000),
+          role: "assistant",
+          text: "Checking that the pinned rows keep their order after a hard reload.",
+        },
+        agentStatus: "running",
+      }),
     ],
   };
   return { conversationId, conversations: children[conversationId] ?? [] };

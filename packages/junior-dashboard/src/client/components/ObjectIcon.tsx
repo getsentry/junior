@@ -24,6 +24,8 @@ export function ObjectIcon(props: {
   size?: number;
   decorative?: boolean;
   className?: string;
+  /** Draw this tone instead of the state's, as in a list that shows state by shape. */
+  tone?: ObjectTone | undefined;
 }) {
   const presentation = objectPresentation(props);
   const label = [presentation.label, props.status].filter(Boolean).join(": ");
@@ -34,7 +36,7 @@ export function ObjectIcon(props: {
       role={props.decorative ? undefined : "img"}
       className={cn(
         "inline-block shrink-0 align-middle",
-        objectToneClass[presentation.tone],
+        objectToneClass[props.tone ?? presentation.tone],
         props.className,
       )}
       width={props.size ?? 16}

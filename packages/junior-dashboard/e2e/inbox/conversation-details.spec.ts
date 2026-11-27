@@ -91,9 +91,18 @@ test.describe("new UI", () => {
     await expect(costTooltip).toBeHidden();
     await expect(details).toBeVisible();
 
-    await expect(
-      details.getByRole("link", { name: /getsentry\/payments#77/ }),
-    ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
+    // Merged work waits behind "Show finished". The ref drops the repo that
+    // the conversation works in.
+    const linkedWork = details.getByRole("region", { name: "Linked work" });
+    const merged = linkedWork.getByRole("link", {
+      name: /#77 Cache tax rates/,
+    });
+    await expect(merged).toHaveCount(0);
+    await linkedWork.getByRole("button", { name: "Show finished" }).click();
+    await expect(merged).toHaveAttribute(
+      "href",
+      "https://github.com/getsentry/payments/pull/77",
+    );
     await closeDetails.click();
     await expect(details).toBeHidden();
     await context.grantPermissions(["clipboard-read", "clipboard-write"], {
@@ -142,7 +151,7 @@ test.describe("new UI", () => {
     const memories = details.getByText("Use pnpm for repository commands.");
     await expect(memories).toBeHidden();
     await details
-      .getByRole("button", { name: "1 recalled · 2 captured" })
+      .getByRole("button", { name: "Memories", exact: true })
       .click();
     await expect(memories).toBeVisible();
     await expect(
@@ -153,9 +162,9 @@ test.describe("new UI", () => {
     await page.setViewportSize({ width: 1024, height: 900 });
     const sheet = page.getByRole("dialog", { name: "Conversation details" });
     await expect(sheet).toBeVisible();
-    await expect(
-      sheet.getByRole("link", { name: /getsentry\/payments#77/ }),
-    ).toBeVisible();
+    const sheetLinks = sheet.getByRole("region", { name: "Linked work" });
+    await sheetLinks.getByRole("button", { name: "Show finished" }).click();
+    await expect(sheetLinks.getByRole("link", { name: /#77 / })).toBeVisible();
     await page.setViewportSize({ width: 1600, height: 900 });
     await expect(sheet).toBeHidden();
     await expect(details).toBeVisible();
@@ -234,7 +243,7 @@ test.describe("new UI", () => {
     ).toHaveCount(0);
   });
 
-  test("shows a Watch on linked work in its linked work row", async ({
+  test("lists Watches in Work and linked work once", async ({
     page,
     dashboard,
   }) => {
@@ -246,30 +255,25 @@ test.describe("new UI", () => {
       name: "Conversation details",
       exact: true,
     });
-    const watched = details.getByRole("link", {
-      name: /getsentry\/getsentry#21572/,
-    });
-    // The watched pull request is linked work, so it shows once.
-    await expect(watched).toHaveCount(1);
-    await expect(details.getByText("Also waiting on")).toBeVisible();
+    // The watched pull request is linked work, so it shows once, and its
+    // Watch shows in Work.
     await expect(
-      details.getByRole("link", {
-        name: /^Reply to new review comments on the PR\. expires/,
-      }),
-    ).toBeVisible();
-
-    await details
-      .getByRole("button", { name: "Details for getsentry/getsentry#21572" })
-      .click();
+      details
+        .getByRole("region", { name: "Linked work" })
+        .getByRole("link", { name: /#21572/ }),
+    ).toHaveCount(1);
     await expect(
-      details.getByText(
-        "Fix failing checks and address requested changes on the dashboard PR.",
-      ),
+      details
+        .getByRole("region", { exact: true, name: "Work" })
+        .getByRole("link", {
+          name: "Fix failing checks and address requested changes on the dashboard PR.",
+        }),
     ).toBeVisible();
+    await expect(details.getByText("Also waiting on")).toHaveCount(0);
     await screenshot(page, "conversation-details-watched-linked-work");
   });
 
-  test("lists To-dos, and a Participant changes their status", async ({
+  test("lists To-dos in Work, and a Participant changes their status", async ({
     dashboard,
     page,
   }) => {
@@ -277,21 +281,19 @@ test.describe("new UI", () => {
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
     );
-    const details = page.getByRole("complementary", {
-      exact: true,
-      name: "Conversation details",
-    });
-    // The heading counts the open and in-progress To-dos.
-    const heading = details.getByRole("heading", { name: /^To-dos/ });
-    await expect(heading).toHaveText("To-dos3");
+    const work = page
+      .getByRole("complementary", { exact: true, name: "Conversation details" })
+      .getByRole("region", { exact: true, name: "Work" });
+    // Work has no count: closed To-dos are only the latest few.
+    await expect(work.getByRole("heading")).toHaveText("Work");
     const change = page.getByRole("button", {
       name: "Change Confirm the rollback window",
     });
-    const rollback = details.getByRole("listitem").filter({ has: change });
-    await expect(rollback.getByRole("img", { name: "Open" })).toBeVisible();
+    const rollback = work.getByRole("listitem").filter({ has: change });
+    await expect(rollback.getByRole("img", { name: "To do" })).toBeVisible();
     await screenshot(page, "conversation-details-todos", {
       lightTheme: true,
-      target: details,
+      target: work,
       view: "desktop",
     });
 
@@ -307,20 +309,22 @@ test.describe("new UI", () => {
     );
     await page.getByRole("menuitem", { name: "Mark done" }).click();
     expect((await save).postDataJSON()).toEqual({ status: "done" });
+    // A finished To-do waits behind "Show finished".
+    await expect(rollback).toHaveCount(0);
+    await work.getByRole("button", { name: "Show finished" }).click();
     await expect(rollback.getByRole("img", { name: "Done" })).toBeVisible();
-    await expect(heading).toHaveText("To-dos2");
 
     await change.click();
     await page.getByRole("menuitem", { name: "Reopen" }).click();
-    await expect(rollback.getByRole("img", { name: "Open" })).toBeVisible();
+    await expect(rollback.getByRole("img", { name: "To do" })).toBeVisible();
 
-    // A phone shows the same card in the details sheet.
+    // A phone shows the same section in the details sheet.
     await page.setViewportSize({ height: 844, width: 390 });
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await conversationMenuRow(page, "Conversation details").click();
     const sheetHeading = page
       .getByRole("dialog", { name: "Conversation details" })
-      .getByRole("heading", { name: /^To-dos/ });
+      .getByRole("heading", { name: "Work", exact: true });
     await sheetHeading.scrollIntoViewIfNeeded();
     await expect(sheetHeading).toBeInViewport();
     await screenshot(page, "conversation-details-todos", {
@@ -361,8 +365,8 @@ test.describe("new UI", () => {
     await conversationMenuRow(page, "Conversation details").click();
     const details = page.getByRole("dialog", { name: "Conversation details" });
     await details
-      .getByRole("region", { name: "Inbox" })
-      .getByRole("button", { name: "Handle the negative invoices" })
+      .getByRole("region", { name: "Needs you" })
+      .getByRole("button", { name: /Handle the negative invoices/ })
       .click();
     // The item does not open in place in the details, but over them.
     const item = page.getByRole("dialog", {
@@ -395,7 +399,8 @@ test.describe("new UI", () => {
     await conversationMenuRow(page, "Conversation details").click();
     const details = page.getByRole("dialog", { name: "Conversation details" });
     const memoryCard = details.getByRole("button", {
-      name: "1 recalled · 2 captured",
+      exact: true,
+      name: "Memories",
     });
 
     // Memories replace details in the sheet, with a way back.
@@ -412,8 +417,8 @@ test.describe("new UI", () => {
 
     // A Task opens over the details, and Back goes back to them.
     const reviewerRow = details
-      .getByRole("region", { name: "Tasks" })
-      .getByRole("button", { name: /^blocked Advisor review/ });
+      .getByRole("region", { exact: true, name: "Work" })
+      .getByRole("button", { name: /^Blocked Advisor review/ });
     await reviewerRow.click();
     const reviewer = page.getByRole("dialog", { name: "Advisor review" });
     await expect(
@@ -445,7 +450,7 @@ test.describe("new UI", () => {
       exact: true,
     });
     await details
-      .getByRole("button", { name: "1 recalled · 2 captured" })
+      .getByRole("button", { name: "Memories", exact: true })
       .click();
     const captured = details
       .getByRole("listitem")

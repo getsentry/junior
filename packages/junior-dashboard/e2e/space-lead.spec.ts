@@ -54,11 +54,12 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     transcript.getByText('"Deployment investigation failed" failed.'),
   ).toBeVisible();
 
-  // The Lead's details show its Threads, and its Participants are its
-  // Space's members.
+  // The Lead's details show its Threads, finished ones behind "Show
+  // finished", and its Participants are its Space's members.
   const details = page.getByRole("complementary", {
     name: "Conversation details",
   });
+  await details.getByRole("button", { name: "Show finished" }).click();
   await expect(
     details.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
@@ -214,6 +215,7 @@ test.describe("on a touch screen", () => {
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await conversationMenuRow(page, "Conversation details").click();
     const sheet = page.getByRole("dialog", { name: "Conversation details" });
+    await sheet.getByRole("button", { name: "Show finished" }).click();
     await expect(
       sheet.getByRole("link", { name: /Plan the billing migration/ }),
     ).toBeVisible();
