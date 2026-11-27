@@ -608,6 +608,7 @@ describe("tool action review", () => {
           }));
         },
       }),
+      onFatal: () => undefined,
       onDecision: vi.fn(async () => undefined),
     });
 
