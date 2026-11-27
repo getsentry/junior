@@ -108,25 +108,48 @@ describe("sandbox facts", () => {
     expect(log).not.toMatch(/^ {4}pushed$/m);
   });
 
+  it("lists the checkout that a command runs in outside the root", async () => {
+    const { root } = sandboxRoot();
+    const clone = mkdtempSync(path.join(tmpdir(), "sandbox-clone-"));
+    roots.push(clone);
+    git(clone, "init", "-q");
+    git(clone, "remote", "add", "origin", "https://github.com/acme/demo.git");
+    mkdirSync(path.join(clone, "src"));
+
+    const repos = await readSandboxRepos(localWorkspace, root, [
+      path.join(clone, "src"),
+    ]);
+
+    expect(repos).toContainEqual({
+      path: clone,
+      remotes: ["https://github.com/acme/demo.git"],
+    });
+  });
+
   it.each([
-    ["git push upstream", []],
-    ["cd repos/demo && git push origin fix/export:main", []],
-    ["git -C /tmp/demo push --force-with-lease", []],
+    ["git push upstream", [], ["."]],
+    ["cd repos/demo && git push origin fix/export:main", [], ["repos/demo"]],
+    ["cd /tmp/demo && git push", [], ["/tmp/demo"]],
+    ["git -C /tmp/demo push --force-with-lease", [], ["/tmp/demo"]],
+    ["cd /tmp && git -C demo push", [], ["/tmp/demo"]],
+    ["cd $HOME/demo && git push", [], []],
     [
       "git push https://github.com/getsentry/junior.git HEAD",
       ["https://github.com/getsentry/junior.git"],
+      ["."],
     ],
     [
       "git remote add pub git@github.com:getsentry/junior.git; git push pub",
       ["git@github.com:getsentry/junior.git"],
+      ["."],
     ],
-  ])("finds the push in `%s`", (command, urls) => {
-    expect(gitCommandFacts({ command })).toEqual({ pushes: true, urls });
+  ])("finds the push in `%s`", (command, urls, dirs) => {
+    expect(gitCommandFacts({ command })).toEqual({ pushes: true, urls, dirs });
   });
 
   it("does not take a URL from a command that is not git", () => {
     expect(
       gitCommandFacts({ command: "curl https://example.com/x && git status" }),
-    ).toEqual({ pushes: false, urls: [] });
+    ).toEqual({ pushes: false, urls: [], dirs: ["."] });
   });
 });

@@ -62,10 +62,11 @@ export interface ToolActionReviewContext {
   /** Read the Run's own Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
   /**
-   * Read the Git checkouts of the Sandbox. Set only when Guardian reviews
+   * Read the Git checkouts of the Sandbox, also those that hold the
+   * directories that the commands run in. Set only when Guardian reviews
    * shell commands, which only the agent Guardian does.
    */
-  sandboxRepos?: () => Promise<SandboxRepo[]>;
+  sandboxRepos?: (dirs: readonly string[]) => Promise<SandboxRepo[]>;
   /** Read the commits of one checkout that no remote has yet. */
   sandboxUnpushed?: (path: string) => Promise<string>;
 }
@@ -673,7 +674,7 @@ export function createToolActionReview(options: {
         const git = commands.map((a) => gitCommandFacts(a.input));
         const pushes = git.some((facts) => facts.pushes);
         request.sandbox = await sandboxFacts({
-          repos: await sandboxRepos(),
+          repos: await sandboxRepos(git.flatMap((facts) => facts.dirs)),
           urls: git.flatMap((facts) => facts.urls),
           placeholders: credentialPlaceholders(
             getPlugins().map((plugin) => plugin.manifest),

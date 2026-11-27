@@ -576,11 +576,12 @@ export async function wireAgentTools(
       // Sandbox has checkouts, so review never starts one.
       ...(isExperimentalFeatureEnabled("guardian-agent")
         ? {
-            sandboxRepos: async () =>
+            sandboxRepos: async (dirs) =>
               agentSandbox.sandboxRef()
                 ? await readSandboxRepos(
                     agentSandbox.workspace,
                     SANDBOX_WORKSPACE_ROOT,
+                    dirs,
                   )
                 : [],
             sandboxUnpushed: async (path: string) =>

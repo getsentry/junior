@@ -8,6 +8,7 @@ import type {
   DescribeReadContext,
   PluginManifest,
 } from "@sentry/junior-plugin-api";
+import { posix } from "node:path";
 import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
 import type { ReviewRequest } from "@/chat/guardian/guardian";
@@ -22,25 +23,44 @@ export interface SandboxRepo {
   remotes: string[];
 }
 
-// Print the path and each remote fetch or push URL of each Git checkout one
-// or two levels under the root, such as a Workspace's `repos/<name>`.
+// Print the top-level path and each remote fetch or push URL of each Git
+// checkout one or two levels under the root, such as a Workspace's
+// `repos/<name>`, and of each directory given after the root, one per line.
 const LIST_REPOS_SCRIPT = [
-  'for dir in "$1"/*/ "$1"/repos/*/; do',
-  '  [ -e "$dir/.git" ] || continue',
-  '  git -C "$dir" remote -v 2>/dev/null | while read -r _ url _; do',
-  '    printf \'%s\\t%s\\n\' "${dir%/}" "$url"',
+  "list() {",
+  '  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 0',
+  '  git -C "$top" remote -v | while read -r _ url _; do',
+  '    printf \'%s\\t%s\\n\' "$top" "$url"',
   "  done",
+  "}",
+  "root=$1; shift",
+  'for dir in "$root"/*/ "$root"/repos/*/; do',
+  '  if [ -e "$dir/.git" ]; then list "$dir"; fi',
+  "done",
+  'for dir in "$@"; do',
+  '  if [ -d "$dir" ]; then list "$dir"; fi',
   "done",
 ].join("\n");
 
-/** Read the Git checkouts of a running Sandbox, with their remote URLs. */
+/**
+ * Read the Git checkouts of a running Sandbox, with their remote URLs: those
+ * under the root, and those that hold the directories that commands run in.
+ * A relative directory is under the root, as bash runs there by default.
+ */
 export async function readSandboxRepos(
   workspace: Pick<SandboxWorkspace, "runCommand">,
   root: string,
+  dirs: readonly string[] = [],
 ): Promise<SandboxRepo[]> {
   const result = await workspace.runCommand({
     cmd: "bash",
-    args: ["-c", LIST_REPOS_SCRIPT, "list-repos", root],
+    args: [
+      "-c",
+      LIST_REPOS_SCRIPT,
+      "list-repos",
+      root,
+      ...dirs.map((dir) => posix.resolve(root, dir)),
+    ],
     timeoutMs: 10_000,
   });
   // A failed or timed-out listing is not a Sandbox without checkouts.
@@ -61,30 +81,61 @@ export async function readSandboxRepos(
 /** Most characters of unpushed commits that one checkout's facts keep. */
 const MAX_UNPUSHED_CHARS = 12_000;
 
-const shellInputSchema = z.object({ command: z.string() });
+const shellInputSchema = z.object({
+  command: z.string(),
+  cwd: z.string().optional(),
+});
 
-// One `git` invocation: up to the next command separator.
-const GIT_SEGMENT = /\bgit\b[^\n;&|]*/g;
 // A repository URL: `scheme://...` or scp-like `user@host:path`.
 const REPO_URL = /(?:https?|ssh|git):\/\/[^\s'"]+|[\w.-]+@[\w.-]+:[^\s'"]+/g;
 
 /**
+ * The directory that a path argument names from `cwd`, or undefined when the
+ * shell expands it, such as `~` or `$DIR`, or when `cwd` is unknown.
+ */
+function dirFrom(cwd: string | undefined, arg: string): string | undefined {
+  const path = arg.replace(/^(['"])(.*)\1$/, "$2");
+  if (!path || /^[-~]|\$/.test(path)) return undefined;
+  if (path.startsWith("/")) return path;
+  return cwd === undefined ? undefined : posix.join(cwd, path);
+}
+
+/**
  * What one shell call does with Git: whether it pushes, in any form such as
- * `git -C <path> push <remote> <refspec>`, and the repository URLs that its
- * `git` invocations name, such as a push or `remote add` target.
+ * `git -C <path> push <remote> <refspec>`, the repository URLs that its `git`
+ * invocations name, such as a push or `remote add` target, and the
+ * directories they run in: the `-C` path, or the working directory after
+ * any `cd` before it. A relative directory is relative to the root.
  */
 export function gitCommandFacts(input: unknown): {
   pushes: boolean;
   urls: string[];
+  dirs: string[];
 } {
-  const parsed = shellInputSchema.safeParse(input);
-  const segments = parsed.success
-    ? (parsed.data.command.match(GIT_SEGMENT) ?? [])
-    : [];
-  return {
-    pushes: segments.some((segment) => /\bpush\b/.test(segment)),
-    urls: segments.flatMap((segment) => segment.match(REPO_URL) ?? []),
+  const facts: { pushes: boolean; urls: string[]; dirs: string[] } = {
+    pushes: false,
+    urls: [],
+    dirs: [],
   };
+  const parsed = shellInputSchema.safeParse(input);
+  if (!parsed.success) return facts;
+  // Undefined after a `cd` to a path that the shell expands.
+  let cwd: string | undefined = parsed.data.cwd ?? ".";
+  for (const segment of parsed.data.command.split(/&&|\|\||[;|\n]/)) {
+    const cd = /^\s*cd\s+(\S+)/.exec(segment);
+    if (cd) {
+      cwd = dirFrom(cwd, cd[1]!);
+      continue;
+    }
+    const git = /\bgit\b.*/.exec(segment)?.[0];
+    if (!git) continue;
+    facts.pushes ||= /\bpush\b/.test(git);
+    facts.urls.push(...(git.match(REPO_URL) ?? []));
+    const option = /\s-C\s+(\S+)/.exec(git)?.[1];
+    const dir = option === undefined ? cwd : dirFrom(cwd, option);
+    if (dir && !facts.dirs.includes(dir)) facts.dirs.push(dir);
+  }
+  return facts;
 }
 
 /**

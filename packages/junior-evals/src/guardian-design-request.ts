@@ -3,6 +3,7 @@
  * stored records that the case gives (`facts-from-junior` in
  * `design/guardian.md`).
  */
+import { posix } from "node:path";
 import type { DescribeReadContext } from "@sentry/junior-plugin-api";
 import { mapBounded } from "@/chat/fan-out";
 import type { Action, Message, ReviewRequest } from "@/chat/guardian/guardian";
@@ -14,6 +15,7 @@ import {
   sandboxFacts,
 } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { GuardianDesignFacts } from "./guardian-design-harness";
 import { agentActionFacts } from "./guardian-tools";
 /**
@@ -126,8 +128,19 @@ async function designSandbox(
   if (commands.length === 0) return undefined;
   const checkouts = facts?.checkouts ?? [];
   const git = commands.map(({ input }) => gitCommandFacts(input));
+  // Core lists the checkouts under the root, and those that hold a
+  // directory that a command runs in.
+  const dirs = git.flatMap((facts) =>
+    facts.dirs.map((dir) => posix.resolve(SANDBOX_WORKSPACE_ROOT, dir)),
+  );
+  const listed = checkouts.filter(
+    ({ path }) =>
+      [SANDBOX_WORKSPACE_ROOT, `${SANDBOX_WORKSPACE_ROOT}/repos`].includes(
+        posix.dirname(path),
+      ) || dirs.some((dir) => dir === path || dir.startsWith(`${path}/`)),
+  );
   return await sandboxFacts({
-    repos: checkouts.map(({ path, remotes }) => ({ path, remotes })),
+    repos: listed.map(({ path, remotes }) => ({ path, remotes })),
     urls: git.flatMap((facts) => facts.urls),
     placeholders: credentialPlaceholders(
       getPlugins().map((plugin) => plugin.manifest),
