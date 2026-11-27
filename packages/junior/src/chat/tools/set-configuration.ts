@@ -39,6 +39,7 @@ export const setConfigurationToolDefinition = zodToolDefinition({
     openWorldHint: false,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description:
     "Set or remove one configuration value, such as a default repository or Sentry org, everywhere this conversation gets its configuration: its Slack channel, its Space, or both. The Space's value wins over the channel's, and both win over install defaults. Only a member of the Space changes the Space's value. Returns the values each one sets after the change.",
   inputSchema: z

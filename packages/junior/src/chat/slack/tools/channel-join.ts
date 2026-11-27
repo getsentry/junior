@@ -22,6 +22,7 @@ export const slackChannelJoinToolDefinition = zodToolDefinition({
     openWorldHint: true,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   inputSchema: z.object({
     channel_id: slackChannelRefParam,
   }),

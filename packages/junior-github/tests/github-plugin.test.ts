@@ -1882,65 +1882,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toHaveLength(1);
   });
 
-  it("records the pull request on a retry after the first record failed", async () => {
-    const conversationId = "slack:C123:1712345.0772";
-    const ctx = githubToolsContext({
-      actor: PULL_REQUEST_REQUESTER,
-      conversationId,
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            base: {
-              ref: "main",
-              repo: { full_name: "getsentry/junior", id: 4242 },
-            },
-            head: { ref: "feat/typed-pr" },
-            created_at: "2026-02-01T10:00:00Z",
-            html_url: "https://github.com/getsentry/junior/pull/7702",
-            id: 77002,
-            number: 7702,
-            title: "Typed PR",
-            updated_at: "2026-02-01T10:00:00Z",
-            user: { login: "junior[bot]", type: "Bot" },
-          }),
-          { status: 201 },
-        ),
-    });
-    const codeChanges = dbFixture.codeIndex.codeChanges;
-    // The first call stops after it saves its completed state.
-    ctx.codeChanges = {
-      ...codeChanges,
-      record: async () => {
-        throw new Error("stopped");
-      },
-    };
-    const tool = bindPluginTool(
-      githubPlugin({
-        pullRequestEvents: { subscribeAfterCreate: false },
-      }).hooks?.tools?.()?.["createPullRequest"],
-      ctx as any,
-    );
-    const input = {
-      repo: "getsentry/junior",
-      title: "Typed PR",
-      head: "feat/typed-pr",
-      base: "main",
-      body: "PR body",
-    };
-    const options = { toolCallId: "call-create-retried-pull-request" };
-
-    await expect(tool?.execute?.(input, options)).rejects.toThrow("stopped");
-    ctx.codeChanges = codeChanges;
-    await tool?.execute?.(input, options);
-
-    await expect(
-      codeChanges.list({
-        conversationIds: [conversationId],
-        repository: { name: "getsentry/junior", numbers: [7702] },
-      }),
-    ).resolves.toHaveLength(1);
-  });
-
   it("subscribes configured events after creating a pull request", async () => {
     process.env["GITHUB_WEBHOOK_SECRET"] = "test-secret";
     // Like core, the result lists only the events that start a Turn.

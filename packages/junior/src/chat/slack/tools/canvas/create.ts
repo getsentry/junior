@@ -27,6 +27,7 @@ export function createSlackCanvasCreateTool(
       openWorldHint: true,
       readOnlyHint: false,
     },
+    approvalMode: "review",
     description: "Create a Slack canvas in the active channel.",
     inputSchema: z.object({
       title: z.string().min(1).max(160).describe("Canvas title."),

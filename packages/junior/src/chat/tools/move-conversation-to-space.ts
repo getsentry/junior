@@ -17,6 +17,7 @@ export const moveConversationToSpaceToolDefinition = zodToolDefinition({
     openWorldHint: false,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description:
     "Move a top-level conversation into a Space, to another Space, or out of its Space, when the person asks for it. Its child conversations move with it. The person must be a member of the Space it leaves and of the Space it joins. Returns the conversation's Space after the move.",
   inputSchema: z

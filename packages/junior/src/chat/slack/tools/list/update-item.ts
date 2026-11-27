@@ -42,6 +42,7 @@ export const slackListUpdateItemToolDefinition = zodToolDefinition({
     openWorldHint: true,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description: "Update an item in a Slack list.",
   inputSchema: updateListItemInputSchema,
   outputSchema: juniorToolOutputSchema,

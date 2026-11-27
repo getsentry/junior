@@ -21,6 +21,7 @@ export const slackListAddItemsToolDefinition = zodToolDefinition({
     openWorldHint: true,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description: "Add tasks to a Slack list.",
   inputSchema: z.object({
     list_id: slackListIdParam,

@@ -20,6 +20,7 @@ export const slackCanvasWriteToolDefinition = zodToolDefinition({
     openWorldHint: true,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description: "Replace the full markdown body of a Slack canvas.",
   executionMode: "sequential",
   inputSchema: z.object({

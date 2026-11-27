@@ -30,6 +30,7 @@ export const submitFeedbackToolDefinition = zodToolDefinition({
     openWorldHint: true,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description:
     "Report a problem with your own tools or runtime to the maintainers, not to the user. Use it once when a tool failed, timed out, was too slow, returned wrong data, or was missing, such as a Sandbox that did not start. Skip it when the work went fine, or when the cause is the user's input, access, or a permission they control. Returns the feedback id.",
   inputSchema: submitFeedbackInputSchema,
