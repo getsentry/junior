@@ -43,9 +43,7 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     name: "Conversation details",
     exact: true,
   });
-  await details
-    .getByRole("button", { name: "1 recalled · 2 captured" })
-    .click();
+  await details.getByRole("button", { name: "Memories", exact: true }).click();
   await details
     .getByRole("listitem")
     .filter({ hasText: "Dashboard transcript events should remain" })

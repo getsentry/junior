@@ -66,14 +66,14 @@ test.describe("new UI", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
     );
 
-    const threads = details.getByRole("region", { name: "Threads" });
-    await expect(threads.getByRole("listitem")).toHaveCount(1);
-    await threads.getByRole("button", { name: "Show archived (1)" }).click();
-    await expect(
-      threads.getByRole("link", { name: /^archived Compare sidebar badges/ }),
-    ).toBeVisible();
-    await threads.getByRole("button", { name: "Hide archived" }).click();
-    await expect(threads.getByRole("listitem")).toHaveCount(1);
+    // An archived Thread is finished, so it waits behind "Show finished".
+    const work = details.getByRole("region", { exact: true, name: "Work" });
+    const archived = work.getByRole("link", { name: /Compare sidebar badges/ });
+    await expect(archived).toHaveCount(0);
+    await work.getByRole("button", { name: "Show finished" }).click();
+    await expect(archived.getByRole("img", { name: "Done" })).toBeVisible();
+    await work.getByRole("button", { name: "Hide finished" }).click();
+    await expect(archived).toHaveCount(0);
   });
 
   test("sends a message from a Thread page", async ({ page, dashboard }) => {

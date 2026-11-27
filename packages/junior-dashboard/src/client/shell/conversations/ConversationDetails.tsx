@@ -1,61 +1,66 @@
-import { Bot, CornerLeftUp } from "lucide-react";
+import { Bot, CornerLeftUp, Zap, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import type {
-  ConversationAgentTreeNode,
+  ActorIdentity,
   ConversationDetailReport,
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../../components/DetailsPanel";
-import { ConversationInboxItems } from "../inbox/ConversationInboxItems";
-import { ConversationSummary } from "../../conversations/ConversationSummary";
+import { Button } from "../../components/ui/button";
 import {
-  ConversationTasks,
-  ConversationThreads,
-  useConversationChildAgents,
-} from "../../conversations/ConversationChildAgents";
+  ConversationInboxItems,
+  useConversationNeedsYou,
+} from "../inbox/ConversationInboxItems";
+import { ConversationSummary } from "../../conversations/ConversationSummary";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import {
-  ConversationLinkedWorkCard,
+  ConversationLinkedWork,
   type ConversationLink,
 } from "../../conversations/ConversationLinkedWork";
-import {
-  ConversationMemoryCard,
-  ConversationMemoryEntries,
-} from "../../conversations/ConversationMemories";
+import { ConversationMemoryEntries } from "../../conversations/ConversationMemories";
 import {
   conversationMemoryEntries,
   type ConversationMemoryEntry,
   type ConversationMemoryList,
 } from "../../conversations/conversationMemory";
-import { ConversationTodos } from "../../conversations/ConversationTodos";
-import { DetailsCard, DetailsRow } from "../../conversations/DetailsList";
+import { ConversationParticipants } from "../../conversations/ConversationParticipants";
+import { ConversationWork } from "../../conversations/ConversationWork";
 import {
   ConversationDrawer,
   type ConversationDrawerTarget,
 } from "../../conversations/ConversationDrawer";
+import { automationPath } from "../../format";
 import { useMobileLayout } from "../../layoutMedia";
-import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import {
+  fadeOverflowClass,
+  fadeTextClass,
+  fadeWhenOverflowing,
+} from "../../textFade";
 import { cn } from "../../styles";
 
+type DetailsView = "details" | "memories" | "usage";
+
+const viewTitles: Record<Exclude<DetailsView, "details">, string> = {
+  memories: "Memories",
+  usage: "Usage",
+};
+
 /**
- * Lead with the glance (cost, repository, location), then the summary, the
- * work that needs the reader, and linked work. Reference facts come last.
+ * Show what a Conversation is and where its work stands, top to bottom:
+ * where it came from, the summary, what needs the viewer, its Work, and its
+ * linked work. The footer holds the Participants, the cost, and Usage and
+ * Memories, which open in place of the details.
  */
 export function ConversationDetails(props: {
-  /** Parent chain of a child Conversation, root first, this one last. */
-  agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   conversationId: string;
-  /** Live cost, repository, and location, above everything else. */
-  glance: ReactNode;
-  summary?: string | undefined;
-  summaryMentions?: ConversationDetailReport["summaryMentions"];
+  /** The repository and Slack location line under the summary. */
+  context: ReactNode;
+  /** The estimated cost, or null before there is one. */
+  cost: ReactNode;
+  detail: ConversationDetailReport | undefined;
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
-  /**
-   * True when the viewer is a Participant, who can change To-dos and cancel
-   * Watches.
-   */
-  isParticipant: boolean;
   links: ConversationLink[];
   memoryList?: ConversationMemoryList | undefined;
   onClose(): void;
@@ -66,41 +71,49 @@ export function ConversationDetails(props: {
   onOpenSubagent(target: ConversationDrawerTarget): void;
   /** Show the Turn that recalled or captured one memory. */
   onSelectMemory(entry: ConversationMemoryEntry): void;
-  overview: ReactNode;
-  /** The Participants card, or null when it has nothing to show. */
-  participants: ReactNode;
+  participants: readonly ActorIdentity[];
+  /** The one GitHub repository of the linked work, for short refs. */
+  repository?: string | undefined;
+  /** The Usage view: totals and the breakdown. Null when it has none. */
   usage: ReactNode;
 }) {
+  const { detail, memoryList } = props;
   const panel = useDetailsPanel();
   const mobile = useMobileLayout();
-  const { memoryList } = props;
   const [task, setTask] = useState<ConversationDrawerTarget>();
-  const [memoriesOpen, setMemoriesOpen] = useState(false);
-  const [memoryConversationId, setMemoryConversationId] = useState(
+  const [view, setView] = useState<DetailsView>("details");
+  const [viewConversationId, setViewConversationId] = useState(
     props.conversationId,
   );
-  if (memoryConversationId !== props.conversationId) {
-    setMemoryConversationId(props.conversationId);
-    setMemoriesOpen(false);
+  if (viewConversationId !== props.conversationId) {
+    setViewConversationId(props.conversationId);
+    setView("details");
     setTask(undefined);
   }
-  const agents = useConversationChildAgents(props.conversationId).data?.agents;
-  const threads = agents?.filter((agent) => agent.kind === "thread") ?? [];
-  const tasks = agents?.filter((agent) => agent.kind === "task") ?? [];
-  // The last node is this Conversation, so the one before it is the parent.
-  const parent = props.agentTree?.at(-2);
+  const needsYou = useConversationNeedsYou(props.conversationId).items;
+  const viewerTodoIds = new Set(
+    needsYou.flatMap((item) =>
+      item.todoId === undefined ? [] : [item.todoId],
+    ),
+  );
+  const hasMemories = Boolean(memoryList?.events.length);
+  const origin = conversationOrigin(detail);
 
-  if (memoriesOpen && memoryList) {
-    // The list replaces details in place, so nothing stacks over the panel.
+  if (
+    (view === "usage" && props.usage) ||
+    (view === "memories" && memoryList && hasMemories)
+  ) {
+    // The view replaces details in place, so nothing stacks over the panel.
+    const title = viewTitles[view];
     return (
       <DetailsPanel
         back={{
           label: "Back to details",
-          onBack: () => setMemoriesOpen(false),
+          onBack: () => setView("details"),
         }}
         label="Conversation details"
         onClose={props.onClose}
-        sheetTitle="Memories"
+        sheetTitle={title}
         title={
           <h2
             className={cn(
@@ -109,19 +122,23 @@ export function ConversationDetails(props: {
             )}
             ref={fadeWhenOverflowing}
           >
-            Memories
+            {title}
           </h2>
         }
       >
-        <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-          <ConversationMemoryEntries
-            entries={conversationMemoryEntries(memoryList)}
-            onSelect={(entry) => {
-              // The transcript sits under a details sheet. Close it first.
-              if (!panel) props.onClose();
-              props.onSelectMemory(entry);
-            }}
-          />
+        <div className="grid min-w-0 content-start gap-6 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          {view === "usage" ? (
+            props.usage
+          ) : memoryList ? (
+            <ConversationMemoryEntries
+              entries={conversationMemoryEntries(memoryList)}
+              onSelect={(entry) => {
+                // The transcript sits under a details sheet. Close it first.
+                if (!panel) props.onClose();
+                props.onSelectMemory(entry);
+              }}
+            />
+          ) : null}
         </div>
       </DetailsPanel>
     );
@@ -140,77 +157,75 @@ export function ConversationDetails(props: {
       }
       onClose={props.onClose}
     >
-      <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        {props.glance}
-        {/* What the work is and where it stands. */}
-        {props.summary ? (
-          <section
-            aria-label="Summary"
-            className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted"
-            id="conversation-summary"
-          >
-            <ConversationSummary
-              mentions={props.summaryMentions}
-              summary={props.summary}
-            />
-          </section>
-        ) : null}
-        {parent ? (
-          <DetailsCard title="Parent">
-            <DetailsRow
-              icon={<CornerLeftUp aria-hidden="true" size={14} />}
-              title={parent.label}
-              to={conversationPath(parent.conversationId)}
-            />
-          </DetailsCard>
+      <div className="grid min-w-0 content-start gap-8 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        {origin || detail?.summary || props.context ? (
+          <div className="grid min-w-0 gap-2">
+            {origin ? <ConversationOrigin origin={origin} /> : null}
+            {detail?.summary ? (
+              <section
+                aria-label="Summary"
+                className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-subtle"
+                id="conversation-summary"
+              >
+                <ConversationSummary
+                  mentions={detail?.summaryMentions}
+                  summary={detail.summary}
+                />
+              </section>
+            ) : null}
+            {props.context}
+          </div>
         ) : null}
         <ConversationInboxItems
           conversationId={props.conversationId}
           highlight={props.highlightReview}
         />
-        <ConversationTodos
-          canEdit={props.isParticipant}
+        <ConversationWork
+          // A key per Conversation resets "Show finished".
+          canEdit={detail?.isParticipant === true}
           conversationId={props.conversationId}
+          key={`work:${props.conversationId}`}
+          onOpenTask={(target) => {
+            // A phone shows the Task one step deeper in the details sheet.
+            if (mobile) return setTask(target);
+            // The panel stays beside the drawer. A modal sheet cannot.
+            if (!panel) props.onClose();
+            props.onOpenSubagent(target);
+          }}
+          viewerTodoIds={viewerTodoIds}
         />
-        {threads.length > 0 ? (
-          // A key per Conversation resets which groups are open.
-          <ConversationThreads key={props.conversationId} threads={threads} />
-        ) : null}
-        <ConversationLinkedWorkCard
-          canCancelWatches={props.isParticipant}
-          conversationId={props.conversationId}
+        <ConversationLinkedWork
+          key={`links:${props.conversationId}`}
           links={props.links}
+          repository={props.repository}
         />
-        {tasks.length > 0 ? (
-          <ConversationTasks
-            onOpenTask={(target) => {
-              // A phone shows the Task one step deeper in the details sheet.
-              if (mobile) return setTask(target);
-              // The panel stays beside the drawer. A modal sheet cannot.
-              if (!panel) props.onClose();
-              props.onOpenSubagent(target);
-            }}
-            tasks={tasks}
-          />
-        ) : null}
-        {props.participants}
-        {props.usage}
-        {props.overview != null ? (
-          <DetailsCard>{props.overview}</DetailsCard>
-        ) : null}
-        {memoryList?.events.length ? (
-          <ConversationMemoryCard
-            list={memoryList}
-            onOpen={() => setMemoriesOpen(true)}
-          />
-        ) : null}
+        <ConversationParticipants
+          conversationId={props.conversationId}
+          detail={detail}
+          participants={props.participants}
+          trailing={
+            <div className="flex shrink-0 items-center gap-1 text-xs tabular-nums text-dashboard-text-muted">
+              {props.cost ? <span className="px-1.5">{props.cost}</span> : null}
+              {props.usage ? (
+                <FooterButton onClick={() => setView("usage")}>
+                  Usage
+                </FooterButton>
+              ) : null}
+              {hasMemories ? (
+                <FooterButton onClick={() => setView("memories")}>
+                  Memories
+                </FooterButton>
+              ) : null}
+            </div>
+          }
+        />
       </div>
       {task ? (
         <ConversationDrawer
           icon={
             <Bot
               aria-hidden="true"
-              className="shrink-0 text-cyan-300"
+              className="shrink-0 text-dashboard-text-muted"
               size={16}
               strokeWidth={2}
             />
@@ -220,5 +235,79 @@ export function ConversationDetails(props: {
         />
       ) : null}
     </DetailsPanel>
+  );
+}
+
+function FooterButton(props: { children: ReactNode; onClick(): void }) {
+  return (
+    <Button
+      className="rounded-md px-1.5 py-0.5 text-xs text-dashboard-text-muted hover:text-dashboard-text"
+      onClick={props.onClick}
+      size="bare"
+      variant="ghost"
+    >
+      {props.children}
+    </Button>
+  );
+}
+
+type ConversationOriginLink = {
+  icon: LucideIcon;
+  /** What the link is, for a screen reader, such as "Parent". */
+  kind: string;
+  label: string;
+  to?: string;
+};
+
+/**
+ * Find where a Conversation came from: the parent of a child Conversation,
+ * or the Automation that started it.
+ */
+function conversationOrigin(
+  detail: ConversationDetailReport | undefined,
+): ConversationOriginLink | undefined {
+  // The last node is this Conversation, so the one before it is the parent.
+  const parent = detail?.agentTree?.at(-2);
+  if (parent) {
+    return {
+      icon: CornerLeftUp,
+      kind: "Parent",
+      label: parent.label,
+      to: conversationPath(parent.conversationId),
+    };
+  }
+  const sourceTask = detail?.sourceTask;
+  if (!sourceTask) return undefined;
+  const automationId = sourceTask.id?.trim();
+  return {
+    icon: Zap,
+    kind: "Automation",
+    label: sourceTask.title?.trim() || "Automation",
+    ...(automationId ? { to: automationPath(automationId) } : undefined),
+  };
+}
+
+/** Name where a Conversation came from in one muted line. */
+function ConversationOrigin(props: { origin: ConversationOriginLink }) {
+  const { origin } = props;
+  const Icon = origin.icon;
+  const content = (
+    <>
+      <Icon aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className={fadeTextClass}>{origin.label}</span>
+    </>
+  );
+  const className =
+    "flex min-w-0 items-center gap-1.5 text-xs leading-5 text-dashboard-text-muted";
+  return origin.to ? (
+    <Link
+      aria-label={`${origin.kind}: ${origin.label}`}
+      className={cn(className, "w-fit max-w-full hover:text-dashboard-text")}
+      to={origin.to}
+    >
+      {content}
+    </Link>
+  ) : (
+    <p className={cn(className, "m-0")}>{content}</p>
   );
 }

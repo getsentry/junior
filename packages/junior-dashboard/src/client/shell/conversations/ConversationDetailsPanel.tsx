@@ -1,10 +1,12 @@
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { ConversationDetails } from "./ConversationDetails";
-import { ConversationGlance } from "./ConversationGlance";
+import { singleGitHubRepository } from "../../conversations/ConversationContextTags";
 import type { ConversationLink } from "../../conversations/ConversationLinkedWork";
 import {
   ConversationStats,
+  conversationCost,
+  conversationLocation,
   hasConversationStats,
 } from "../../conversations/ConversationMeta";
 import {
@@ -16,8 +18,10 @@ import type {
   ConversationMemoryList,
 } from "../../conversations/conversationMemory";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
+import { GitHubMark } from "../../conversations/GitHubMark";
+import { SlackMark } from "../../conversations/SlackMark";
+import { OutboundLink } from "../../components/OutboundLink";
 import { conversationParticipants } from "../../components/ParticipantAvatarStack";
-import { ConversationParticipants } from "../../conversations/ConversationParticipants";
 import type { Conversation } from "../../types";
 
 /** Render the Conversation details side panel from the page's loaded data. */
@@ -38,51 +42,55 @@ export function ConversationDetailsPanel(props: {
     conversation,
     detail,
   });
+  const repository = singleGitHubRepository(detail?.annotations);
+  const location = conversationLocation(conversation, detail);
+  const stats = { conversation, detail, showUsageBreakdown };
   return (
     <ConversationDetails
-      agentTree={detail?.agentTree}
-      glance={
-        <ConversationGlance conversation={conversation} detail={detail} />
+      context={
+        // Details is the only desktop place that names the Slack location.
+        repository || location ? (
+          <p className="m-0 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-5 text-dashboard-text-muted">
+            {repository ? (
+              <OutboundLink
+                className="inline-flex min-w-0 items-center gap-1.5 hover:text-dashboard-text"
+                href={repository.href}
+              >
+                <GitHubMark className="size-3.5 shrink-0" />
+                {repository.label}
+              </OutboundLink>
+            ) : null}
+            {location ? (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <SlackMark className="size-3.5 shrink-0" />
+                {location}
+              </span>
+            ) : null}
+          </p>
+        ) : null
       }
-      summary={detail?.summary}
-      summaryMentions={detail?.summaryMentions}
       conversationId={props.conversationId}
+      cost={conversationCost(conversation, detail, "above")}
+      detail={detail}
       highlightReview={props.highlightReview}
-      participants={
-        <ConversationParticipants
-          conversationId={props.conversationId}
-          detail={detail}
-          participants={conversationParticipants(conversation)}
-        />
-      }
-      isParticipant={detail?.isParticipant === true}
+      links={props.links}
+      memoryList={props.memoryList}
       onClose={props.onClose}
       onOpenSubagent={props.onOpenSubagent}
       onSelectMemory={props.onSelectMemory}
-      links={props.links}
-      memoryList={props.memoryList}
-      overview={
-        hasConversationStats({
-          conversation,
-          detail,
-          glance: true,
-          showUsageBreakdown,
-        }) ? (
-          <ConversationStats
-            conversation={conversation}
-            detail={detail}
-            glance
-            showUsageBreakdown={showUsageBreakdown}
-          />
-        ) : null
-      }
+      participants={conversationParticipants(conversation)}
+      repository={repository?.label}
       usage={
-        showUsageBreakdown ? (
-          <ConversationUsageBreakdown
-            conversation={conversation}
-            detail={detail}
-            glance
-          />
+        hasConversationStats(stats) || showUsageBreakdown ? (
+          <>
+            <ConversationStats {...stats} />
+            {showUsageBreakdown ? (
+              <ConversationUsageBreakdown
+                conversation={conversation}
+                detail={detail}
+              />
+            ) : null}
+          </>
         ) : null
       }
     />
