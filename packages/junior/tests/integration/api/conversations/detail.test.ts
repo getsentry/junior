@@ -63,8 +63,8 @@ describe("conversation detail API", () => {
             app.request(`http://localhost/api/conversations/${conversationId}`),
           { statements: 15, serialRounds: 3 },
         ),
-      // About 4,500.
-      7_000,
+      // About 3,800.
+      5_750,
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),
