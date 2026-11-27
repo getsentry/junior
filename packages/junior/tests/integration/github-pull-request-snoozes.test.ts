@@ -254,7 +254,7 @@ describe("GitHub pull request snoozes", () => {
         ({ request }) => {
           if (request.headers.get("if-none-match") === etag) {
             answers.push(304);
-            return new HttpResponse(null, { status: 304 });
+            return new HttpResponse(null, { headers: { etag }, status: 304 });
           }
           answers.push(200);
           return HttpResponse.json(
