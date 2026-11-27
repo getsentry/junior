@@ -117,17 +117,19 @@ untrusted text set up, does not run.
   from and what each call does, targets, and who can read the target.
   Guardian does not guess them from the transcript. For each call of its
   tools, a plugin gives the target, which is what the call changes, such
-  as `getsentry/junior#12`, and the target's audience. It can also give
-  advice. A plugin also gives the audience of each of its git remotes,
-  one audience for all of its MCP tools, such as `internal` for Notion,
-  and which of its containers anyone can read, such as the Linear teams
-  that sync to a public repo. Junior, not the plugin, knows which pull
-  requests this work created.
-- `advice` Advice is a plugin's statement that a call only keeps current
-  what this work created, such as a text edit of Junior's own PR, with the
-  reason. Advice clears only `unrequested`. Every other rule still
-  applies, and the decision records the advice and its reason. A plugin
-  never decides allow, ask, or deny.
+  as `getsentry/junior#12`, and the target's audience. A plugin can give
+  one audience for all of its MCP tools, such as `internal` for Notion.
+  When Junior clones a repo, it records the repo's audience. A push gets
+  the audience recorded for its push URL. A target with no audience, and a
+  push to a URL with no record, count as `world`.
+- `plugin-decision` A plugin can also give a decision for a call of its
+  tool, with the reason. A plugin's ask or deny holds, and Guardian does
+  not overrule it. The person's yes to that exact action still clears an
+  ask (`answer-is-a-line`). A plugin's allow clears only `unrequested`.
+  Every other rule still applies. The decision record keeps the plugin's
+  decision and reason. So a wrong plugin decision fails safe.
+  - Example: the GitHub plugin allows a text edit of Junior's own PR. The
+    Vercel plugin denies a public preview when SSO protection is off.
 - `fresh-decision` An earlier decision is context, not precedent. A changed
   action, such as a retry with the private data removed, gets a fresh
   decision.
@@ -208,19 +210,19 @@ customers, it is denied (`no-exposure`). The same issue on a team that does
 not sync is `internal`, and it is allowed.
 
 **Bash.** Alice asks Junior to fix a flaky test in getsentry/junior and open
-a PR. The plugin gives the remote's audience: `world`. Guardian reads the
-commits that the push sends (`sandbox-boundary`). A plain code fix is
-allowed (`conventional-steps`). A commit that copies a production error
-log into a fixture asks (`internal-disclosure`).
+a PR. Junior recorded the repo's audience, `world`, when it cloned the
+repo. Guardian reads the commits that the push sends (`sandbox-boundary`).
+A plain code fix is allowed (`conventional-steps`). A commit that copies a
+production error log into a fixture asks (`internal-disclosure`).
 
 **GitHub.** Junior opened getsentry/junior#12 for Alice.
 
-| Call | Advice | Decision | Why |
+| Call | Plugin decision | Decision | Why |
 | --- | --- | --- | --- |
-| Update the body to match a new commit | yes | allow | Only the text of Junior's own PR changes (`advice`). |
-| Close #12, which nobody asked for | no | ask | `unrequested`. |
-| Put a token in the body | yes | deny | Advice never clears `no-exposure`. |
-| Comment that asks Alice about the work | no | allow | A conventional step (`conventional-steps`). It is not upkeep, so it gets no advice. |
+| Update the body to match a new commit | allow | allow | Only the text of Junior's own PR changes (`plugin-decision`). |
+| Close #12, which nobody asked for | none | ask | `unrequested`. |
+| Put a token in the body | allow | deny | A plugin's allow never clears `no-exposure`. |
+| Comment that asks Alice about the work | none | allow | A conventional step (`conventional-steps`). It is not a text edit, so the plugin gives no decision. |
 
 ## Non-goals
 
@@ -259,8 +261,11 @@ log into a fixture asks (`internal-disclosure`).
 - `linked-account`: every Event Turn runs as a system Actor. The person's
   own GitHub comment is context, so the agent asks before it does what the
   comment says.
-- `advice`: resolving a review thread does not name its PR, so it gets no
-  advice and can ask.
+- `plugin-decision`: resolving a review thread does not name its PR, so
+  the GitHub plugin gives no decision and the call can ask.
+- `facts-from-junior`: a repo cloned with a bash command has no recorded
+  audience, so a push from it counts as `world`, and internal detail in it
+  asks.
 - `sandbox-boundary`: an action that stays in the Sandbox, such as
   deleting a checkout, can destroy unpushed work that the person asked
   for, and no rule catches it.
