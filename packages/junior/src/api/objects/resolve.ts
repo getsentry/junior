@@ -1,12 +1,15 @@
 import { mapBounded } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import {
+  type CacheEntry,
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
   type ObjectLinkContext,
   type ObjectLinkPrefetchOutcome,
   type ObjectType,
   type OwnedObjectAnnotation,
+  type PluginCache,
+  type PluginObjectLinkDefinition,
   type PluginRegistration,
   type User,
 } from "@sentry/junior-plugin-api";
@@ -19,10 +22,12 @@ import { imagePath } from "@/chat/images/ids";
 import { logException } from "@/chat/logging";
 import { createViewerMcp } from "@/chat/mcp/viewer";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { replaceAnnotationSubjectId } from "@/chat/plugins/annotations";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
+import { canViewAutomationLink, resolveAutomationLink } from "./automation";
 import {
   canViewConversationLink,
   resolveConversationLink,
@@ -31,6 +36,7 @@ import {
   assertNoObjectLinkConflicts,
   findObjectLinkType,
   linkTypeName,
+  type ObjectLinkRead,
   type ObjectLinkType,
 } from "./link-types";
 import { resolvePersonByAccount, resolvePersonLink } from "./person";
@@ -43,6 +49,10 @@ import { webPageLinkType } from "./web-page/resolve";
 /** A card is a short-lived read. A changed object shows within this time. */
 export const OBJECT_LINK_TTL_MS = 60_000;
 
+// A link type without its own `httpCache` keeps each response this long,
+// and shows the last one when a read fails.
+const DEFAULT_HTTP_CACHE = { staleIfError: true, ttlMs: OBJECT_LINK_TTL_MS };
+
 // Links resolve outside a Turn, so no person is the credential subject. This
 // system Actor gets only credentials that a plugin owns, never the viewer's.
 // Each plugin checks that the viewer may see an object before it returns it.
@@ -54,6 +64,8 @@ const OBJECT_LINK_SYSTEM_ACTOR = {
 function coreLinkTypes(): ObjectLinkType[] {
   // Slack runtime is in core until Slack is a plugin.
   const slack: ObjectLinkType = {
+    // Slack reads do not go through plugin egress.
+    cacheCards: true,
     // The card read checks channel access inside the viewer's Slack
     // workspace, so it shares one Slack installation with the check.
     canView: async () => true,
@@ -62,16 +74,28 @@ function coreLinkTypes(): ObjectLinkType[] {
     owner: "junior",
     resolve: resolveSlackMessageLink,
   };
+  const automations = getDashboardLinkFilter("/automations/*");
   const conversations = getDashboardLinkFilter("/conversations/*");
   const people = getDashboardLinkFilter("/people/*");
   // Any other public page. Its filters are the least specific.
   const webPages = webPageLinkType();
   // These links need the dashboard: each card links to a dashboard page.
-  if (!conversations || !people) return [slack, webPages];
+  if (!automations || !conversations || !people) return [slack, webPages];
   return [
     slack,
     webPages,
     {
+      // The card reads the Automation from the database, so a change, such
+      // as a pause, shows at once.
+      canView: canViewAutomationLink,
+      filters: [automations],
+      label: () => "Automation",
+      objectTypes: ["automation"],
+      owner: "junior",
+      resolve: resolveAutomationLink,
+    },
+    {
+      cacheCards: true,
       canView: canViewConversationLink,
       filters: [conversations],
       objectTypes: ["conversation"],
@@ -80,7 +104,6 @@ function coreLinkTypes(): ObjectLinkType[] {
     },
     {
       // Person cards read the identity cache. A link or unlink clears it.
-      cacheCards: false,
       // Every signed-in viewer sees the People pages.
       canView: async () => true,
       filters: [people, { scheme: "mailto" }],
@@ -91,17 +114,74 @@ function coreLinkTypes(): ObjectLinkType[] {
   ];
 }
 
+/**
+ * Keep a plugin's cache from saving anything after one of its HTTP reads
+ * served a stale body. A saved copy would look fresh, so later cards would
+ * hide their age.
+ */
+function cardReadCache(
+  cache: PluginCache,
+  servedStale: () => boolean,
+): PluginCache {
+  return {
+    get: async (key) => await cache.get(key),
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<CacheEntry<T>>,
+      options?: { refresh?: boolean },
+    ): Promise<T> {
+      return await cache.getOrLoad(
+        key,
+        async () => {
+          const entry = await load();
+          return servedStale() ? { value: entry.value } : entry;
+        },
+        options,
+      );
+    },
+    async update<T>(
+      key: string,
+      next: (current: T | undefined) => CacheEntry<T> | undefined,
+    ): Promise<void> {
+      await cache.update<T>(key, (current) =>
+        servedStale() ? undefined : next(current),
+      );
+    },
+    delete: async (key) => await cache.delete(key),
+  };
+}
+
 function objectLinkContext(
   name: string,
+  link: PluginObjectLinkDefinition,
   viewer: User,
   prefetched?: ObjectLinkPrefetchOutcome,
+  read: ObjectLinkRead = {},
 ): ObjectLinkContext {
+  const cached = link.httpCache
+    ? { staleIfError: link.httpCache.staleIfError ?? true, ...link.httpCache }
+    : DEFAULT_HTTP_CACHE;
+  let servedStale = false;
+  const onStale = (storedAtMs: number) => {
+    servedStale = true;
+    read.onStale?.(storedAtMs);
+  };
+  // A read that must count a change of access at once asks the provider
+  // each time. A 304 still proves that the credential may read it.
+  const httpCache = {
+    ...(read.now ? { staleIfError: false, ttlMs: 0 } : cached),
+    onStale,
+  };
   return {
     ...(prefetched ? { prefetchOutcome: prefetched } : undefined),
-    cache: createPluginCache(name),
+    cache: cardReadCache(
+      createPluginCache(name, read.onStale),
+      () => servedStale,
+    ),
     db: getDb(),
     egress: createPluginEgress({
       credentialContext: credentialContextForActor(OBJECT_LINK_SYSTEM_ACTOR),
+      httpCache,
       // A card is optional. It must never ask anyone to authorize.
       pluginAuth: { async handleAuthRequired() {} },
     }),
@@ -115,31 +195,41 @@ function objectLinkContext(
     // Only that subject's own OAuth token is used.
     viewerEgress: createPluginEgress({
       credentialContext: credentialContextForActor(webActorFromUser(viewer)),
+      httpCache,
       pluginAuth: { async handleAuthRequired() {} },
       userOAuthOnly: true,
     }),
     viewerMcp: createViewerMcp(name, viewer.id),
+    replaceSubjectId: (subject) =>
+      replaceAnnotationSubjectId(getDb(), { ...subject, plugin: name }),
   };
 }
 
 function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
   const name = plugin.manifest.name;
   return (plugin.objectLinks ?? []).map((link) => ({
-    ...(link.cacheCards === false ? { cacheCards: false } : undefined),
-    canView: (viewer, url, prefetched) =>
-      link.canView(objectLinkContext(name, viewer, prefetched), url),
+    ...(link.cacheCards ? { cacheCards: true } : undefined),
+    canView: (viewer, url, prefetched, read) =>
+      link.canView(
+        objectLinkContext(name, link, viewer, prefetched, read),
+        url,
+      ),
     filters: link.filters,
+    ...(link.label ? { label: link.label } : undefined),
     objectTypes: link.objectTypes,
     owner: name,
     ...(link.prefetch
       ? {
           prefetch: async (viewer: User, urls: URL[]) =>
-            await link.prefetch?.(objectLinkContext(name, viewer), urls),
+            await link.prefetch?.(objectLinkContext(name, link, viewer), urls),
         }
       : undefined),
     readTool: link.readTool,
-    resolve: (viewer, url, prefetched) =>
-      link.resolve(objectLinkContext(name, viewer, prefetched), url),
+    resolve: (viewer, url, prefetched, read) =>
+      link.resolve(
+        objectLinkContext(name, link, viewer, prefetched, read),
+        url,
+      ),
     ...(link.webPageFallback ? { webPageFallback: true } : undefined),
   }));
 }
@@ -182,14 +272,23 @@ async function resolveWithLinkType(
   viewer: User,
   url: URL,
   prefetched?: ObjectLinkPrefetchOutcome,
+  now?: true,
 ): Promise<ResolvedObjectLink | null> {
-  if (!(await linkType.canView(viewer, url, prefetched))) {
+  const read = now ? { now } : {};
+  if (!(await linkType.canView(viewer, url, prefetched, read))) {
     // The web page card reads only what anyone can read signed out.
     return linkType.webPageFallback
       ? await resolveWithLinkType(webPageLinkType(), viewer, url)
       : null;
   }
-  const resolved = await linkType.resolve(viewer, url, prefetched);
+  // The card is as old as the oldest entry that served after its TTL.
+  let fetchedAtMs: number | undefined;
+  const resolved = await linkType.resolve(viewer, url, prefetched, {
+    ...read,
+    onStale: (storedAtMs) => {
+      fetchedAtMs = Math.min(fetchedAtMs ?? storedAtMs, storedAtMs);
+    },
+  });
   if (!resolved) return null;
   const object = objectAnnotationSchema.parse(resolved);
   if (!linkType.objectTypes.includes(object.objectType)) {
@@ -201,15 +300,19 @@ async function resolveWithLinkType(
     linkType,
     object: ownedObjectAnnotationSchema.parse({
       ...object,
+      ...(fetchedAtMs === undefined
+        ? undefined
+        : { fetchedAt: new Date(fetchedAtMs).toISOString() }),
       plugin: linkType.owner,
     }),
   };
 }
 
 /**
- * Resolve one link for one viewer without the card cache, so a change of
- * access counts at once. Returns nothing when no link type claims the URL
- * or the viewer cannot see the object.
+ * Resolve one link for one viewer without the card cache, and with each
+ * HTTP read asking the provider, so a change of access counts at once.
+ * Returns nothing when no link type claims the URL or the viewer cannot see
+ * the object.
  */
 export async function resolveObjectLinkNow(
   viewer: User,
@@ -217,7 +320,10 @@ export async function resolveObjectLinkNow(
 ): Promise<ResolvedObjectLink | undefined> {
   const linkType = findObjectLinkType(readObjectLinkTypes(), url);
   if (!linkType) return undefined;
-  return (await resolveWithLinkType(linkType, viewer, url)) ?? undefined;
+  return (
+    (await resolveWithLinkType(linkType, viewer, url, undefined, true)) ??
+    undefined
+  );
 }
 
 /**
@@ -232,10 +338,11 @@ export async function viewerCanViewPluginLink(
   plugin: string,
 ): Promise<boolean> {
   const linkType = findObjectLinkType(readObjectLinkTypes(), url);
+  const read = { now: true } as const;
   return (
     linkType?.owner === plugin &&
-    (await linkType.canView(viewer, url)) &&
-    Boolean(await linkType.resolve(viewer, url))
+    (await linkType.canView(viewer, url, undefined, read)) &&
+    Boolean(await linkType.resolve(viewer, url, undefined, read))
   );
 }
 
@@ -281,7 +388,6 @@ export async function resolveObjectLinks(
   urls: readonly string[],
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
-  const cache = createCache(getStateAdapter(), "object-links");
   const links = [...new Set(urls)].flatMap((url) => {
     const parsed = URL.canParse(url) ? new URL(url) : undefined;
     const linkType = parsed && findObjectLinkType(linkTypes, parsed);
@@ -301,14 +407,26 @@ export async function resolveObjectLinks(
         )
       )?.object ?? null;
     try {
-      const object =
-        linkType.cacheCards === false
-          ? await resolve()
-          : await cache.getOrLoad(key, async () => ({
-              value: await resolve(),
-              ttlMs: OBJECT_LINK_TTL_MS,
-            }));
-      return object ? [{ object, url }] : [];
+      if (!linkType.cacheCards) {
+        const object = await resolve();
+        return object ? [{ object, url }] : [];
+      }
+      let fetchedAt: string | undefined;
+      const cache = createCache(getStateAdapter(), "object-links", {
+        onStale: (storedAtMs) => {
+          fetchedAt = new Date(storedAtMs).toISOString();
+        },
+      });
+      const object = await cache.getOrLoad(key, async () => ({
+        // A failed read shows the last good card.
+        staleIfError: true,
+        value: await resolve(),
+        ttlMs: OBJECT_LINK_TTL_MS,
+      }));
+      if (!object) return [];
+      // A stale read inside the card is older than the card's entry.
+      const age = object.fetchedAt ?? fetchedAt;
+      return [{ object: age ? { ...object, fetchedAt: age } : object, url }];
     } catch (error) {
       // One failed provider read must not hide the other cards.
       logException(error, "object_link.resolve.failed", {

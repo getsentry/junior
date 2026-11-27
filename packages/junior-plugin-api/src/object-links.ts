@@ -24,31 +24,64 @@ const pathPatternSchema = pathSchema.regex(
   "Use `/` segments. A `*` segment matches one segment.",
 );
 
+const urlFilterFields = {
+  /** Defaults to `https`. */
+  scheme: z.enum(["https", "http", "mailto"]).optional(),
+  /** An exact host, or `*.example.com` for its subdomains. */
+  host: hostSchema.optional(),
+  path: pathSchema.optional(),
+  pathPattern: pathPatternSchema.optional(),
+  pathPrefix: pathSchema.optional(),
+};
+
+type FilterFields = {
+  host?: string | undefined;
+  path?: string | undefined;
+  pathPattern?: string | undefined;
+  pathPrefix?: string | undefined;
+  scheme?: "https" | "http" | "mailto" | undefined;
+};
+
+function oneOrNoPath(filter: FilterFields): boolean {
+  return (
+    [filter.path, filter.pathPattern, filter.pathPrefix].filter(
+      (value) => value !== undefined,
+    ).length <= 1
+  );
+}
+
+function hostForScheme(filter: FilterFields): boolean {
+  return filter.scheme === "mailto"
+    ? filter.host === undefined && !hasPathFilter(filter)
+    : filter.host !== undefined;
+}
+
+const ONE_PATH = "Give at most one of path, pathPattern, and pathPrefix.";
+const HOST_FOR_SCHEME =
+  "An http or https filter needs a host. A mailto filter has no host or path.";
+
+const targetFilterSchema = z
+  .strictObject(urlFilterFields)
+  .refine(oneOrNoPath, ONE_PATH)
+  .refine(hostForScheme, HOST_FOR_SCHEME);
+
 /** Which URLs a link type claims. Give at most one path field. */
 export const objectLinkFilterSchema = z
   .strictObject({
-    /** Defaults to `https`. */
-    scheme: z.enum(["https", "http", "mailto"]).optional(),
-    /** An exact host, or `*.example.com` for its subdomains. */
-    host: hostSchema.optional(),
-    path: pathSchema.optional(),
-    pathPattern: pathPatternSchema.optional(),
-    pathPrefix: pathSchema.optional(),
+    ...urlFilterFields,
+    /**
+     * Claim the URL only when this query parameter holds a URL that one of
+     * these filters claims, such as a sign-in page's `continue` link.
+     */
+    target: z
+      .strictObject({
+        param: z.string().min(1).max(100),
+        filters: z.array(targetFilterSchema).min(1).max(20),
+      })
+      .optional(),
   })
-  .refine(
-    (filter) =>
-      [filter.path, filter.pathPattern, filter.pathPrefix].filter(
-        (value) => value !== undefined,
-      ).length <= 1,
-    "Give at most one of path, pathPattern, and pathPrefix.",
-  )
-  .refine(
-    (filter) =>
-      filter.scheme === "mailto"
-        ? filter.host === undefined && !hasPathFilter(filter)
-        : filter.host !== undefined,
-    "An http or https filter needs a host. A mailto filter has no host or path.",
-  );
+  .refine(oneOrNoPath, ONE_PATH)
+  .refine(hostForScheme, HOST_FOR_SCHEME);
 export type ObjectLinkFilter = z.output<typeof objectLinkFilterSchema>;
 
 function hasPathFilter(filter: {
@@ -81,7 +114,18 @@ export function objectLinkFilterMatches(
       : host === filter.host;
     if (!matches) return false;
   }
-  const path = normalizedPath(url);
+  if (!pathMatches(filter, normalizedPath(url))) return false;
+  if (filter.target === undefined) return true;
+  const target = URL.parse(url.searchParams.get(filter.target.param) ?? "");
+  return (
+    target !== null &&
+    filter.target.filters.some((inner) =>
+      objectLinkFilterMatches(inner, target),
+    )
+  );
+}
+
+function pathMatches(filter: FilterFields, path: string): boolean {
   if (filter.path !== undefined) return path === filter.path;
   if (filter.pathPrefix !== undefined) {
     return path.startsWith(filter.pathPrefix);
@@ -175,6 +219,18 @@ export interface ObjectLinkContext extends PluginContext {
    */
   viewerMcp: PluginViewerMcp;
   /**
+   * Move the saved Annotations of one of this plugin's subject kinds from
+   * the id `from` to the id `to`, and change nothing else. Call it only
+   * after the viewer's own read named both ids. Set `urlPrefix` when `from`
+   * is unique only in one part of the provider, such as one workspace.
+   */
+  replaceSubjectId(subject: {
+    from: string;
+    kind: string;
+    to: string;
+    urlPrefix?: string;
+  }): Promise<void>;
+  /**
    * What `prefetch` returned for this URL, in `canView` and `resolve` of
    * the same page read. Absent in every other read, such as an Attach, so
    * that read asks the provider as usual.
@@ -188,11 +244,12 @@ export interface ObjectLinkContext extends PluginContext {
  */
 export interface PluginObjectLinkDefinition {
   /**
-   * Set false when `resolve` reads one cache entry per object that your
-   * webhooks keep current. Junior then keeps no card copy per viewer, so a
-   * change shows on the next read. `canView` still runs on each read.
+   * Set true when `resolve` reads the provider other than through
+   * `egress` or `viewerEgress`, such as through `viewerMcp`. Junior then
+   * keeps the card for each viewer and URL for one minute, and shows the
+   * last card when a read fails.
    */
-  cacheCards?: false;
+  cacheCards?: true;
   /**
    * Return whether `ctx.viewer` may see the object. Junior calls it before
    * each card read and again on each Attach. Return true for a public
@@ -201,6 +258,21 @@ export interface PluginObjectLinkDefinition {
    */
   canView(ctx: ObjectLinkContext, url: URL): Promise<boolean>;
   filters: ObjectLinkFilter[];
+  /**
+   * How Junior's HTTP cache keeps the GET responses of `egress` and
+   * `viewerEgress`. Each credential has its own entries. Without it, an
+   * entry serves for one minute, and a failed read gets the last entry.
+   * Set `ttlMs: 0` when your webhooks keep your own cache current: each
+   * read then asks the provider with the entry's validators.
+   */
+  httpCache?: { staleIfError?: false; ttlMs: number };
+  /**
+   * Name the object from its link alone, such as `owner/repo#12`. A card
+   * shows it when Junior cannot read the object, such as for a viewer who
+   * cannot see it or when the provider is down. Without it, the card shows
+   * the host of the link.
+   */
+  label?(url: URL): string | undefined;
   /**
    * The object types that `resolve` can return. One URL can open more than
    * one type, such as a GitHub issue URL that opens a pull request.

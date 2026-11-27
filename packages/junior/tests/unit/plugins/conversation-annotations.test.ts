@@ -12,7 +12,6 @@ describe("conversation annotations", () => {
     const annotation = {
       kind: "resource_link" as const,
       key: "getsentry/junior#1081",
-      label: "getsentry/junior #1081",
     };
 
     expect(() =>

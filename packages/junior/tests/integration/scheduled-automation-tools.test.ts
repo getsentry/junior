@@ -25,6 +25,7 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tool-support/definition";
@@ -430,11 +431,22 @@ describe("Scheduled automation tools", () => {
           objectType: "automation",
           plugin: "junior",
           key: created.automation.id,
-          label: "Weekly issue digest",
-          trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
+          title: "Weekly issue digest",
         },
       ],
     });
+    // The saved card names the Automation as its subject.
+    expect(
+      await listConversationAnnotations(
+        dbModule.getDb(),
+        "test:schedule-cards",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        key: created.automation.id,
+        subject: { id: created.automation.id, kind: "automation" },
+      }),
+    ]);
     expect(created).toMatchObject({
       automation: {
         conversation_access: {
@@ -791,11 +803,6 @@ describe("Scheduled automation tools", () => {
           instruction: "Wash hands reminder: Remind David to wash his hands.",
         },
       },
-      objectCards: [
-        {
-          trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles",
-        },
-      ],
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),

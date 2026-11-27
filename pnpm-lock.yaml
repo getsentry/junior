@@ -457,6 +457,9 @@ importers:
       '@sentry/api':
         specifier: 3.2.0
         version: 3.2.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/http':
+        specifier: 1.0.0
+        version: 1.0.0
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -578,6 +581,9 @@ importers:
       '@sentry/junior-github':
         specifier: workspace:*
         version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(graphql@16.14.0)(pg@8.21.0)
+      '@sentry/junior-linear':
+        specifier: workspace:*
+        version: link:../junior-linear
       '@sentry/junior-notion':
         specifier: workspace:*
         version: link:../junior-notion
@@ -4948,6 +4954,10 @@ packages:
   '@sentry/feedback@11.16.0':
     resolution: {integrity: sha512-0+p7DRQqCLrqHG/PWOCSfSKJGJQUeRqm00pijJSI431Jkm0GEGoCWeLBpr4zdb0KQ+D1Ybof+cjkByA7Jqp2ig==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0 <23.0.0 || >=23.2.0'}
+
+  '@sentry/http@1.0.0':
+    resolution: {integrity: sha512-j2iI1p7zE1FBVRo8xMoj6xCYl0DH04bbnXXwuKN3VIyVwaK6Gjy3f2QG4ZFbVQX+GemgN+j0Ij180909P10aRg==}
+    engines: {node: '>=22'}
 
   '@sentry/junior-dashboard@file:packages/junior-dashboard':
     resolution: {directory: packages/junior-dashboard, type: directory}
@@ -14228,6 +14238,10 @@ snapshots:
     dependencies:
       '@sentry/core': 11.16.0
 
+  '@sentry/http@1.0.0':
+    dependencies:
+      http-cache-semantics: 4.2.0
+
   '@sentry/junior-dashboard@file:packages/junior-dashboard(@sentry/junior@file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2))(typescript@7.0.2)':
     dependencies:
       '@base-ui/react': 1.9.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -14591,6 +14605,7 @@ snapshots:
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 3.2.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/http': 1.0.0
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.16.0(nitro@3.0.260522-beta(jiti@2.7.0))
       '@sentry/node': 11.16.0
@@ -14723,6 +14738,7 @@ snapshots:
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 3.2.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/http': 1.0.0
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.16.0(nitro@3.0.260522-beta)
       '@sentry/node': 11.16.0
@@ -14855,6 +14871,7 @@ snapshots:
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.6.7)
       '@neondatabase/serverless': 1.1.0
       '@sentry/api': 3.2.0(typescript@7.0.2)(zod@4.6.7)
+      '@sentry/http': 1.0.0
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/nitro': 11.16.0
       '@sentry/node': 11.16.0

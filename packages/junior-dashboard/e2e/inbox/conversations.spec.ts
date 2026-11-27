@@ -306,8 +306,9 @@ test.describe("new UI", () => {
       }
     });
     const repeated = () => asked.filter((url, at) => asked.indexOf(url) !== at);
-    // A pull request of a row below the fold.
-    const below = "https://github.com/getsentry/relay/pull/3396";
+    // A link in the text of a row below the fold. The server reads the
+    // cards of a row's Annotations, so only text links come here.
+    const below = "https://code.example.com/acme/checkout/pull/5378";
     const firstRead = page.waitForResponse(
       (response) => new URL(response.url()).pathname === "/api/objects",
     );

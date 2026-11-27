@@ -14,7 +14,7 @@ import { getDb } from "@/chat/db";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import { logException, withSpan } from "@/chat/logging";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationAnnotations } from "@/chat/plugins/annotations";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -50,14 +50,10 @@ function startedTaskContext(
 ): PluginStartedTaskContext {
   const pluginName = plugin.manifest.name;
   return {
-    annotations: {
-      forConversation: (conversationId) =>
-        createPluginAnnotations({
-          conversationId,
-          db: getDb(),
-          plugin: pluginName,
-        }),
-    },
+    annotations: createPluginConversationAnnotations({
+      db: getDb,
+      plugin: pluginName,
+    }),
     cache: createPluginCache(pluginName),
     codeChanges: createPluginCodeChanges(pluginName),
     conversationChanges: createPluginConversationChanges({

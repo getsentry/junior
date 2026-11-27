@@ -18,7 +18,7 @@ import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
-import { RowDismissButton } from "./RowDismissButton";
+import { DismissNote, RowDismissButton } from "./RowDismissButton";
 
 // Only an open card snoozes from here, so its snooze code stays out of the
 // first load.
@@ -173,6 +173,7 @@ export function InboxItemActions(props: {
       {dismiss ? (
         <RowDismissButton
           disabled={action.isPending || sending}
+          note={item.subject.dismissNote}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
         />
       ) : null}
@@ -232,6 +233,10 @@ export function InboxItemActions(props: {
         </div>
       ) : take || snooze || dismiss || todo || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
+          {/* Where tooltips are off, Dismiss's note shows next to it. */}
+          {item.canAct && item.subject.dismissNote ? (
+            <DismissNote note={item.subject.dismissNote} />
+          ) : null}
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
             {secondaryActions}

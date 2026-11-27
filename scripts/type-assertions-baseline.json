@@ -34,7 +34,7 @@
   "packages/junior-github/src/tools/get-deployment.ts": 2,
   "packages/junior-github/src/tools/get-pull-request.ts": 1,
   "packages/junior-github/src/tools/update-pull-request-feedback.ts": 1,
-  "packages/junior-github/src/tools/update-pull-request.ts": 2,
+  "packages/junior-github/src/tools/update-pull-request.ts": 1,
   "packages/junior-github/src/webhooks/check-suite.ts": 4,
   "packages/junior-github/src/webhooks/handler.ts": 2,
   "packages/junior-github/src/webhooks/pull-request-match-data.ts": 1,

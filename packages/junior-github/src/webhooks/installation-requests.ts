@@ -10,13 +10,14 @@ import {
   pullRequestFeedbackReactionContent,
   pullRequestReviewPath,
 } from "../pull-request-feedback.js";
-import type { PluginCache, PluginState } from "@sentry/junior-plugin-api";
+import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GitHubRequestError,
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import type { GitHubResponses } from "../installation-http-cache.js";
 import { githubGraphqlRequest } from "./graphql-request.js";
 import type { InstallationTokens } from "../installation-tokens.js";
 import {
@@ -40,13 +41,14 @@ export interface GitHubInstallationEnv {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
-  /** Saved GET responses, as in `sendConditionalRequest`. */
-  responses?: PluginState | undefined;
+  /** Saved GET responses, as in `installationResponses`. */
+  responses?: GitHubResponses | undefined;
   /** Tokens to reuse, as in `reuseInstallationToken`. */
   tokens?: InstallationTokens | undefined;
 }
 
-function splitRepository(fullName: string, label: string) {
+/** Split `owner/name`, or throw an error that names the request. */
+export function splitRepository(fullName: string, label: string) {
   const [owner, name, ...extra] = fullName.split("/");
   if (!owner || !name || extra.length > 0) {
     throw new Error(`GitHub ${label} received an invalid repository name`);
@@ -153,6 +155,108 @@ export async function loadRepositoryFullNames(
       }
       throw error;
     }
+  };
+}
+
+/** One issue or pull request, by its repository and number. */
+export interface GitHubObjectRef {
+  /** `pull_request` reads the pull request; `issue` reads either. */
+  kind: "issue" | "pull_request";
+  name: string;
+  number: number;
+  owner: string;
+}
+
+/** GitHub's id of one issue or pull request, and its current link. */
+export interface GitHubObjectName {
+  id: string;
+  kind: "issue" | "pull_request";
+  url: string;
+}
+
+const objectNameSchema = z.object({
+  html_url: z.url(),
+  id: z.number().int().positive(),
+  // The issues API also returns pull requests, with this field set.
+  pull_request: z.object({}).optional(),
+});
+
+/** Reads of the current names of issues, pull requests, and repositories. */
+export interface GitHubObjectNameReader {
+  /** The object's id and current link, or undefined when GitHub has none. */
+  readObject(ref: GitHubObjectRef): Promise<GitHubObjectName | undefined>;
+  /**
+   * The current full name of a repository, by a name that it had, or
+   * undefined when GitHub has none.
+   */
+  readRepositoryName(fullName: string): Promise<string | undefined>;
+}
+
+/**
+ * Return reads of current names with one read-only token for every
+ * repository of the installation. GitHub answers an old name of a renamed
+ * repository with a redirect to its new place, which a read follows. A
+ * read returns undefined when GitHub does not find the object, also when
+ * the App cannot read it.
+ */
+export async function loadGitHubObjectNames(
+  env: GitHubInstallationEnv,
+): Promise<GitHubObjectNameReader> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { issues: "read", metadata: "read", pull_requests: "read" },
+  });
+  const read = async <T>(path: string, schema: z.ZodType<T>) => {
+    try {
+      return schema.parse(
+        await githubRequest("https://api.github.com", path, {
+          token: token.token,
+        }),
+      );
+    } catch (error) {
+      // GitHub answers 404 for a missing object or one that the App cannot
+      // read, and 410 for a deleted issue.
+      if (
+        error instanceof GitHubRequestError &&
+        (error.status === 404 || error.status === 410)
+      ) {
+        return undefined;
+      }
+      throw error;
+    }
+  };
+  const readOf = async (collection: "issues" | "pulls", ref: GitHubObjectRef) =>
+    await read(
+      `/repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.name)}/${collection}/${ref.number}`,
+      objectNameSchema,
+    );
+  return {
+    async readObject(ref) {
+      if (ref.kind === "issue") {
+        const issue = await readOf("issues", ref);
+        if (!issue) return undefined;
+        if (!issue.pull_request) {
+          return { id: String(issue.id), kind: "issue", url: issue.html_url };
+        }
+      }
+      // A pull request's own id differs from its id in the issues API.
+      const pull = await readOf("pulls", ref);
+      return (
+        pull && {
+          id: String(pull.id),
+          kind: "pull_request",
+          url: pull.html_url,
+        }
+      );
+    },
+    async readRepositoryName(fullName) {
+      const { owner, name } = splitRepository(fullName, "repository name");
+      const repository = await read(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
+        z.object({ full_name: z.string().min(1) }),
+      );
+      return repository?.full_name;
+    },
   };
 }
 

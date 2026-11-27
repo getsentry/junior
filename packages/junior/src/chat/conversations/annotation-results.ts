@@ -1,28 +1,80 @@
 import {
-  objectAnnotationSchema,
+  annotatedObjectSchema,
+  type AnnotatedObject,
   type OwnedObjectAnnotation,
+  type PluginRegistration,
 } from "@sentry/junior-plugin-api";
+import { loadAnnotationLabeler } from "@/chat/conversations/annotation-labels";
 import { getDb } from "@/chat/db";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
+import {
+  ANNOTATION_SUBJECT_KINDS,
+  CORE_ANNOTATION_PLUGIN,
+  createPluginAnnotations,
+  upsertPluginAnnotation,
+} from "@/chat/plugins/annotations";
 
-/** Save object annotations and retain returned facts in the tool result. */
+// A plugin names its objects with the subject kinds that it registers for
+// the Inbox, so an Annotation and an Inbox item about one object match.
+function assertSubjectKind(
+  plugin: string,
+  annotation: AnnotatedObject,
+  plugins: readonly PluginRegistration[],
+): void {
+  const kind = annotation.subject?.kind;
+  if (kind === undefined) return;
+  const known =
+    plugin === CORE_ANNOTATION_PLUGIN
+      ? Object.values<string>(ANNOTATION_SUBJECT_KINDS).includes(kind)
+      : plugins.some(
+          (registration) =>
+            registration.manifest.name === plugin &&
+            registration.inboxSubjects?.some(
+              (subject) => subject.kind === kind,
+            ),
+        );
+  if (!known) {
+    throw new Error(
+      `${plugin} returned an object Annotation with subject kind "${kind}", which it does not register in inboxSubjects.`,
+    );
+  }
+}
+
+/**
+ * Save object annotations, and return each object with the label that its
+ * plugin makes, for the tool result and its Message cards.
+ */
 export async function saveObjectAnnotations(
   conversationId: string,
   plugin: string,
   value: unknown,
 ): Promise<OwnedObjectAnnotation[]> {
-  const annotations = objectAnnotationSchema.array().parse(value);
+  const annotations = annotatedObjectSchema.array().parse(value);
+  const plugins = getPlugins();
+  for (const annotation of annotations) {
+    assertSubjectKind(plugin, annotation, plugins);
+  }
   await getDb().transaction(async (db) => {
     const store = createPluginAnnotations({ conversationId, plugin, db });
     /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
-    for (const annotation of annotations) {
-      await store.upsert(annotation);
+    for (const { action, ...annotation } of annotations) {
+      await upsertPluginAnnotation(db, {
+        action,
+        annotation,
+        conversationId,
+        plugin,
+      });
       // Replace a legacy link for the same object without changing other annotations.
       await store.remove("resource_link", annotation.key);
     }
     /* oxlint-enable no-await-in-loop */
   });
-  return annotations.map((annotation) => ({ ...annotation, plugin }));
+  const label = await loadAnnotationLabeler();
+  return annotations.map(({ action: _action, ...annotation }) => ({
+    ...annotation,
+    label: label({ ...annotation, plugin }),
+    plugin,
+  }));
 }
 
 /**

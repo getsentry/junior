@@ -6,28 +6,41 @@ import {
 } from "@/chat/inbox-items/subjects";
 import {
   juniorAutomations,
+  juniorConversationAnnotations,
   juniorConversations,
   juniorDestinations,
   juniorInboxItems,
   juniorQuestions,
 } from "@/db/schema";
 
-// An item stores no owner. Its subject names the owner: a question belongs
-// to the Conversation that asked it, a reply and a To-do to their
-// Conversation, an Automation alert to its Automation, and a plugin item to
-// the Conversation that the plugin's owner table maps its subject id to.
-// These expressions read the owner of the `junior_inbox_items` row of the
-// query.
+// An item stores no owner; its subject names it. These expressions read the
+// owner of the query's `junior_inbox_items` row, such as the asking
+// Conversation of a question or the Automation of an alert. A plugin item's
+// owner comes from the plugin's owner table or its Annotations.
 
 const item = juniorInboxItems;
+
+const annotations = juniorConversationAnnotations;
+
+// The Conversation that first saved an object Annotation of the subject's
+// object, such as the one that created a GitHub issue. An attached link
+// does not make its Conversation the owner.
+// `junior_conversation_annotations_subject_idx` serves this lookup.
+function annotationOwner(kind: string): SQL {
+  return sql`(select ${annotations.conversationId} from ${annotations} where ${annotations.subjectKind} = ${kind} and ${annotations.subjectId} = ${item.subjectId} and ${annotations.kind} = 'object' order by ${annotations.createdAt}, ${annotations.conversationId} limit 1)`;
+}
 
 /** SQL: the owner Conversation of a plugin item, from the plugin's table. */
 function pluginOwnerCases(): SQL[] {
   return getPlugins().flatMap((plugin) =>
     (plugin.inboxSubjects ?? []).map((subject) => {
+      const kind = pluginSubjectKind(plugin.manifest.name, subject.kind);
+      if (subject.owner === "annotation") {
+        return sql`when ${kind} then ${annotationOwner(kind)}`;
+      }
       const { conversationId, subjectId, table } = subject.owner;
       const owner = sql`${sql.identifier(table)}.${sql.identifier(conversationId)}`;
-      return sql`when ${pluginSubjectKind(plugin.manifest.name, subject.kind)} then (select ${owner} from ${sql.identifier(table)} where ${sql.identifier(table)}.${sql.identifier(subjectId)} = ${item.subjectId} and ${owner} is not null)`;
+      return sql`when ${kind} then (select ${owner} from ${sql.identifier(table)} where ${sql.identifier(table)}.${sql.identifier(subjectId)} = ${item.subjectId} and ${owner} is not null)`;
     }),
   );
 }
@@ -146,4 +159,12 @@ export function inboxItemTenantId(): SQL<string | null> {
   return sql<
     string | null
   >`${ownerDestination(sql`nullif(${juniorDestinations.providerTenantId}, '')`)}`;
+}
+
+/** An insert whose subject names another owner than the one given. */
+export class InboxItemOwnerMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InboxItemOwnerMismatchError";
+  }
 }

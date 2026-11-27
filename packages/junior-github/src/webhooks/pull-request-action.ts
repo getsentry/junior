@@ -738,7 +738,8 @@ export function startedTaskSyncContext(
     cache: ctx.cache,
     codeChanges: ctx.codeChanges,
     db: gitHubDbSchema.parse(ctx.db),
-    env: { ...options.env, responses: ctx.state, tokens: new Map() },
+    // A started task has no HTTP cache, so its reads go to GitHub as they are.
+    env: { ...options.env, tokens: new Map() },
     findLinkedIdentityIds: async (logins) =>
       await ctx.users.findLinkedIdentityIds(logins),
     loadGitHubLogin: async (identityId) =>

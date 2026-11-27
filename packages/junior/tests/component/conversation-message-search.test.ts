@@ -156,7 +156,6 @@ describe("conversation message search", () => {
       }).upsert({
         kind: "resource_link",
         key: "acme/widget_v2#12",
-        label: "acme/widget_v2#12",
         url: "https://code.example/acme/widget_v2/changes/12",
       });
       await createPluginAnnotations({
@@ -166,7 +165,6 @@ describe("conversation message search", () => {
       }).upsert({
         kind: "resource_link",
         key: "acme/widget_v2extra#9",
-        label: "acme/widget_v2extra#9",
         url: "https://code.example/acme/widget_v2extra/issues/9",
       });
       await seed({
@@ -183,7 +181,6 @@ describe("conversation message search", () => {
       }).upsert({
         kind: "resource_link",
         key: "acme/widget_v2#123",
-        label: "acme/widget_v2#123",
         url: "https://code.example/acme/widget_v2/changes/123",
       });
 

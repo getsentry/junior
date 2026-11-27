@@ -153,7 +153,6 @@ describe("attach a linked object", () => {
       expect.objectContaining({
         kind: "resource_link",
         key: "/d/1",
-        label: DOC_URL,
         objectType: "document",
         plugin: "docs",
         url: DOC_URL,

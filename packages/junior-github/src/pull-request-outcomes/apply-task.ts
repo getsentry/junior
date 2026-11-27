@@ -31,14 +31,13 @@ export function githubPullRequestOutcomeTaskKey(
   return `pull-request-outcome:${outcome.pullRequestId}:${outcome.state}:${outcome.updatedAt.toISOString()}`;
 }
 
-/** Apply the outcome in the task payload. The outcome row, code index, chips, and Inbox closes all repeat safely. */
+/** Apply the outcome in the task payload. The outcome row, code index, and Inbox closes all repeat safely. */
 export const githubPullRequestOutcomeTask: PluginStartedTaskDefinition<
   typeof pullRequestOutcomePayloadSchema
 > = {
   payload: pullRequestOutcomePayloadSchema,
   async run(ctx) {
     await applyGitHubPullRequestOutcome({
-      annotations: ctx.annotations,
       codeChanges: ctx.codeChanges,
       conversationChanges: ctx.conversationChanges,
       db: gitHubDbSchema.parse(ctx.db),

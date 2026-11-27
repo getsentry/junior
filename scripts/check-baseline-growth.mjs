@@ -32,6 +32,9 @@ const GROWABLE = new Set([
   "packages/junior/scripts/tool-error-classification-baseline.txt",
   // Byte budgets, not a list of violations.
   "scripts/dashboard-bundle-size-baseline.json",
+  // Approved Inbox item fields: a field that a design change adds adds an
+  // entry. Review catches a field that no design line backs.
+  "scripts/inbox-item-fields-baseline.json",
 ]);
 
 /**
