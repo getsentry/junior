@@ -591,7 +591,7 @@ describe("conversation tree state", () => {
       createJuniorApi({ conversationWorkQueue: fixture.queue }),
     );
     // A Space's members are the Participants of its Lead.
-    const lead = await getSpaceLead({ member: viewer!, space });
+    const lead = await getSpaceLead(space.id);
     await getDb().insert(juniorConversationParticipants).values({
       lastMessageAt: new Date(),
       rootConversationId: lead.conversationId,

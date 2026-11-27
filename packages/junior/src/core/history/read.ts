@@ -2,6 +2,7 @@
 // current History version, after the History replacement that starts it.
 // Every other event type in the Conversation is the host's, and core does not
 // read it. The host gives the model its facts as inputs or prompt fragments.
+// The host also reads the items that one Turn wrote, for its per-Turn checks.
 import {
   AGENT_HISTORY_ITEM_TYPES,
   HISTORY_REPLACEMENT_TYPES,
@@ -46,5 +47,31 @@ export async function loadAgentHistory(
           piMessageFromHistoryItem(item),
         )
       : [piMessageFromHistoryItem(data)];
+  });
+}
+
+/**
+ * Loads the agent history items that one Turn wrote, oldest first, as the
+ * model reads them. It reads every History version, so a Turn's items stay
+ * its own after a History replacement.
+ */
+export async function loadTurnAgentHistory(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<PiMessage[]> {
+  const rows = await executor
+    .db()
+    .select()
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.turnId, turnId),
+        inArray(juniorConversationEvents.type, AGENT_HISTORY_ITEM_TYPES),
+      ),
+    )
+    .orderBy(asc(juniorConversationEvents.seq));
+  return rows.flatMap((row) => {
+    const data = agentHistoryFromRow(row);
+    return isHistoryReplacement(data) ? [] : [piMessageFromHistoryItem(data)];
   });
 }
