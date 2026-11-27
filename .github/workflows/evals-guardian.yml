@@ -7,7 +7,8 @@ permissions:
 
 on:
   pull_request:
-    branches: [main]
+    # TODO: Drop guardian/review-interface when this PR targets main.
+    branches: [main, guardian/review-interface]
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
@@ -89,10 +90,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   guardian:
-    name: guardian / run
+    name: guardian / run (${{ matrix.arm }})
     needs: select
     if: needs.select.outputs.should_run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        # One Guardian arm per job, so each arm gets its own score.
+        arm: [current, agent]
     permissions:
       contents: read
       pull-requests: read
@@ -101,6 +107,7 @@ jobs:
     env:
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+      GUARDIAN_DESIGN_ARM: ${{ matrix.arm }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -133,13 +140,13 @@ jobs:
         with:
           results: packages/junior-evals/guardian-results.json
           publish-check: true
-          check-name: guardian / score
+          check-name: ${{ matrix.arm == 'current' && 'guardian / score' || format('guardian / score ({0})', matrix.arm) }}
           fail-on-failures: true
       - name: Upload Guardian eval results
         if: steps.results.conclusion == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: guardian-evals
+          name: guardian-evals-${{ matrix.arm }}
           path: packages/junior-evals/guardian-results.json
           if-no-files-found: error
           retention-days: 7
