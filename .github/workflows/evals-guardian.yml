@@ -124,7 +124,25 @@ jobs:
           VITEST_EVALS_REPORT_LEVEL: info
           # The write token of Roach. With it, the run records new requests.
           ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
-        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian
+          # Temporary input audit (agent arm) and noise check (current arm).
+          ROACH_MODE: "off"
+          ARM: ${{ matrix.arm }}
+        run: |
+          set -uo pipefail
+          jail=packages/junior-evals/scripts/network-jail.sh
+          if [[ "$ARM" == "agent" ]]; then
+            GUARDIAN_DESIGN_SAMPLES=3 GUARDIAN_ABLATIONS=all \
+              "$jail" pnpm --filter @sentry/junior-evals evals:guardian
+            exit $?
+          fi
+          for sample in 1 2 3; do
+            VITEST_EVALS_OUTPUT_FILE="guardian-results-$sample.json" \
+              "$jail" pnpm --filter @sentry/junior-evals evals:guardian \
+              evals/guardian/automation-actions.eval.ts evals/guardian/code-delivery.eval.ts \
+              evals/guardian/lead-actions.eval.ts evals/guardian/scheduled-work.eval.ts \
+              -t "posts its authorized findings after all preconditions|delivers a question on the bot|Lead starts work that the person did not ask for|routine scheduled reminder|omits credential mode" || true
+          done
+          cp packages/junior-evals/guardian-results-3.json packages/junior-evals/guardian-results.json
       - name: Require Guardian eval results
         id: results
         if: steps.run.conclusion != 'skipped'
@@ -148,7 +166,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: guardian-evals-${{ matrix.arm }}
-          path: packages/junior-evals/guardian-results.json
+          path: packages/junior-evals/guardian-results*.json
           if-no-files-found: error
           retention-days: 7
       - name: Report evals to Sentry Evals
