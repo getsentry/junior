@@ -1,7 +1,8 @@
 // Main's per-Turn limits on a core Turn: tool calls and model spend. The
 // first tool batch past a limit gets main's wrap-up result instead of
 // running, so the model replies with its progress. A tool batch after that
-// ends the Turn as failed. The counts come from the Turn's own history.
+// ends the Turn as failed. The counts come from the Turn's own history, plus
+// the cost of the failed replies that the Turn dropped.
 import type { ToolCall } from "@earendil-works/pi-ai";
 import { botConfig } from "@/chat/config";
 import {
@@ -19,7 +20,8 @@ import type { EngineContext } from "@/core/engine-context";
 import { loadTurnAgentHistory } from "@/core/history/read";
 import type { ToolResult } from "@/core/tool";
 import { TurnFailedError } from "@/core/turn/failure";
-import type { TurnFailure } from "@/core/turn/state";
+import { findDiscardedUsage, type TurnFailure } from "@/core/turn/state";
+import { microUsdToUsd } from "@/db/micro-usd";
 
 // The wrap-up result carries this in its details, so a later step of the
 // Turn knows that the model was told to stop.
@@ -44,7 +46,11 @@ export async function checkTurnLimits(
     .flatMap((reply) => reply.content)
     .filter((part) => part.type === "toolCall").length;
   const results = history.filter((message) => message.role === "toolResult");
-  const costUsd = agentTurnCostUsd(extractGenAiUsageSummary(...replies)) ?? 0;
+  // Failed replies are not in the history, but the Turn paid for them too.
+  const discarded = await findDiscardedUsage(ctx, turnId);
+  const costUsd =
+    (agentTurnCostUsd(extractGenAiUsageSummary(...replies)) ?? 0) +
+    microUsdToUsd(discarded?.costMicroUsd ?? 0);
   const overBudget = costUsd >= botConfig.maxTurnCostUsd;
   const overToolCalls = toolCallCount > botConfig.maxToolCallsPerTurn;
   const attributes = {

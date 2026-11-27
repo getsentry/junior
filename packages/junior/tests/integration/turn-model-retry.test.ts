@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findUnreadInputs } from "@/core/turn/inbox";
+import { findDiscardedUsage } from "@/core/turn/state";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
   modelCalls,
@@ -96,9 +97,17 @@ describe("advanceTurn after a failed model request", () => {
     });
     await expect(harness.history()).resolves.toEqual([]);
     expect(stepDelays(turnId)).toEqual([2]);
+    // The provider billed the input of the dropped reply.
+    const discarded = await findDiscardedUsage(harness.engineCtx, turnId);
+    expect(discarded?.costMicroUsd).toBeGreaterThan(0);
+    expect(discarded?.tokens?.inputTokens).toBeGreaterThan(0);
 
     harness.queue.advanceTime(2);
     await harness.runStep();
+
+    await expect(
+      findDiscardedUsage(harness.engineCtx, turnId),
+    ).resolves.toEqual(discarded);
 
     await expect(harness.turn(turnId)).resolves.toMatchObject({
       state: "completed",
@@ -111,6 +120,35 @@ describe("advanceTurn after a failed model request", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
+  });
+
+  it("adds the usage of each failed reply once, also of the reply that fails the Turn", async () => {
+    await setModelReplies(
+      Array.from({ length: MAX_ATTEMPTS }, () =>
+        streamDisconnected("All done, and nothing is left."),
+      ),
+    );
+    pinRetryJitter(0);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+
+    await harness.runStep();
+    const first = await findDiscardedUsage(harness.engineCtx, turnId);
+    for (let attempt = 2; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      harness.queue.advanceTime(stepDelays(turnId)[0]!);
+      await harness.runStep();
+    }
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "failed",
+      attempts: MAX_ATTEMPTS,
+    });
+    // Each try sends the same request, so each costs the same.
+    await expect(
+      findDiscardedUsage(harness.engineCtx, turnId),
+    ).resolves.toMatchObject({
+      costMicroUsd: first!.costMicroUsd * MAX_ATTEMPTS,
+      tokens: { inputTokens: first!.tokens!.inputTokens! * MAX_ATTEMPTS },
+    });
   });
 
   it("backs off longer after each overloaded try, and fails the Turn when its tries run out", async () => {
@@ -141,6 +179,10 @@ describe("advanceTurn after a failed model request", () => {
       attempts: MAX_ATTEMPTS,
     });
     await expect(harness.history()).resolves.toEqual([]);
+    // An error response bills nothing.
+    await expect(
+      findDiscardedUsage(harness.engineCtx, turnId),
+    ).resolves.toEqual({ costMicroUsd: 0 });
     await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId }),
     ]);
