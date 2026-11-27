@@ -13,10 +13,9 @@ export const juniorSpaces = pgTable(
   "junior_spaces",
   {
     id: text("id").primaryKey(),
-    // 0.316.0 reads name, visibility, and archived_at. A rollback to it runs
-    // against these rows, so they are written and never read until the
-    // release that drops them.
-    name: text("name").notNull(),
+    // No code reads or writes name, visibility, or archived_at. The Lead
+    // holds them. They are dropped after 0.318.0 ships.
+    name: text("name"),
     description: text("description"),
     visibility: text("visibility")
       .$type<ConversationPrivacy>()
