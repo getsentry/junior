@@ -579,10 +579,11 @@ before you add the item. Add a unique index, so that at most one row with a
 Conversation has each subject id.
 
 A kind can set `actions`: buttons that each open item of the kind shows, such
-as `{ id: "resume", label: "Resume" }`. A click closes the item as done and
-calls your `inboxItemAction` hook with the item and the action id. Do the work
-there. A retry of the same click calls the hook again, so make it safe to
-repeat.
+as `{ id: "resume", label: "Resume" }`, with an optional `icon` such as
+`"wrench"` that the dashboard shows before the label. A click closes the item
+as done and calls your `inboxItemAction` hook with the item and the action id.
+Do the work there. A retry of the same click calls the hook again, so make it
+safe to repeat.
 
 `history(subject)` returns the items of a subject, newest first. Each closed
 item says when and how it closed, and the action that closed it. Read what
