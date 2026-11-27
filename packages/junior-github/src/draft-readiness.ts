@@ -18,7 +18,7 @@ import type { PluginEgress } from "@sentry/junior-plugin-api";
 import ignore from "ignore";
 import * as z from "zod";
 import { PULL_REQUEST_DRAFT_READINESS } from "./graphql-documents.js";
-import { githubApi } from "./tool-support/github-api.js";
+import { githubApi, githubErrorMessage } from "./tool-support/github-api.js";
 
 interface CodeOwnersRule {
   matches(path: string): boolean;
@@ -82,6 +82,16 @@ const responseSchema = z.object({
   }),
 });
 
+const graphqlFailureSchema = z.object({
+  data: z.null().optional(),
+  errors: z.array(z.unknown()).min(1),
+});
+
+/** Whether a GraphQL response carries errors and no data. */
+function isGraphqlFailure(body: unknown): boolean {
+  return graphqlFailureSchema.safeParse(body).success;
+}
+
 /**
  * Read the code owners of the files that one draft changes and the root
  * AGENTS.md, both from its base branch.
@@ -120,6 +130,13 @@ export async function readDraftReadiness(
     if (!response.ok) {
       throw new Error(
         `GitHub pull request code owners lookup failed with HTTP ${response.status}`,
+      );
+    }
+    // GraphQL reports errors with HTTP 200. Without data there is nothing to
+    // parse, so report GitHub's messages instead of a schema mismatch.
+    if (isGraphqlFailure(response.body)) {
+      throw new Error(
+        `GitHub pull request code owners lookup failed: ${githubErrorMessage(response.body)}`,
       );
     }
     const repository = responseSchema.parse(response.body).data.repository;
