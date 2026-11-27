@@ -2,17 +2,10 @@ import { parse } from "yaml";
 import * as z from "zod";
 
 /**
- * Inbox kind decision tables: each `<name>-kind.yaml` in a package's `src/`,
- * next to the code of the kind's owner.
- *
- * A table lists the inputs of a kind with their domains, and its rules in
- * order. Each rule has an ID, the `design/` rules that it serves, and one
- * or more rows. A row matches
- * when each of its cells matches, and the first row that matches gives its
- * output (the FIRST hit policy of DMN). The key is `output`, not `then`, so
- * no parsed row is a thenable. Each cell is a unary test from DMN's
- * S-FEEL: `-` or no cell matches any value, `v` matches one value, `v1, v2`
- * matches any of them, and `not(v1, v2)` matches every other value.
+ * Inbox kind decision tables (`design/inbox-kinds.md`). The first row whose
+ * cells all match gives its output (DMN's FIRST hit policy). A cell is an
+ * S-FEEL unary test: `-` or none, `v`, `v1, v2`, or `not(v1, v2)`. The key
+ * is `output`, not `then`, so no parsed row is a thenable.
  */
 
 /** The most input combinations that the check enumerates for one table. */

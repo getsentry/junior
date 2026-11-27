@@ -14,16 +14,9 @@ import {
 import { analyzeTable, parseTable } from "./inbox-kinds/table.mjs";
 
 /**
- * Inbox kind check (`design/inbox-kinds.md`). Each `<name>-kind.yaml`
- * decision table in a package's `src/` states the rules of one Inbox kind.
- * For a table that names a code file, this check generates the kind's code
- * and fails when it differs from the file. It also fails when a row of a
- * table can never be the first match, when an input can be unknown and no
- * rule names `unknown` (`table-checks`), when a rule serves an ID that no
- * `design/` rule has, or when a rule has no sub-feature in the
- * verification map (`table-links`).
- *
- * Run `pnpm inbox-kinds:check --update` to write the generated files.
+ * Inbox kind check (`design/inbox-kinds.md`): generate the code of each
+ * table that names a code file and fail when it drifts, and fail on the
+ * `table-checks` and `table-links` problems. `--update` writes the code.
  */
 
 const TABLE = /^packages\/[^/]+\/src\/.+-kind\.yaml$/;
@@ -79,7 +72,10 @@ export async function run({ root, files, args }) {
   for (const file of files.filter((item) => GENERATED.test(item))) {
     const header = read(file).split("\n", 1)[0];
     if (codeFiles.has(file) || !header.startsWith(CODE_HEADER_START)) continue;
-    const tablePath = header.slice(CODE_HEADER_START.length, -1);
+    const tablePath = path.posix.join(
+      path.posix.dirname(file),
+      header.slice(CODE_HEADER_START.length, -1),
+    );
     if (files.includes(tablePath) && !parsed.has(tablePath)) continue;
     problems.push(`${file}: no table generates it. Delete it.`);
   }

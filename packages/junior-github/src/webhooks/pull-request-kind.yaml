@@ -58,9 +58,8 @@ inputs:
       Junior handled every comment of the viewer's change request, the
       required checks pass, and Junior asks for their review again in this
       read. The source applies the guards of `pr-review-again`: it asks only
-      while the viewer's latest review still requests changes, so a viewer
-      who approved since is not asked, and it drops the ask once the viewer
-      comments or reviews after it.
+      while the viewer's latest review still requests changes, and drops the
+      ask once the viewer comments or reviews after it.
   viewer.feedback:
     values: bool
     description: >-

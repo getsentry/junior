@@ -222,11 +222,11 @@ test("keeps the generated file of a table that fails to parse", async () => {
   write("packages/x/src/broken-kind.yaml", "kind: [");
   write(
     "packages/x/src/broken.generated.ts",
-    `${CODE_HEADER_START}packages/x/src/broken-kind.yaml.\n`,
+    `${CODE_HEADER_START}broken-kind.yaml.\n`,
   );
   write(
     "packages/x/src/gone.generated.ts",
-    `${CODE_HEADER_START}packages/x/src/gone-kind.yaml.\n`,
+    `${CODE_HEADER_START}gone-kind.yaml.\n`,
   );
   const problems = await run({
     root,

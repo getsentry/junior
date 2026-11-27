@@ -1,7 +1,10 @@
-// Generated from the Inbox kind table packages/junior-github/src/webhooks/pull-request-kind.yaml.
+// Generated from the Inbox kind table pull-request-kind.yaml.
 // Edit the table, then run `pnpm inbox-kinds:check --update`.
 
-/** The facts that the `github.pull_request` source gives about one viewer of a `github:pull_request` item. */
+/**
+ * The facts that the `github.pull_request` source gives about one viewer of
+ * a `github:pull_request` item.
+ */
 export interface Inputs {
   state: "open" | "merged" | "closed";
   draft: boolean;
@@ -53,9 +56,8 @@ export interface Inputs {
      * Junior handled every comment of the viewer's change request, the
      * required checks pass, and Junior asks for their review again in this
      * read. The source applies the guards of `pr-review-again`: it asks only
-     * while the viewer's latest review still requests changes, so a viewer
-     * who approved since is not asked, and it drops the ask once the viewer
-     * comments or reviews after it.
+     * while the viewer's latest review still requests changes, and drops the
+     * ask once the viewer comments or reviews after it.
      */
     asked_again: boolean;
     /**

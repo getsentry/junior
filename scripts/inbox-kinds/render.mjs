@@ -1,9 +1,13 @@
+import path from "node:path";
 import { format } from "oxfmt";
 
 /** The command that writes the generated files from the tables. */
 export const UPDATE_COMMAND = "pnpm inbox-kinds:check --update";
 
-/** The start of the first line of every generated file. */
+/**
+ * The start of the first line of every generated file. The line ends with
+ * the path of the table, relative to the generated file.
+ */
 export const CODE_HEADER_START = "// Generated from the Inbox kind table ";
 
 function wrap(words, width, indent) {
@@ -107,10 +111,18 @@ export async function renderKindCode(table, tablePath) {
     ),
   ];
   const source = [
-    `${CODE_HEADER_START}${tablePath}.`,
+    `${CODE_HEADER_START}${path.posix.relative(path.posix.dirname(table.code), tablePath)}.`,
     `// Edit the table, then run \`${UPDATE_COMMAND}\`.`,
     "",
-    `/** The facts that the \`${table.source}\` source gives about one viewer of a \`${table.kind}\` item. */`,
+    `/**\n${wrap(
+      `The facts that the \`${table.source}\` source gives about one viewer of a \`${table.kind}\` item.`.split(
+        " ",
+      ),
+      74,
+      "",
+    )
+      .map((line) => ` * ${line}`)
+      .join("\n")}\n */`,
     `export interface Inputs { ${inputsType(table)} }`,
     "",
     "/** A command that a choice or Dismiss sends. */",
