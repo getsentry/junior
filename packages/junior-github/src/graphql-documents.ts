@@ -220,9 +220,9 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
 
 /**
  * Read what decides a merge conflict fix on one pull request: the review
- * decision, when it opened, and its latest pushes, reviews, and comments.
- * Pushes have their own window, so comments, which anyone can add, cannot
- * push a person's latest push out of it.
+ * decision, when it opened, its latest pushes, reviews, and comments, and
+ * its base branch changes. Pushes and base changes have their own windows,
+ * so comments, which anyone can add, cannot push them out.
  */
 export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
   query PullRequestConflictHistory($owner: String!, $name: String!, $number: Int!) {
@@ -244,6 +244,13 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
             ... on IssueComment { createdAt author { __typename } }
           }
         }
+        baseChanges: timelineItems(last: 10, itemTypes: [AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT, BASE_REF_CHANGED_EVENT]) {
+          nodes {
+            __typename
+            ... on AutomaticBaseChangeSucceededEvent { createdAt actor { __typename } }
+            ... on BaseRefChangedEvent { createdAt actor { __typename } }
+          }
+        }
       }
     }
   }
@@ -253,15 +260,20 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
  * Read what decides the requester's next action on one pull request: its
  * state, merge state, review requests, latest reviews, and latest comments
  * and review requests. A review comment reply is a review, so `reviews`
- * holds it too.
+ * holds it too. The open pull requests whose head is the base branch show
+ * that the base has not merged yet.
  */
 export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
   query PullRequestNextAction($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
+      defaultBranchRef { name }
       pullRequest(number: $number) {
         autoMergeRequest { enabledAt }
+        baseRefName
+        baseRef { associatedPullRequests(states: [OPEN]) { totalCount } }
         commits(last: 1) { nodes { commit { committedDate } } }
         isDraft
+        isInMergeQueue
         mergeStateStatus
         state
         title

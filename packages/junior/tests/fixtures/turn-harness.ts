@@ -24,6 +24,7 @@ import {
   juniorTurnInbox,
   juniorTurns,
 } from "@/db/schema";
+import type { TurnDestination } from "@/db/schema/turn-inbox";
 import { turnStepConsumer } from "@/turn-steps/consumer";
 import { staticTools } from "./turn-engine";
 import { turnEndedConsumer } from "@/turn-steps/turn-ended";
@@ -73,7 +74,7 @@ export type TurnHarness = {
     text: string;
     actor?: TurnInputPayload["actor"];
     source?: Source;
-    destination?: Destination | null;
+    destination?: TurnDestination | null;
   }) => Promise<SentInput>;
   /** Delivers the next due step message. Throws when none is due. */
   runStep: () => Promise<void>;
@@ -173,7 +174,7 @@ export async function createTurnHarness({
     text: string;
     actor?: TurnInputPayload["actor"];
     source?: Source;
-    destination?: Destination | null;
+    destination?: TurnDestination | null;
   }): Promise<SentInput> {
     const payload: TurnInputPayload = {
       text: input.text,

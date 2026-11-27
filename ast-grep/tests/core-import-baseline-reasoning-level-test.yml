@@ -1,0 +1,7 @@
+id: core-import-baseline-reasoning-level
+valid:
+  - 'import { logWarn } from "@/chat/logging";'
+invalid:
+  - 'import type { TurnReasoningLevel } from "@/chat/reasoning-level";'
+  - 'export type { TurnReasoningLevel } from "@/chat/reasoning-level";'
+  - 'const { parseReasoningLevel } = await import("@/chat/reasoning-level");'

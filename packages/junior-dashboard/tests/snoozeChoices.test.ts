@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { snoozeChoicesAt } from "../src/client/inbox/snoozeChoices";
 
@@ -13,6 +13,18 @@ function menuAt(...clock: [number, number, number, number, number]) {
     ];
   });
 }
+
+/** The local target time of the choice `label` at a local clock. */
+function targetAt(
+  label: string,
+  ...clock: [number, number, number, number, number]
+) {
+  return menuAt(...clock).find(([choice]) => choice === label)?.[1];
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("snoozeChoicesAt", () => {
   it("offers the afternoon and evening of today before noon", () => {
@@ -57,5 +69,35 @@ describe("snoozeChoicesAt", () => {
       "Next week",
       "8/17 9:00",
     ]);
+  });
+
+  it("wakes at 09:00 today when tomorrow morning is picked before 06:00", () => {
+    vi.stubEnv("TZ", "Europe/London");
+    // Friday, August 7.
+    expect(targetAt("Tomorrow morning", 2026, 7, 7, 0, 42)).toBe("8/7 9:00");
+    expect(targetAt("Tomorrow morning", 2026, 7, 7, 5, 59)).toBe("8/7 9:00");
+    expect(targetAt("Tomorrow morning", 2026, 7, 7, 6, 0)).toBe("8/8 9:00");
+    expect(targetAt("Tomorrow morning", 2026, 7, 7, 23, 30)).toBe("8/8 9:00");
+  });
+
+  it("wakes at local 09:00 across a DST change", () => {
+    vi.stubEnv("TZ", "Europe/London");
+    // Clocks go forward an hour at 01:00 on Sunday, March 29.
+    expect(targetAt("Tomorrow morning", 2026, 2, 28, 23, 30)).toBe("3/29 9:00");
+    expect(targetAt("Tomorrow morning", 2026, 2, 29, 0, 42)).toBe("3/29 9:00");
+    // Clocks go back an hour at 02:00 on Sunday, October 25.
+    expect(targetAt("Tomorrow morning", 2026, 9, 25, 0, 42)).toBe("10/25 9:00");
+  });
+
+  it("wakes this Monday when next week is picked before 06:00 on a Monday", () => {
+    vi.stubEnv("TZ", "Europe/London");
+    // Monday, August 10.
+    expect(targetAt("Next week", 2026, 7, 10, 0, 42)).toBe("8/10 9:00");
+    expect(targetAt("Next week", 2026, 7, 10, 5, 59)).toBe("8/10 9:00");
+    expect(targetAt("Next week", 2026, 7, 10, 6, 0)).toBe("8/17 9:00");
+    // Sunday, August 9.
+    expect(targetAt("Next week", 2026, 7, 9, 23, 30)).toBe("8/10 9:00");
+    // Monday, March 30, the day after clocks go forward.
+    expect(targetAt("Next week", 2026, 2, 30, 0, 42)).toBe("3/30 9:00");
   });
 });

@@ -171,6 +171,7 @@
     {
       "files": ["packages/*/src/**/*.ts"],
       "rules": {
+        "junior/no-or-in-array-subqueries": "error",
         "junior/no-raw-sql-queries": "error",
         "junior/no-regex-markdown": "error",
         "junior/no-regex-url-parsing": "error",
