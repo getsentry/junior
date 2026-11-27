@@ -21,7 +21,7 @@
 import { randomUUID } from "node:crypto";
 import * as z from "zod";
 import { logInfo, withSpan } from "@/chat/logging";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import {
   BACKFILL_BUDGET_MS,
   countHistoryConversations,

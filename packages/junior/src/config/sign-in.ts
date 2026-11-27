@@ -7,8 +7,8 @@ import type { Env } from "@/config/fields";
 export const signInSchema = z
   .strictObject({
     /**
-     * `JUNIOR_ALLOWED_DOMAINS` as set. `chat/sign-in/allowlist` parses it
-     * when `createApp` resolves the allowed domains.
+     * `JUNIOR_ALLOWED_DOMAINS` as set. The trust group parses it when the
+     * `createApp` option is unset.
      */
     allowedDomains: z.string().optional(),
     /** Whether the dashboard requires sign-in when `dashboard.authRequired` is unset. */

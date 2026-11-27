@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import * as z from "zod";
 import { parse as parseYaml } from "yaml";
+import { getChatConfig } from "@/chat/config";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
 import { skillBodyReferences, skillReferences } from "@/chat/skill-references";
@@ -256,8 +257,7 @@ export function resetSkillDiscoveryCache(): void {
 
 function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
   const additionalRoots = options?.additionalRoots ?? [];
-  const envRoots =
-    process.env["SKILL_DIRS"]?.split(path.delimiter).filter(Boolean) ?? [];
+  const envRoots = getChatConfig().skills.dirs;
   const defaults = skillRoots();
   const pluginRoots = pluginCatalogRuntime.getSkillRoots();
 

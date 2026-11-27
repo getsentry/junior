@@ -1,14 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import {
-  isExperimentalFeatureEnabled,
-  setExperimentalFeatures,
-} from "@/chat/experimental";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { getSandboxResources } from "@/chat/sandbox/resources";
-
-afterEach(() => {
-  setExperimentalFeatures(undefined);
-});
 
 describe("createApp sandbox config", () => {
   it("configures sandbox vCPUs", async () => {

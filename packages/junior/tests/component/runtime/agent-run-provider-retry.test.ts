@@ -602,6 +602,10 @@ vi.mock("@/chat/pi/client", () => ({
   }),
   completeText: async () => ({ text: "Conversation title" }),
   getGatewayApiKey: () => "test-gateway-key",
+}));
+
+vi.mock("@/chat/pi/gateway-models", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/gateway-models")>()),
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 

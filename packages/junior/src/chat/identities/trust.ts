@@ -16,6 +16,7 @@
 import type { StateAdapter } from "chat";
 import * as z from "zod";
 import type { Event, SlackActor } from "@sentry/junior-plugin-api";
+import { getChatConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
 import type { TagAuthor } from "@/chat/input-tags";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
@@ -35,26 +36,6 @@ import {
 } from "@/chat/slack/users";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
-
-/** The `createApp` settings that decide who is trusted. */
-export interface TrustConfig {
-  /** Slack bot users that are trusted without a profile email. */
-  allowedBotUserIds: readonly string[];
-  /** Email domains of trusted people. An empty list allows every domain. */
-  allowedDomains: readonly string[];
-}
-
-let trustConfig: TrustConfig = { allowedBotUserIds: [], allowedDomains: [] };
-
-/** Apply the trust settings of one app. Return the previous settings. */
-export function setTrustConfig(next: TrustConfig): TrustConfig {
-  const previous = trustConfig;
-  trustConfig = {
-    allowedBotUserIds: [...next.allowedBotUserIds],
-    allowedDomains: [...next.allowedDomains],
-  };
-  return previous;
-}
 
 const emailSchema = z.string().trim().toLowerCase().pipe(z.email());
 
@@ -123,7 +104,10 @@ function isSlackProfileDomainAllowed(profile: { email?: string }): boolean {
   const separator = email?.lastIndexOf("@") ?? -1;
   const allowed = isAllowedDomain(
     separator > 0 ? email?.slice(separator + 1) : undefined,
-    { allowedDomains: trustConfig.allowedDomains, ifNoDomains: "allow" },
+    {
+      allowedDomains: getChatConfig().trust.allowedDomains,
+      ifNoDomains: "allow",
+    },
   );
   if (!allowed) {
     // A Slack app without `users:read.email` sees no email and blocks all.
@@ -249,7 +233,7 @@ export async function isTrustedSlackAuthor(args: {
 }): Promise<boolean> {
   const userId = parseSlackUserId(args.user);
   if (!userId || !args.teamId) return false;
-  const { allowedBotUserIds, allowedDomains } = trustConfig;
+  const { allowedBotUserIds, allowedDomains } = getChatConfig().trust;
   if (allowedBotUserIds.includes(userId) || allowedDomains.length === 0) {
     return true;
   }

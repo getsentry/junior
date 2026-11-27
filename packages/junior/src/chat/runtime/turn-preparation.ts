@@ -15,13 +15,13 @@ import { setSpanAttributes } from "@/chat/logging";
 import { getThreadTs } from "@/chat/runtime/thread-context";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
-  buildConversationContext,
   estimateConversationMessagesTokens,
   isHumanConversationMessage,
   normalizeConversationText,
   trimConversationMessages,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
+import { buildConversationContext } from "@/chat/slack/thread-context";
 import {
   hasPotentialImageAttachment,
   isVisionEnabled,
