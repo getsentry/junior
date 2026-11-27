@@ -18,8 +18,7 @@ import {
   it,
   vi,
 } from "vitest";
-
-const originalEnv = { ...process.env };
+import { resetTestEnv } from "../fixtures/stub-env";
 const originalCwd = process.cwd();
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const exampleRoot = path.join(repoRoot, "apps/example");
@@ -107,7 +106,7 @@ async function importExampleDashboardConfig() {
 
 function clearVercelEnv(): void {
   for (const name of vercelEnvNames) {
-    delete process.env[name];
+    vi.stubEnv(name, undefined);
   }
 }
 
@@ -117,65 +116,62 @@ describe.sequential("example build discovery integration", () => {
   }, 60_000);
 
   beforeEach(() => {
-    process.env["DATABASE_URL"] ??= exampleDatabaseUrl;
+    if (process.env["DATABASE_URL"] === undefined) {
+      vi.stubEnv("DATABASE_URL", exampleDatabaseUrl);
+    }
   });
 
   afterEach(() => {
     process.chdir(originalCwd);
-    process.env = { ...originalEnv };
+    vi.unstubAllEnvs();
     vi.resetModules();
   });
 
   it("only disables dashboard auth for local development outside Vercel", async () => {
     const config = await importExampleDashboardConfig();
 
-    process.env = { ...originalEnv, NODE_ENV: "development" };
+    resetTestEnv({ NODE_ENV: "development" });
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(false);
 
-    process.env = {
-      ...originalEnv,
+    resetTestEnv({
       NODE_ENV: "development",
       VERCEL: "1",
-    };
+    });
     expect(config.exampleDashboardAuthRequired()).toBe(true);
 
-    process.env = {
-      ...originalEnv,
+    resetTestEnv({
       NODE_ENV: "development",
       VERCEL: "1",
       VERCEL_ENV: "development",
-    };
+    });
     expect(config.exampleDashboardAuthRequired()).toBe(false);
 
-    process.env = {
-      ...originalEnv,
+    resetTestEnv({
       JUNIOR_DASHBOARD_AUTH_REQUIRED: "false",
-    };
+    });
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(false);
 
-    process.env = {
-      ...originalEnv,
+    resetTestEnv({
       JUNIOR_DASHBOARD_AUTH_REQUIRED: "false",
       VERCEL: "1",
-    };
+    });
     expect(config.exampleDashboardAuthRequired()).toBe(true);
 
-    process.env = {
-      ...originalEnv,
+    resetTestEnv({
       NODE_ENV: "development",
       JUNIOR_DASHBOARD_AUTH_REQUIRED: "true",
-    };
+    });
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(true);
 
-    process.env = { ...originalEnv, NODE_ENV: "production" };
+    resetTestEnv({ NODE_ENV: "production" });
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(true);
 
-    process.env = { ...originalEnv };
-    delete process.env["NODE_ENV"];
+    vi.unstubAllEnvs();
+    vi.stubEnv("NODE_ENV", undefined);
     clearVercelEnv();
     expect(config.exampleDashboardAuthRequired()).toBe(true);
   });
@@ -202,8 +198,9 @@ describe.sequential("example build discovery integration", () => {
 
   it("serves built health and recognizes the sentry oauth callback route", async () => {
     process.chdir(exampleRoot);
-    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify(
-      await getExamplePluginPackages(),
+    vi.stubEnv(
+      "JUNIOR_PLUGIN_PACKAGES",
+      JSON.stringify(await getExamplePluginPackages()),
     );
 
     const app = await importExampleApp();
@@ -224,8 +221,9 @@ describe.sequential("example build discovery integration", () => {
 
   it("routes the queue consumer endpoint through the app", async () => {
     process.chdir(exampleRoot);
-    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify(
-      await getExamplePluginPackages(),
+    vi.stubEnv(
+      "JUNIOR_PLUGIN_PACKAGES",
+      JSON.stringify(await getExamplePluginPackages()),
     );
 
     const app = await importExampleApp();
@@ -246,7 +244,7 @@ describe.sequential("example build discovery integration", () => {
   it("does not expose discovery state from the public example app", async () => {
     const packageNames = await getExamplePluginPackages();
     process.chdir(exampleRoot);
-    process.env["JUNIOR_PLUGIN_PACKAGES"] = JSON.stringify(packageNames);
+    vi.stubEnv("JUNIOR_PLUGIN_PACKAGES", JSON.stringify(packageNames));
 
     const app = await importExampleApp();
     const response = await app.fetch(new Request("http://localhost/api/info"));

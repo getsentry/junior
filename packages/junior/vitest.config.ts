@@ -43,6 +43,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Undo vi.stubEnv after each test, so env does not leak into later files
+    // in the same worker.
+    unstubEnvs: true,
     // Inject the `pg` tracing channels that SQL budget tests count.
     execArgv: [
       "--import",

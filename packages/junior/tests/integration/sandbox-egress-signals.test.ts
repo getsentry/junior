@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../fixtures/stub-env";
 
 describe("sandbox egress signal route", () => {
   beforeEach(() => {
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       JUNIOR_SECRET: "test-secret",
       JUNIOR_STATE_ADAPTER: "memory",
       NODE_ENV: "development",
-    };
+    });
     vi.resetModules();
   });
 
@@ -17,7 +15,7 @@ describe("sandbox egress signal route", () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
     vi.unstubAllGlobals();
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   });
 
   it("returns and consumes broker signals", async () => {

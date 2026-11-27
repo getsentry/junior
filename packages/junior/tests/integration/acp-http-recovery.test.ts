@@ -34,6 +34,7 @@ import {
 } from "../fixtures/plugin-app";
 import { readProxyProperty } from "../fixtures/proxy-property";
 import { signedInViewer } from "../fixtures/user";
+import { resetTestEnv } from "../fixtures/stub-env";
 
 mockAcpDashboardConfig();
 
@@ -395,17 +396,15 @@ describe("remote ACP recovery", () => {
   }, 20_000);
 
   it("rejects another prompt and cancels while the Turn is auth-paused", async () => {
-    const originalEnv = { ...process.env };
     let pluginApp: PluginAppFixture | undefined;
     try {
-      process.env = {
-        ...originalEnv,
+      resetTestEnv({
         // The MCP callback uses the dashboard base URL of the ACP app.
         JUNIOR_BASE_URL: "http://junior.test",
         JUNIOR_SECRET: "junior-test-secret",
         JUNIOR_STATE_ADAPTER: "memory",
         SLACK_BOT_TOKEN: "xoxb-test-token",
-      };
+      });
       pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
       // The search connects the MCP provider. Without credentials, the Turn
       // pauses for authorization and never reaches the reply.
@@ -501,7 +500,7 @@ describe("remote ACP recovery", () => {
       ).resolves.not.toHaveProperty("authorization");
     } finally {
       await pluginApp?.cleanup();
-      process.env = originalEnv;
+      vi.unstubAllEnvs();
     }
   }, 20_000);
 

@@ -33,7 +33,12 @@ import { runSnapshotCreate } from "@/cli/snapshot-create";
 afterAll(async () => {
   await disconnectStateAdapter();
   fs.rmSync(appRoot, { force: true, recursive: true });
-  process.env = originalEnv;
+  // Restore the env in place: Vitest's env proxy breaks when a test assigns a
+  // new object to process.env.
+  for (const key of Object.keys(process.env)) {
+    if (!Object.hasOwn(originalEnv, key)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
 });
 
 describe("junior snapshot create in a Vercel build", () => {

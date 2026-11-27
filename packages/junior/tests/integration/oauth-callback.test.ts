@@ -15,8 +15,7 @@ import {
   waitUntilCallbacks,
 } from "../fixtures/oauth-callback-after-harness";
 import { mswServer } from "../msw/server";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../fixtures/stub-env";
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/eval-oauth",
@@ -34,12 +33,11 @@ let pluginApp: PluginAppFixture | undefined;
 describe("oauth callback integration", () => {
   beforeEach(async () => {
     resetSlackApiMockState();
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
       JUNIOR_SECRET: "test-local-oauth-secret",
-    };
+    });
     pluginApp = await createPluginAppFixture([EVAL_OAUTH_PLUGIN_ROOT]);
     vi.resetModules();
     stateAdapterModule = await import("@/chat/state/adapter");
@@ -53,7 +51,7 @@ describe("oauth callback integration", () => {
     await stateAdapterModule?.disconnectStateAdapter();
     await pluginApp?.cleanup();
     pluginApp = undefined;
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   }, 45_000);
 
   it("publishes the App Home of the Slack person after the callback", async () => {
