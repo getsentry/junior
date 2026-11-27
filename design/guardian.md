@@ -175,6 +175,8 @@ untrusted text set up, does not run.
 
 ## Gaps
 
+- `handoff-check`: messageAgent is not reviewed, so a message can hand a
+  child agent wider work than the sender's thread backs.
 - `review-by-default`, `sandbox-boundary`: core `bash` is not reviewed, so
   a command whose effect leaves the Sandbox, such as a push or a network
   write, runs without review.
