@@ -36,8 +36,10 @@ export function useConversationSubscription(
               {
                 ...detail,
                 archivedAt: result.archivedAt,
+                // A subscriber is a Participant, so a Join shows the reply
+                // box before the detail reloads.
                 ...(result.subscribed
-                  ? undefined
+                  ? { isParticipant: true }
                   : { pinnedAt: null, pinPosition: undefined }),
                 subscribed: result.subscribed,
               },
