@@ -18,8 +18,8 @@ const BASELINE_PATH = "scripts/comment-length-baseline.json";
 const SCAN_DIRECTORIES = ["packages", "scripts", "tools"];
 export const MAX_BLOCK_LINES = 5;
 export const MAX_LINE_WIDTH = 80;
-// `/**`, `*/`, and empty comment lines hold no text.
-const DELIMITER_LINE = /^\s*(?:\/\*\*?|\*\/|\*|\/\/)\s*$/;
+// `/**`, `*/`, their JSX forms, and empty comment lines hold no text.
+const DELIMITER_LINE = /^\s*(?:\{?\/\*\*?|\*\/\}?|\*|\/\/)\s*$/;
 // Links and tool directives cannot wrap.
 const UNWRAPPABLE =
   /https?:\/\/|(?:oxlint|eslint)-(?:disable|enable)|@ts-|ast-grep-ignore/;
@@ -74,9 +74,10 @@ export function measureComments(root, targets) {
       for (let line = start.line; line <= end.line; line++) {
         commentLines.add(line);
       }
-      // A one-line comment after code is not part of a block.
+      // A one-line comment after code is not part of a block. A JSX
+      // comment's `{` is not code.
       const codeBefore = source[start.line].slice(0, start.column).trim();
-      if (!codeBefore || end.line > start.line) {
+      if (!codeBefore || codeBefore === "{" || end.line > start.line) {
         ownLineRanges.push([start.line, end.line]);
       }
     }

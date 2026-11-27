@@ -68,6 +68,37 @@ test("measures a multiline block comment that starts after code", () => {
   assert.deepEqual(counts["block-lines"], { [FILE]: 2 });
 });
 
+test("measures JSX comments like other comments", () => {
+  const file = "packages/junior/src/view.tsx";
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "comment-length-"));
+  try {
+    fs.mkdirSync(path.join(root, path.dirname(file)), { recursive: true });
+    const lines = Array.from(
+      { length: MAX_BLOCK_LINES + 1 },
+      (_, index) => `    {/* line ${index} */}`,
+    );
+    const body = Array.from({ length: MAX_BLOCK_LINES }, (_, i) => `    ${i}`);
+    fs.writeFileSync(
+      path.join(root, file),
+      [
+        "export const A = () => (",
+        "  <div>",
+        ...lines,
+        "    <span />",
+        "    {/*",
+        ...body,
+        "    */}",
+        "  </div>",
+        ");",
+      ].join("\n"),
+    );
+    const counts = measureComments(root, ["packages"]);
+    assert.deepEqual(counts["block-lines"], { [file]: 1 });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("counts wide comment lines, except links and directives", () => {
   const long = "x".repeat(MAX_LINE_WIDTH);
   const counts = measure([
