@@ -6,12 +6,18 @@ import {
   type PluginCatalogRuntime,
 } from "@/chat/plugins/registry";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
+import type { QueueProviderState } from "@/chat/queue/provider";
+import type { SlackTeamDomainCache } from "@/chat/slack/team-domain";
 
 export interface AppContext {
   /** App plugins, validated and sorted by manifest name. */
   plugins: PluginRegistration[];
   /** The plugin catalog, built from the app plugin config. */
   catalog: PluginCatalogRuntime;
+  /** What the queue provider keeps, such as clients built on first use. */
+  queueProvider: QueueProviderState;
+  /** Slack workspace domains that this instance looked up. */
+  slackTeamDomains: SlackTeamDomainCache;
 }
 
 /** Build the long-lived app state from resolved plugin wiring. */
@@ -31,6 +37,8 @@ export function createAppContext(
       left.manifest.name.localeCompare(right.manifest.name),
     ),
     catalog,
+    queueProvider: {},
+    slackTeamDomains: { entries: new Map(), inflight: new Map() },
   };
 }
 
