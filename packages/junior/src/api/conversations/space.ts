@@ -74,9 +74,7 @@ export async function setConversationSpaceForViewer(
   if (target && access.visibility !== "public") {
     throwApiError(409, "Only a public conversation can join a Space.");
   }
-  const lead = target
-    ? await getSpaceLead({ member: viewer, space: target })
-    : undefined;
+  const lead = target ? await getSpaceLead(target.id) : undefined;
   const refusal = await setConversationSpace(
     conversationId,
     target && lead

@@ -5,6 +5,11 @@ import {
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { getDb } from "@/chat/db";
+import { inboxItemOwnedByConversation } from "@/chat/inbox-items/access";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { setConversationSpace } from "@/chat/spaces/conversations";
+import { createSpace } from "@/chat/spaces/store";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import {
   recordAuthorizationCompleted,
@@ -87,17 +92,16 @@ describe("conversation status", () => {
     // a User adds an item that no one is assigned to, and anyone in the
     // thread can answer it.
     const unassigned = await insertInboxItem(getDb(), {
+      subject: { id: "unassigned", kind: "question" },
       owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],
       body: "Anyone in the thread can answer.",
       conversationIds: [conversationId],
-      dedupeKey: "unassigned",
       kind: "action",
       nowMs: Date.now(),
       request: REQUEST,
       title: "Pick a release name",
-      visibility: "public",
     });
     // Only the item changed, and a poll with the old version reloads.
     const polled = await fixture.request(detailPath(conversationId), {
@@ -364,6 +368,51 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("done");
   });
 
+  it("waits on the person who started Space work, not the Space's creator", async () => {
+    const fixture = await createStatusFixture();
+    // Bob creates the Space, so its Lead, the root of all Space work, is his.
+    const bob = await resolveViewerUser("bob@example.com");
+    const space = await createSpace({
+      creator: bob!,
+      description: null,
+      name: "Release",
+      visibility: "public",
+    });
+    const lead = await getSpaceLead(space.id);
+    const target = {
+      leadConversationId: lead.conversationId,
+      spaceId: space.id,
+    };
+
+    // The viewer starts a dashboard Conversation in the Space.
+    const dashboard = await recordDashboardRoot(
+      fixture.conversationStore,
+      "local:web:status-space-starter",
+    );
+    await expect(setConversationSpace(dashboard, target, null)).resolves.toBe(
+      undefined,
+    );
+    await recordAnswer(dashboard, 1);
+    await expect(fixture.status(dashboard)).resolves.toBe("needs_input");
+    await expect(fixture.tree(dashboard)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    await recordStarterMessage(dashboard);
+    await expect(fixture.status(dashboard)).resolves.toBe("done");
+
+    // A Slack thread that moves into the Space still delivers to Slack, so
+    // an answer that Slack accepted is read.
+    const slack = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000270",
+    );
+    await expect(setConversationSpace(slack, target, null)).resolves.toBe(
+      undefined,
+    );
+    await recordAnswer(slack, 1, Date.now(), "slack");
+    await expect(fixture.status(slack)).resolves.toBe("done");
+  });
+
   it("does not wait on a read when the root has no starter", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordDashboardRoot(
@@ -461,7 +510,7 @@ describe("conversation status", () => {
     const [item] = await getDb()
       .select({ status: juniorInboxItems.status })
       .from(juniorInboxItems)
-      .where(eq(juniorInboxItems.ownerId, conversationId));
+      .where(inboxItemOwnedByConversation(conversationId));
     expect(item?.status).toBe("open");
   });
 });

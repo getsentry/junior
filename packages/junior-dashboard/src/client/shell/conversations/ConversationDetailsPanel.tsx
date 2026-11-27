@@ -1,5 +1,4 @@
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import type { ReactNode } from "react";
 
 import { ConversationDetails } from "./ConversationDetails";
 import { ConversationGlance } from "./ConversationGlance";
@@ -33,8 +32,6 @@ export function ConversationDetailsPanel(props: {
   onClose(): void;
   onOpenSubagent(target: ConversationDrawerTarget): void;
   onSelectMemory(entry: ConversationMemoryEntry): void;
-  /** A Lead's Space: its description, members, and settings. */
-  space?: ReactNode;
 }) {
   const { conversation, detail } = props;
   const showUsageBreakdown = hasConversationUsageBreakdown({
@@ -64,7 +61,6 @@ export function ConversationDetailsPanel(props: {
       onSelectMemory={props.onSelectMemory}
       links={props.links}
       memoryList={props.memoryList}
-      space={props.space}
       overview={
         hasConversationStats({
           conversation,

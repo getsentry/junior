@@ -103,6 +103,19 @@ const requiredChecksReadSchema = z.object({
   }),
 });
 
+const feedbackReviewSchema = reactorsSchema.extend({
+  body: z.string(),
+  comments: z.object({
+    nodes: z.array(
+      reactorsSchema.extend({ databaseId: z.number().nullable() }).nullable(),
+    ),
+    totalCount: z.number(),
+  }),
+  databaseId: z.number().nullable(),
+  state: z.string(),
+  submittedAt: z.string().nullable(),
+});
+
 const reviewAgainSchema = z.object({
   data: z.object({
     repository: z.object({
@@ -121,26 +134,8 @@ const reviewAgainSchema = z.object({
               .nullable(),
           ),
         }),
-        reviews: z.object({
-          nodes: z.array(
-            reactorsSchema
-              .extend({
-                body: z.string(),
-                comments: z.object({
-                  nodes: z.array(
-                    reactorsSchema
-                      .extend({ databaseId: z.number().nullable() })
-                      .nullable(),
-                  ),
-                  totalCount: z.number(),
-                }),
-                databaseId: z.number().nullable(),
-                state: z.string(),
-                submittedAt: z.string().nullable(),
-              })
-              .nullable(),
-          ),
-        }),
+        decision: z.object({ nodes: z.array(feedbackReviewSchema.nullable()) }),
+        reviews: z.object({ nodes: z.array(feedbackReviewSchema.nullable()) }),
         timelineItems: z.object({
           nodes: z.array(
             z
@@ -236,15 +231,7 @@ function requiredChecksPass(
   return true;
 }
 
-// How many of the reviewer's latest reviews `PULL_REQUEST_REVIEW_AGAIN`
-// reads.
-const REVIEWS_READ = 20;
-
-type FeedbackReview = NonNullable<
-  z.output<
-    typeof reviewAgainSchema
-  >["data"]["repository"]["pullRequest"]["reviews"]["nodes"][number]
->;
+type FeedbackReview = z.output<typeof feedbackReviewSchema>;
 
 /**
  * Return the reviews whose comments Junior must mark before it asks again,
@@ -255,36 +242,32 @@ type FeedbackReview = NonNullable<
  * comment-only reviews after a later ask count, so a comment on an
  * approved pull request does not ask again. For others, a comment-only
  * review is left out, so a reply to Junior does not hide their change
- * request. A full page of comment-only reviews can hide older reviews,
- * which count as open.
+ * request. `decided` is read on its own, so a long discussion does not
+ * hide an approval. A long discussion can push older comments out of
+ * `comments`. Junior answers each comment as it comes, so it asks once the
+ * comments it reads are marked, and the discussion does not stall.
  */
 async function feedbackReviews(
-  reviews: FeedbackReview[],
+  decided: FeedbackReview | undefined,
+  comments: FeedbackReview[],
   askedAt: number,
   commentsCount: () => Promise<boolean>,
 ): Promise<FeedbackReview[] | undefined> {
-  let decidedIndex = reviews.length - 1;
-  while (decidedIndex >= 0 && reviews[decidedIndex]?.state === "COMMENTED") {
-    decidedIndex -= 1;
-  }
-  const decided = reviews[decidedIndex];
   // A dismissed review resets the decision, as an approval stands, so only
   // comments after a later ask count (`requesterFeedback`).
   const decidedAt =
     decided?.state === "APPROVED" || decided?.state === "DISMISSED"
       ? Date.parse(decided.submittedAt ?? "")
       : undefined;
-  const comments = reviews
-    .slice(decidedIndex + 1)
-    .filter(
-      (review) =>
-        decidedAt === undefined ||
-        (askedAt > decidedAt && Date.parse(review.submittedAt ?? "") > askedAt),
-    );
+  const since = Date.parse(decided?.submittedAt ?? "");
+  const feedback = comments.filter((review) => {
+    const at = Date.parse(review.submittedAt ?? "");
+    if (decided && !(at > since)) return false;
+    return decidedAt === undefined || (askedAt > decidedAt && at > askedAt);
+  });
   const changeRequest = decided?.state === "CHANGES_REQUESTED";
-  if (comments.length > 0 && (await commentsCount())) {
-    if (decided === undefined && reviews.length >= REVIEWS_READ) return;
-    return changeRequest ? [decided, ...comments] : comments;
+  if (feedback.length > 0 && (await commentsCount())) {
+    return changeRequest ? [decided, ...feedback] : feedback;
   }
   return changeRequest ? [decided] : undefined;
 }
@@ -341,6 +324,7 @@ export async function readReviewAgainReadiness(
     ),
   );
   const reviews = await feedbackReviews(
+    pull.decision.nodes[0] ?? undefined,
     pull.reviews.nodes.filter((review) => review !== null),
     askedAt,
     async () => (await target.isRequester?.()) ?? false,
@@ -500,17 +484,24 @@ export async function dropHeldGitHubReviewAsk(
 export type GitHubReviewAskReason = "checks" | "handled" | "question";
 
 // The tool asks on GitHub, and GitHub's review request webhook shows the
-// item. The mark only needs to outlive that delivery.
+// item. Until then, the mark only needs to outlive that delivery.
 const ASKED_TTL_MS = 60 * 60 * 1000;
+
+// Each sync writes the whole item again, so a shown mark stays and keeps
+// the item's text until the requester acts. A review ask seldom stays open
+// longer. After that, the item shows the general text.
+const SHOWN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const askedSchema = z.object({
   at: z.iso.datetime(),
   // Unset means `handled`.
   reason: z.enum(["handled", "question"]).optional(),
   reviewer: z.string().min(1),
+  /** The item shows the ask, so a later sync does not push it again. */
+  shown: z.boolean().optional(),
 });
 
-/** A review that a Junior tool asked for, until the item shows it. */
+/** A review that a Junior tool asked for, until the requester acts. */
 export type GitHubReviewAsked = z.output<typeof askedSchema>;
 
 function askedKey(target: {
@@ -526,7 +517,11 @@ export async function markGitHubReviewAsked(
   target: { number: number; repositoryFullName: string },
   asked: GitHubReviewAsked,
 ): Promise<void> {
-  await state.set(askedKey(target), askedSchema.parse(asked), ASKED_TTL_MS);
+  await state.set(
+    askedKey(target),
+    askedSchema.parse(asked),
+    asked.shown ? SHOWN_TTL_MS : ASKED_TTL_MS,
+  );
 }
 
 /** Return the review that a Junior tool asked for on one pull request. */
@@ -536,12 +531,4 @@ export async function readGitHubReviewAsked(
 ): Promise<GitHubReviewAsked | undefined> {
   const saved = askedSchema.safeParse(await state.get(askedKey(target)));
   return saved.success ? saved.data : undefined;
-}
-
-/** Drop the record of a review that a Junior tool asked for. */
-export async function dropGitHubReviewAsked(
-  state: PluginState,
-  target: { number: number; repositoryFullName: string },
-): Promise<void> {
-  await state.delete(askedKey(target));
 }

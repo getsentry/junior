@@ -14,13 +14,7 @@ import {
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
-import {
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
@@ -58,7 +52,7 @@ import {
   type ConversationLink,
 } from "./ConversationLinkedWork";
 import { OutboundLink } from "../components/OutboundLink";
-import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { useMobileLayout } from "../layoutMedia";
 import { formatRelativeTime, formatTime } from "../time";
 import { useLiveAnnotations } from "./liveAnnotations";
 
@@ -112,7 +106,7 @@ export function ConversationSidebarAnnotations(props: {
   annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
 }) {
   const annotations = useLiveAnnotations(props.annotations);
-  const isMobile = useIsMobileViewport();
+  const isMobile = useMobileLayout();
   const [side, setSide] = useState<"top" | "bottom">("top");
   if (!annotations?.length) return null;
 
@@ -427,21 +421,6 @@ function SidebarAnnotationStatusChip(props: {
 function sideWithMoreRoom(trigger: Element): "top" | "bottom" {
   const rect = trigger.getBoundingClientRect();
   return rect.top > window.innerHeight - rect.bottom ? "top" : "bottom";
-}
-
-function useIsMobileViewport(): boolean {
-  return useSyncExternalStore(
-    (onStoreChange) => {
-      if (typeof window === "undefined") return () => {};
-      const media = window.matchMedia(MOBILE_LAYOUT_QUERY);
-      media.addEventListener("change", onStoreChange);
-      return () => media.removeEventListener("change", onStoreChange);
-    },
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia(MOBILE_LAYOUT_QUERY).matches,
-    () => false,
-  );
 }
 
 function sidebarAnnotationDetail(annotation: {

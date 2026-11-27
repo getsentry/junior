@@ -9,16 +9,19 @@ import { juniorConversations, juniorIdentities } from "@/db/schema";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationEventStore } from "@/chat/db";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import {
   clearInboxItemDeliveries,
   recordRepeatInboxItemPush,
 } from "@/chat/inbox-items/deliveries";
 import {
   closeReadReplyNotice,
+  closeWaitingReplyNotice,
   hasReadLatestReply,
   upsertReplyNotice,
 } from "@/chat/inbox-items/reply-notice";
 import { isInboxItemOpen } from "@/chat/inbox-items/store";
+import { isConversationWaitingOnUser } from "@/chat/inbox-items/waiting";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
@@ -95,8 +98,10 @@ type SkipReason =
   | "no_user"
   | "not_configured"
   | "outside_hours"
+  | "provider_event"
   | "read"
-  | "slack_paused";
+  | "slack_paused"
+  | "waiting";
 
 function skip(reason: SkipReason): void {
   setSpanAttributes({
@@ -113,11 +118,21 @@ function skip(reason: SkipReason): void {
  * and push the notice to them.
  *
  * Only Conversations without a Location qualify. A Conversation with a
- * Location, such as a Slack thread, already notifies people there.
+ * Location, such as a Slack thread, already notifies people there. A Turn
+ * that a provider Event started, such as a pull request review, adds no
+ * notice: the Event goes to the agent and takes no attention. A core Event,
+ * such as a child agent's update, still does: its reply can be the result
+ * that the starter waits for.
  */
 async function notifyReply(context: PluginTaskContext): Promise<void> {
   const run = await context.run.load();
   if (run.locationId) return skip("has_location");
+  if (
+    run.source.kind === "event" &&
+    run.source.namespace !== CORE_EVENT_NAMESPACE
+  ) {
+    return skip("provider_event");
+  }
   const reply = await readTurnReply(run);
   if (!reply) return skip("no_reply");
   const db = context.db as JuniorDatabase;
@@ -133,6 +148,18 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
       userId,
     });
     return skip("read");
+  }
+
+  // An open action that waits on the starter, such as a question card or a
+  // review request, already has their attention. The check reads the wait
+  // as "Waiting on you" does, so the two agree.
+  if (await isConversationWaitingOnUser(db, run.conversationId, userId)) {
+    await closeWaitingReplyNotice(db, {
+      conversationId: run.conversationId,
+      nowMs: Date.now(),
+      userId,
+    });
+    return skip("waiting");
   }
 
   // The notice and the push hold only a short plain-text preview. Logs

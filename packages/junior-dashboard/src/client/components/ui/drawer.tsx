@@ -82,14 +82,18 @@ function DrawerOverlay({
 function DrawerContent({
   className,
   children,
+  container,
   ...props
-}: DrawerPrimitive.Popup.Props) {
+}: DrawerPrimitive.Popup.Props & {
+  /** Where the drawer's layer mounts. Defaults to the page's end. */
+  container?: DrawerPrimitive.Portal.Props["container"];
+}) {
   const { modal, swipeDirection } = useDrawer();
   const swipeAxis =
     swipeDirection === "down" || swipeDirection === "up" ? "y" : "x";
 
   return (
-    <DrawerPortal>
+    <DrawerPortal container={container}>
       {/* App drawers trap focus without a modal root, so keep the overlay.
           Base UI skips it for a nested drawer. */}
       <DrawerOverlay />

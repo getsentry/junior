@@ -30,10 +30,8 @@ import {
 } from "@/chat/conversations/provenance";
 import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
-import {
-  historyItemFromPiMessage,
-  type PiConversationEventProjection,
-} from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
+import { type PiConversationEventProjection } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { foldSystemMessages } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";

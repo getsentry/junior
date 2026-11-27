@@ -27,7 +27,7 @@ import { cn } from "../styles";
 import { AskKindIcon } from "./askKind";
 import { inboxItemSubjectHref } from "./inboxItemFormat";
 
-type Subject = NonNullable<InboxItemPayload["subject"]>;
+type Subject = InboxItemPayload["subject"];
 
 /**
  * Show the outside object that an item is about, such as a pull request, as
@@ -68,7 +68,7 @@ function SubjectCard(props: {
   const saved = savedCard(detail.data?.annotations, subject, href);
   const card =
     sameTypeCard(live.card, subject.objectType ?? saved?.objectType) ?? saved;
-  const title = card?.title ?? subject.title ?? href ?? subject.id;
+  const title = card?.title ?? subject.object?.title ?? href ?? subject.id;
   const type = card
     ? (card.displayType ?? objectPresentation(card).label)
     : undefined;

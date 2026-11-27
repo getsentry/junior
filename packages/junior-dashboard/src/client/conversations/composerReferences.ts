@@ -1,7 +1,8 @@
 import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 
-import type { ComposerToken } from "./skillReferences";
+import { displayTextWebLinks } from "../display-text/plainText";
+import { composerTokenFinder } from "./composerTypeaheadToken";
 import { CONVERSATION_PATH } from "./conversationRoutes";
 
 /**
@@ -51,22 +52,17 @@ export const composerReferenceSchema = z.discriminatedUnion("kind", [
 
 export type ComposerReference = z.output<typeof composerReferenceSchema>;
 
-// Like `@`: a letter, digit, `_` or `#` before the `#` makes it part of a
-// word, and a `/` or `&` makes it part of a URL or an entity, so `a#b`,
-// `https://x.com/#top` and `&#39;` open no menu.
-const HASH_BEFORE_CARET = /(?<![\p{L}\p{N}_#/&])#([\p{L}\p{N}._/-]*)$/u;
-const HASH_NAME_AFTER_CARET = /^[\p{L}\p{N}._/-]*/u;
-
-/** Find the `#name` reference that a caret at `caret` is in, if any. */
-export function hashTokenAt(
-  text: string,
-  caret: number,
-): ComposerToken | undefined {
-  const match = HASH_BEFORE_CARET.exec(text.slice(0, caret));
-  if (!match) return undefined;
-  const rest = HASH_NAME_AFTER_CARET.exec(text.slice(caret))?.[0] ?? "";
-  return { start: match.index, end: caret + rest.length, query: match[1]! };
-}
+/**
+ * Find the `#name` reference that a caret is in, if any. Like `@`, a
+ * letter, digit, `_` or `#` before the `#` makes it part of a word, and a
+ * `/` or `&` makes it part of a URL or an entity, so `a#b`,
+ * `https://x.com/#top` and `&#39;` open no menu.
+ */
+export const hashTokenAt = composerTokenFinder(
+  String.raw`(?<![\p{L}\p{N}_#/&])#`,
+  String.raw`[\p{L}\p{N}._/-]`,
+  "u",
+);
 
 /**
  * The message text of a reference: a Slack link or channel token that the
@@ -170,21 +166,16 @@ function linkReference(
 }
 
 /**
- * The links of the Conversations, Tasks, and pull requests that message
- * text references, once each, in order. They become the linked work of the
- * Conversation that the message goes to.
+ * The web links of message text, once each, in order: the links that the
+ * transcript shows, whether a reference wrote them or the writer pasted
+ * them. They become the linked work of the Conversation that the message
+ * goes to. The API attaches only a link that names an object that the
+ * sender can see, so no link type is listed here.
  */
 export function linkedWorkUrls(text: string, origin: string): string[] {
-  const urls = new Set<string>();
-  for (const part of splitComposerText(text, origin)) {
-    // A memory is not work, so it links to nothing.
-    if (
-      "reference" in part &&
-      "url" in part.reference &&
-      part.reference.kind !== "memory"
-    ) {
-      urls.add(part.reference.url);
-    }
-  }
-  return [...urls];
+  // A memory is not work, so it links to nothing.
+  return displayTextWebLinks(text).filter((url) => {
+    const parsed = new URL(url);
+    return !(parsed.origin === origin && MEMORY_PATH.test(parsed.pathname));
+  });
 }

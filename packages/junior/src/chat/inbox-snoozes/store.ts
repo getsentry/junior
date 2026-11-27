@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { inboxItemOwnerConversationId } from "@/chat/inbox-items/owner";
 import {
   and,
   eq,
@@ -74,9 +75,8 @@ export function inboxItemInRow(rootConversationId: string): SQL {
       rowRootsOfItem(sql`${juniorInboxItems.id}`),
     ),
     and(
-      eq(juniorInboxItems.ownerKind, "conversation"),
       inArray(
-        juniorInboxItems.ownerId,
+        inboxItemOwnerConversationId(),
         queries
           .select({ id: ownerRoot.conversationId })
           .from(ownerRoot)

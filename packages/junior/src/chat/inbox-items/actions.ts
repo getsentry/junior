@@ -15,15 +15,16 @@ import {
   canActOnInboxItem,
   canAnswerInboxItem,
   canUserReadInboxItem,
-  inboxItemTodo,
   isAutomationAlertItem,
   isInboxItemForEveryone,
   isOnlyAssignee,
   isPluginInboxItem,
 } from "./access";
+import { subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
 import { matchReplyToInboxItems } from "./reply-match";
+import { closeHandledReplyNotices } from "./reply-notice";
 import {
   closeInboxItem,
   getInboxItem,
@@ -32,6 +33,7 @@ import {
   takeInboxItem,
   type InboxItem,
 } from "./store";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * What a person can do with an Inbox item. A To-do's item takes only
@@ -99,13 +101,14 @@ function submittedAnswer(
   item: InboxItem,
   answer: UserInputAnswer | undefined,
 ): UserInputAnswer {
-  if (item.kind !== "action" || !item.request) {
+  const question = inboxItemQuestion(item.request);
+  if (item.kind !== "action" || !question) {
     throw new InboxItemActionError(
       "invalid",
       "Only an action item takes an answer.",
     );
   }
-  const normalized = normalizeUserInputAnswer(item.request, {
+  const normalized = normalizeUserInputAnswer(question, {
     other: answer?.other,
     requestId: item.id,
     values: answer?.values ?? {},
@@ -127,7 +130,9 @@ function submittedAnswer(
  * `exceptConversationId` is the Conversation where the person acted. It gets
  * the person's input from its own surface, so it gets no message here.
  * `delivery` shows the change and sends the messages; see
- * `deliverInboxItemChange`.
+ * `deliverInboxItemChange`. A submit, dismiss, or done also closes the
+ * person's reply notices in the item's Conversations: the item had their
+ * attention.
  */
 export async function actOnInboxItem(args: {
   action: InboxItemAction;
@@ -143,7 +148,7 @@ export async function actOnInboxItem(args: {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
   const item = await readInboxItemForUser(user, args.id);
-  const todo = inboxItemTodo(item);
+  const todo = subjectTodo(item.subject);
   if (todo) {
     if (action !== "done" && action !== "dismiss") {
       throw new InboxItemActionError(
@@ -151,7 +156,13 @@ export async function actOnInboxItem(args: {
         "A To-do item takes only Done or Dismiss.",
       );
     }
-    return await closeTodoItem(item, user, nowMs, action);
+    const closed = await closeTodoItem(item, user, nowMs, action);
+    await closeHandledReplyNotices(db, {
+      item: closed,
+      nowMs,
+      userId: user.id,
+    });
+    return closed;
   }
   if (action === "done") {
     throw new InboxItemActionError(
@@ -218,6 +229,7 @@ export async function actOnInboxItem(args: {
   if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
   }
+  await closeHandledReplyNotices(db, { item: closed, nowMs, userId: user.id });
   // The plugin that added the item does the work, so its answer starts no
   // Turn. A retry of the same answer calls the plugin again.
   if (action === "submit" && isPluginInboxItem(closed)) {
@@ -265,7 +277,7 @@ async function closeTodoItem(
   nowMs: number,
   action: "dismiss" | "done",
 ): Promise<InboxItem> {
-  const todo = inboxItemTodo(item)!;
+  const todo = subjectTodo(item.subject)!;
   if (item.status === "open") {
     if (!canActOnInboxItem(item, user.id)) {
       throw new InboxItemActionError(
@@ -310,8 +322,9 @@ function messageAnswer(
   item: InboxItem,
   text: string,
 ): UserInputAnswer | undefined {
-  if (!item.request) return undefined;
-  const answer = normalizeUserInputAnswer(item.request, {
+  const question = inboxItemQuestion(item.request);
+  if (!question) return undefined;
+  const answer = normalizeUserInputAnswer(question, {
     other: text,
     requestId: item.id,
     values: {},

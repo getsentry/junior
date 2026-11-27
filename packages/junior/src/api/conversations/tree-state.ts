@@ -49,11 +49,10 @@ function needsUserSql(userId: string) {
  * Conversation and every child Conversation at any depth. When more than
  * one applies:
  *
- * - `needs_you`: the tree's `needs_input` includes the viewer. A Review
- *   item or a sign-in wait anywhere in the tree counts. Only the
- *   Conversation's own wait on its starter counts, and only when the
- *   viewer is the starter. Input that waits on another person is not
- *   shown.
+ * - `needs_you`: the tree's `needs_input` includes the viewer. An Inbox
+ *   item, a sign-in wait, or a wait on the starter anywhere in the tree
+ *   counts when it waits on the viewer. Input that waits on another person
+ *   is not shown.
  * - `working`: a Turn is queued or running anywhere in the tree.
  * - `done`: anything else.
  *
@@ -78,10 +77,10 @@ export async function readConversationTreeStates(
   if (conversationIds.length === 0) return new Map();
   const scopeId = conversationSubtreeColumns.scopeConversationId;
   const needsViewer = viewerUserId
-    ? sql<boolean>`bool_or(${needsUserSql(viewerUserId)} or (${eq(
-        juniorConversations.conversationId,
-        scopeId,
-      )} and ${conversationWaitsOnUserSql(juniorConversations, viewerUserId)}))`
+    ? sql<boolean>`bool_or(${needsUserSql(viewerUserId)} or ${conversationWaitsOnUserSql(
+        juniorConversations,
+        viewerUserId,
+      )})`
     : sql<boolean>`false`;
   const rows = await db
     .select({

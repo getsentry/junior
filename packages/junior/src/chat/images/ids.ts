@@ -5,7 +5,7 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import * as z from "zod";
-import { readJuniorSecret } from "@/chat/secrets";
+import { getChatConfig } from "@/chat/config";
 
 const IMAGE_ID_CONTEXT = "junior-image-id";
 
@@ -27,7 +27,7 @@ const imageIdPayloadSchema = z
 export type ImageRef = z.infer<typeof imageIdPayloadSchema>;
 
 function signature(payload: string): string {
-  const secret = readJuniorSecret();
+  const secret = getChatConfig().secrets.juniorSecret;
   if (!secret) throw new Error("Cannot sign image ids without JUNIOR_SECRET");
   return createHmac("sha256", secret)
     .update(`${IMAGE_ID_CONTEXT}:${payload}`)

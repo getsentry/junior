@@ -90,10 +90,14 @@ function readSpans(text: string): Span[] {
   return spans;
 }
 
-/** A repository that the text names, at its source offset. */
+/**
+ * A repository that the text names, at its source offset, with the issue
+ * number when it names one.
+ */
 interface NamedRepository {
   offset: number;
   repository: Repository;
+  issue?: string | undefined;
 }
 
 /**
@@ -111,20 +115,28 @@ function namedRepositories(
     offset: number,
     owner: string | undefined,
     name: string | undefined,
+    issue?: string,
   ) => {
-    if (owner && name) named.push({ offset, repository: { owner, name } });
+    if (owner && name) {
+      named.push({ offset, repository: { owner, name }, issue });
+    }
   };
   for (const span of spans) {
     if (span.url) {
       for (const { groups } of span.url.matchAll(GITHUB_LINKED_URL_PATTERN)) {
-        add(span.start, groups?.["owner"], groups?.["repo"]);
+        add(span.start, groups?.["owner"], groups?.["repo"], groups?.["issue"]);
       }
       continue;
     }
     const source = text.slice(span.start, span.end);
     for (const { groups, index } of source.matchAll(TEXT_REFERENCE_PATTERN)) {
       const offset = span.start + index;
-      add(offset, groups?.["issueOwner"], groups?.["issueRepo"]);
+      add(
+        offset,
+        groups?.["issueOwner"],
+        groups?.["issueRepo"],
+        groups?.["issue"],
+      );
       add(offset, groups?.["commitOwner"], groups?.["commitRepo"]);
     }
     if (!configuredOwner) continue;
@@ -140,25 +152,36 @@ function namedRepositories(
 const repositoryKey = ({ owner, name }: Repository) =>
   `${owner}/${name}`.toLowerCase();
 
+/** Return the one repository of all entries, or none when they differ. */
+function onlyRepository(named: NamedRepository[]): Repository | undefined {
+  const first = named[0]?.repository;
+  return first &&
+    named.every(
+      ({ repository }) => repositoryKey(repository) === repositoryKey(first),
+    )
+    ? first
+    : undefined;
+}
+
 /**
- * Pick the repository of a bare reference at `offset`: the one repository
- * that the text names, else the last one named before the reference when
- * the text names several, else the configured one when it names none.
+ * Pick the repository of a bare reference at `offset`. A bare issue number
+ * that the text also qualifies, such as `#905` after `owner/repo#905`, gets
+ * that repository. Else it gets the one repository that the text names,
+ * else the last one named before the reference when the text names
+ * several, else the configured one when it names none.
  */
 function repositoryAt(
   named: NamedRepository[],
   configured: Repository | undefined,
   offset: number,
+  issue?: string,
 ): Repository | undefined {
   if (named.length === 0) return configured;
-  const first = named[0]!.repository;
-  if (
-    named.every(
-      ({ repository }) => repositoryKey(repository) === repositoryKey(first),
-    )
-  ) {
-    return first;
-  }
+  const qualified = issue
+    ? onlyRepository(named.filter((entry) => entry.issue === issue))
+    : undefined;
+  const only = qualified ?? onlyRepository(named);
+  if (only) return only;
   let nearest: Repository | undefined;
   for (const entry of named) {
     if (entry.offset >= offset) break;
@@ -189,7 +212,7 @@ function linkifyTextReferences(
   context: {
     linkProfiles: boolean;
     mention: (login: string) => string | undefined;
-    repositoryAt: (offset: number) => Repository | undefined;
+    repositoryAt: (offset: number, issue?: string) => Repository | undefined;
   },
 ): string {
   return text.replace(TEXT_REFERENCE_PATTERN, (reference, ...args) => {
@@ -214,7 +237,7 @@ function linkifyTextReferences(
     }
     const repository =
       typeof index === "number"
-        ? context.repositoryAt(start + index)
+        ? context.repositoryAt(start + index, groups["bareIssue"])
         : undefined;
     if (!repository) {
       return reference;
@@ -243,11 +266,12 @@ function linkifyTextReferences(
  * discussion, and commit URLs always become links. `#123`, `GH-123`,
  * `user@sha`, and full SHAs need a repository: the one that the text names,
  * also as a plain `owner/repo` of the configured owner. When it names
- * several, the last one named before the reference wins. When it names
- * none, the `repo` config value is used. Their link labels name the
- * repository. `@login` becomes the
- * `mention` of the known person with that GitHub login. Other logins become
- * GitHub profile links when the text is GitHub text, or names a repository.
+ * several, a qualified reference with the same issue number wins, else
+ * the last one named before the reference. When it names none, the `repo`
+ * config value is used. Their link labels name the repository. `@login`
+ * becomes the `mention` of the known person with that GitHub login. Other
+ * logins become GitHub profile links when the text is GitHub text, or names
+ * a repository.
  * Chat `@name` words are often people who are not GitHub accounts. Set
  * `bareUrls` to keep bare URLs, where the place shows them as cards.
  */
@@ -271,7 +295,8 @@ export function linkifyGitHubReferences(
   const context = {
     linkProfiles: options.githubText === true || named.length > 0,
     mention: options.mention ?? (() => undefined),
-    repositoryAt: (offset: number) => repositoryAt(named, configured, offset),
+    repositoryAt: (offset: number, issue?: string) =>
+      repositoryAt(named, configured, offset, issue),
   };
   let result = "";
   let cursor = 0;

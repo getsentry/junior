@@ -7,6 +7,7 @@ import {
   serviceAccountPlugins,
   startServiceAccountSignIn,
 } from "@/chat/credentials/service-account";
+import { getChatConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -26,12 +27,14 @@ import { requireAdmin } from "../viewer";
 /**
  * Public URL of the OAuth callback for one plugin's service account.
  *
- * It uses the request origin unless `JUNIOR_BASE_URL` is set, so the
+ * It uses the request origin unless a base URL is configured, so the
  * provider sends the Admin back to the dashboard session that started it.
+ * The Vercel URL is not used here: it can name another host than the one
+ * the Admin signed in on.
  */
 function callbackUrl(request: Request, provider: string): string {
   const base =
-    process.env["JUNIOR_BASE_URL"]?.trim() || new URL(request.url).origin;
+    getChatConfig().deployment.configuredBaseUrl ?? new URL(request.url).origin;
   return new URL(
     `api/service-accounts/${encodeURIComponent(provider)}/callback`,
     base.endsWith("/") ? base : `${base}/`,

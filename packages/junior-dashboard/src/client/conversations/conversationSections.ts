@@ -62,22 +62,19 @@ export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
 export type Attention = { group: AttentionGroup; time: number };
 
 /**
- * Group rows in `ATTENTION_GROUPS` order, each group newest first. Groups
- * with no rows are left out. In flight and every Threads list use this
- * order.
+ * Sort rows in `ATTENTION_GROUPS` order, each group newest first. In flight
+ * and every Threads list use this order.
  */
-export function attentionGroups<T>(
+export function attentionSort<T>(
   rows: readonly T[],
   attention: (row: T) => Attention,
-): { group: AttentionGroup; rows: T[] }[] {
-  const read = rows.map((row) => ({ row, ...attention(row) }));
-  read.sort((left, right) => right.time - left.time);
-  return ATTENTION_GROUPS.flatMap((group) => {
-    const grouped = read
-      .filter((item) => item.group === group)
-      .map((item) => item.row);
-    return grouped.length > 0 ? [{ group, rows: grouped }] : [];
+): T[] {
+  const read = rows.map((row) => {
+    const { group, time } = attention(row);
+    return { rank: ATTENTION_GROUPS.indexOf(group), row, time };
   });
+  read.sort((left, right) => left.rank - right.rank || right.time - left.time);
+  return read.map((item) => item.row);
 }
 
 /**
@@ -102,9 +99,7 @@ function conversationAttention(conversation: Conversation): Attention {
 
 /** Sort feed rows in attention order, as In flight shows them. */
 export function attentionOrder(conversations: Conversation[]): Conversation[] {
-  return attentionGroups(conversations, conversationAttention).flatMap(
-    (group) => group.rows,
-  );
+  return attentionSort(conversations, conversationAttention);
 }
 
 /** Sort conversations by their last Message, newest first. */

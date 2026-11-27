@@ -59,6 +59,7 @@ export async function requireConversationChildAgents(
           ? new Date(agent.archivedAtMs).toISOString()
           : null,
       kind: agent.kind,
+      ...(agent.lastResult ? { lastResult: agent.lastResult } : undefined),
       status: agent.status,
       treeState: tree?.treeState ?? "done",
       updatedAt: new Date(agent.updatedAtMs).toISOString(),
@@ -66,9 +67,7 @@ export async function requireConversationChildAgents(
       ...(canExposePayload
         ? {
             ...(agent.agentName ? { name: agent.agentName } : undefined),
-            task: agent.task,
-            ...(agent.title ? { title: agent.title } : undefined),
-            ...(agent.errorMessage ? { error: agent.errorMessage } : undefined),
+            title: agent.title ?? null,
           }
         : { redacted: true as const }),
     };
