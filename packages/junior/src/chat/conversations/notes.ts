@@ -36,22 +36,23 @@ const MAX_CONVERSATION_NOTES_PER_TURN = 20;
 
 /**
  * Attach a core-written note to a Conversation. It does not start a Turn or
- * change Conversation activity. The key makes a retry add nothing. Long text
- * is cut at the end.
+ * change Conversation activity. The key makes a retry add nothing, so the
+ * result is false when a note with the key exists. Long text is cut at the
+ * end.
  */
 export async function addConversationNote(input: {
   conversationId: string;
   createdAtMs: number;
   key: string;
   text: string;
-}): Promise<void> {
+}): Promise<boolean> {
   // One line per note keeps the rendered list unambiguous.
   const line = input.text.replace(/\s+/g, " ").trim();
   const text =
     line.length > MAX_CONVERSATION_NOTE_CHARS
       ? `${line.slice(0, MAX_CONVERSATION_NOTE_CHARS - 1)}…`
       : line;
-  await getConversationEventStore().append(
+  const added = await getConversationEventStore().append(
     input.conversationId,
     [
       {
@@ -68,6 +69,7 @@ export async function addConversationNote(input: {
     ],
     { activity: "preserve" },
   );
+  return added.length > 0;
 }
 
 /**
