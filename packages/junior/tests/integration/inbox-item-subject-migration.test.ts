@@ -228,6 +228,18 @@ describe("inbox item subject migration", () => {
         ),
       ).rejects.toThrow(/duplicate key/);
     } finally {
+      // The worker database outlives this test, so undo the schema changes:
+      // the trigger and index that it removed, and the index of the older
+      // migration that it ran.
+      await fixture.sql.execute(
+        `DROP INDEX IF EXISTS "junior_inbox_items_open_subject_uidx"`,
+      );
+      await fixture.sql.execute(
+        `CREATE UNIQUE INDEX IF NOT EXISTS "junior_inbox_items_open_subject_key_uidx" ON "junior_inbox_items" USING btree ("subject_kind","subject_id") WHERE "junior_inbox_items"."status" = 'open'`,
+      );
+      await fixture.sql.execute(
+        `ALTER TABLE junior_inbox_items ENABLE TRIGGER junior_inbox_items_legacy_subject_question`,
+      );
       await fixture.close();
     }
   });
