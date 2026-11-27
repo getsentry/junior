@@ -151,9 +151,12 @@ export function InboxItemActions(props: {
   }
 
   // A To-do for the viewer closes with Mark done, its main action. A plugin
-  // kind can bring its own, such as Resume.
+  // kind can bring its own, such as Resume. An item added with a question
+  // before kinds had actions shows that question's choice instead.
   const todo = item.todoId !== undefined;
-  const kindActions = item.canAct ? (item.subject.actions ?? []) : [];
+  const question = inboxItemQuestion(item.request);
+  const kindActions =
+    item.canAct && !question ? (item.subject.actions ?? []) : [];
   // A person who may only answer, such as a reader of a public question,
   // gets no Dismiss or Snooze.
   const dismiss = item.canAct && (props.dismiss ?? true);
@@ -212,7 +215,6 @@ export function InboxItemActions(props: {
     </>
   );
 
-  const question = inboxItemQuestion(item.request);
   return (
     <div className="grid gap-3">
       {/* The related links say what the item is about. A question shows

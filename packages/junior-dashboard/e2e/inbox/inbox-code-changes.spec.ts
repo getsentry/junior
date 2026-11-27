@@ -113,6 +113,38 @@ test.describe("new UI", () => {
     ]);
   });
 
+  test("a merge conflict card from before kind actions shows one Resume", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...conflict,
+          request: {
+            question: conflict.body,
+            fields: [
+              {
+                id: "choice",
+                kind: "choice",
+                label: conflict.title,
+                options: [{ label: "Resume" }],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expandRow(rowHead(page, "Keep thread replies in order"));
+    await expect(
+      row(page, "Keep thread replies in order").getByRole("button", {
+        exact: true,
+        name: "Resume",
+      }),
+    ).toHaveCount(1);
+  });
+
   test("a code change row opens its pull request first", async ({
     dashboard,
     page,
