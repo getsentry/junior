@@ -26,7 +26,7 @@ import {
 } from "../fixtures/child-agents";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
-  stoppedConversationMessageTexts,
+  heldInputNoteTexts,
   storeConversationStop,
 } from "../fixtures/conversation";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
@@ -451,9 +451,9 @@ describe("stopping child agents", () => {
         }),
       ).rejects.toThrow("is stopped, so it cannot give work");
       // The child already had the result and the reply in its mailbox. The
-      // stop holds them in one skipped Message, so they start no work.
+      // stop keeps them as Conversation notes, so they start no work.
       await expect(harness.mailbox(childId)).resolves.toEqual([]);
-      const [held] = await stoppedConversationMessageTexts(childId);
+      const held = (await heldInputNoteTexts(childId)).join("\n");
       expect(held).toContain("Helper needs a token.");
       expect(held).toContain("Open helper finding.");
       await expect(listAgents()).resolves.toEqual([

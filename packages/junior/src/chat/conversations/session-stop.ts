@@ -1,18 +1,11 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { STOPPED_CONVERSATION_SKIP_REASON } from "@/chat/conversations/held-input";
-import { toStoredConversationMessage } from "@/chat/conversations/messages";
-import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
-import { instructionForInputs } from "@/chat/agent/prompt";
+import { addConversationNote } from "@/chat/conversations/notes";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isPersonInput } from "@/chat/conversations/kind-behavior";
-import {
-  eventBatchMessageMeta,
-  renderEventBatchInputs,
-} from "@/chat/events/notification";
-import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
-import { normalizeConversationText } from "@/chat/services/conversation-memory";
+import { heldInputNoteText } from "@/chat/events/notification";
 import {
   appendAndEnqueueInboundMessage,
   stopConversationWork,
@@ -57,7 +50,7 @@ async function isHeld(conversationId: string): Promise<boolean> {
  * Accept automated input, such as a Watch Event, a message from another
  * agent, or a child result. This is the only place that holds input. It
  * checks the hold under the mailbox lock, so it cannot race a stop: held
- * input is saved as a skipped Message and never reaches `pending`, and the
+ * input is kept as a Conversation note and never reaches `pending`, and the
  * stop holds input that was appended before it.
  */
 export async function enqueueAutomatedInput(
@@ -272,39 +265,21 @@ export async function resumeForPersonInput(
 }
 
 /**
- * Save held input as one skipped Message, the Message that a Turn would save
- * for it. The next Turn gets it as Turn input (`withHeldInput`). The append
- * is idempotent by Message id, and the Message takes the id of the first
- * input.
+ * Keep held input as Conversation notes, one per input, so the next Turn
+ * sees it the way it sees a Quiet Event. The key is the input's message id,
+ * so a retry adds nothing.
  */
 export async function saveHeldInput(
   conversationId: string,
   messages: readonly InboundMessage[],
 ): Promise<void> {
-  const first = messages[0]!;
-  const { text } = instructionForInputs(
-    renderEventBatchInputs(messages, await eventInboxItemInputs(messages)),
-  );
-  const stored = toStoredConversationMessage({
-    id: first.inboundMessageId,
-    role: "user",
-    text: normalizeConversationText(text),
-    createdAtMs: first.createdAtMs,
-    ...(first.input.authorIdentityId
-      ? { authorIdentityId: first.input.authorIdentityId }
-      : undefined),
-    meta: {
-      replied: false,
-      skippedReason: STOPPED_CONVERSATION_SKIP_REASON,
-      ...eventBatchMessageMeta(messages),
-    },
-  });
-  const { createdAtMs, ...data } = stored;
-  await getConversationEventStore().append(conversationId, [
-    {
-      idempotencyKey: `message:${stored.messageId}`,
-      createdAtMs,
-      data: { type: "message", ...data },
-    },
-  ]);
+  for (const message of messages) {
+    // oxlint-disable-next-line no-await-in-loop -- Keep the held order.
+    await addConversationNote({
+      conversationId,
+      createdAtMs: message.createdAtMs,
+      key: `held_input:${message.inboundMessageId}`,
+      text: heldInputNoteText(message),
+    });
+  }
 }

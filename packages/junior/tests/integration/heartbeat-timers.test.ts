@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { messageChildAgent } from "@/chat/child-agents/create";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { stopConversation } from "@/chat/conversations/stop";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { createWatch, takeDueTimerWatches } from "@/chat/events/store";
@@ -22,7 +23,7 @@ import {
 import {
   closeConversationFixture,
   createConversationWebHarness,
-  stoppedConversationMessageTexts,
+  heldInputNoteTexts,
 } from "../fixtures/conversation";
 import { runTestHeartbeat } from "../fixtures/conversation-work";
 import { context, execute } from "../fixtures/event-automations";
@@ -227,9 +228,7 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   clock.mockReturnValue(clock() + 120_000);
   await drain();
   expect(agentRuns).toHaveLength(0);
-  const saved = (await stoppedConversationMessageTexts(conversationId)).join(
-    "\n",
-  );
+  const saved = (await heldInputNoteTexts(conversationId)).join("\n");
   expect(saved).toContain("Check the deployment.");
   expect(saved).toContain("Check much later.");
   expect(saved).toContain("Check after the stop.");
@@ -245,18 +244,18 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   await expect(fixture.status(conversationId)).resolves.toBe("working");
   await drain();
   expect(agentRuns).toHaveLength(1);
-  // The held Events are Turn input, before the person's message.
+  // The held Events reach the Turn as Conversation notes, not as Turn input
+  // or thread context.
   const { context: threadContext, inputs } = agentRuns[0]!.instruction;
   expect(threadContext).toBeUndefined();
-  expect(inputs?.map((input) => input.kind)).toEqual([
-    "runtime",
-    "runtime",
-    "runtime",
-    "person",
-  ]);
-  const instruction = JSON.stringify(inputs);
-  expect(instruction).toContain("Check much later.");
-  expect(instruction).toContain("Keep watching.");
+  expect(inputs?.map((input) => input.kind)).toEqual(["person"]);
+  expect(JSON.stringify(inputs)).toContain("Keep watching.");
+  const notes = await loadTurnConversationNotes({
+    conversationId,
+    turnId: agentRuns[0]!.turnId,
+  });
+  expect(notes).toHaveLength(3);
+  expect(notes.join("\n")).toContain("Check much later.");
   // The starter has not read the reply yet.
   await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   await expect(
@@ -315,7 +314,7 @@ it("keeps a root stopped when the stop drops queued input", async () => {
   clock.mockReturnValue(clock() + 120_000);
   await drain();
   expect(agentRuns).toHaveLength(0);
-  expect(await stoppedConversationMessageTexts(conversationId)).toEqual([
+  expect(await heldInputNoteTexts(conversationId)).toEqual([
     expect.stringContaining("Check the deployment."),
   ]);
 
@@ -339,7 +338,7 @@ it("keeps a root stopped when the stop drops queued input", async () => {
   clock.mockReturnValue(clock() + 120_000);
   await drain();
   expect(agentRuns).toHaveLength(0);
-  expect(await stoppedConversationMessageTexts(conversationId)).toEqual([
+  expect(await heldInputNoteTexts(conversationId)).toEqual([
     expect.stringContaining("Check the deployment."),
     expect.stringContaining("Deploy succeeded."),
     expect.stringContaining("Check again later."),
@@ -398,9 +397,9 @@ it("saves a stopped child's timers until a person writes to its root", async () 
   clock.mockReturnValue(clock() + 120_000);
   await drain();
   expect(agentRuns).toHaveLength(1);
-  expect(
-    await stoppedConversationMessageTexts(child.childConversationId),
-  ).toEqual([expect.stringContaining("Check soon.")]);
+  expect(await heldInputNoteTexts(child.childConversationId)).toEqual([
+    expect.stringContaining("Check soon."),
+  ]);
 
   // A person's message to the root ends the stop of the child too, so its
   // next timer starts the child.
@@ -445,9 +444,7 @@ it("saves a stopped child's timers until a person writes to its root", async () 
   expect(
     agentRuns.filter((run) => run.conversationId === child.childConversationId),
   ).toHaveLength(1);
-  expect(
-    await stoppedConversationMessageTexts(child.childConversationId),
-  ).toEqual([
+  expect(await heldInputNoteTexts(child.childConversationId)).toEqual([
     expect.stringContaining("Check soon."),
     expect.stringContaining("Check much later."),
   ]);
@@ -525,9 +522,7 @@ it("runs a timer on a root whose last Turn failed", async () => {
   await drain();
   expect(agentRuns).toHaveLength(3);
   expect(agentRuns[2]!.source).toMatchObject({ kind: "event" });
-  await expect(
-    stoppedConversationMessageTexts(conversationId),
-  ).resolves.toEqual([]);
+  await expect(heldInputNoteTexts(conversationId)).resolves.toEqual([]);
 });
 
 it("holds a timer that arrives while a stop of its root runs", async () => {
@@ -548,9 +543,9 @@ it("holds a timer that arrives while a stop of its root runs", async () => {
   await Promise.all([stopConversation({ conversationId, queue }), drain()]);
   await drain();
   expect(agentRuns).toHaveLength(0);
-  await expect(
-    stoppedConversationMessageTexts(conversationId),
-  ).resolves.toEqual([expect.stringContaining("Check the deployment.")]);
+  await expect(heldInputNoteTexts(conversationId)).resolves.toEqual([
+    expect.stringContaining("Check the deployment."),
+  ]);
   expect(
     (await getConversationWorkState({ conversationId }))?.execution
       .pendingMessages,
@@ -592,9 +587,9 @@ it("leaves a running attempt's timer to its Turn when a stop holds the rest", as
 
   // The Turn saves the running timer. The stop holds only the waiting one.
   expect(await pending()).toEqual([running]);
-  await expect(
-    stoppedConversationMessageTexts(conversationId),
-  ).resolves.toEqual([expect.stringContaining("Check again.")]);
+  await expect(heldInputNoteTexts(conversationId)).resolves.toEqual([
+    expect.stringContaining("Check again."),
+  ]);
 
   // The attempt ends without saving its timer. The next worker holds it and
   // starts no Turn.
@@ -613,9 +608,7 @@ it("leaves a running attempt's timer to its Turn when a stop holds the rest", as
   await drain();
   expect(await pending()).toEqual([]);
   expect(agentRuns).toHaveLength(0);
-  await expect(
-    stoppedConversationMessageTexts(conversationId),
-  ).resolves.toEqual([
+  await expect(heldInputNoteTexts(conversationId)).resolves.toEqual([
     expect.stringContaining("Check again."),
     expect.stringContaining("Check once."),
   ]);

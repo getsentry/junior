@@ -35,7 +35,7 @@ import {
   createPublishChildTurn,
 } from "../fixtures/child-agents";
 import {
-  stoppedConversationMessageTexts,
+  heldInputNoteTexts,
   storeConversationStop,
   webTestActor,
 } from "../fixtures/conversation";
@@ -911,7 +911,7 @@ describe("child Turns on the Conversation loop", () => {
       await expect(
         listWatches({ conversationId: childId, state: harness.state }),
       ).resolves.toHaveLength(1);
-      await expect(stoppedConversationMessageTexts(childId)).resolves.toEqual([
+      await expect(heldInputNoteTexts(childId)).resolves.toEqual([
         expect.stringContaining("getsentry/junior#3796 has merge conflicts."),
         expect.stringContaining("getsentry/junior#3796 has merge conflicts."),
       ]);

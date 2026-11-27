@@ -29,7 +29,7 @@ import {
 import {
   closeConversationFixture,
   createConversationFixture,
-  stoppedConversationMessageTexts,
+  heldInputNoteTexts,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import {
@@ -456,9 +456,9 @@ describe("conversation stop API", () => {
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
     ).resolves.toEqual([]);
-    await expect(
-      stoppedConversationMessageTexts(created.conversationId),
-    ).resolves.toEqual([]);
+    await expect(heldInputNoteTexts(created.conversationId)).resolves.toEqual(
+      [],
+    );
     await expect(
       work.process(queue.takeMessageFor(created.conversationId)),
     ).resolves.toMatchObject({ status: "no_work" });

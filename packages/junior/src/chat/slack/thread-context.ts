@@ -1,4 +1,3 @@
-import { isHeldInputMessage } from "@/chat/conversations/held-input";
 import { loadThreadContextCursor } from "@/chat/conversations/thread-context";
 import { isEventConversationMessage } from "@/chat/events/actor";
 import { authorAttrs, renderThreadContext } from "@/chat/input-tags";
@@ -119,8 +118,6 @@ export function buildConversationContext(
     (entry) =>
       !options.excludeMessageIds?.includes(entry.id) &&
       !isTakeOrDismissOnly(entry) &&
-      // Held input reaches the next Turn as Turn input.
-      !isHeldInputMessage(entry) &&
       (!history ||
         (isUntaggedThreadMessage(entry) &&
           (history.afterSeq === undefined ||

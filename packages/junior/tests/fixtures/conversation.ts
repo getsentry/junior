@@ -22,7 +22,7 @@ import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
-import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import { conversationNoteEvent } from "@/chat/conversations/structured-events";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   closeDb,
@@ -291,15 +291,25 @@ export async function storeConversationStop(
     .where(eq(juniorConversations.conversationId, conversationId));
 }
 
-/** Return the texts of Messages that saved Events for a stopped Conversation. */
-export async function stoppedConversationMessageTexts(
+/** Return the texts of the notes that keep input a stopped Conversation held. */
+export async function heldInputNoteTexts(
   conversationId: string,
 ): Promise<string[]> {
-  const history =
-    await getConversationEventStore().loadMessageHistory(conversationId);
-  return projectConversationMessages(history)
-    .filter((message) => message.meta?.skippedReason === "stopped conversation")
-    .map((message) => message.text);
+  const { events } = await getConversationEventStore().query(conversationId, {
+    limit: 1_000,
+    types: ["structured_event"],
+  });
+  return events.flatMap(({ data }) => {
+    if (
+      data.type !== "structured_event" ||
+      data.name !== conversationNoteEvent.eventName
+    ) {
+      return [];
+    }
+    // The schema makes `text` a string.
+    const text = conversationNoteEvent.parse(data.content)["text"] as string;
+    return text.startsWith("This Conversation was stopped") ? [text] : [];
+  });
 }
 
 /** Run a mailbox Turn worker on the mailbox work of one queue message. */
