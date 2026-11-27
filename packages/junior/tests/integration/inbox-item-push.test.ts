@@ -328,6 +328,14 @@ describe("inbox item push", () => {
       tag: single.item.id,
       title: "Roll back the deploy?",
     });
+    // A question too long for the title shows only its cut title.
+    const long = `Roll back the deploy? ${"It failed its canary checks. ".repeat(10)}`;
+    const longAsk = await execute(tools.add, {
+      assignees: ["ana@example.com"],
+      questions: ask(long.trim()),
+    });
+    expect(pushes[2]).toMatchObject({ body: "", tag: longAsk.item.id });
+    expect(pushes[2]!.title).toMatch(/…$/);
 
     // Web Push cannot close a notification by itself. The next push tells
     // the phone to close the push of the ask that closed.
@@ -336,7 +344,7 @@ describe("inbox item push", () => {
       status: "dismissed",
       reason: "Deploy rolled back",
     });
-    expect(pushes).toHaveLength(2);
+    expect(pushes).toHaveLength(3);
     // The close clears its deliveries in its own statement. If that failed,
     // the retry of the close shows the item again, and that clears them.
     await getDb()
@@ -345,7 +353,7 @@ describe("inbox item push", () => {
       .where(eq(juniorInboxItemDeliveries.itemId, added.item.id));
     await syncInboxItemPush(added.item.id);
     const next = await execute(tools.add, ASK);
-    expect(pushes[2]).toMatchObject({
+    expect(pushes[3]).toMatchObject({
       close: [added.item.id],
       tag: next.item.id,
     });

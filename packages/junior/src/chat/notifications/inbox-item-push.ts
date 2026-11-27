@@ -180,13 +180,17 @@ async function deliverPush(args: {
   }
   // The payload holds only a short plain-text preview. The tag replaces an
   // earlier push of the item on the device. An ask of one question has it as
-  // both title and body, so the push shows it once.
+  // both title and body, or a long one as its body and the cut title, so the
+  // push shows it once.
+  const repeatsTitle =
+    item.body === item.title ||
+    (item.title.endsWith("…") && item.body.startsWith(item.title.slice(0, -1)));
   await sendPushNotificationToUser({
     config: args.config,
     db,
     kind: args.kind,
     payload: {
-      body: item.body === item.title ? "" : notificationPreview(item.body),
+      body: repeatsTitle ? "" : notificationPreview(item.body),
       tag: item.id,
       title: item.title,
       url: args.url,
