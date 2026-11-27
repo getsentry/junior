@@ -12,9 +12,13 @@ import {
 import type { InboundMessage } from "@/chat/task-execution/store";
 
 function sameCreator(left: WatchCreator, right: WatchCreator): boolean {
-  return left.actor || right.actor
-    ? sameActorIdentity(left.actor, right.actor)
-    : left.plugin === right.plugin;
+  return (
+    left.brief === right.brief &&
+    left.plugin === right.plugin &&
+    (left.actor || right.actor
+      ? sameActorIdentity(left.actor, right.actor)
+      : true)
+  );
 }
 
 /**

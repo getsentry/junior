@@ -3,15 +3,24 @@ import { messageChildAgent } from "@/chat/child-agents/create";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { enqueueEventNotification } from "@/chat/events/notification";
-import { createWatch, takeDueTimerWatches } from "@/chat/events/store";
+import {
+  createWatch,
+  getWatch,
+  takeDueTimerWatches,
+} from "@/chat/events/store";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { createListWatchesTool } from "@/chat/tools/list-watches";
 import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
 import { createWatchTimerTool } from "@/chat/tools/watch-timer";
+import { readRootConversation } from "@/chat/child-agents/root-conversation";
+import { guardianMessages } from "@/chat/guardian/request";
 import {
   createConversationId,
   recordWebConversationActivity,
 } from "@/chat/conversations/web-input";
+import { readTurnWatch } from "@/chat/events/turn-watch";
+import { getConversationEventStore, getDb } from "@/chat/db";
+import { findActorIdentityId } from "@/chat/identities/actor";
 import {
   claimConversationAttempt,
   ensureConversationWake,
@@ -21,6 +30,7 @@ import {
 } from "@/chat/task-execution/store";
 import {
   closeConversationFixture,
+  createConversationFixture,
   createConversationWebHarness,
   stoppedConversationMessageTexts,
 } from "../fixtures/conversation";
@@ -58,6 +68,78 @@ async function timerConversation() {
   };
   return { ...fixture, conversationId, tools };
 }
+
+// A Watch Turn serves the instruction that set it (`follows-instruction`).
+it("gives a timer Turn's Guardian the creator's lines and the intent", async () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+  const { actor, conversationStore, queue } = await createConversationFixture();
+  const conversationId = createConversationId({
+    actorEmail: actor.email,
+    idempotencyKey: "timer-creator",
+  });
+  await recordWebConversationActivity({
+    actor,
+    conversationId,
+    conversationStore,
+    nowMs: clock(),
+  });
+  const request = "watch the export deploy and tell me when it lands";
+  // The person's request, saved by the Turn that set the timer.
+  await getConversationEventStore().append(conversationId, [
+    {
+      createdAtMs: clock(),
+      data: {
+        authorIdentityId: await findActorIdentityId(getDb(), actor),
+        messageId: "request",
+        role: "user",
+        text: request,
+        type: "message",
+      },
+    },
+  ]);
+  const watchTimer = createWatchTimerTool({
+    ...context(),
+    conversationId,
+    watchCreator: { actor },
+  });
+  const intent = "Check the export deploy.";
+  const timer = (await execute(watchTimer, { after_ms: 60_000, intent })) as {
+    id: string;
+  };
+  expect((await getWatch({ id: timer.id }))?.creator).toEqual({ actor });
+
+  clock.mockReturnValue(clock() + 60_000);
+  await runTestHeartbeat(queue, clock());
+  const pending = (await getConversationWorkState({ conversationId }))!
+    .execution.pendingMessages;
+  const watch = readTurnWatch(
+    pending.filter((message) => message.source === "event"),
+  );
+  expect(watch?.creator).toEqual({ actor });
+
+  const messages = guardianMessages({
+    context: {
+      actor: { platform: "system", name: "event" },
+      conversationId,
+      destination: { platform: "local", conversationId },
+      source: { kind: "event" } as never,
+      userIntent: "",
+      watch: watch!,
+    },
+    input: {},
+    rootConversation: await readRootConversation({
+      actor: watch!.creator.actor,
+      conversationId,
+    }),
+    tool: { description: "Run a command.", name: "bash" },
+  });
+  expect(messages).toEqual(
+    expect.arrayContaining([
+      { from: "instruction", text: request },
+      { from: "instruction", text: `Watch intent: ${intent}` },
+    ]),
+  );
+});
 
 it("delivers timers once through heartbeat and keeps existing Watch controls", async () => {
   const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);

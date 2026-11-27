@@ -575,7 +575,11 @@ export async function wireAgentTools(
                   ? args.run.instruction.provenance.actor
                   : args.currentActor?.platform !== "system"
                     ? args.currentActor
-                    : agentWatch?.creator.actor,
+                    : // A brief that set the Watch is its creator's
+                      // instruction, so the read labels it as one.
+                      agentWatch?.creator.brief
+                      ? undefined
+                      : agentWatch?.creator.actor,
                 conversationId: args.run.conversationId,
               }),
           }

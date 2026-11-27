@@ -9,11 +9,16 @@ import type { ConversationMessageProvenance } from "@/chat/conversations/provena
 import type { EventTaskFacts } from "@/chat/events/notification";
 
 /**
- * The person whose instruction the Watch serves, or no Actor when an agent's
- * brief set it. `plugin` names the plugin whose code wrote the intent.
+ * The person whose instruction the Watch serves. `brief` marks a Watch that a
+ * Run set from an agent's brief: the brief is that person's instruction
+ * there. `plugin` names the plugin whose code wrote the intent.
  */
 export const watchCreatorSchema = z
-  .object({ actor: actorSchema.optional(), plugin: z.string().optional() })
+  .object({
+    actor: actorSchema.optional(),
+    brief: z.literal(true).optional(),
+    plugin: z.string().optional(),
+  })
   .strict();
 
 export type WatchCreator = z.output<typeof watchCreatorSchema>;
@@ -28,10 +33,11 @@ export interface TurnWatch {
 }
 
 /**
- * Return who sets a Watch in this Run: the requester of the Run's
- * instructions, the same one whose lines Guardian reads. A Watch Turn passes
- * on its own creator. A Run with no requester, such as another Event Turn,
- * sets a Watch with no creator.
+ * Return who sets a Watch in this Run: the person whose instruction the Run
+ * serves. A Run that follows an agent's brief, such as a child, serves the
+ * person the brief serves, its Actor. A Watch Turn passes on its own
+ * creator. A Run with no requester, such as another Event Turn, sets a Watch
+ * with no creator.
  */
 export function watchCreatorFor(run: {
   actor?: Actor | undefined;
@@ -43,14 +49,13 @@ export function watchCreatorFor(run: {
     const { plugin: _plugin, ...creator } = run.watch.creator;
     return creator;
   }
+  const person =
+    run.actor && run.actor.platform !== "system" ? run.actor : undefined;
   if (run.provenance) {
-    return run.provenance.authority === "instruction"
-      ? run.provenance.actor
-        ? { actor: run.provenance.actor }
-        : {}
-      : undefined;
+    if (run.provenance.authority !== "instruction") return undefined;
+    return run.provenance.actor
+      ? { actor: run.provenance.actor }
+      : { ...(person ? { actor: person } : undefined), brief: true };
   }
-  return run.actor && run.actor.platform !== "system"
-    ? { actor: run.actor }
-    : undefined;
+  return person ? { actor: person } : undefined;
 }

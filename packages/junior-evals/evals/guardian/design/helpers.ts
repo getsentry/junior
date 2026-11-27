@@ -69,8 +69,8 @@ export const GITHUB_PR_WATCH_INTENT =
 
 /**
  * Context of a Turn that a Watch Event started. Core stores who set the
- * Watch: by default the person whose Turn set it, or an agent whose brief
- * did (`creator: "agent"`). `plugin` names a plugin that wrote the intent.
+ * Watch: the person whose Turn set it, or whose agent's brief did
+ * (`creator: "agent"`). `plugin` names a plugin that wrote the intent.
  */
 export function watchTurnContext(args: {
   about: string;
@@ -100,7 +100,8 @@ export function watchTurnContext(args: {
     credential: { actor: EVENT_ACTOR },
     watch: {
       creator: {
-        ...(args.creator === "agent" ? undefined : { actor: person }),
+        actor: person,
+        ...(args.creator === "agent" ? { brief: true as const } : undefined),
         ...(args.plugin ? { plugin: args.plugin } : undefined),
       },
       events: [

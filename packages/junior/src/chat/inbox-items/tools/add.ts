@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as z from "zod";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import {
@@ -44,7 +45,7 @@ import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * Pick the assignees of a new item when the agent names none: the User of
- * the Actor, or else the creator of the Automation of this run. A Turn with
+ * the Actor, or else the creator of this run's Automation or Watch. A Turn with
  * a system Actor, such as an event Turn, or an app Actor falls back to the
  * active Participants of the Conversation, except the app. A Slack Actor
  * without a Junior User gets an item with no assignees, so that the agent can
@@ -53,12 +54,13 @@ import { inboxItemQuestion } from "@/chat/inbox-items/request";
 async function defaultAssignees(
   scope: InboxItemAgentScope,
   conversationId: string,
+  watchCreatorUserId: string | undefined,
 ): Promise<ResolvedAssignees> {
   const userId =
     scope.user?.id ??
     (scope.reader.automationId
       ? await automationCreatorUserId(getDb(), scope.reader.automationId)
-      : undefined);
+      : watchCreatorUserId);
   if (userId) return { everyone: false, userIds: [userId] };
   if (scope.actorIsPerson) return { everyone: false, userIds: [] };
   const participants = await activeParticipantUserIds(getDb(), conversationId);
@@ -89,7 +91,7 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .nullable()
         .optional()
         .describe(
-          "Who can act on the item. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
+          "Who can act on the item. Omit for the person in this Turn, else the Automation creator in an Automation run or the Watch creator in a Watch Turn, else the people still subscribed to the Conversation.",
         ),
       request: requestInputSchema
         .nullable()
@@ -120,6 +122,10 @@ export function createAddInboxItemTool(
       const related = relatedInput(input.request?.related);
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
+      const watchCreator = context.watchCreator?.actor;
+      const watchCreatorUserId = watchCreator
+        ? (await readActorIdentity(watchCreator))?.user?.id
+        : undefined;
       // Each call asks a new question. A retry of the same tool call keeps
       // the same question id, so it cannot add a second item.
       const subject = questionSubject(
@@ -155,7 +161,11 @@ export function createAddInboxItemTool(
             scope.tenant,
             services.findMentionedUserId,
           )
-        : await defaultAssignees(scope, context.conversationId);
+        : await defaultAssignees(
+            scope,
+            context.conversationId,
+            watchCreatorUserId,
+          );
       // Only an assignee gets the item in their Inbox count. A Turn
       // without a person, such as one that an app asked for, has nobody to
       // show it to, so it needs an assignee.
@@ -171,6 +181,7 @@ export function createAddInboxItemTool(
       await requireInboxItemAssignees({
         assignees,
         automationId: scope.reader.automationId,
+        watchCreatorUserId,
         conversationIds: [context.conversationId],
         scope,
         visibility,

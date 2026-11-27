@@ -27,7 +27,12 @@ import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation
 
 type Context = Pick<
   ToolRuntimeContext,
-  "actorIsApp" | "conversationId" | "resolveActorIdentity" | "source" | "turnId"
+  | "actorIsApp"
+  | "conversationId"
+  | "resolveActorIdentity"
+  | "source"
+  | "turnId"
+  | "watchCreator"
 >;
 
 // Parse the input first, as the agent runtime does.
@@ -515,6 +520,19 @@ describe("inbox item tools", () => {
       .where(eq(juniorConversationParticipants.userId, ana.id));
     const left = await execute(eventTurn("local:web:shared").add, ask);
     expect(left.item.assignees).toEqual([ben.email]);
+
+    // A Watch Turn asks the person who set the Watch, also after they
+    // unsubscribed (`ask-covers-one`).
+    const watchTurn = tools({
+      conversationId: "local:web:shared",
+      resolveActorIdentity: asActor(undefined),
+      source: { kind: "event" } as any,
+      watchCreator: {
+        actor: { platform: "web", email: ana.email!, userId: ana.id },
+      },
+    });
+    const watched = await execute(watchTurn.add, ask);
+    expect(watched.item.assignees).toEqual([ana.email]);
 
     // With no Participant, no person would see the item.
     await conversation("slack:CPUB:1.000001", "CPUB", "public");

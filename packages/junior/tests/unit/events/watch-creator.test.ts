@@ -11,7 +11,7 @@ describe("watchCreatorFor", () => {
         actor: person,
         provenance: { authority: "instruction" },
       }),
-    ).toEqual({});
+    ).toEqual({ actor: person, brief: true });
     expect(
       watchCreatorFor({ actor: { platform: "system", name: "event" } }),
     ).toBeUndefined();

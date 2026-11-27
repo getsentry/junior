@@ -67,7 +67,12 @@ export const bodySchema = z
 /** Runtime context that the Inbox item tools read. */
 export type InboxItemToolContext = Pick<
   ToolRuntimeContext,
-  "actorIsApp" | "conversationId" | "resolveActorIdentity" | "source" | "turnId"
+  | "actorIsApp"
+  | "conversationId"
+  | "resolveActorIdentity"
+  | "source"
+  | "turnId"
+  | "watchCreator"
 >;
 
 /** What app setup gives the Inbox item tools. */
