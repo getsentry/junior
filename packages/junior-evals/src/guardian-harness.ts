@@ -43,7 +43,7 @@ export interface GuardianEvalOutput extends Record<string, JsonValue> {
   userAuthorization: string;
 }
 
-function resolveGuardianModelId(): string {
+export function resolveGuardianModelId(): string {
   const configured = process.env["AI_GUARDIAN_MODEL"]?.trim();
   if (configured) {
     return configured;

@@ -1,6 +1,9 @@
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
+import { appendGitHubFooter } from "../src/conversation-footer";
+import { normalizeGitHubPullRequestConversations } from "../src/webhooks/pull-request-outcome";
+import { memoryCodeIndex, type MemoryCodeIndex } from "./code-index";
 
 const ATTRIBUTED_BODY = `Original body
 
@@ -703,5 +706,112 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       name: "Error",
       message: "GitHub pull request update failed with HTTP 500: Server Error",
     });
+  });
+});
+
+describe("updatePullRequest call facts", () => {
+  const ROOT = "slack:C123:123.456";
+  const CHILD = "agent:child-1";
+  const tool = createGitHubUpdatePullRequestTool();
+
+  /** Junior's code records with PR #691, which the bot opened for ROOT. */
+  function ownPullRequest(conversationIds = [ROOT]) {
+    const index = memoryCodeIndex();
+    index.seed({
+      conversationIds,
+      number: 691,
+      openedAt: new Date("2026-01-01T00:00:00Z"),
+      providerId: "9001",
+      repository: { name: "getsentry/junior", providerId: "42" },
+      state: "open",
+      updatedAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    return index;
+  }
+
+  async function describeUpdate(
+    input: Record<string, unknown>,
+    index: MemoryCodeIndex,
+    conversationIds = [ROOT],
+  ) {
+    return await tool.describeCall?.(
+      { repo: "getsentry/junior", pull_request: 691, ...input } as never,
+      {
+        codeChanges: index.codeChanges,
+        conversationIds: async () => conversationIds,
+      },
+    );
+  }
+
+  it("calls a title or body update of the bot's own PR upkeep", async () => {
+    await expect(
+      describeUpdate(
+        { title: "New title", body: "New body" },
+        ownPullRequest(),
+      ),
+    ).resolves.toMatchObject({
+      effect: "upkeep",
+      target: {
+        ref: "getsentry/junior#691",
+        audience: "world",
+        createdByThisWork: true,
+      },
+    });
+  });
+
+  it("counts the PR as this work's in a child of the Conversation that opened it", async () => {
+    await expect(
+      describeUpdate({ body: "New body" }, ownPullRequest(), [CHILD, ROOT]),
+    ).resolves.toMatchObject({ target: { createdByThisWork: true } });
+  });
+
+  it("does not count a PR that only an annotation names", async () => {
+    // The Conversation has an annotation for #691, but Junior's code
+    // records do not.
+    await expect(
+      describeUpdate({ body: "New body" }, memoryCodeIndex()),
+    ).resolves.toMatchObject({ target: { createdByThisWork: false } });
+  });
+
+  it("does not count a PR that a person opened, also with Junior's footer", async () => {
+    // Only the bot's own PRs become code changes, and the webhook links
+    // Conversations only when the bot authored the PR.
+    const conversations = normalizeGitHubPullRequestConversations({
+      body: {
+        pull_request: {
+          body: appendGitHubFooter("Copied description", ROOT),
+          id: 9001,
+          user: { login: "octocat" },
+        },
+        repository: { full_name: "getsentry/junior" },
+        sender: { login: "octocat" },
+      },
+      botEmail: "123+junior[bot]@users.noreply.github.com",
+    });
+
+    expect(conversations).toBeUndefined();
+    await expect(
+      describeUpdate({ body: "New body" }, memoryCodeIndex()),
+    ).resolves.toMatchObject({ target: { createdByThisWork: false } });
+  });
+
+  it.each([
+    { state: "closed" },
+    { draft: false },
+    { base: "release" },
+    { request_review: true },
+  ])("calls an update that also sets %o a write", async (change) => {
+    await expect(
+      describeUpdate({ body: "New body", ...change }, ownPullRequest()),
+    ).resolves.toMatchObject({ effect: "write" });
+  });
+
+  it("does not count a PR linked to an unrelated Conversation", async () => {
+    await expect(
+      describeUpdate(
+        { body: "New body" },
+        ownPullRequest(["slack:C999:999.999"]),
+      ),
+    ).resolves.toMatchObject({ target: { createdByThisWork: false } });
   });
 });

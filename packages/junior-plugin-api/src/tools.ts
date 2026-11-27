@@ -434,18 +434,48 @@ export function missingToolAnnotationKeys(
 /**
  * Canonical approval metadata declared by core and plugin tools.
  */
-export interface ToolApprovalMetadata<TInput = unknown> {
+export interface ToolApprovalMetadata {
   /** Optional declared approval mode; the owning tool boundary selects defaults. */
   approvalMode?: ToolApprovalMode | undefined;
   annotations?: ToolAnnotations;
+}
+
+/**
+ * Stored facts that core gives `describeCall`. Each one comes from core or
+ * the plugin's own records, never from the agent.
+ */
+export interface ToolCallContext {
+  /** The plugin's code changes in Junior's code records. */
+  codeChanges: Pick<PluginCodeChanges, "list">;
   /**
-   * Describe the reviewed semantic action for the review request.
-   *
-   * Core owns authoritative tool, actor, source, destination, conversation,
-   * credential, and input data. This description adds domain-specific context
-   * only and is never an authorization grant.
+   * This Conversation, its ancestors up to its root, and its descendants:
+   * the work that this call serves. Core reads them only when called.
    */
-  describeProposal?(input: TInput): string;
+  conversationIds(): Promise<string[]>;
+}
+
+/** Who can read a target. Core counts an unknown audience as `world`. */
+export type ToolCallAudience = "internal" | "world";
+
+/** The resource that one call changes. */
+export interface ToolCallTarget {
+  /** Such as `getsentry/junior#12`. */
+  ref: string;
+  audience: ToolCallAudience;
+  /** Upkeep applies only to what this work made. */
+  createdByThisWork: boolean;
+}
+
+/**
+ * What one call does. `sandbox` stays in the Sandbox, `read` reads,
+ * `upkeep` keeps a resource of the work consistent, `write` changes or
+ * sends something, and `delete` removes something.
+ */
+export interface ToolCallDescription {
+  effect: "sandbox" | "read" | "upkeep" | "write" | "delete";
+  target?: ToolCallTarget;
+  /** One plain sentence about the call, such as its target and side effects. */
+  summary: string;
 }
 
 /**
@@ -474,7 +504,19 @@ export interface PluginToolDefinition<
   TOutput = unknown,
   TExecuteOutput = TOutput,
   TContext = ToolRegistrationHookContext,
-> extends ToolApprovalMetadata<TInput> {
+> extends ToolApprovalMetadata {
+  /**
+   * Describe what one call does, for Guardian (`facts-from-junior` in
+   * `design/guardian.md`). Read the target from stored records only, never
+   * from what tool input or a tool result claims. A tool without this hook
+   * is a `read` when it is marked read-only and not destructive, and a
+   * `write` otherwise. It runs before review, so it must not write
+   * anything.
+   */
+  describeCall?(
+    input: TInput,
+    ctx: ToolCallContext,
+  ): ToolCallDescription | Promise<ToolCallDescription>;
   description: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */

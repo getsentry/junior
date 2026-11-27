@@ -90,8 +90,14 @@ import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/core-model";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
+import { createAgentGuardian } from "@/chat/guardian/agent/guardian";
 import { createCurrentGuardian } from "@/chat/guardian/current";
+import type { GuardianBatch } from "@/chat/guardian/gate";
+import type { Guardian } from "@/chat/guardian/guardian";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
+import { readSandboxRepos } from "@/chat/guardian/command-call";
 import { createToolActionReview } from "@/chat/guardian/gate";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
 import { guardianPluginFacts } from "@/chat/guardian/policy";
@@ -239,6 +245,25 @@ interface ToolWiringArgs {
   surface: AgentTurnSurface;
   toolCalls: string[];
   userInput: string;
+}
+
+/**
+ * The Guardian that reviews tool actions. The `guardian-agent` experimental
+ * feature selects the agent Guardian. The current Guardian is the default.
+ */
+function selectedGuardian(): (batch: GuardianBatch) => Guardian {
+  const options = {
+    completeObject,
+    destinationFacts: guardianPluginFacts(
+      pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+    ),
+    modelId: botConfig.guardianModelId,
+  };
+  if (isExperimentalFeatureEnabled("guardian-agent")) {
+    return (batch) => createAgentGuardian(options, batch);
+  }
+  const reviewer = createGuardianActionReviewer(options);
+  return (batch) => createCurrentGuardian(reviewer, batch);
 }
 
 /** Record optional reporting without changing the loadSkill outcome. */
@@ -517,13 +542,6 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
-  const reviewer = createGuardianActionReviewer({
-    completeObject,
-    destinationFacts: guardianPluginFacts(
-      pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
-    ),
-    modelId: botConfig.guardianModelId,
-  });
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
@@ -553,6 +571,14 @@ export async function wireAgentTools(
               }),
           }
         : undefined),
+      // Only a running Sandbox has checkouts, so review never starts one.
+      sandboxRepos: async () =>
+        agentSandbox.sandboxRef()
+          ? await readSandboxRepos(
+              agentSandbox.workspace,
+              SANDBOX_WORKSPACE_ROOT,
+            )
+          : [],
     },
     onDecision: ({ toolCallId, toolName, decision }) =>
       recordGuardianActionReviewed({
@@ -565,7 +591,7 @@ export async function wireAgentTools(
         rule: decision.rule,
       }),
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
-    guardian: (batch) => createCurrentGuardian(reviewer, batch),
+    guardian: selectedGuardian(),
   });
   const skills = loadableSkills(args.availableSkills, [
     ...args.invokedSkillNames,

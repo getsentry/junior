@@ -91,14 +91,17 @@ export const createCalendarEventTool = definePluginTool({
     openWorldHint: true,
     readOnlyHint: false,
   },
-  describeProposal(input) {
+  describeCall(input) {
     const optional = input.optional_attendees.length
       ? ` (optional: ${input.optional_attendees.join(", ")})`
       : "";
     const repeat = input.repeat
       ? `, repeating ${recurrenceRule(input.repeat)}`
       : "";
-    return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
+    return {
+      effect: "write",
+      summary: `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`,
+    };
   },
   description:
     "Create a Google Calendar event organized by your own Google account and email invites to the attendees. Every event gets a Google Meet link. You can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",

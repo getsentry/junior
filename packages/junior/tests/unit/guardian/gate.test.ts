@@ -131,7 +131,10 @@ describe("tool action review", () => {
         openWorldHint: true,
         readOnlyHint: false,
       },
-      describeProposal: ({ reportId }) => `Generate report ${reportId}.`,
+      describeCall: ({ reportId }) => ({
+        effect: "write",
+        summary: `Generate report ${reportId}.`,
+      }),
       identity: {
         id: "scheduler.generateReport",
         name: "generateReport",
@@ -424,7 +427,7 @@ describe("tool action review", () => {
     [
       "proposal description",
       (tool: AnyToolDefinition, failure: Error) => {
-        tool.describeProposal = () => {
+        tool.describeCall = () => {
           throw failure;
         };
         return {};
@@ -573,6 +576,60 @@ describe("tool action review", () => {
         permission: "review",
       },
     ]);
+  });
+
+  it("reviews a shell command by the checkouts that it can reach", async () => {
+    const requests: ReviewRequest[] = [];
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Push the fix.",
+        sandboxRepos: async () => [
+          {
+            path: "/vercel/sandbox/repos/demo",
+            remote: "https://example.com/demo.git",
+          },
+        ],
+      },
+      guardian: () => ({
+        review: async (request) => {
+          requests.push(request);
+          return request.actions.map(() => ({
+            decision: "allow" as const,
+            reason: "The person asked for the push.",
+          }));
+        },
+      }),
+      onDecision: vi.fn(async () => undefined),
+    });
+
+    await reviewToolAction(
+      "tool-call",
+      "bash",
+      definition({ approvalMode: "auto" }),
+      { command: "git push", cwd: "/vercel/sandbox/repos/demo" },
+      actionReview,
+    );
+
+    expect(requests[0]!.actions[0]!.call).toEqual({
+      effect: "command",
+      summary: "git push",
+      // No plugin knows the remote, so the world can read it.
+      repos: [
+        {
+          path: "/vercel/sandbox/repos/demo",
+          target: {
+            ref: "https://example.com/demo.git",
+            audience: "world",
+            createdByThisWork: false,
+          },
+        },
+      ],
+      placeholders: [],
+    });
   });
 
   it("fails closed when the Guardian decision cannot be recorded", async () => {

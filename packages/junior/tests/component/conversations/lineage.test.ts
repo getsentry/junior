@@ -2,6 +2,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readConversationLineage } from "@/chat/conversations/lineage";
+import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore, type SqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations } from "@/db/schema";
@@ -69,6 +70,22 @@ describe("Conversation lineage", () => {
       { conversationId: ROOT_ID, kind: "thread" },
     ]);
     await expect(readConversationLineage("agent:missing")).resolves.toEqual([]);
+  });
+
+  it("reads the ancestors and descendants of a Conversation, not its siblings", async () => {
+    await store.createChild({
+      childConversationId: "agent:sibling",
+      kind: "task",
+      parentConversationId: ROOT_ID,
+      nowMs: 4_000,
+    });
+
+    const ids = await readAncestorAndDescendantIds(fixture.sql.db(), CHILD_ID);
+
+    expect(ids.sort()).toEqual([CHILD_ID, GRANDCHILD_ID, ROOT_ID].sort());
+    await expect(
+      readAncestorAndDescendantIds(fixture.sql.db(), "agent:missing"),
+    ).resolves.toEqual(["agent:missing"]);
   });
 
   it("stops a parent cycle at the first repeated Conversation", async () => {

@@ -84,7 +84,10 @@ function demoPluginTool(
       openWorldHint: false,
       readOnlyHint: true,
     },
-    describeProposal: () => `${description} proposal`,
+    describeCall: () => ({
+      effect: "write",
+      summary: `${description} proposal`,
+    }),
     description,
     exposure,
     inputSchema: z.object({}),
@@ -697,9 +700,9 @@ describe("agent plugin hooks", () => {
         description: "Agent demo",
       });
       expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("review");
-      expect(tools["agentDemo_demoTool"]?.describeProposal?.({})).toBe(
-        "Demo tool proposal",
-      );
+      expect(
+        (await tools["agentDemo_demoTool"]?.describeCall?.({}))?.summary,
+      ).toBe("Demo tool proposal");
       expect(tools["agentDemo_demoTool"]?.disabledReason).toBeUndefined();
       expect(tools["agentDemo_writeTool"]?.disabledReason).toBe(
         "Read-only Turn.",

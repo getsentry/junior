@@ -32,6 +32,7 @@ import {
 import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "../conversation-footer.js";
+import { pullRequestTarget } from "../tool-support/pull-request-target.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -266,6 +267,26 @@ export function createGitHubUpdatePullRequestTool(
     },
     description:
       "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
+    async describeCall(input, ctx) {
+      const target = await pullRequestTarget(
+        input.repo,
+        input.pull_request,
+        ctx,
+      );
+      // Only a title or body update keeps the pull request current.
+      // Merging, closing, reopening, a draft change, a new base, or a new
+      // review request is not upkeep.
+      const textOnly =
+        input.base === undefined &&
+        input.state === undefined &&
+        input.draft === undefined &&
+        input.request_review === undefined;
+      return {
+        effect: textOnly ? "upkeep" : "write",
+        ...(target ? { target } : undefined),
+        summary: `Update pull request ${target?.ref ?? input.pull_request}.`,
+      };
+    },
     inputSchema,
     outputSchema,
     async execute(

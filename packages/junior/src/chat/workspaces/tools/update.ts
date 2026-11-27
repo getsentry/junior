@@ -25,8 +25,10 @@ export function updateWorkspaceToolDefinition(
     exposure: "deferred",
     source: WORKSPACES_TOOL_SOURCE,
     approvalMode: "review",
-    describeProposal: ({ id: _id, ...input }) =>
-      describeWorkspaceWrite("Replace", input),
+    describeCall: ({ id: _id, ...input }) => ({
+      effect: "write",
+      summary: describeWorkspaceWrite("Replace", input),
+    }),
     executionMode: "sequential",
     annotations: {
       destructiveHint: true,

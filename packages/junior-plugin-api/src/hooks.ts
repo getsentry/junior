@@ -37,6 +37,7 @@ import type {
   PluginEgress,
   PluginToolDefinition,
   SandboxPrepareHookContext,
+  ToolCallTarget,
   ToolRegistrationHookContext,
   WorkspacePrepareHookContext,
   WorkspaceFinalize,
@@ -189,6 +190,13 @@ export interface PluginHooks {
     | Promise<{ objectAnnotations: ObjectAnnotation[] } | void>
     | { objectAnnotations: ObjectAnnotation[] }
     | void;
+  /**
+   * Return the target behind a remote URL of this plugin's provider, such as
+   * the repository of a Git remote, or nothing for another URL. Guardian
+   * reviews a shell command with it. Read who can see the target from stored
+   * records only, and return `world` when they do not say.
+   */
+  describeUrl?(url: URL): Promise<ToolCallTarget | undefined>;
   /**
    * Select the grant for one sandbox egress request.
    *

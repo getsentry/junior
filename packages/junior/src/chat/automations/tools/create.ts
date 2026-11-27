@@ -225,7 +225,10 @@ export function createAutomationTool(
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
-    describeProposal: describeDelivery,
+    describeCall: (input) => ({
+      effect: "write",
+      summary: describeDelivery(input),
+    }),
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

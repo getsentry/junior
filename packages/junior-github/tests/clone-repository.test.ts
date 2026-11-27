@@ -32,18 +32,18 @@ describe("cloneRepository", () => {
       readOnlyHint: true,
     });
     expect(
-      tool.describeProposal?.({
+      tool.describeCall?.({
         directory: "repos/junior",
         repo: "getsentry/junior",
-      }),
+      })?.summary,
     ).toBe(
       "Shallow-clone getsentry/junior into the local sandbox at repos/junior for inspection (no GitHub mutation).",
     );
     expect(
-      tool.describeProposal?.({
+      tool.describeCall?.({
         allow_ad_hoc: true,
         repo: "getsentry/junior",
-      }),
+      })?.summary,
     ).toBe(
       "Shallow-clone getsentry/junior into the local sandbox as an intentional ad-hoc checkout for inspection (no GitHub mutation).",
     );

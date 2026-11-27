@@ -12,7 +12,7 @@ import { googlePlugin } from "@sentry/junior-google";
 import { vercelPlugin } from "@sentry/junior-vercel";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { proposalTool } from "@/chat/guardian/gate";
+import { proposalTool, toolActionNeedsReview } from "@/chat/guardian/gate";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { createTools } from "@/chat/tool-support/create-tools";
@@ -22,7 +22,8 @@ import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 
 /**
  * MCP tools come from the provider's server at run time. These are copies of
- * what the Linear server returns, as the MCP tool manager resolves them.
+ * what the Linear and Notion servers return, as the MCP tool manager resolves
+ * them.
  */
 const MCP_TOOLS: ManagedMcpTool[] = [
   {
@@ -53,6 +54,21 @@ const MCP_TOOLS: ManagedMcpTool[] = [
     rawName: "save_issue",
     parameters: {},
     provider: "linear",
+    execute: unavailable,
+  },
+  {
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
+    description:
+      "[notion] Update a Notion page's properties, content, icon, or cover.",
+    name: "mcp__notion__notion-update-page",
+    rawName: "notion-update-page",
+    parameters: {},
+    provider: "notion",
     execute: unavailable,
   },
 ];
@@ -143,10 +159,37 @@ export async function agentToolSpec(
   if (!tool) {
     throw new Error(`The agent has no tool named ${name}.`);
   }
+  let summary: string | undefined;
+  try {
+    summary = (await tool.describeCall?.(input))?.summary;
+  } catch {
+    // A GitHub pull request tool reads Junior's code records for its call
+    // facts, and the evals have no database. Its proposal has no summary.
+    summary = undefined;
+  }
   return proposalTool(
     name,
     tool,
-    input,
     await tool.resolveApprovalMetadata?.(input),
+    summary,
+  );
+}
+
+/**
+ * Whether the gate sends this call to Guardian. A call that it does not
+ * review runs. A tool that the agent does not have is reviewed.
+ */
+export async function gateReviews(
+  tool: ToolActionProposal["tool"],
+  input: Record<string, unknown>,
+): Promise<boolean> {
+  agentTools ??= buildAgentTools();
+  const definition = (await agentTools)[tool.dispatcherName ?? tool.name];
+  if (!definition) {
+    return true;
+  }
+  return toolActionNeedsReview(
+    definition,
+    await definition.resolveApprovalMetadata?.(input),
   );
 }

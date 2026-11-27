@@ -43,6 +43,10 @@ export function guardianMessages(proposal: ToolActionProposal): Message[] {
   if (author === "automation") {
     messages.push({ from: "instruction", text: context.userIntent });
   }
+  // Lead policy needs to know the Run is a Space's Lead (`handoff-check`).
+  if (context.lead) {
+    messages.push({ from: "context", text: "[This Run is a Space's Lead.]" });
+  }
   if (rootConversation?.truncated) {
     messages.push({ from: "context", text: "[Older messages are not shown.]" });
   }

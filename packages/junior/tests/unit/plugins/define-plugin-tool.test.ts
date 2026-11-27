@@ -14,7 +14,7 @@ const countResultSchema = pluginToolOutputSchema.extend({
 });
 
 describe("definePluginTool", () => {
-  it("preserves approval metadata", () => {
+  it("preserves approval metadata", async () => {
     const tool = definePluginTool({
       approvalMode: "review",
       annotations: {
@@ -23,7 +23,10 @@ describe("definePluginTool", () => {
         openWorldHint: true,
         readOnlyHint: true,
       },
-      describeProposal: ({ query }) => `Search for ${query}.`,
+      describeCall: ({ query }) => ({
+        effect: "read",
+        summary: `Search for ${query}.`,
+      }),
       description: "Schedule a meeting.",
       inputSchema: z.object({ query: z.string() }),
       outputSchema: countResultSchema,
@@ -38,7 +41,11 @@ describe("definePluginTool", () => {
       readOnlyHint: true,
     });
     const input = tool.prepareArguments?.({ query: "errors" });
-    expect(tool.describeProposal?.(input!)).toBe("Search for errors.");
+    const call = await tool.describeCall?.(input!, {
+      codeChanges: { list: async () => [] },
+      conversationIds: async () => [],
+    });
+    expect(call?.summary).toBe("Search for errors.");
     expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
   });
 

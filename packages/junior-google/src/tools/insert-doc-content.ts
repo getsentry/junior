@@ -47,8 +47,11 @@ export const insertGoogleDocContentTool = definePluginTool({
     openWorldHint: true,
     readOnlyHint: false,
   },
-  describeProposal(input) {
-    return `Add ${input.content.length} characters of content to the ${input.position} of Google Doc ${input.document}.`;
+  describeCall(input) {
+    return {
+      effect: "write",
+      summary: `Add ${input.content.length} characters of content to the ${input.position} of Google Doc ${input.document}.`,
+    };
   },
   description:
     "Add Markdown content, such as a plan or an agenda, to the start or end of a Google Doc as your own Google account. Existing content stays. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link.",

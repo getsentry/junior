@@ -19,7 +19,7 @@ import {
   addPriorRejection,
   projectToolActionRejection,
 } from "@/chat/guardian/history";
-import type { Action, Guardian, Review } from "@/chat/guardian/guardian";
+import type { Action, Call, Guardian, Review } from "@/chat/guardian/guardian";
 import type {
   RootConversation,
   ScriptCallStatus,
@@ -29,6 +29,12 @@ import type {
   ToolActionScript,
 } from "@/chat/guardian/proposal";
 import { defaultCall, guardianMessages } from "@/chat/guardian/request";
+import {
+  commandCall,
+  credentialPlaceholders,
+  type SandboxRepo,
+} from "@/chat/guardian/command-call";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -46,6 +52,8 @@ export interface ToolActionReviewContext {
   evidence?: () => ToolActionEvidence;
   /** Read the Run's own Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
+  /** Read the Git checkouts of the Sandbox when a command needs review. */
+  sandboxRepos?: () => Promise<SandboxRepo[]>;
 }
 
 /** One exact tool call that the agent asked to run. */
@@ -321,6 +329,7 @@ function buildProposal(
   priorRejections: ToolActionPriorRejection[],
   rootConversation: RootConversation | undefined,
   script: ToolAction["script"],
+  described: Call | undefined,
 ): ToolActionProposal {
   const credential = actionCredential(context.credentialContext);
   return {
@@ -344,7 +353,7 @@ function buildProposal(
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     ...(script ? { script: boundedScript(script) } : undefined),
-    tool: proposalTool(toolName, tool, input, resolved),
+    tool: proposalTool(toolName, tool, resolved, described?.summary),
   };
 }
 
@@ -392,13 +401,13 @@ function boundedScript(
 export function proposalTool(
   toolName: string,
   tool: AnyToolDefinition,
-  input: Record<string, unknown>,
   resolved: ToolApprovalResolution | undefined,
+  /** The summary of the tool's own `describeCall`, when it has one. */
+  proposalDescription: string | undefined,
 ): ToolActionProposal["tool"] {
   const name = resolved?.name ?? toolName;
   const annotations = resolved?.annotations ?? tool.annotations;
   const catalogSource = resolved?.source ?? tool.source;
-  const proposalDescription = tool.describeProposal?.(input);
   return {
     ...(annotations ? { annotations } : undefined),
     description: resolved?.description ?? tool.description,
@@ -456,6 +465,18 @@ function mayNeedReview(tool: AnyToolDefinition): boolean {
   return tool.approvalMode !== undefined && tool.approvalMode !== "approve";
 }
 
+/** Whether the gate sends a call of `tool` to Guardian, given its resolved metadata. */
+export function toolActionNeedsReview(
+  tool: AnyToolDefinition,
+  resolved: ToolApprovalResolution | undefined,
+): boolean {
+  if (!mayNeedReview(tool)) {
+    return false;
+  }
+  // Each mode other than `auto`, also one that is not known, needs review.
+  return tool.approvalMode !== "auto" || autoActionNeedsReview(tool, resolved);
+}
+
 /** One action that Guardian must review, with the gate's proposal for it. */
 interface PreparedReview {
   action: Action;
@@ -473,11 +494,11 @@ async function prepareToolActionReview(
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  // Each mode other than `auto`, also one that is not known, needs review.
-  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool, resolved)) {
+  if (!toolActionNeedsReview(tool, resolved)) {
     return;
   }
   assertAuthoritativeContext(context);
+  const described = await tool.describeCall?.(input);
   const proposal = buildProposal(
     action.toolName,
     tool,
@@ -488,14 +509,26 @@ async function prepareToolActionReview(
     // Read at review time, so a later message in the root counts.
     await context.rootConversation?.(),
     action.script,
+    described,
   );
   return {
     action: {
       tool: proposal.tool.name,
-      call: defaultCall(
-        resolved?.annotations ?? tool.annotations,
-        proposal.tool.proposalDescription ?? proposal.tool.name,
-      ),
+      // Guardian reviews a shell command by what it can reach.
+      call:
+        action.toolName === "bash"
+          ? await commandCall({
+              input,
+              repos: (await context.sandboxRepos?.()) ?? [],
+              placeholders: credentialPlaceholders(
+                getPlugins().map((plugin) => plugin.manifest),
+              ),
+            })
+          : (described ??
+            defaultCall(
+              resolved?.annotations ?? tool.annotations,
+              proposal.tool.name,
+            )),
       input,
       permission: "review",
     },

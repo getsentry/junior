@@ -22,8 +22,10 @@ export const vimeoReplaceFileTool = definePluginTool({
   },
   description:
     "Replace the file of a Vimeo video with a new render from the sandbox. The video keeps its ID, hash, privacy, and embed domains, so links to it need no change. Vimeo processes the new file in the background.",
-  describeProposal: (input) =>
-    `Replace the file of Vimeo video ${input.video_id} with ${input.path}`,
+  describeCall: (input) => ({
+    effect: "write",
+    summary: `Replace the file of Vimeo video ${input.video_id} with ${input.path}`,
+  }),
   inputSchema: z
     .object({
       video_id: videoIdSchema,

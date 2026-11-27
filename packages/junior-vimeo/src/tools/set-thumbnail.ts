@@ -27,8 +27,10 @@ export const vimeoSetThumbnailTool = definePluginTool({
   },
   description:
     "Set the poster thumbnail of a Vimeo video from a JPEG or PNG in the sandbox. The new image replaces the active thumbnail.",
-  describeProposal: (input) =>
-    `Set the thumbnail of Vimeo video ${input.video_id} from ${input.path}`,
+  describeCall: (input) => ({
+    effect: "write",
+    summary: `Set the thumbnail of Vimeo video ${input.video_id} from ${input.path}`,
+  }),
   inputSchema: z
     .object({
       video_id: videoIdSchema,
