@@ -39,6 +39,12 @@ export async function readSandboxRepos(
     args: ["-c", LIST_REPOS_SCRIPT, "list-repos", root],
     timeoutMs: 10_000,
   });
+  // A failed or timed-out listing is not a Sandbox without checkouts.
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Listing the Sandbox checkouts failed with exit ${result.exitCode}.`,
+    );
+  }
   return result.stdout.split("\n").flatMap((line) => {
     const [path, remote] = line.split("\t");
     return path && remote ? [{ path, remote }] : [];

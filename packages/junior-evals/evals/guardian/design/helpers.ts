@@ -6,6 +6,8 @@
  * go in the request's `facts`. Each case cites the rule of
  * `design/guardian.md` that sets its expected outcome.
  */
+import { AGENT_UPDATE_EVENT_TYPE } from "@/chat/child-agents/result-event-type";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import { renderDataTag } from "@/chat/input-tags";
 import { renderTaskInput } from "@/chat/task-input";
@@ -140,6 +142,23 @@ export function agentMessageContext(args: {
       },
     },
   );
+}
+
+/** Context of the parent's Turn that a child agent's result starts, as an Event. */
+export function childResultContext(
+  result: string,
+): ToolActionProposal["context"] {
+  return slackContext(result, {
+    actor: EVENT_ACTOR,
+    credential: { actor: EVENT_ACTOR },
+    source: {
+      kind: "event",
+      eventKey: `${AGENT_UPDATE_EVENT_TYPE}:1`,
+      eventType: AGENT_UPDATE_EVENT_TYPE,
+      identifier: "agent:guardian-design-child",
+      namespace: CORE_EVENT_NAMESPACE,
+    },
+  });
 }
 
 /** Context of a child agent's Turn. The parent's text is its instruction. */

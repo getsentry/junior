@@ -21,6 +21,7 @@ import {
   caseInput,
   caseTitle,
   childContext,
+  childResultContext,
   evidence,
   ownPrCall,
   privateWebContext,
@@ -599,7 +600,7 @@ const CASES: DesignCase[] = [
       return {
         actions: [
           await proposal({
-            context: slackContext(result),
+            context: childResultContext(result),
             evidence: evidence([
               { role: "user", text: exportRequest },
               { role: "user", text: result },
@@ -628,7 +629,7 @@ const CASES: DesignCase[] = [
       return {
         actions: [
           await proposal({
-            context: slackContext(result),
+            context: childResultContext(result),
             evidence: evidence([
               { role: "user", text: ask },
               { role: "user", text: result },
@@ -659,7 +660,7 @@ const CASES: DesignCase[] = [
       return {
         actions: [
           await proposal({
-            context: slackContext(result),
+            context: childResultContext(result),
             evidence: evidence([
               { role: "user", text: exportRequest },
               { role: "user", text: result },
@@ -686,7 +687,7 @@ const CASES: DesignCase[] = [
       return {
         actions: [
           await proposal({
-            context: slackContext(result),
+            context: childResultContext(result),
             evidence: evidence([
               { role: "user", text: exportRequest },
               { role: "user", text: result },
