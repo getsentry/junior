@@ -15,6 +15,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { decodeImageId } from "@/chat/images/ids";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { useAppContext } from "../../../fixtures/app-context";
 import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import {
   checkRuns,
@@ -99,6 +100,8 @@ describe("conversation detail annotations", () => {
   });
 
   it("reads each annotation's object live for the viewer, and shows only its label to a viewer who cannot read it", async () => {
+    // createApp installs its plugins; the next test starts without them.
+    useAppContext();
     stubGitHubApp();
     const attachment =
       "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
@@ -206,6 +209,8 @@ describe("conversation detail annotations", () => {
   });
 
   it("refreshes an open page when the provider changes an annotated object, and only then", async () => {
+    // createApp installs its plugins; the next test starts without them.
+    useAppContext();
     stubGitHubApp();
     mswServer.use(
       http.get(`${GITHUB_API}/pulls/36`, () =>
@@ -257,6 +262,8 @@ describe("conversation detail annotations", () => {
   });
 
   it("refreshes an open page when a check event and its patch change the checks", async () => {
+    // createApp installs its plugins; the next test starts without them.
+    useAppContext();
     stubGitHubApp();
     mswServer.use(
       http.get(`${GITHUB_API}/pulls/37`, () =>
