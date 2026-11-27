@@ -18,7 +18,13 @@ export function createRecordingDelivery() {
       if (failure) {
         throw failure;
       }
-      return { providerMessageId: `message-${sends.length}` };
+      return {
+        providerMessageId: `message-${sends.length}`,
+        // A Slack reply goes to its Destination's thread.
+        ...(destination.platform === "slack" && destination.threadTs
+          ? { providerConversationId: destination.threadTs }
+          : undefined),
+      };
     },
   };
   return {

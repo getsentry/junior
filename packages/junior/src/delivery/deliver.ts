@@ -10,6 +10,7 @@ import { logException } from "@/chat/logging";
 import type { EngineContext } from "@/core/engine-context";
 import { publishTurnEnded, type TurnEndedMessage } from "@/core/turn/ended";
 import { replyText } from "@/core/turn/replies";
+import { writeLegacyReplyDelivered } from "@/delivery/legacy-turn-ended";
 import {
   juniorConversationEvents,
   juniorTurnOutbox,
@@ -26,7 +27,11 @@ export type Delivery = {
     conversationId: string;
     destination: Destination;
     text: string;
-  }) => Promise<{ providerMessageId?: string }>;
+  }) => Promise<{
+    providerMessageId?: string;
+    /** The provider thread that the reply went to, such as a Slack thread. */
+    providerConversationId?: string;
+  }>;
 };
 
 /**
@@ -114,6 +119,7 @@ async function sendNextRow(
   const [row] = await db
     .select({
       id: juniorTurnOutbox.id,
+      turnId: juniorTurnOutbox.turnId,
       eventSeq: juniorTurnOutbox.eventSeq,
       destination: juniorTurnOutbox.destination,
       attempts: juniorTurnOutbox.attempts,
@@ -163,19 +169,9 @@ async function sendNextRow(
   if (!text) {
     return markFailed("The event is not a reply");
   }
+  let result: Awaited<ReturnType<Delivery["send"]>>;
   try {
-    const result = await delivery.send({ conversationId, destination, text });
-    const now = new Date();
-    await db
-      .update(juniorTurnOutbox)
-      .set({
-        state: "sent",
-        sentAt: now,
-        updatedAt: now,
-        providerMessageId: result.providerMessageId ?? null,
-      })
-      .where(eq(juniorTurnOutbox.id, row.id));
-    return { kind: "settled" };
+    result = await delivery.send({ conversationId, destination, text });
   } catch (error) {
     const attempts = row.attempts + 1;
     if (
@@ -202,6 +198,37 @@ async function sendNextRow(
       .where(eq(juniorTurnOutbox.id, row.id));
     return { kind: "settled" };
   }
+  // A failed write after the send is not a failed send, so it is not caught.
+  const now = new Date();
+  await db
+    .update(juniorTurnOutbox)
+    .set({
+      state: "sent",
+      sentAt: now,
+      updatedAt: now,
+      providerMessageId: result.providerMessageId ?? null,
+    })
+    .where(eq(juniorTurnOutbox.id, row.id));
+  await writeLegacyReplyDelivered(
+    { executor },
+    {
+      conversationId,
+      turnId: row.turnId,
+      reply: {
+        eventSeq: row.eventSeq,
+        text,
+        createdAtMs: now.getTime(),
+        destination,
+        ...(result.providerMessageId
+          ? { providerMessageId: result.providerMessageId }
+          : undefined),
+      },
+      ...(result.providerConversationId
+        ? { providerConversationId: result.providerConversationId }
+        : undefined),
+    },
+  );
+  return { kind: "settled" };
 }
 
 /**

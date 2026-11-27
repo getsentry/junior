@@ -52,7 +52,10 @@ describe("deployment Delivery", () => {
       }),
     ]);
     expect(posts[0]?.params["text"]).toContain("Three.");
-    expect(sent).toEqual({ providerMessageId: expect.any(String) });
+    expect(sent).toEqual({
+      providerMessageId: expect.any(String),
+      providerConversationId: "1700000000.000100",
+    });
   });
 
   it("fails a send that Slack can take later as retryable", async () => {
