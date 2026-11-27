@@ -6,6 +6,7 @@ import {
   toolCallsOf,
   toolOutput,
   type ToolCall,
+  type Turn,
 } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -215,20 +216,35 @@ describe("Lead", () => {
     );
 
     const [first, ...later] = conversation.turns;
-    // The Lead may start the follow-up Thread in the first Turn too, told
-    // to wait. The first archive of a first-Turn Thread is the merge check.
-    const childIds = completedToolCalls("startAgent", {
+    // The Lead may also start the changelog Thread in the first Turn, told
+    // to wait. The merge check is the Thread whose brief names the PR.
+    const starts = completedToolCalls("startAgent", {
       toolCalls: first?.toolCalls ?? [],
-    }).map(
-      (call) =>
-        (toolOutput(call) as { conversation_id?: unknown }).conversation_id,
+    });
+    const namesPr = (call: ToolCall) =>
+      String(input(call)["task"] ?? "").includes(MERGED_PULL_REQUEST);
+    const check =
+      starts.find(
+        (call) =>
+          namesPr(call) && !/changelog/i.test(String(input(call)["task"])),
+      ) ?? starts.find(namesPr);
+    expect(check).toBeDefined();
+    const checkId = (toolOutput(check!) as { conversation_id?: unknown })
+      .conversation_id;
+    const archivedIds = (turn: Turn) =>
+      completedToolCalls("archiveAgent", turn).map(
+        (call) => input(call)["conversation_id"],
+      );
+    const archivedAt = later.findIndex((turn) =>
+      archivedIds(turn).includes(checkId),
     );
-    expect(childIds.length).toBeGreaterThan(0);
-    const archived = later.find((turn) =>
-      completedToolCalls("archiveAgent", turn).some((call) =>
-        childIds.includes(input(call)["conversation_id"]),
-      ),
-    );
+    expect(archivedAt).toBeGreaterThanOrEqual(0);
+    // Until the merge check is archived, no other Thread is, such as the
+    // changelog Thread. It may be archived later, once its own work is done.
+    expect(later.slice(0, archivedAt + 1).flatMap(archivedIds)).toEqual([
+      checkId,
+    ]);
+    const archived = later[archivedAt];
     expect(archived).toBeDefined();
     // In the same Turn, the next step starts in a new or waiting Thread, or
     // the Lead posts it.
