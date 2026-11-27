@@ -4,6 +4,7 @@ import type { QueueConsumer } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { readTurnEndedMessages } from "@/core/turn/ended";
 import { deliverTurn, type Delivery } from "@/delivery/deliver";
+import { recordTurnMetrics } from "@/turn-steps/metrics";
 
 /**
  * The Delivery of this deployment. No Destination platform has a sender yet,
@@ -16,14 +17,16 @@ export const deploymentDelivery: Delivery = {
 };
 
 /**
- * The queue consumer of the messages that a Turn ended. It sends the Turn's
- * replies. The host mounts it on `engineCtx.queue`.
+ * The queue consumer of the messages that a Turn ended. It records the Turn's
+ * metrics, then sends its replies, so a send that waits does not hold back
+ * the spend. The host mounts it on `engineCtx.queue`.
  */
 export function turnEndedConsumer(
   engineCtx: EngineContext,
   delivery: Delivery,
 ): QueueConsumer {
-  return readTurnEndedMessages(engineCtx, (message) =>
-    deliverTurn(engineCtx, message, delivery),
-  );
+  return readTurnEndedMessages(engineCtx, async (message) => {
+    await recordTurnMetrics(engineCtx, message);
+    await deliverTurn(engineCtx, message, delivery);
+  });
 }

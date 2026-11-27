@@ -88,6 +88,24 @@ export async function findTurnDestination(
   return input?.destination ? destinationSchema.parse(input.destination) : null;
 }
 
+/**
+ * Finds who a Turn acts for: the sender of its first input. Undefined when
+ * the Turn has no input.
+ */
+export async function findTurnActor(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<string | undefined> {
+  const [input] = await executor
+    .db()
+    .select({ actorIdentityId: juniorTurnInbox.actorIdentityId })
+    .from(juniorTurnInbox)
+    .where(eq(juniorTurnInbox.turnId, turnId))
+    .orderBy(asc(juniorTurnInbox.createdAt), asc(juniorTurnInbox.id))
+    .limit(1);
+  return input?.actorIdentityId;
+}
+
 /** An input of a Turn, whether the history has read it or not. */
 export type TurnInputRecord = Pick<TurnInput, "payload"> & {
   inputId: string;

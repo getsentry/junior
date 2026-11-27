@@ -128,6 +128,10 @@ export type TurnRecord = Turn & {
   failureCode: ConversationTurnFailureCode | null;
   failureReason: ConversationTurnFailureReason | null;
   failureEventId: string | null;
+  /** When the Turn started running. Null if it never ran. */
+  startedAt: Date | null;
+  /** When the Turn ended. Null while it's queued or running. */
+  endedAt: Date | null;
 };
 
 /** Finds a Turn by id. Undefined when it does not exist. */
@@ -144,6 +148,8 @@ export async function findTurn(
       failureCode: juniorTurns.failureCode,
       failureReason: juniorTurns.failureReason,
       failureEventId: juniorTurns.failureEventId,
+      startedAt: juniorTurns.startedAt,
+      endedAt: juniorTurns.endedAt,
     })
     .from(juniorTurns)
     .where(eq(juniorTurns.id, turnId));
