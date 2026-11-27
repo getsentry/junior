@@ -4,7 +4,8 @@ import type { StateAdapter } from "chat";
 import { withLock } from "@/chat/state/locks";
 
 const MAX_CACHE_KEY_LENGTH = 512;
-// A caller that waits longer than this loads the value itself.
+// A caller that waits longer than this for another load gets the stale
+// entry, or `CacheLoadBusyError`.
 const LOAD_WAIT_MS = 10_000;
 // How long a `staleIfError` entry outlives its TTL as the last good value.
 const LAST_GOOD_MS = 24 * 60 * 60 * 1000;
@@ -65,6 +66,15 @@ async function writeUnderLoadLock(
   if (attempt.acquired) return;
   await state.set(writeMarkKey(cacheKey), randomUUID(), WRITE_MARK_TTL_MS);
   await state.delete(cacheKey);
+}
+
+/** Another caller still loads the key, and the cache keeps no stale value. */
+class CacheLoadBusyError extends Error {
+  constructor(namespace: string) {
+    // The key can name a person, so only the namespace goes in the message.
+    super(`Another load of this ${namespace} cache key is still running`);
+    this.name = "CacheLoadBusyError";
+  }
 }
 
 /** The prefix of every state key of one cache namespace. */
@@ -149,8 +159,10 @@ export function createCache(
           { keepAlive: true, waitMs: LOAD_WAIT_MS },
         );
         if (attempt.acquired) return attempt.value;
-        // The cache only saves work, so a stuck load must not block this caller.
-        return (await load()).value;
+        // A slow load makes every waiter time out together. Loading here too
+        // would send them all to the slow provider at once, so the catch
+        // gives each one the stale entry, or this error.
+        throw new CacheLoadBusyError(namespace);
       } catch (error) {
         // Only a stale `staleIfError` entry is still here after its TTL.
         if (!hit) throw error;
