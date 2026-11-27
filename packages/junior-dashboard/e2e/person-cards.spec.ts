@@ -17,7 +17,7 @@ async function openConversation(page: Page, baseURL: string) {
   // shows last, so hover only after it shows.
   await expect(
     page.getByRole("region", { name: "Asked Pick the canary region" }),
-  ).toContainText("Answered");
+  ).toContainText("Answered by");
 }
 
 function personCard(page: Page, name: string) {
@@ -236,6 +236,22 @@ test("a raw Slack id in an Inbox item question shows the person", async ({
   await expect(mention).not.toHaveAttribute("aria-haspopup", "dialog");
 });
 
+test("the answer line names the person who answered", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await openConversation(page, dashboard.baseURL);
+  const ask = page.getByRole("region", {
+    name: "Asked Pick the canary region",
+  });
+  const answeredBy = ask.getByRole("link", { name: "Dashboard User" });
+  await expect(ask).toContainText("Answered by");
+  await answeredBy.hover();
+  // The card's activity comes from its read.
+  await expect(personCard(page, "Dashboard User")).toContainText("Last active");
+});
+
 test.describe("on a touch screen", () => {
   test.use({
     hasTouch: true,
@@ -272,11 +288,16 @@ test("person references in a transcript", async ({ dashboard, page }) => {
       lightTheme: true,
       view: view.name,
     });
-    // A close crop of a mention, to check that the photo sits on the
-    // middle of its line.
+    // Close crops of a mention and an "Answered by" line, to check that
+    // each photo sits on the middle of its line.
     await screenshot(page, "person-mention-line", {
       lightTheme: true,
       target: message.locator("p").filter({ hasText: "can roll it back" }),
+      view: view.name,
+    });
+    await screenshot(page, "person-answered-by-line", {
+      lightTheme: true,
+      target: ask,
       view: view.name,
     });
     // The viewer's own card has Conversations they may read.

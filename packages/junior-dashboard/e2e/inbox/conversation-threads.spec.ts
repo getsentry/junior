@@ -1,5 +1,4 @@
 import type { Locator, Page, Request } from "@playwright/test";
-import { noViewerWaits } from "./inbox-fixture";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -572,9 +571,7 @@ test.describe("new UI", () => {
     page,
     dashboard,
   }) => {
-    // A sign-in wait reads `needs_input` while a Turn runs. No ask waits on
-    // the viewer, so the row shows the status.
-    await noViewerWaits(page);
+    // An open action item reads `needs_input` while a Turn runs.
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {

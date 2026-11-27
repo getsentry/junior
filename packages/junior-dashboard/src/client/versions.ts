@@ -144,9 +144,9 @@ function refreshChangedReads(
       ? movedFeedInputs(previous.conversations, next.conversations)
       : [],
   );
-  // The pane's Spaces roll up the feed's Conversations. Neither reads the
-  // Inbox: its own read below overlays what waits on the viewer.
-  if (moved("conversations")) {
+  // Waiting Conversations outside the newest page join the feed. The
+  // pane's Spaces roll up the same Conversations.
+  if (moved("conversations") || moved("inboxItems")) {
     void invalidateConversationFeeds(client);
     void invalidateMemberSpaces(client);
   }

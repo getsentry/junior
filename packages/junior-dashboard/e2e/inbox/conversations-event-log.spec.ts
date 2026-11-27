@@ -11,7 +11,7 @@ import {
   withRequestedMailbox,
 } from "../harness";
 import { pickOption } from "../pick-option";
-import { conversationQuestions, waitingConversations } from "./inbox-fixture";
+import { conversationQuestions } from "./inbox-fixture";
 
 test.describe("new UI", () => {
   test.use({ locale: "en-US", timezoneId: "America/New_York" });
@@ -883,14 +883,11 @@ test.describe("new UI", () => {
         dismissed = true;
         return route.fulfill({ json: current() });
       });
-      // The transcript reads the question, and the Inbox says that it waits
-      // on the viewer until the dismiss.
+      // The transcript reads the question, which waits until the dismiss
+      // closes it.
       await page.route(`**${api}/questions`, (route) =>
-        route.fulfill({ json: conversationQuestions(conversationId, [item]) }),
-      );
-      await page.route("**/api/inbox-items/waiting-conversations", (route) =>
         route.fulfill({
-          json: waitingConversations(dismissed ? [] : [item]),
+          json: conversationQuestions(conversationId, [current()]),
         }),
       );
       report.events = [
@@ -933,7 +930,7 @@ test.describe("new UI", () => {
       // The question shows in its card in the transcript. Nothing docks, so
       // the message box and the queued messages stay below the transcript.
       const record = page.getByRole("region", { name: `Asked ${item.title}` });
-      await expect(record).toContainText("Waiting on you");
+      await expect(record).toContainText("Waiting");
       await expect(
         page.getByRole("region", { name: `Question: ${item.title}` }),
       ).toHaveCount(0);
@@ -956,7 +953,7 @@ test.describe("new UI", () => {
       await ask.getByRole("button", { name: "Dismiss", exact: true }).click();
       await expect(question).toHaveCount(0);
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await expect(record).not.toContainText("Waiting on you");
+      await expect(record).not.toContainText("Waiting");
       await screenshot(page, "conversation-question-dismissed", {
         view: view.name,
       });

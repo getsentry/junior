@@ -10,7 +10,6 @@ import {
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
 import { paneEntryClass } from "../inbox/PaneDestinations";
-import { useViewerWaits } from "../inbox/queries";
 import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { useMemberSpacesData } from "./queries";
@@ -35,7 +34,6 @@ function SpaceNavRow(props: {
 }) {
   const { space } = props;
   const actions = useSpaceActions(space);
-  const waitsOnViewer = useViewerWaits().spaceIds.has(space.id);
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -59,7 +57,7 @@ function SpaceNavRow(props: {
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
             {space.name}
           </span>
-          <SpaceStateIcon state={spaceDisplayState(space, waitsOnViewer)} />
+          <SpaceStateIcon state={spaceDisplayState(space)} />
         </Link>
       </ContextMenuTrigger>
       <ContextMenuContent>{actions.rows}</ContextMenuContent>

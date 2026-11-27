@@ -90,7 +90,7 @@ import {
   ConversationStateIcon,
   conversationDisplayState,
 } from "../../conversations/ConversationStateIcon";
-import { useInboxItemData, useViewerWaits } from "../../inbox/queries";
+import { useInboxItemData } from "../../inbox/queries";
 import type { WaitingQuestion } from "../../inbox/WaitingQuestions";
 import {
   itemConversationId,
@@ -397,9 +397,8 @@ export function ConversationPage(props: {
     { conversation, detail: conversationDetail },
     lead ? leadSpace : undefined,
   );
-  const waitsOnViewer = useViewerWaits().conversationIds.has(conversationId);
   const displayState = conversation
-    ? conversationDisplayState(conversation, waitsOnViewer)
+    ? conversationDisplayState(conversation)
     : undefined;
   const links = conversationLinks(conversationDetail);
   // A Lead's title is its Space's name, which a rename sets at once.

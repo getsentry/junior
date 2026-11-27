@@ -10,18 +10,20 @@ import {
 import { HoverPreview } from "../components/ui/hover-preview";
 import { cn, dashboardMessageCardClass } from "../styles";
 import {
+  openQuestionItem,
+  questionWaits,
   useAskedQuestionId,
   useConversationQuestion,
-  waitingQuestionItem,
 } from "../conversations/conversationQuestions";
 import {
   TranscriptShowQuestion,
   useAnswerInView,
   useAnswerLinked,
 } from "../conversations/TranscriptAnswerLinks";
+import { PersonReference } from "../components/PersonReference";
 import { DisplayText } from "../display-text/DisplayText";
 import { useMobileLayout } from "../layoutMedia";
-import { useViewerWaits } from "./queries";
+import { personFromUser } from "../person";
 import { AnswerSummary, InboxItemActions } from "./InboxItemActions";
 import { InboxItemObjects } from "./InboxItemObjects";
 import { InboxItemSheet } from "./InboxItemSheet";
@@ -235,30 +237,29 @@ export function InboxItemChangeLabel(props: {
 type AskStatus = {
   icon: LucideIcon;
   iconClassName: string;
-  label?: string;
+  label?: ReactNode;
   /** The answer, while the reader cannot see its answer row. */
   answer?: string;
-  waitingOnYou?: boolean;
+  waiting?: boolean;
 };
 
 /**
- * Say where a question stands, from the question and the Inbox overlay
- * only: it waits on the viewer, it has an answer, or neither. Who else it
- * waits on, and a dismiss or a snooze, are Inbox facts that the transcript
- * does not read.
+ * Say where a question stands, from the question only: it waits for an
+ * answer, it has one, or neither. A question waits on anyone until it
+ * closes; whether the viewer may answer is the actions route's call.
  */
 function askStatus(
   question: ConversationQuestion,
-  waitingOnYou: boolean,
+  waiting: boolean,
   answerShown: boolean,
 ): AskStatus {
   const form = inboxItemQuestion(question.request);
-  if (waitingOnYou) {
+  if (waiting) {
     return {
       icon: Inbox,
       iconClassName: "text-dashboard-accent-text",
-      label: "Waiting on you",
-      waitingOnYou: true,
+      label: "Waiting",
+      waiting: true,
     };
   }
   if (form && question.answer) {
@@ -266,7 +267,14 @@ function askStatus(
       answer: answerShown ? undefined : answerLine(form, question.answer),
       icon: CircleCheck,
       iconClassName: "text-emerald-500",
-      label: "Answered",
+      label: question.answeredBy ? (
+        <>
+          Answered by{" "}
+          <PersonReference person={personFromUser(question.answeredBy)} />
+        </>
+      ) : (
+        "Answered"
+      ),
     };
   }
   return {
@@ -276,11 +284,10 @@ function askStatus(
 }
 
 /**
- * Show the question that a tool call added as a card in the transcript. A
- * question that waits on the reader, as the Inbox's waiting read says,
- * stands out and shows its form, so the reader answers in place. On a
- * phone, a tap on it opens a sheet. Shows `fallback` when the viewer cannot
- * read the question.
+ * Show the question that a tool call added as a card in the transcript. An
+ * open question stands out and shows its form, so the reader answers in
+ * place. On a phone, a tap on it opens a sheet. Shows `fallback` when the
+ * viewer cannot read the question.
  */
 export function InboxItemAskRow(props: {
   ask: InboxItemAsk;
@@ -292,15 +299,9 @@ export function InboxItemAskRow(props: {
     props.conversationId,
     props.ask.questionId,
   );
-  const { itemIds } = useViewerWaits();
   // The record repeats the answer only while its answer row is out of view.
   const answerShown = useAnswerInView(itemId);
-  const waiting = Boolean(
-    question &&
-    !question.answer &&
-    inboxItemQuestion(question.request) &&
-    itemIds.has(itemId),
-  );
+  const waiting = question ? questionWaits(question) : false;
   // The questions pill shows while a card is not in full view.
   const inViewRef = useQuestionInViewRef(itemId, waiting);
   // A phone keeps the record to its lines. A tap opens a waiting question
@@ -316,7 +317,7 @@ export function InboxItemAskRow(props: {
   const status = askStatus(question, waiting, answerShown);
   const Icon = status.icon;
   const item = waiting
-    ? waitingQuestionItem(question, {
+    ? openQuestionItem(question, {
         conversationId: props.conversationId,
         itemId,
       })
@@ -330,7 +331,7 @@ export function InboxItemAskRow(props: {
         // A card with a form spans the transcript. A closed record is as
         // narrow as the other object rows.
         !(waiting && !mobile) && "max-w-[37.5rem]",
-        status.waitingOnYou
+        status.waiting
           ? "border-violet-400/40 bg-violet-500/[0.07]"
           : "border-dashboard-border-subtle bg-dashboard-surface-panel",
       )}
@@ -341,9 +342,7 @@ export function InboxItemAskRow(props: {
         <span
           className={cn(
             "flex size-7 shrink-0 items-center justify-center rounded-md",
-            status.waitingOnYou
-              ? "bg-violet-500/15"
-              : "bg-dashboard-fill-faint",
+            status.waiting ? "bg-violet-500/15" : "bg-dashboard-fill-faint",
           )}
         >
           <Icon
@@ -385,7 +384,7 @@ export function InboxItemAskRow(props: {
             <p className="m-0 flex min-w-0 gap-1 text-xs">
               <span
                 className={
-                  status.waitingOnYou
+                  status.waiting
                     ? "shrink-0 font-medium text-dashboard-accent-text"
                     : "shrink-0 text-dashboard-text-muted"
                 }

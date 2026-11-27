@@ -5,6 +5,8 @@
  */
 import {
   inboxItemQuestion,
+  type ConversationFeed,
+  type ConversationFeedItem,
   type ConversationQuestionsReport,
   type InboxItemActionBody,
   type InboxItemPayload,
@@ -23,7 +25,6 @@ import {
   viewer,
 } from "./inbox-item-seeds";
 import { readMockObjectLinks } from "./objects";
-import { mockConversationSpaceId } from "./spaces";
 
 type MockItemChange = Pick<
   InboxItemPayload,
@@ -360,12 +361,65 @@ export function readMockConversationQuestions(
         id: item.id,
         title: item.title,
         updatedAt: item.updatedAt,
-        ...(item.answer ? { answer: item.answer } : undefined),
+        ...(item.closedAt ? { closedAt: item.closedAt } : undefined),
+        ...(item.answer
+          ? {
+              answer: item.answer,
+              answeredAt: item.closedAt ?? item.updatedAt,
+              ...(item.answeredBy
+                ? {
+                    answeredBy: {
+                      email: item.answeredBy.email,
+                      userId: item.answeredBy.userId,
+                      ...(item.answeredBy.displayName
+                        ? { displayName: item.answeredBy.displayName }
+                        : undefined),
+                    },
+                  }
+                : undefined),
+            }
+          : undefined),
         ...(item.mentions ? { mentions: item.mentions } : undefined),
         ...(item.request ? { request: item.request } : undefined),
         ...(item.addedByTurnId ? { turnId: item.addedByTurnId } : undefined),
       })),
   };
+}
+
+/**
+ * Mark the mock feed rows whose Conversations have a question that waits
+ * for an answer, like `questionWaitsSql`: the asking Conversation needs
+ * input, and its tree needs you, for every viewer.
+ */
+export function withMockQuestionWaits(
+  feed: ConversationFeed,
+  nowMs: number,
+): ConversationFeed {
+  const all = seeds(nowMs);
+  const waiting = all
+    .filter((seed) => subjectOf(seed).kind === "question")
+    .map((seed) => payload(seed, all, nowMs))
+    .filter(
+      (item) => item.status === "open" && inboxItemQuestion(item.request),
+    );
+  const askingIds = new Set(waiting.map((item) => item.owner.id));
+  const treeIds = new Set([
+    ...askingIds,
+    ...waiting.flatMap((item) =>
+      item.rootConversationId ? [item.rootConversationId] : [],
+    ),
+  ]);
+  const mark = (row: ConversationFeedItem): ConversationFeedItem => ({
+    ...row,
+    ...(askingIds.has(row.conversationId)
+      ? { status: "needs_input" as const }
+      : undefined),
+    ...(treeIds.has(row.conversationId)
+      ? { treeState: "needs_you" as const }
+      : undefined),
+    ...(row.threads ? { threads: row.threads.map(mark) } : undefined),
+  });
+  return { ...feed, conversations: feed.conversations.map(mark) };
 }
 
 /**
@@ -413,23 +467,11 @@ export function readMockWaitingConversations(nowMs: number) {
   return {
     conversations: [...byConversation].map(([conversationId, items]) => ({
       conversationId,
-      ...(mockConversationSpaceId(conversationId)
-        ? { spaceId: mockConversationSpaceId(conversationId) }
-        : undefined),
-      // A mock child sits right under its root.
-      conversationIds: [
-        ...new Set([conversationId, ...items.map((item) => item.owner.id)]),
-      ],
       items: [...items]
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .map(({ id, owner, title }) => {
+        .map(({ id, title }) => {
           const plugin = plugins.get(id);
-          return {
-            conversationId: owner.id,
-            id,
-            title,
-            ...(plugin ? { plugin } : undefined),
-          };
+          return { title, ...(plugin ? { plugin } : undefined) };
         }),
       waitingSince: items
         .map((item) => item.createdAt)

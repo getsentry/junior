@@ -65,10 +65,7 @@ import { readMockPeopleCode } from "./mock-reporting/fixtures";
 import { readMockObjectLinks } from "./mock-reporting/objects";
 import { readMockConversationOutline } from "./mock-reporting/outline";
 import { readMockSearchRows } from "./mock-reporting/search-routes";
-import {
-  readMockInboxItemCount,
-  readMockInboxItemList,
-} from "./mock-reporting/inbox-item-routes";
+import { readMockInboxItemCount } from "./mock-reporting/inbox-item-routes";
 import { resetMockInboxItems } from "./mock-reporting/inbox-items";
 import { resetMockSends } from "./mock-reporting/sends";
 import { readMockSpaceList } from "./mock-reporting/spaces";
@@ -137,7 +134,6 @@ export const mockReports = {
   conversationFeedPage: readMockConversationFeedPage,
   conversationOutline: readMockConversationOutline,
   inboxItemCount: readMockInboxItemCount,
-  inboxItemList: readMockInboxItemList,
   notificationSettings: readMockNotificationSettings,
   objectLinks: readMockObjectLinks,
   peopleCode: readMockPeopleCode,

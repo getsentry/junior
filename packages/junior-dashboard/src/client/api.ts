@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   keepPreviousData,
   queryOptions,
@@ -40,10 +40,8 @@ import {
 } from "@sentry/junior/api/schema";
 import {
   joinConversationFeedPages,
-  withViewerWaits,
   type ConversationFeedPage,
 } from "./conversations/conversationFeedCache";
-import { useViewerWaits } from "./inbox/queries";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
@@ -139,12 +137,6 @@ export function useConversationsData(search = "") {
   // The rows show files and link cards, which cost the server a query.
   // A search asks for neither.
   const include = search ? "" : "links,media";
-  const waitingIds = useViewerWaits().conversationIds;
-  const select = useCallback(
-    (data: InfiniteData<ConversationFeedPage, string | undefined>) =>
-      withViewerWaits(joinConversationFeedPages(data), waitingIds),
-    [waitingIds],
-  );
   return useInfiniteQuery({
     // A read that ends during a Pinned order save can hold the old order.
     // The feed keeps its data and refetches when the save ends.
@@ -180,7 +172,7 @@ export function useConversationsData(search = "") {
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.nextCursor,
-    select,
+    select: joinConversationFeedPages,
     placeholderData: keepPreviousData,
     // The versions poll refreshes the feed when it changes.
     retry: false,

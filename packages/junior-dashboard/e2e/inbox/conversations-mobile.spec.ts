@@ -1,5 +1,4 @@
 import type { Page } from "@playwright/test";
-import { noViewerWaits } from "./inbox-fixture";
 
 import { withRequestedMailbox } from "../harness";
 import { longPress } from "../long-press";
@@ -277,9 +276,6 @@ test.describe("new UI", () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 844, width: 390 });
-    // No ask waits on the viewer, so In flight leads with the running
-    // Conversation.
-    await noViewerWaits(page);
     await page.route("**/api/conversations/*/messages", async (route) => {
       await route.fulfill({
         json: {

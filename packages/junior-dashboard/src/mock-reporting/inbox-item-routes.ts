@@ -32,7 +32,7 @@ function errorResponse(error: string, status: 400 | 404): Response {
 }
 
 /** Build what `GET /inbox-items` answers for its query. */
-export function readMockInboxItemList(query: Record<string, string>) {
+function readMockInboxItemList(query: Record<string, string>) {
   const { conversationId, for: forViewer, owner, q, snoozed, status } = query;
   return {
     items: readMockInboxItems(NOW_MS, {

@@ -6,20 +6,17 @@ import {
   useMemo,
   useSyncExternalStore,
 } from "react";
-import {
-  inboxItemQuestion,
-  type ConversationReportEvent,
-} from "@sentry/junior/api/schema";
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import {
+  questionWaits,
   transcriptAsks,
   useConversationQuestions,
 } from "../conversations/conversationQuestions";
 import { scrollRootFor } from "../conversations/transcriptScrollRoot";
-import { useViewerWaits } from "./queries";
 
-/** A question card in the transcript that waits on the viewer. */
+/** A question card in the transcript that waits for an answer. */
 export type WaitingQuestion = {
   itemId: string;
   /** The Turn that asked it, so the page can load the rows around it. */
@@ -27,24 +24,18 @@ export type WaitingQuestion = {
 };
 
 /**
- * Return the questions of a Conversation's loaded transcript that wait on
- * the viewer, oldest first. Each has a card there. A question waits when
- * the Inbox says its item waits on the viewer and it has no answer yet, so
- * an Everyone question that the viewer has not taken does not count.
+ * Return the open questions of a Conversation's loaded transcript, oldest
+ * first. Each has a card there.
  */
 export function useWaitingQuestions(
   conversationId: string | undefined,
   events: readonly ConversationReportEvent[] | undefined,
 ): WaitingQuestion[] {
-  const { itemIds } = useViewerWaits();
   const asks = useMemo(
-    () =>
-      conversationId
-        ? transcriptAsks(events).filter((ask) => itemIds.has(ask.itemId))
-        : [],
-    [conversationId, events, itemIds],
+    () => (conversationId ? transcriptAsks(events) : []),
+    [conversationId, events],
   );
-  // A Conversation with no waiting card sends no read of its own.
+  // The cards read the same questions, so this adds no read.
   const questions = useConversationQuestions(conversationId ?? "", {
     enabled: asks.length > 0,
   }).data?.questions;
@@ -54,9 +45,7 @@ export function useWaitingQuestions(
         const question = questions?.find(
           (entry) => entry.id === ask.questionId,
         );
-        return question &&
-          !question.answer &&
-          inboxItemQuestion(question.request)
+        return question && questionWaits(question)
           ? [{ itemId: ask.itemId, turnId: question.turnId }]
           : [];
       }),
@@ -135,7 +124,7 @@ export function useQuestionInViewRef(itemId: string, waiting: boolean) {
 }
 
 /**
- * Say how many questions wait on the viewer while one of their cards is not
+ * Say how many questions wait for an answer while one of their cards is not
  * in full view. A click shows the oldest such card, so the next
  * click goes on to the next one.
  */

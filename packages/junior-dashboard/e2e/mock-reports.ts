@@ -9,7 +9,6 @@ import {
   conversationFeedSchema,
   conversationOutlineSchema,
   inboxItemCountSchema,
-  inboxItemListSchema,
   objectLinksReportSchema,
   spaceListSchema,
   type CodePersonReport,
@@ -118,17 +117,6 @@ export async function mockCodeRepository(
   const report = (await mockReports()).codeRepository(id, state);
   if (!report) throw new Error(`No mock repository ${id}`);
   return codeRepositoryReportSchema.parse(report);
-}
-
-/**
- * The Inbox items that the mock API lists for `query`, which defaults to the
- * query of the route's `/api/inbox-items` request.
- */
-export async function mockInboxItemList(
-  route: Route,
-  query = Object.fromEntries(new URL(route.request().url()).searchParams),
-): Promise<z.output<typeof inboxItemListSchema>> {
-  return inboxItemListSchema.parse((await mockReports()).inboxItemList(query));
 }
 
 /** The counts that the mock API answers for `/api/inbox-items/count`. */

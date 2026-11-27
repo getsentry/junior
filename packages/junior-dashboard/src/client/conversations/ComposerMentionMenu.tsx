@@ -15,7 +15,6 @@ import { quickOpenMatch } from "../components/quickOpenMatch";
 import { useDebouncedValue } from "../debouncedValue";
 import { memoryPath } from "../format";
 import { fetchDashboardJson } from "../http";
-import { useViewerWaits } from "../inbox/queries";
 import { useSearchData } from "../search";
 import { formatRelativeTime } from "../time";
 import {
@@ -146,7 +145,6 @@ function useConversationSource(
       ),
     staleTime: SEARCH_STALE_MS,
   });
-  const waitingIds = useViewerWaits().conversationIds;
   const stale = search.isPlaceholderData || debounced !== query;
   const rows = (search.data?.conversations ?? [])
     // A Conversation does not need a link to itself.
@@ -158,10 +156,7 @@ function useConversationSource(
         kind: "conversation",
         url: conversationUrl(row.conversationId),
         title,
-        state: conversationDisplayState(
-          row,
-          waitingIds.has(row.conversationId),
-        ),
+        state: conversationDisplayState(row),
       };
       return {
         key: `conversation:${row.conversationId}`,
