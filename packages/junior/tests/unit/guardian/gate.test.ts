@@ -680,7 +680,8 @@ describe("tool action review", () => {
     await reviewToolAction(
       "tool-call",
       "bash",
-      definition({ approvalMode: "auto" }),
+      // Like the real bash tool, it has no approval mode.
+      definition(),
       { command: "git push", cwd: "/vercel/sandbox/repos/demo" },
       actionReview,
     );
@@ -698,6 +699,60 @@ describe("tool action review", () => {
         },
       ],
       placeholders: [],
+    });
+  });
+
+  it("fails only the action that cannot be reviewed in a batch", async () => {
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Update both pages.",
+      },
+      guardian: () => ({
+        review: async (request) => {
+          if (
+            request.actions.some((action) =>
+              JSON.stringify(action.input).includes("huge"),
+            )
+          ) {
+            throw new Error("The action is too large to review.");
+          }
+          return request.actions.map(() => ({
+            decision: "allow" as const,
+            reason: "The person asked for it.",
+          }));
+        },
+      }),
+      onFatal: () => undefined,
+      onDecision: vi.fn(async () => undefined),
+    });
+    const tool = definition({ approvalMode: "review" });
+
+    const results = await reviewToolActions(
+      [
+        {
+          toolCallId: "small",
+          toolName: "updatePage",
+          tool,
+          input: { page: "small" },
+        },
+        {
+          toolCallId: "huge",
+          toolName: "updatePage",
+          tool,
+          input: { page: "huge" },
+        },
+      ],
+      actionReview,
+    );
+
+    expect(results.get("small")).toMatchObject({ allowed: true });
+    expect(results.get("huge")).toMatchObject({
+      allowed: false,
+      error: { name: "ToolActionReviewUnavailableError" },
     });
   });
 

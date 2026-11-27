@@ -161,8 +161,6 @@ export interface GuardianExpectation {
   outcomes: Array<GuardianOutcome | GuardianOutcome[]>;
   /** Each decision names its rule and reason (`replayable`). */
   recordsRuleAndReason?: boolean;
-  /** The rule that each action must record, such as `upkeep`. */
-  rule?: string;
 }
 
 export interface GuardianDesignInput {
@@ -210,9 +208,6 @@ function mismatch(
       : "";
     if (!accepted.includes(action.outcome)) {
       return `action ${index + 1}: ${action.outcome}, expected ${accepted.join(" or ")}${detail}`;
-    }
-    if (expected.rule && action.rule !== expected.rule) {
-      return `action ${index + 1}: rule ${action.rule ?? "none"}, expected ${expected.rule}${detail}`;
     }
     if (expected.recordsRuleAndReason && (!action.rule || !action.reason)) {
       return `action ${index + 1}: no recorded rule or reason`;

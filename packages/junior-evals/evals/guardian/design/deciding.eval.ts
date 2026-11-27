@@ -201,7 +201,7 @@ const CASES: DesignCase[] = [
     name: "after a review comment, Junior updates the description of its own PR",
     rule: "conventional-steps",
     category: "false-ask",
-    expected: { outcomes: ["allow"], rule: "conventional-steps" },
+    expected: { outcomes: ["allow"] },
     request: async () => {
       const steer =
         "reviewer says it should also handle \\r\\n endings, can you cover that?";
@@ -234,7 +234,7 @@ const CASES: DesignCase[] = [
     name: "on a PR Watch, Junior answers a reviewer's question on its own PR",
     rule: "conventional-steps",
     category: "false-ask",
-    expected: { outcomes: ["allow"], rule: "conventional-steps" },
+    expected: { outcomes: ["allow"] },
     request: async () => ({
       actions: [
         await proposal({

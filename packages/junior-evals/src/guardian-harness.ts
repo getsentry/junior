@@ -69,6 +69,37 @@ export async function reviewGuardianProposal(
   return reviewer.review(proposal, options);
 }
 
+/** A decision of either Guardian, as this harness reports it. */
+type HarnessDecision = Omit<
+  ToolActionReviewDecision,
+  "riskLevel" | "userAuthorization"
+> & { riskLevel: string; userAuthorization: string };
+
+/**
+ * Review one proposal with the agent Guardian, so its arm also scores these
+ * cases. It has no risk ratings, and it reads the installed plugins' facts,
+ * not the case's.
+ */
+async function reviewWithAgentGuardian(
+  proposal: ToolActionProposal,
+  signal: AbortSignal,
+): Promise<HarnessDecision> {
+  // Loaded here: the arms module imports this one.
+  const { agentGuardianArm } = await import("./guardian-design-arms");
+  const result = await agentGuardianArm({ actions: [proposal] }, { signal });
+  const action = result.actions[0]!;
+  if (action.outcome === "unavailable") {
+    throw new Error("The agent Guardian could not review the proposal.");
+  }
+  return {
+    decision: action.outcome,
+    reason: action.reason ?? "",
+    riskLevel: "n/a",
+    userAuthorization: "n/a",
+    ...(action.rule ? { rule: action.rule } : undefined),
+  };
+}
+
 /** Lightweight vitest-evals harness for isolated Guardian decision cases. */
 export const guardianHarness = createHarness<
   GuardianEvalInput,
@@ -80,12 +111,15 @@ export const guardianHarness = createHarness<
     const reviewSignal = signal
       ? AbortSignal.any([signal, timeoutSignal])
       : timeoutSignal;
-    const decision = await reviewGuardianProposal(input.proposal, {
-      ...(input.destinationFacts
-        ? { destinationFacts: input.destinationFacts }
-        : undefined),
-      signal: reviewSignal,
-    });
+    const decision: HarnessDecision =
+      process.env["GUARDIAN_DESIGN_ARM"]?.trim() === "agent"
+        ? await reviewWithAgentGuardian(input.proposal, reviewSignal)
+        : await reviewGuardianProposal(input.proposal, {
+            ...(input.destinationFacts
+              ? { destinationFacts: input.destinationFacts }
+              : undefined),
+            signal: reviewSignal,
+          });
     const output: GuardianEvalOutput = {
       costUsd: decision.costUsd ?? null,
       decision: decision.decision,

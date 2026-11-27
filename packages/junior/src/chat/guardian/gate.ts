@@ -110,6 +110,8 @@ export type ToolActionReviewResult =
  * through `reviewToolActions`, which owns the batch limit.
  */
 export interface ToolActionReview {
+  /** Whether this review may send the action to Guardian, before its metadata resolves. */
+  mayReview(action: ToolAction): boolean;
   /** Review a batch of actions. The result has one entry per `toolCallId`. */
   review(
     actions: readonly ToolAction[],
@@ -654,38 +656,60 @@ export function createToolActionReview(options: {
     const reviews = prepared.filter(
       (entry): entry is PreparedReview => !("kind" in entry),
     );
-    let decisions: Review[] = [];
-    let failure: unknown;
-    if (reviews.length > 0) {
+    const runGuardian = async (
+      batch: readonly PreparedReview[],
+    ): Promise<Review[]> => {
+      const request: ReviewRequest = {
+        actions: batch.map((review) => review.action),
+        messages: guardianMessages(batch[0]!.proposal),
+      };
+      const sandboxRepos = options.context.sandboxRepos;
+      // A shell command is reviewed by what the Sandbox can reach.
+      if (sandboxRepos && request.actions.some((a) => a.tool === "bash")) {
+        request.sandbox = await sandboxFacts({
+          repos: await sandboxRepos(),
+          placeholders: credentialPlaceholders(
+            getPlugins().map((plugin) => plugin.manifest),
+          ),
+        });
+      }
+      const decisions = await options
+        .guardian({ proposals: batch.map((review) => review.proposal) })
+        .review(request, signal ?? new AbortController().signal);
+      if (decisions.length !== batch.length) {
+        throw new Error("Guardian must return one Review per action.");
+      }
+      return decisions;
+    };
+    const reviewAlone = async (
+      review: PreparedReview,
+    ): Promise<Review | { failure: unknown }> => {
       try {
-        const request: ReviewRequest = {
-          actions: reviews.map((review) => review.action),
-          messages: guardianMessages(reviews[0]!.proposal),
-        };
-        const sandboxRepos = options.context.sandboxRepos;
-        // A shell command is reviewed by what the Sandbox can reach.
-        if (sandboxRepos && request.actions.some((a) => a.tool === "bash")) {
-          request.sandbox = await sandboxFacts({
-            repos: await sandboxRepos(),
-            placeholders: credentialPlaceholders(
-              getPlugins().map((plugin) => plugin.manifest),
-            ),
-          });
-        }
-        decisions = await options
-          .guardian({
-            proposals: reviews.map((review) => review.proposal),
-          })
-          .review(request, signal ?? new AbortController().signal);
-        if (decisions.length !== reviews.length) {
-          throw new Error("Guardian must return one Review per action.");
-        }
+        return (await runGuardian([review]))[0]!;
       } catch (error) {
         if (signal?.aborted) {
           throw error;
         }
-        // Only the actions of this request fail (`bounded-failure`).
-        failure = error;
+        return { failure: error };
+      }
+    };
+    let results: Array<Review | { failure: unknown }> = [];
+    if (reviews.length === 1) {
+      results = [await reviewAlone(reviews[0]!)];
+    } else if (reviews.length > 1) {
+      try {
+        results = await runGuardian(reviews);
+      } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
+        // Only an action that cannot be reviewed fails (`bounded-failure`),
+        // so a failed batch is reviewed again one action at a time.
+        results = await mapBounded(
+          reviews,
+          reviewAlone,
+          MAX_CONCURRENT_PREPARATIONS,
+        );
       }
     }
     // The index in the request of each action that needs review.
@@ -701,10 +725,10 @@ export function createToolActionReview(options: {
         if ("kind" in entry) {
           return entry;
         }
-        if (failure !== undefined) {
-          return unavailableStep(failure);
+        const decision = results[indexes[index]!]!;
+        if ("failure" in decision) {
+          return unavailableStep(decision.failure);
         }
-        const decision = decisions[indexes[index]!]!;
         try {
           await options.onDecision({
             toolCallId: actions[index]!.toolCallId,
@@ -815,6 +839,7 @@ export function createToolActionReview(options: {
   };
 
   return {
+    mayReview: (action) => mayReviewCall(action, options.context),
     async review(actions, signal) {
       // One span per batch. Each review sets `app.guardian.proposal.chars`
       // and, when its model call aborts, `app.guardian.review.aborted_by`
@@ -872,7 +897,10 @@ export async function reviewToolActions(
       actions.map((action) => [action.toolCallId, { allowed: false, error }]),
     );
   }
-  if (!actions.some((action) => mayNeedReview(action.tool))) {
+  // Without a review, bash stays unreviewed (getsentry/junior#4550).
+  const mayReview = (action: ToolAction) =>
+    review ? review.mayReview(action) : mayNeedReview(action.tool);
+  if (!actions.some(mayReview)) {
     return new Map(
       actions.map((action) => [action.toolCallId, { allowed: true }]),
     );

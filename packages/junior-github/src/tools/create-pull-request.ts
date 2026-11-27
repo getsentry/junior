@@ -147,6 +147,8 @@ const createPullRequestStateSchema = Type.Union([
       number: Type.Number(),
       /** GitHub's id of the pull request, for its opener's row. */
       pullRequestId: Type.Optional(Type.String()),
+      /** The fields of the code change, so a retry can record it again. */
+      createdPullRequest: Type.Optional(Type.Unknown()),
       facts: Type.Optional(Type.Unknown()),
       sourceUpdatedAt: Type.Optional(Type.String()),
       description: Type.Optional(Type.String({ maxLength: 4000 })),
@@ -312,7 +314,12 @@ const createdCodeChangeSchema = z.object({
 function createdCodeChange(response: unknown): CodeChangeInput | undefined {
   const parsed = createdCodeChangeSchema.safeParse(response);
   if (!parsed.success) return undefined;
-  const pullRequest = parsed.data;
+  return codeChangeInput(parsed.data);
+}
+
+function codeChangeInput(
+  pullRequest: z.infer<typeof createdCodeChangeSchema>,
+): CodeChangeInput {
   return {
     number: pullRequest.number,
     openedAt: new Date(pullRequest.created_at),
@@ -351,7 +358,7 @@ async function createGitHubPullRequest(
   ctx: ToolRegistrationHookContext,
   request: { body: unknown; path: string },
 ): Promise<{
-  codeChange?: CodeChangeInput;
+  createdPullRequest?: z.infer<typeof createdCodeChangeSchema>;
   pullRequestId?: string;
   result: GitHubPullRequestResult;
   stackTarget?: GitHubStackTarget;
@@ -394,9 +401,9 @@ async function createGitHubPullRequest(
     );
   }
   const stackTarget = stackTargetSchema.safeParse(parsed);
-  const codeChange = createdCodeChange(parsed);
+  const created = createdCodeChangeSchema.safeParse(parsed);
   return {
-    ...(codeChange ? { codeChange } : undefined),
+    ...(created.success ? { createdPullRequest: created.data } : undefined),
     result: {
       ...githubObjectFacts("code_change", parsed),
       number: pullRequest.number,
@@ -747,8 +754,13 @@ export function createGitHubPullRequestTool(
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
-            // The call can stop after it saves this state but before it saves
-            // the opener, so a retry saves the opener again.
+            // The call can stop after it saves this state but before it
+            // records the code change and the opener, so a retry saves them
+            // again.
+            const codeChange = createdCodeChange(state.createdPullRequest);
+            if (codeChange) {
+              await recordCreatedCodeChange(ctx, codeChange, conversationId);
+            }
             const requester = await resolveGitHubRequester(ctx);
             await recordOpener(ctx, completedInput, state, {
               conversationId,
@@ -803,12 +815,14 @@ export function createGitHubPullRequestTool(
             pendingState,
             GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
           );
-          let codeChange: CodeChangeInput | undefined;
+          let createdPullRequest:
+            | z.infer<typeof createdCodeChangeSchema>
+            | undefined;
           let result: GitHubPullRequestResult;
           let pullRequestId: string | undefined;
           let stackTarget: GitHubStackTarget | undefined;
           try {
-            ({ codeChange, pullRequestId, result, stackTarget } =
+            ({ createdPullRequest, pullRequestId, result, stackTarget } =
               await createGitHubPullRequest(ctx, request));
           } catch (error) {
             if (
@@ -827,6 +841,9 @@ export function createGitHubPullRequestTool(
             status: "completed",
             number: result.number,
             ...(pullRequestId === undefined ? undefined : { pullRequestId }),
+            ...(createdPullRequest === undefined
+              ? undefined
+              : { createdPullRequest }),
             url: result.url,
             facts: result.facts,
             ...(result.sourceUpdatedAt === undefined
@@ -849,8 +866,12 @@ export function createGitHubPullRequestTool(
             );
           }
           // Before the opener, so its requester credit finds the change.
-          if (codeChange) {
-            await recordCreatedCodeChange(ctx, codeChange, conversationId);
+          if (createdPullRequest) {
+            await recordCreatedCodeChange(
+              ctx,
+              codeChangeInput(createdPullRequest),
+              conversationId,
+            );
           }
           await recordOpener(ctx, parsedInput, completedState, {
             conversationId,
