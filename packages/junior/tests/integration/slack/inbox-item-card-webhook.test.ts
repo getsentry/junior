@@ -7,10 +7,8 @@ import {
   resumeConversationDelivery,
 } from "@/chat/conversations/delivery-pause";
 import { getConversationStore, getDb } from "@/chat/db";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
-import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import {
   closeInboxItem,
   getInboxItem,
@@ -41,7 +39,13 @@ import {
   setUpInboxItemCards,
   slackThread,
   tearDownInboxItemCards,
+  updateItem,
 } from "../../fixtures/slack/inbox-item-cards";
+import { patchConfig } from "../../fixtures/config";
+import {
+  ownedPluginInboxItems,
+  TEST_PLUGIN_INBOX_OWNER,
+} from "../../fixtures/plugin-inbox-owners";
 
 describe("Slack webhook: Inbox item cards", () => {
   beforeEach(setUpInboxItemCards);
@@ -59,7 +63,6 @@ describe("Slack webhook: Inbox item cards", () => {
       title: "Ship release 1.2.3",
       body: "The release checks passed.",
       assignees: ["everyone"],
-      dedupe_key: "release:1.2.3",
       request: SHIP_REQUEST,
       conversation_ids: [OTHER_THREAD],
     });
@@ -83,21 +86,18 @@ describe("Slack webhook: Inbox item cards", () => {
       ["junior_review_item:answer", undefined],
     ]);
 
-    // The agent changes the choices. A click on the old card cannot pick a
-    // choice that the item no longer offers.
+    // The choices change. A click on the old card cannot pick a choice that
+    // the item no longer offers.
     const shipIt = buttonValue(posts[0], "junior_review_item:choice:0");
-    const changeChoices = (options: Array<{ label: string }>) =>
-      addItem(ana, {
-        kind: "action",
-        title: "Ship release 1.2.3",
-        body: "The release checks passed.",
-        assignees: ["everyone"],
-        dedupe_key: "release:1.2.3",
+    const changeChoices = async (options: Array<{ label: string }>) => {
+      await updateItem(ana, {
+        id: item.id,
         request: {
           ...SHIP_REQUEST,
           fields: [{ ...SHIP_REQUEST.fields[0]!, options }],
         },
       });
+    };
     await changeChoices([{ label: "Hold" }, { label: "Wait" }]);
     await click({
       actionId: "junior_review_item:choice:0",
@@ -241,7 +241,6 @@ describe("Slack webhook: Inbox item cards", () => {
         title: "Ship release 1.2.3",
         body: "The release checks passed.",
         assignees: ["ana@example.com"],
-        dedupe_key: "release:1.2.3",
         request: SHIP_REQUEST,
       },
       run,
@@ -279,14 +278,21 @@ describe("Slack webhook: Inbox item cards", () => {
     await createApp({
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
+          inboxSubjects: [
+            {
+              kind: "deploy_stopped",
+              label: "Deploys stopped",
+              owner: TEST_PLUGIN_INBOX_OWNER,
+            },
+          ],
           manifest: {
             name: "deploys",
             displayName: "Deploys",
             description: "Deploy test plugin",
           },
           hooks: {
-            inboxItemAnswered: ({ choice, dedupeKey }) => {
-              answers.push(`${dedupeKey}: ${choice}`);
+            inboxItemAnswered: ({ choice, subject }) => {
+              answers.push(`${subject.id}: ${choice}`);
               if (fails) throw new Error("deploy API is down");
             },
           },
@@ -296,15 +302,16 @@ describe("Slack webhook: Inbox item cards", () => {
     const { click, state } = inboxItemCardHarness();
     await slackThread(THREAD, "public");
     await linkSlackUser("ana@example.com", "U123");
-    await createPluginInboxItems({
+    await ownedPluginInboxItems({
       conversationId: THREAD,
       plugin: "deploys",
       show: createInboxItemShow(createSlackAdapterFixture),
     }).upsert({
+      askedIdentityIds: ["identity:U123"],
       assigneeIdentityIds: ["identity:U123"],
       body: "Deploys of `api` stopped after 3 failures.",
       choices: [{ label: "Resume" }],
-      dedupeKey: "deploy-stopped:api",
+      subject: { id: "api", kind: "deploy_stopped" },
       title: "Deploys stopped · api",
     });
 
@@ -332,10 +339,7 @@ describe("Slack webhook: Inbox item cards", () => {
     await resume("1712345.0003").catch(() => undefined);
     fails = false;
     await resume("1712345.0004");
-    expect(answers).toEqual([
-      "deploy-stopped:api: Resume",
-      "deploy-stopped:api: Resume",
-    ]);
+    expect(answers).toEqual(["api: Resume", "api: Resume"]);
     expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
       status: "done",
     });
@@ -365,13 +369,15 @@ describe("Slack webhook: Inbox item cards", () => {
       title: "Ship release 1.2.3",
       body: "The release checks passed.",
       assignees: ["ana@example.com"],
-      dedupe_key: "release:1.2.3",
       request: SHIP_REQUEST,
     };
     // The child adds the item first, and the parent links it later. The
     // thread keeps one card.
-    await addItem(ana, input, child);
-    const { item } = await addItem(ana, input);
+    const added = await addItem(ana, input, child);
+    const { item } = await updateItem(ana, {
+      id: added.item.id,
+      conversation_ids: [child, THREAD],
+    });
     expect(item).toMatchObject({ conversation_ids: [child, THREAD] });
     const cards = slackApiOutbox.messages();
     expect(cards).toHaveLength(1);
@@ -413,15 +419,14 @@ describe("Slack webhook: Inbox item cards", () => {
       title: "Ship release 1.2.3",
       body: "The release checks passed.",
       assignees: ["ana@example.com"],
-      dedupe_key: "release:1.2.3",
       request: SHIP_REQUEST,
     };
-    await addItem(ana, input, child);
-    await addItem(ana, input);
+    const { item } = await addItem(ana, input, child);
+    await updateItem(ana, { id: item.id, conversation_ids: [child, THREAD] });
     expect(slackApiOutbox.messages()).toHaveLength(0);
 
     await resumeConversationDelivery(THREAD);
-    await addItem(ana, input);
+    await updateItem(ana, { id: item.id, body: "The checks passed again." });
     expect(slackApiOutbox.messages()).toHaveLength(1);
   });
 
@@ -457,92 +462,128 @@ describe("Slack webhook: Inbox item cards", () => {
     );
   });
 
-  it("orders a card Dismiss, Snooze, then the answer, with Snooze in the dashboard", async () => {
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+  it("lists a question's and a notice's related links below the body", async () => {
+    patchConfig({ dashboard: { baseURL: "https://junior.example" } });
+    inboxItemCardHarness();
+    await slackThread(THREAD, "public");
+    await slackThread(OTHER_THREAD, "public");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const related = [
+      { label: "Canary [errors]", url: "https://example.com/canary" },
+      // The same link again shows once.
+      { label: "Canary", url: "https://example.com/canary" },
+      { label: "Checkout latency", conversation_id: OTHER_THREAD },
+    ];
+    await addItem(ana, {
+      kind: "action",
+      title: "Roll out payments-v42?",
+      body: "The canary is green.",
+      assignees: ["everyone"],
+      request: { ...SHIP_REQUEST, related },
     });
-    try {
-      inboxItemCardHarness();
-      await slackThread(THREAD, "public");
-      const ana = await linkSlackUser("ana@example.com", "U123");
-      const { item } = await addItem(ana, {
-        kind: "action",
-        title: "Ship release 1.2.3",
-        body: "The release checks passed.",
-        assignees: ["everyone"],
-        dedupe_key: "release:1.2.3",
-        request: SHIP_REQUEST,
-      });
+    await addItem(ana, {
+      kind: "notice",
+      title: "payments-v42 rolled out",
+      body: "All regions are on payments-v42.",
+      assignees: ["everyone"],
+      request: { related },
+    });
 
-      const [post] = slackApiOutbox.messages();
-      const controls = blocksOf(post).find((block) => block.type === "actions");
-      // A Slack message looks the same to everyone, so Snooze opens the
-      // item's snooze form in the dashboard, for the person who clicks.
-      expect(
-        controls?.elements?.map((element) => [
-          element.action_id,
-          element.url ?? null,
-        ]),
-      ).toEqual([
-        ["junior_review_item:dismiss", null],
-        [
-          "junior_review_item:snooze",
-          `https://junior.example.com/inbox?item=${encodeURIComponent(item.id)}&snooze=1`,
-        ],
-        ["junior_review_item:choice:0", null],
-        ["junior_review_item:choice:1", null],
-        ["junior_review_item:answer", null],
-      ]);
-    } finally {
-      setDashboardConversationLinkOptions(undefined);
-    }
+    const conversation = `https://junior.example/conversations/${encodeURIComponent(OTHER_THREAD)}`;
+    const lines = slackApiOutbox.messages().map((post) => {
+      const markdown = blocksOf(post).find(
+        (block) => block.type === "markdown",
+      );
+      return markdown?.text;
+    });
+    // The links show on the card as plain links, and the title links to
+    // nothing: they do not decide the card.
+    expect(lines[0]).toContain(
+      `**Roll out payments-v42?**\n\nThe canary is green.\n\nRelated: [Canary \\[errors\\]](https://example.com/canary) · [Checkout latency](${conversation})\n\n`,
+    );
+    expect(lines[1]).toBe(
+      `**payments-v42 rolled out**\n\nAll regions are on payments-v42.\n\nRelated: [Canary \\[errors\\]](https://example.com/canary) · [Checkout latency](${conversation})`,
+    );
+  });
+
+  it("orders a card Dismiss, Snooze, then the answer, with Snooze in the dashboard", async () => {
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
+    });
+    inboxItemCardHarness();
+    await slackThread(THREAD, "public");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const { item } = await addItem(ana, {
+      kind: "action",
+      title: "Ship release 1.2.3",
+      body: "The release checks passed.",
+      assignees: ["everyone"],
+      request: SHIP_REQUEST,
+    });
+
+    const [post] = slackApiOutbox.messages();
+    const controls = blocksOf(post).find((block) => block.type === "actions");
+    // A Slack message looks the same to everyone, so Snooze opens the
+    // item's snooze form in the dashboard, for the person who clicks.
+    expect(
+      controls?.elements?.map((element) => [
+        element.action_id,
+        element.url ?? null,
+      ]),
+    ).toEqual([
+      ["junior_review_item:dismiss", null],
+      [
+        "junior_review_item:snooze",
+        `https://junior.example.com/inbox?item=${encodeURIComponent(item.id)}&snooze=1`,
+      ],
+      ["junior_review_item:choice:0", null],
+      ["junior_review_item:choice:1", null],
+      ["junior_review_item:answer", null],
+    ]);
   });
 
   it("keeps a long answer inside the Slack limits of a card", async () => {
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
-    try {
-      const { queue } = inboxItemCardHarness();
-      await slackThread(THREAD, "public");
-      const ana = await linkSlackUser("ana@example.com", "U123");
-      const { item } = await addItem(ana, {
-        kind: "action",
-        title: "Review the release notes",
-        body: "The notes need a look.",
-        assignees: ["ana@example.com"],
-        dedupe_key: "release-notes",
-        request: {
-          question: "What should change?",
-          fields: [{ id: "notes", kind: "text", label: "Notes" }],
-        },
-      });
+    const { queue } = inboxItemCardHarness();
+    await slackThread(THREAD, "public");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const { item } = await addItem(ana, {
+      kind: "action",
+      title: "Review the release notes",
+      body: "The notes need a look.",
+      assignees: ["ana@example.com"],
+      request: {
+        question: "What should change?",
+        fields: [{ id: "notes", kind: "text", label: "Notes" }],
+      },
+    });
 
-      await actOnInboxItem({
-        action: "submit",
-        answer: { requestId: item.id, values: { notes: ["x".repeat(3_000)] } },
-        delivery: { queue, show: createInboxItemShow() },
-        id: item.id,
-        user: ana,
-      });
+    await actOnInboxItem({
+      action: "submit",
+      answer: { requestId: item.id, values: { notes: ["x".repeat(3_000)] } },
+      delivery: { queue, show: createInboxItemShow() },
+      id: item.id,
+      user: ana,
+    });
 
-      // Slack rejects a context element over 3,000 characters, and then the
-      // card keeps its controls.
-      const [update] = slackApiOutbox.calls("chat.update");
-      const context = blocksOf(update).find(
-        (block) => block.type === "context",
-      );
-      const texts = (context?.elements ?? []).map(
-        (element) => element.text as string,
-      );
-      expect(texts).toEqual([
-        expect.stringContaining("ana@example.com answered"),
-        expect.stringContaining("|Open in the Inbox>"),
-      ]);
-      for (const text of texts) expect(text.length).toBeLessThanOrEqual(3_000);
-    } finally {
-      setDashboardConversationLinkOptions(undefined);
-    }
+    // Slack rejects a context element over 3,000 characters, and then the
+    // card keeps its controls.
+    const [update] = slackApiOutbox.calls("chat.update");
+    const context = blocksOf(update).find((block) => block.type === "context");
+    const texts = (context?.elements ?? []).map(
+      (element) => element.text as string,
+    );
+    expect(texts).toEqual([
+      expect.stringContaining("ana@example.com answered"),
+      expect.stringContaining("|Open in the Inbox>"),
+    ]);
+    for (const text of texts) expect(text.length).toBeLessThanOrEqual(3_000);
   });
 
   it("shortens the body of a long item to fit Slack's markdown limit", async () => {
@@ -567,11 +608,14 @@ describe("Slack webhook: Inbox item cards", () => {
       // Under the body cap, so only the markdown limit shortens it.
       body: "The release has many checks. ".repeat(100).trim(),
       assignees: ["everyone"],
-      subject: {
-        id: "release:1.2.3",
-        url: `https://example.com/releases/${"1.2.3/".repeat(320)}`,
+      request: {
+        question,
+        fields: ["a", "b", "c", "d"].map(field),
+        related: Array.from({ length: 10 }, (_, index) => ({
+          label: `Release ${index}`,
+          url: `https://example.com/releases/${index}/${"1.2.3/".repeat(320)}`,
+        })),
       },
-      request: { question, fields: ["a", "b", "c", "d"].map(field) },
     });
 
     const [post] = slackApiOutbox.messages();
@@ -584,6 +628,9 @@ describe("Slack webhook: Inbox item cards", () => {
     expect(markdown?.text).toContain("Check 9 of d");
   });
 
+  // Which open question a reply answers is a decision model choice, so the
+  // classifier eval `inbox-item-replies.eval.ts` checks it with the real model.
+  // These cases cover the rules that apply before or after that choice.
   it("keeps a question open when the person who replies may not answer it", async () => {
     const { reply, state } = inboxItemCardHarness({
       allowedDomains: ["example.com"],
@@ -638,7 +685,6 @@ describe("Slack webhook: Inbox item cards", () => {
         kind: "action",
         title: "Ship release 1.2.4",
         body: "The release checks passed.",
-        dedupe_key: "release:1.2.4",
         request: SHIP_REQUEST,
       },
       {},

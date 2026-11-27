@@ -108,17 +108,16 @@ describe("conversation tree state", () => {
     // An item for another person is not shown to the viewer.
     const other = await resolveViewerUser("bob@example.com");
     const forOther = await insertInboxItem(getDb(), {
+      subject: { id: "for-other", kind: "question" },
       owner: { id: asking.childConversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
       conversationIds: [asking.childConversationId],
-      dedupeKey: "for-other",
       kind: "action",
       nowMs: Date.now(),
       request: REQUEST,
       title: "Bob's call",
-      visibility: "public",
     });
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",
@@ -477,17 +476,16 @@ describe("conversation tree state", () => {
     );
     const other = await resolveViewerUser("bob@example.com");
     await insertInboxItem(getDb(), {
+      subject: { id: "token-for-other", kind: "question" },
       owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
       conversationIds: [conversationId],
-      dedupeKey: "token-for-other",
       kind: "action",
       nowMs: Date.now(),
       request: REQUEST,
       title: "Bob's call",
-      visibility: "public",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
@@ -593,7 +591,7 @@ describe("conversation tree state", () => {
       createJuniorApi({ conversationWorkQueue: fixture.queue }),
     );
     // A Space's members are the Participants of its Lead.
-    const lead = await getSpaceLead({ member: viewer!, space });
+    const lead = await getSpaceLead(space.id);
     await getDb().insert(juniorConversationParticipants).values({
       lastMessageAt: new Date(),
       rootConversationId: lead.conversationId,

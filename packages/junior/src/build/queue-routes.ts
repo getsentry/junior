@@ -1,8 +1,8 @@
 import {
   BACKGROUND_COMPACTION_QUEUE_TOPIC,
   CACHE_WARMUP_QUEUE_TOPIC,
+  DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
   PLUGIN_TASK_QUEUE_TOPIC,
-  resolveConversationWorkQueueTopic,
   WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
 } from "@/chat/queue/topics";
 import { DELIVERY_TOPIC } from "@/core/delivery/topic";
@@ -29,7 +29,10 @@ export function queueCallbackRoutes(): { route: string; topic: string }[] {
   return [
     {
       route: JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
-      topic: resolveConversationWorkQueueTopic(),
+      // The runtime resolves the same env var in its queue config.
+      topic:
+        process.env["JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC"]?.trim() ||
+        DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
     },
     {
       route: JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,

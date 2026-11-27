@@ -1,7 +1,3 @@
-import {
-  getDispatchIdForConversation,
-  getDispatchRecord,
-} from "@/chat/agent-dispatch/store";
 import { readAutomationExecutionByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationRoot } from "@/chat/conversations/root";
 
@@ -13,10 +9,9 @@ export interface ConversationAutomationRun {
 }
 
 /**
- * Return the Automation run of one Automation Conversation. The SQL run row
- * lasts as long as the Automation, but a Watch can outlive the dispatch
- * record. The dispatch record covers a run whose row does not link its
- * Conversation yet.
+ * Return the Automation run of one Automation Conversation. Each run's row
+ * links its Conversation before the run's agent acts, and the row lasts as
+ * long as the Automation.
  */
 export async function readConversationAutomationRun(
   conversationId: string,
@@ -24,31 +19,13 @@ export async function readConversationAutomationRun(
   const run = await readAutomationExecutionByConversationId({
     conversationId,
   });
-  if (run) {
-    return {
-      automationId: run.automationId,
-      automationRunId: run.runId,
-      kind: run.kind,
-    };
-  }
-  const dispatchId = getDispatchIdForConversation(conversationId);
-  const source = dispatchId
-    ? (await getDispatchRecord(dispatchId))?.source
+  return run
+    ? {
+        automationId: run.automationId,
+        automationRunId: run.runId,
+        kind: run.kind,
+      }
     : undefined;
-  if (
-    (source?.kind !== "scheduled_automation" &&
-      source?.kind !== "event_automation") ||
-    !source.automationId
-  ) {
-    return undefined;
-  }
-  return {
-    automationId: source.automationId,
-    ...(source.automationRunId
-      ? { automationRunId: source.automationRunId }
-      : undefined),
-    kind: source.kind === "scheduled_automation" ? "scheduled" : "event",
-  };
 }
 
 /**

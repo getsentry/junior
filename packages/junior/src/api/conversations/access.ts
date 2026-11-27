@@ -128,6 +128,8 @@ export function conversationAccessFromRows(
         validRootConversationId === undefined ? null : row.visibility;
       // Participant rows belong to roots, so a row with a parent never
       // matches its own id. That keeps a forged cycle from granting access.
+      // A Space's members are the Participants of its Lead, the root of
+      // every Conversation in it, so this covers Spaces too.
       const isParticipant =
         (row.parentConversationId === null &&
           participantRootIds.has(row.conversationId)) ||
@@ -169,9 +171,9 @@ export function conversationAccessFromRows(
 
 /**
  * Whether the viewer may add a Message to a Conversation. A signed-in person
- * joins a public Conversation by posting in it, the same as a public Slack
- * thread: their first Turn adds their Participant row. A private one takes
- * Messages only from its Participants.
+ * may post in a public Conversation, the same as in a public Slack thread.
+ * A web Message does not make them a Participant: they Join explicitly. A
+ * private one takes Messages only from its Participants.
  */
 export function canAddConversationMessages(
   access: ConversationAccess | undefined,

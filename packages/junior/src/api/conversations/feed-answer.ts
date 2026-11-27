@@ -1,13 +1,22 @@
 import { and, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import type { ConversationFeedViewerAnswer } from "@/api/schema/conversation-feed";
 import { inboxItemOwnedByConversation } from "@/chat/inbox-items/access";
-import type { InboxItemRequest } from "@/chat/inbox-items/evidence";
+import type { InboxItemRequest } from "@/chat/inbox-items/request";
+import {
+  inboxItemAnswer,
+  inboxItemRequest,
+  itemQuestion,
+} from "@/chat/inbox-items/question-content";
 import {
   answeredChoices,
   type UserInputAnswer,
 } from "@/chat/inbox-items/user-input-request";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations, juniorInboxItems } from "@/db/schema";
+import {
+  juniorConversations,
+  juniorInboxItems,
+  juniorQuestions,
+} from "@/db/schema";
 
 type StoredViewerAnswer = {
   answer: UserInputAnswer;
@@ -27,15 +36,16 @@ export function feedViewerAnswerSql(
 ): SQL<StoredViewerAnswer | null> {
   const latest = db
     .select({
-      answer: sql`jsonb_build_object('answer', ${juniorInboxItems.answer}, 'closedAt', ${juniorInboxItems.closedAt}, 'request', ${juniorInboxItems.request})`,
+      answer: sql`jsonb_build_object('answer', ${inboxItemAnswer}, 'closedAt', ${juniorInboxItems.closedAt}, 'request', ${inboxItemRequest})`,
     })
     .from(juniorInboxItems)
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
         inboxItemOwnedByConversation(juniorConversations.conversationId),
         eq(juniorInboxItems.closedByUserId, userId),
-        isNotNull(juniorInboxItems.answer),
-        isNotNull(juniorInboxItems.request),
+        isNotNull(inboxItemAnswer),
+        isNotNull(inboxItemRequest),
       ),
     )
     .orderBy(desc(juniorInboxItems.closedAt), desc(juniorInboxItems.id))

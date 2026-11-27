@@ -14,6 +14,8 @@ import { randomUUID } from "node:crypto";
 import * as readline from "node:readline/promises";
 import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
+import { installChatConfig } from "@/chat/config";
+import { loadConfig, type ConfigInput } from "@/config";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import type {
   LocalAgentReply,
@@ -123,12 +125,23 @@ function writeStream(
   });
 }
 
-/** Keep local chat ephemeral by default; Redis is opt-in via an explicit adapter. */
-function defaultStateAdapterForLocalChat(): void {
-  if (process.env["JUNIOR_STATE_ADAPTER"]) {
-    return;
-  }
-  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+/**
+ * Install the config of a local chat run. Local chat is ephemeral by default:
+ * it uses the memory state adapter unless `JUNIOR_STATE_ADAPTER` is set, so
+ * Redis is opt-in.
+ */
+function installLocalChatConfig(options: ConfigInput = {}): void {
+  installChatConfig(
+    loadConfig({
+      env: process.env,
+      options: {
+        ...options,
+        state: {
+          adapter: process.env["JUNIOR_STATE_ADAPTER"] ? undefined : "memory",
+        },
+      },
+    }),
+  );
 }
 
 /** Load the app plugin module so source-mode local chat matches server wiring. */
@@ -238,11 +251,8 @@ async function prepareLocalChatRun(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ) {
-  defaultStateAdapterForLocalChat();
+  installLocalChatConfig({ eventEmbeddings: { enabled: true } });
   await configureLocalChatPlugins(pluginSet);
-  const { setEventEmbeddingsConfig } =
-    await import("@/chat/conversations/event-embedding-config");
-  setEventEmbeddingsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
@@ -359,7 +369,7 @@ async function runCorePrompt(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<number> {
-  defaultStateAdapterForLocalChat();
+  installLocalChatConfig();
   await configureLocalChatPlugins(pluginSet);
   const { runCoreEnginePrompt } = await import("./chat-core-engine");
   const result = await runCoreEnginePrompt({

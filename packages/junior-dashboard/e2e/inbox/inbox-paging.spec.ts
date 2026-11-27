@@ -10,11 +10,24 @@ import {
   prMerge,
   prReady,
   prReview,
+  pullRequestSubject,
   rowHead,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mockFeedPage } from "../mock-reports";
 import { scrollListUntil } from "./scroll-until";
+
+// A GitHub notice about a pull request that waits on no one, so Code has a
+// Waiting on others pile. An agent's notice that cites one is not on Code.
+const prNotice = {
+  ...prReady,
+  subject: pullRequestSubject({
+    id: "acme/payments#42",
+    kind: "github:pull_request",
+    title: "fix(payments): Retry declined webhooks",
+    url: "https://github.com/acme/payments/pull/42",
+  }),
+};
 
 test.describe("new UI", () => {
   test("the asks and Done load their next pages at the end of the list", async ({
@@ -22,7 +35,7 @@ test.describe("new UI", () => {
     page,
   }) => {
     await mockInboxItems(page, {
-      open: [prReview, prMerge, prReady],
+      open: [prReview, prMerge, prNotice],
       pageSize: 1,
     });
     // No code changes, so the asks are the whole list and its end shows.
@@ -135,7 +148,7 @@ test.describe("new UI", () => {
     page,
   }) => {
     await mockInboxItems(page, {
-      open: [prReview, prMerge, prReady],
+      open: [prReview, prMerge, prNotice],
       pageSize: 1,
     });
     // No code changes, so the asks are the whole list and its end shows.
@@ -207,7 +220,7 @@ test.describe("new UI", () => {
       conversationIds: [],
       createdAt: new Date(NOW_MS - (60 - index) * 3_600_000).toISOString(),
       id: `item-notice-${index}`,
-      subject: undefined,
+      subject: { id: `item-notice-${index}`, kind: "question" },
       title: `Deploy note ${index}`,
     }));
     const ask = {

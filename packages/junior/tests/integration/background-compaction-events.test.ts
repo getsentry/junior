@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAgentModelRequest } from "@/chat/agent/context-summary";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
-import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import { getGatewayApiKey } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import {
   processBackgroundCompaction,
   requestBackgroundCompaction,

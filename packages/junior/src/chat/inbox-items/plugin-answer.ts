@@ -5,7 +5,7 @@ import { createPluginEventPublisher } from "@/chat/plugins/hooks/routes";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 import { createPluginState } from "@/chat/plugins/state";
 import { createPluginConversationWatches } from "@/chat/plugins/watches";
-import { PLUGIN_INBOX_ITEM_KEY_PREFIX, inboxItemPlugin } from "./access";
+import { inboxItemPlugin } from "./access";
 import type { InboxItemDelivery } from "./changes";
 import { createPluginInboxItems, PLUGIN_CHOICE_FIELD_ID } from "./plugin";
 import { ownerConversationId, type InboxItem } from "./store";
@@ -21,7 +21,7 @@ export async function answerPluginInboxItem(args: {
   nowMs: number;
 }): Promise<void> {
   const { item } = args;
-  const pluginName = inboxItemPlugin(item.dedupeKey);
+  const pluginName = inboxItemPlugin(item);
   const choice = item.answer?.values[PLUGIN_CHOICE_FIELD_ID]?.[0];
   // A plugin adds items only for a Conversation.
   const conversationId = ownerConversationId(item);
@@ -37,9 +37,10 @@ export async function answerPluginInboxItem(args: {
     choice,
     codeChanges: createPluginCodeChanges(pluginName),
     conversationId,
-    dedupeKey: item.dedupeKey.slice(
-      `${PLUGIN_INBOX_ITEM_KEY_PREFIX}${pluginName}:`.length,
-    ),
+    subject: {
+      id: item.subject.id,
+      kind: item.subject.kind.slice(pluginName.length + 1),
+    },
     events: createPluginEventPublisher(plugin, events),
     itemId: item.id,
     nowMs: args.nowMs,

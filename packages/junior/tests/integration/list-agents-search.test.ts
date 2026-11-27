@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
 import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { createSlackConversationSearchChannelPort } from "@/chat/slack/tool-support/conversation-search";
@@ -16,6 +15,7 @@ import { storeConversationMetadataFixture } from "../fixtures/conversation-metad
 import { seedMcpConversation } from "../fixtures/mcp-tools";
 import { createHarness } from "../fixtures/thread-input";
 import { signedInViewer } from "../fixtures/user";
+import { patchConfig } from "../fixtures/config";
 import {
   chatGetPermalinkOk,
   slackError,
@@ -37,7 +37,6 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 
 describe("listAgents query", () => {
   afterEach(async () => {
-    setDashboardConversationLinkOptions(undefined);
     await closeDb();
   });
 
@@ -97,8 +96,10 @@ describe("listAgents query", () => {
       email: "list-agents-person@example.com",
       title: "Launch window and the decision log",
     });
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
 
     const tool = createListAgentsTool({
@@ -190,8 +191,10 @@ describe("listAgents query", () => {
       status: "open",
       url: "https://github.com/getsentry/junior/pull/1805",
     });
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
 
     const tool = createListAgentsTool({
@@ -235,7 +238,7 @@ describe("listAgents query", () => {
     });
 
     // Without the dashboard, the Slack thread is the link.
-    setDashboardConversationLinkOptions(undefined);
+    patchConfig({ dashboard: undefined });
     queueSlackApiResponse("chat.getPermalink", {
       body: chatGetPermalinkOk({
         permalink:
@@ -288,8 +291,10 @@ describe("listAgents query", () => {
       }),
     ]);
 
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     const publicTool = createListAgentsTool({
       conversationId: "local:test:current",

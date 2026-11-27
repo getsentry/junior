@@ -6,7 +6,6 @@
  */
 import type {
   EventPublisher,
-  PluginCodeChanges,
   PluginConversationWatches,
 } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
@@ -17,7 +16,6 @@ import {
   gitHubPullRequestSubscribable,
   type GitHubPullRequestSubscriptionConfig,
 } from "../events/pull-request.js";
-import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
 import { withGitHubConflictFix } from "./policy.js";
 import {
   gitHubMergeConflictEvents,
@@ -26,28 +24,41 @@ import {
 } from "../webhooks/merge-conflict.js";
 
 /**
+ * Let the conflict policy ask again about one pull request, after a Resume
+ * that could not start a fix.
+ */
+export async function allowGitHubConflictAsk(
+  db: GitHubDb,
+  pullRequestId: string,
+): Promise<void> {
+  await db
+    .update(juniorGitHubPullRequests)
+    .set({ conflictFixAskedAt: null })
+    .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId));
+}
+
+/**
  * Resume merge conflict fixes of one open Junior pull request, and start a
  * fix when it is not a draft and GitHub does not say that it can merge.
  * Safe to repeat for one item: the event key names the item, so a retry publishes no second fix.
  */
 export async function resumeGitHubConflictFixes(args: {
-  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   events: EventPublisher;
   /** The answered item. */
   itemId: string;
   loadPullRequest(ref: GitHubPullRequestRef): Promise<unknown>;
   nowMs: number;
+  /** GitHub's id of the pull request. */
+  pullRequestId: string;
   ref: GitHubPullRequestRef;
   /** The Watch that Junior makes for its pull requests, if the app has one. */
   subscription: GitHubPullRequestSubscriptionConfig | undefined;
   /** Watches of the item's Conversation. */
   watches: PluginConversationWatches;
 }): Promise<void> {
-  const change = await findGitHubPullRequest(args.codeChanges, args.ref);
-  if (change?.state !== "open") return;
   const t = juniorGitHubPullRequests;
-  const pullRequest = eq(t.pullRequestId, change.providerId);
+  const pullRequest = eq(t.pullRequestId, args.pullRequestId);
   const [row] = await args.db
     .select({
       fixes: t.conflictFixes,

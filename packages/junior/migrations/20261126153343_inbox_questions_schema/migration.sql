@@ -1,0 +1,5 @@
+-- This migration does not change the database. The two migrations before
+-- it add `junior_questions` and change `junior_inbox_items` by hand,
+-- because data moves between their statements. This snapshot records the
+-- schema that they leave, so `drizzle-kit generate` does not write their
+-- changes again.

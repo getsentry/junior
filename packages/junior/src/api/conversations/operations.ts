@@ -56,13 +56,13 @@ export const archiveConversationOperation = defineApiOperation({
   name: "archiveConversation",
   title: "Archive conversation",
   description:
-    "Archive one of your conversations, or restore it, for everyone in it. Archiving a conversation hides it and its child conversations. A restore fails while a conversation above it is archived. A new message from a person restores the conversation and the archived conversations above it.",
+    "Archive one of your conversations, or restore it, for everyone in it. Archiving a conversation hides it and its child conversations and stops their running work. A restore fails while a conversation above it is archived. A new message from a person restores the conversation and the archived conversations above it.",
   scope: "conversations:manage",
   input: archiveConversationBodySchema.extend(conversationIdInput),
   output: archiveConversationResponseSchema,
   annotations: writeAnnotations,
-  run: (viewer, { conversationId, ...body }) =>
-    archiveConversation(viewer, conversationId, body),
+  run: (viewer, { conversationId, ...body }, services) =>
+    archiveConversation(viewer, conversationId, body, services),
 });
 
 /** Archive every done Conversation of the viewer once. */

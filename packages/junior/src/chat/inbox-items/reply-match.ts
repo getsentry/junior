@@ -1,6 +1,7 @@
 import { botConfig } from "@/chat/config";
 import { completeDecision } from "@/chat/core-model";
 import type { InboxItem } from "./store";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 const MATCH_CONFIDENCE_THRESHOLD = 0.7;
 /** A slow decision keeps the items open instead of delaying the close. */
@@ -13,7 +14,8 @@ export type ReplyMatchItem = Pick<
 >;
 
 function describeItem(item: ReplyMatchItem): string {
-  const fields = (item.request?.fields ?? []).map((field) =>
+  const request = inboxItemQuestion(item.request);
+  const fields = (request?.fields ?? []).map((field) =>
     "options" in field
       ? `- ${field.label}: ${field.options.map((option) => option.label).join(" / ")}`
       : `- ${field.label}: free text`,
@@ -21,7 +23,7 @@ function describeItem(item: ReplyMatchItem): string {
   return [
     `Title: ${item.title}`,
     `Details: ${item.body}`,
-    ...(item.request ? [`Question: ${item.request.question}`] : []),
+    ...(request ? [`Question: ${request.question}`] : []),
     ...(fields.length ? ["Fields:", ...fields] : []),
   ].join("\n");
 }

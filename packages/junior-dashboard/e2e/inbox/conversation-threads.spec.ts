@@ -404,6 +404,9 @@ test.describe("new UI", () => {
     await expect(
       transcript.getByRole("group", { name: "Message to Conversation" }),
     ).toContainText("Refused");
+    // The chip click left the pointer on the transcript. The scroll would
+    // move the sent row's link under it and show its hover underline.
+    await page.mouse.move(-1, -1);
     await sent.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-agent-messages", { lightTheme: true });
 

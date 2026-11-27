@@ -29,6 +29,11 @@ const responseSchema = z.object({
       z.literal("pending"),
     ])
     .optional(),
+  // Only the GraphQL card read has GitHub's review decision.
+  review: z
+    .enum(["approved", "changes_requested", "required"])
+    .nullable()
+    .optional(),
   state: z.string().optional(),
   changed_files: z.number().int().nonnegative().optional(),
   additions: z.number().int().nonnegative().optional(),
@@ -146,7 +151,8 @@ export function githubPreviewImageUrls(
   ];
 }
 
-type CodeChangeFacts = Extract<ObjectFacts, { type: "code_change" }>;
+/** The facts of a code change card. */
+export type CodeChangeFacts = Extract<ObjectFacts, { type: "code_change" }>;
 
 /**
  * Add preview images in body order while the facts stay in the 4 KiB limit.
@@ -191,6 +197,7 @@ export function githubObjectFacts(
                 ?.slice(0, 5)
                 .map((user) => short(user.login)!)
                 .filter(Boolean),
+              review: data.review ?? undefined,
               sourceBranch: short(data.head?.ref),
               targetBranch: short(data.base?.ref),
               // Merge state and checks matter only while the pull request

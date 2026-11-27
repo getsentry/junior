@@ -1,8 +1,8 @@
+import { getChatConfig } from "@/chat/config";
 import * as Sentry from "@/chat/sentry";
 
 function getSentryOrgSlug(): string | undefined {
-  const slug = process.env["SENTRY_ORG_SLUG"]?.trim();
-  return slug || undefined;
+  return getChatConfig().deployment.sentryOrgSlug;
 }
 
 function isSentrySaasDsnHost(host: string): boolean {

@@ -184,9 +184,10 @@ describe("daily reconcile of open pull requests", () => {
         updatedAt: new Date(now - 3 * day),
       });
     await h.inboxItems.forConversation("slack:C1:1.0").upsert({
+      askedIdentityIds: ["identity-jane"],
       assigneeIdentityIds: ["identity-jane"],
       body: "Pull request 949 has merge conflicts.",
-      dedupeKey: "merge-conflict:getsentry/junior#949",
+      subject: { id: "9490", kind: "merge_conflict" },
       title: "Merge conflict · #949",
     });
   }
@@ -194,17 +195,18 @@ describe("daily reconcile of open pull requests", () => {
   it("records closes that GitHub did not deliver, once a day", async () => {
     await noticeFor949();
     await h.inboxItems.forConversation("slack:C1:1.0").upsert({
+      askedIdentityIds: ["identity-jane"],
       assigneeIdentityIds: ["identity-jane"],
       body: "GitHub asks you to review #949.",
-      dedupeKey: "pull-request-action:getsentry/junior#949",
+      subject: { id: "9490", kind: "pull_request" },
       title: "Review requested · #949",
       waitsOnAssignees: true,
     });
     await h.heartbeat(now);
     // No webhook closes the ask after a missed close, so the close does.
     expect(h.closedNotices).toEqual([
-      "merge-conflict:getsentry/junior#949",
-      "pull-request-action:getsentry/junior#949",
+      "merge_conflict:9490",
+      "pull_request:9490",
     ]);
     // The chip and the ask change in one write.
     expect(h.batches).toContainEqual({
@@ -217,12 +219,9 @@ describe("daily reconcile of open pull requests", () => {
           }),
         },
       ],
-      inboxItems: [
-        "pull-request-action:getsentry/junior#949",
-        "merge-conflict:getsentry/junior#949",
-      ].map((dedupeKey) => ({
+      inboxItems: ["pull_request", "merge_conflict"].map((kind) => ({
         close: {
-          dedupeKey,
+          subject: { id: "9490", kind },
           reason: "The pull request closed without merging.",
           status: "dismissed",
         },
@@ -438,7 +437,7 @@ describe("daily reconcile of open pull requests", () => {
     vi.setSystemTime(now + day);
     await h.heartbeat(now + day);
     expect(await state949()).toBe("closed");
-    expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#949"]);
+    expect(h.closedNotices).toEqual(["merge_conflict:9490"]);
   });
 
   it("keeps a close open for the next reconcile when its event fails", async () => {

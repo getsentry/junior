@@ -202,11 +202,14 @@ export function useConversationMenuItems(
   // of a private Conversation is in it even when not subscribed, so they
   // always get Leave. That Leave also ends access, so it asks first, and
   // only a menu with that dialog offers it. Only participants have a
-  // subscription. A child uses its root's.
+  // subscription. A child follows its root's, so it offers neither.
   const subscribed = detail?.subscribed === true;
   const leaveEndsAccess = detail?.leaveEndsAccess === true;
   const joined = subscribed || leaveEndsAccess;
-  if (!leaveEndsAccess || actions.leave) {
+  if (
+    !conversation?.parentConversationId &&
+    (!leaveEndsAccess || actions.leave)
+  ) {
     notifyItems.push({
       disabled: detail?.subscribed === undefined || pending.subscription,
       icon: joined ? LogOut : Bell,

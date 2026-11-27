@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
 
@@ -20,10 +20,13 @@ export async function recordGitHubPullRequestOpener(
     createdAt: Date;
     identityId: string;
     number: number;
+    /** GitHub's id of the pull request, when the create result has it. */
+    pullRequestId?: string | undefined;
     repositoryFullName: string;
   },
 ): Promise<void> {
   const repositoryFullName = input.repositoryFullName.toLowerCase();
+  const pullRequestId = input.pullRequestId ?? null;
   await db
     .insert(table)
     .values({
@@ -31,12 +34,17 @@ export async function recordGitHubPullRequestOpener(
       createdAt: input.createdAt,
       identityId: input.identityId,
       number: input.number,
+      pullRequestId,
       repositoryFullName,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: [table.repositoryFullName, table.number, table.identityId],
-      set: { conversationId: input.conversationId, createdAt: input.createdAt },
+      set: {
+        conversationId: input.conversationId,
+        createdAt: input.createdAt,
+        ...(pullRequestId ? { pullRequestId } : undefined),
+      },
     });
   await db
     .delete(table)
@@ -82,6 +90,8 @@ export interface GitHubPullRequestOpener {
   /** Set only for the person who asked Junior to open it. */
   conversationId?: string;
   identityId: string;
+  /** GitHub's id of the pull request, when the opener's row has it. */
+  pullRequestId?: string;
 }
 
 /**
@@ -112,10 +122,62 @@ export async function listGitHubPullRequestOpeners(
         ...(row.conversationId
           ? { conversationId: row.conversationId }
           : undefined),
+        ...(row.pullRequestId
+          ? { pullRequestId: row.pullRequestId }
+          : undefined),
       });
     }
   }
   return openers;
+}
+
+/**
+ * Save GitHub's id of the pull request on its opener's row, when the row
+ * has none yet, such as a row from before the create saved the id. The row
+ * maps the id to the Conversation that owns the pull request's Inbox items,
+ * so an item needs it before it is added.
+ */
+export async function recordGitHubPullRequestOpenerId(
+  db: GitHubDb,
+  input: {
+    conversationId: string;
+    number: number;
+    pullRequestId: string;
+    repositoryFullName: string;
+  },
+): Promise<void> {
+  await db
+    .update(table)
+    .set({ pullRequestId: input.pullRequestId, updatedAt: new Date() })
+    .where(
+      and(
+        eq(table.repositoryFullName, input.repositoryFullName.toLowerCase()),
+        eq(table.number, input.number),
+        eq(table.conversationId, input.conversationId),
+        isNull(table.pullRequestId),
+      ),
+    );
+}
+
+/**
+ * Whether a person asked Junior to open a pull request in one Conversation,
+ * by GitHub's id of the pull request.
+ */
+export async function wasGitHubPullRequestOpenedIn(
+  db: GitHubDb,
+  input: { conversationId: string; pullRequestId: string },
+): Promise<boolean> {
+  const [row] = await db
+    .select({ number: table.number })
+    .from(table)
+    .where(
+      and(
+        eq(table.conversationId, input.conversationId),
+        eq(table.pullRequestId, input.pullRequestId),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }
 
 /**

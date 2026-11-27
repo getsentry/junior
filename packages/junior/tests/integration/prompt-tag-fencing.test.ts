@@ -10,7 +10,7 @@ import {
 import { isRuntimeInputText, renderDataTag } from "@/chat/input-tags";
 import { instructionTextForProjection } from "@/chat/pi/transcript";
 import { buildTurnContextPrompt } from "@/chat/prompt";
-import { buildConversationContext } from "@/chat/services/conversation-memory";
+import { buildConversationContext } from "@/chat/slack/thread-context";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { renderTaskInput } from "@/chat/task-input";
 

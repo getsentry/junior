@@ -1,6 +1,6 @@
 import { createECDH, randomBytes, randomUUID, type ECDH } from "node:crypto";
 import { createRequire } from "node:module";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import webPush from "web-push";
@@ -22,7 +22,6 @@ import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { createSlackActor } from "@/chat/actor";
 import { CONVERSATION_METADATA_TASK } from "@/chat/conversations/metadata/task";
 import { webActorFromUser } from "@/chat/conversations/web-input";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
   getConversationEventStore,
@@ -142,7 +141,12 @@ async function replyNotices(conversationId: string) {
   const rows = await getDb()
     .select({ id: juniorInboxItems.id })
     .from(juniorInboxItems)
-    .where(eq(juniorInboxItems.dedupeKey, `reply:${conversationId}`))
+    .where(
+      and(
+        eq(juniorInboxItems.subjectKind, "reply"),
+        eq(juniorInboxItems.subjectId, conversationId),
+      ),
+    )
     .orderBy(juniorInboxItems.createdAt);
   return await Promise.all(rows.map((row) => getInboxItem(getDb(), row.id)));
 }
@@ -150,11 +154,11 @@ async function replyNotices(conversationId: string) {
 /** Add an open question for the starter, as the agent's card does. */
 async function addQuestion(conversationId: string, userId: string) {
   const item = await insertInboxItem(getDb(), {
+    subject: { id: randomUUID(), kind: "question" },
     assignedToEveryone: false,
     assigneeUserIds: [userId],
     body: "",
     conversationIds: [conversationId],
-    dedupeKey: `question:${randomUUID()}`,
     kind: "action",
     nowMs: Date.now(),
     owner: { id: conversationId, kind: "conversation" },
@@ -170,7 +174,6 @@ async function addQuestion(conversationId: string, userId: string) {
       ],
     },
     title: "Roll back?",
-    visibility: "private",
   });
   return item!.id;
 }
@@ -313,20 +316,17 @@ async function completeDashboardTurn(
 
 describe("reply notification task", () => {
   let keys: ReturnType<typeof webPush.generateVAPIDKeys>;
-  let previousLinks: ReturnType<typeof setDashboardConversationLinkOptions>;
   let pushes: Request[];
 
   beforeEach(async () => {
     keys = webPush.generateVAPIDKeys();
     useConfig({
+      dashboard: { baseURL: "https://junior.example.com" },
       webPush: {
         privateKey: keys.privateKey,
         publicKey: keys.publicKey,
         subject: "mailto:junior@example.com",
       },
-    });
-    previousLinks = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
     });
     await getStateAdapter().connect();
     pushes = [];
@@ -344,7 +344,6 @@ describe("reply notification task", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    setDashboardConversationLinkOptions(previousLinks);
     await disconnectStateAdapter();
     await closeDb();
   });
@@ -459,7 +458,7 @@ describe("reply notification task", () => {
     ).request(`http://localhost/api/inbox-items/${notice!.id}`);
     expect(await read.json()).toMatchObject({
       addedByTurnId: expect.any(String),
-      replyNotice: true,
+      subject: { kind: "reply", id: conversationId },
     });
     expect(decrypted).toEqual([
       {
@@ -651,6 +650,7 @@ describe("reply notification task", () => {
 
   it("signs pushes with the Vercel URL when no subject or base URL is set", async () => {
     useConfig({
+      dashboard: { baseURL: "https://junior.example.com" },
       deployment: { vercelProductionUrl: "junior.example.com" },
       webPush: { privateKey: keys.privateKey, publicKey: keys.publicKey },
     });

@@ -40,14 +40,11 @@ import {
   juniorInboxItemSlackCards,
   juniorInboxItems,
 } from "./schema/inbox-items";
+import { juniorQuestions } from "./schema/questions";
 import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
-import {
-  juniorSpaceConfigurations,
-  juniorSpaceMembers,
-  juniorSpaces,
-} from "./schema/spaces";
+import { juniorSpaceConfigurations, juniorSpaces } from "./schema/spaces";
 import { juniorTurnInbox } from "./schema/turn-inbox";
 import { juniorTurnOutbox } from "./schema/turn-outbox";
 import { juniorTurns } from "./schema/turns";
@@ -86,12 +83,12 @@ export {
   juniorInboxItemDeliveries,
   juniorInboxItemSlackCards,
   juniorInboxItems,
+  juniorQuestions,
   juniorTodos,
   juniorTodoVersionSeq,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorSpaceConfigurations,
-  juniorSpaceMembers,
   juniorSpaces,
   juniorStats,
   juniorAutomationRuns,
@@ -137,11 +134,11 @@ export const juniorSqlSchema = {
   juniorInboxItemDeliveries,
   juniorInboxItemSlackCards,
   juniorInboxItems,
+  juniorQuestions,
   juniorTodos,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorSpaceConfigurations,
-  juniorSpaceMembers,
   juniorSpaces,
   juniorStats,
   juniorAutomationRuns,

@@ -148,9 +148,11 @@ describe("versions API", () => {
           statements: 1,
           serialRounds: 1,
         }),
-      // About 720. A feed token that works out each row's status again
-      // costs about 1,330.
-      1_000,
+      // About 1,010. An Inbox item's owner comes from its subject on
+      // purpose, since the item stores no owner, so each owner check costs
+      // one more index lookup than a stored owner column. A feed token that
+      // works out each row's status again costs about 1,330.
+      1_100,
     );
     expect(await read()).toEqual(first);
     expect(await expectPlanCost(() => detailVersion(), 1_500)).toBe(
@@ -230,12 +232,12 @@ describe("versions API", () => {
     expect(await detailVersion()).toBe(withPin.conversation);
 
     const item = await insertInboxItem(getDb(), {
+      subject: { id: "versions:approve", kind: "question" },
       owner: { id: OWN, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
       body: "Approve the change.",
       conversationIds: [OWN],
-      dedupeKey: "versions:approve",
       kind: "action",
       nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
       request: {
@@ -250,7 +252,6 @@ describe("versions API", () => {
         question: "Approve the change?",
       },
       title: "Approve",
-      visibility: "private",
     });
     // An open item is a status input, so the detail moves too. The feed row
     // moves from `working` to `needs_input`, which outranks it.
@@ -459,14 +460,16 @@ describe("versions API", () => {
     };
     const taskRunning = await taskTurn("running", nowMs + 300_000);
     expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
-    // A take changes whom a running Task's item for Everyone waits on.
+    // A take changes whom a running Task's item up for grabs waits on. The
+    // Conversation is private, so the item has no assignees: it cannot name
+    // Everyone yet.
     const everyone = await insertInboxItem(getDb(), {
       owner: { id: `${OWN}:child`, kind: "conversation" },
-      assignedToEveryone: true,
+      assignedToEveryone: false,
       assigneeUserIds: [],
       body: "Anyone may approve.",
       conversationIds: [`${OWN}:child`],
-      dedupeKey: "versions:everyone",
+      subject: { id: "versions:everyone", kind: "question" },
       kind: "action",
       nowMs: nowMs + 300_000,
       request: {
@@ -481,7 +484,6 @@ describe("versions API", () => {
         question: "Approve the task?",
       },
       title: "Approve the task",
-      visibility: "public",
     });
     const withEveryone = await read();
     const bob = await resolveViewerUser("bob@example.com");

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createLocalSource, type Identity } from "@sentry/junior-plugin-api";
 import { closeDb } from "@/chat/db";
-import { setExperimentalFeatures } from "@/chat/experimental";
 import { readUserCustomization } from "@/chat/identities/customization";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -10,6 +9,7 @@ import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { createUpdateUserCustomizationTool } from "@/chat/tools/user-customization";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
+import { patchConfig } from "../fixtures/config";
 
 const CONVERSATION_ID = "local:user-customization:current";
 const IDENTITY: Identity = {
@@ -61,9 +61,11 @@ describe("user customization tool", () => {
       Object.keys(createTools([], {}, runtime));
     expect(toolNames(context())).not.toContain("updateUserCustomization");
 
-    setExperimentalFeatures({
-      ...SUITE_EXPERIMENTAL,
-      "user-customization": true,
+    patchConfig({
+      experimental: {
+        ...SUITE_EXPERIMENTAL,
+        "user-customization": true,
+      },
     });
     expect(toolNames(context())).toContain("updateUserCustomization");
     expect(
@@ -81,9 +83,11 @@ describe("user customization tool", () => {
   });
 
   it("replaces the current user's text and rejects people without a user", async () => {
-    setExperimentalFeatures({
-      ...SUITE_EXPERIMENTAL,
-      "user-customization": true,
+    patchConfig({
+      experimental: {
+        ...SUITE_EXPERIMENTAL,
+        "user-customization": true,
+      },
     });
     const user = await resolveViewerUser("person@example.com");
     if (!user) throw new Error("missing user");
