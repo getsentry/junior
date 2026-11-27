@@ -392,15 +392,13 @@ describe("conversation auto-archive API", () => {
     });
     // A Space's Lead is not a feed row, so it stays however long it has
     // been quiet.
-    const lead = await getSpaceLead({
-      member: viewer,
-      space: await createSpace({
-        creator: viewer,
-        description: null,
-        visibility: "public",
-        name: "Follow-ups",
-      }),
+    const space = await createSpace({
+      creator: viewer,
+      description: null,
+      visibility: "public",
+      name: "Follow-ups",
     });
+    const lead = await getSpaceLead(space.id);
     await getDb()
       .update(juniorConversations)
       .set({ lastActivityAt: new Date(staleMs) })

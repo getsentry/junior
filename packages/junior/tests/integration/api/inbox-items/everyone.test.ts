@@ -6,12 +6,9 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getSpaceLead } from "@/chat/lead/conversation";
-import { createSpace, joinSpace, leaveSpace } from "@/chat/spaces/store";
-import {
-  juniorConversationParticipants,
-  juniorConversations,
-} from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { createSpace } from "@/chat/spaces/store";
+import { leaveConversation } from "@/api/conversations/subscription";
+import { juniorConversationParticipants } from "@/db/schema";
 import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { buildSlackInboxItemCard } from "@/chat/slack/inbox-item-card";
@@ -238,16 +235,19 @@ describe("inbox item in a private Space", () => {
       name: "Launch",
       visibility: "private",
     });
-    const lead = await getSpaceLead({ member: ana, space });
+    const lead = await getSpaceLead(space.id);
     const privateId = lead.conversationId;
-    await joinSpace(privateId, cy.id);
-    await joinSpace(privateId, ben.id);
-    await leaveSpace(space.id, ben.id);
-    // The Space, not the Lead's stored visibility, decides who reads it.
+    // A Space's members are its Lead's Participants.
     await getDb()
-      .update(juniorConversations)
-      .set({ visibility: "public" })
-      .where(eq(juniorConversations.conversationId, privateId));
+      .insert(juniorConversationParticipants)
+      .values(
+        [cy, ben].map((member) => ({
+          lastMessageAt: new Date(nowMs),
+          rootConversationId: privateId,
+          userId: member.id,
+        })),
+      );
+    await leaveConversation(ben, privateId);
     const created = await insertInboxItem(getDb(), {
       owner: { id: privateId, kind: "conversation" },
       assignedToEveryone: false,

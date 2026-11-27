@@ -24,7 +24,8 @@ export type ConversationMember = { userId: string } | { email: string };
 
 /**
  * Select the person's participant row on the outer `juniorConversations`
- * root, with an optional extra condition.
+ * root, with an optional extra condition. `onRoot` matches the outer row's root
+ * when that row may be a child.
  */
 function memberParticipantRow(
   member: ConversationMember,
@@ -121,10 +122,10 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
 }
 
 /**
- * True when the person has not unsubscribed from the conversation, or from
- * the root whose child it is. The active feed uses it, so a conversation
- * that someone else carries on leaves the feed of a person who left it,
- * with the Lead's Threads that top-level lists show.
+ * True when the person has not unsubscribed from the conversation's root.
+ * The active feed uses it, so a conversation that someone else carries on
+ * leaves the feed of a person who left it. A feed row can be a Lead's
+ * child, which has no subscription of its own, so it uses its root's.
  */
 export function conversationIsNotUnsubscribedRoot(
   member: ConversationMember,
@@ -137,15 +138,9 @@ export function conversationIsNotUnsubscribedRoot(
       memberParticipantRow(
         member,
         isNotNull(juniorConversationParticipants.unsubscribedAt),
-        or(
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            juniorConversations.conversationId,
-          ),
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            juniorConversations.parentConversationId,
-          ),
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
         ),
       ),
     ),

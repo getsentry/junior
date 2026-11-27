@@ -1,6 +1,11 @@
 import { Hono } from "hono";
-import { setSpaceArchive } from "@/chat/spaces/conversations";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { writeLegacySpaceArchive } from "@/chat/spaces/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  setConversationArchive,
+  stopArchivedWork,
+} from "../conversations/archive";
 import type { JuniorApiEnv } from "../route";
 import { archiveSpaceBodySchema } from "../schema/space";
 import { validateRequest } from "../validation";
@@ -11,9 +16,12 @@ import {
   spaceResponse,
 } from "./access";
 
-/** Create the route that archives or restores a Space with its Conversations. */
+/**
+ * Create the route that archives or restores a Space. A Space is its Lead,
+ * so this archives or restores the Lead's tree, as for any root, and an
+ * archive stops the tree's running work.
+ */
 export function createSpaceArchiveRoutes(options: {
-  /** Archive stops the Conversations of the Space through it. */
   queue: ConversationWorkQueue;
 }): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
@@ -26,12 +34,34 @@ export function createSpaceArchiveRoutes(options: {
     async (context) => {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
-      await requireMemberSpace(viewerUserId, spaceId);
-      await setSpaceArchive({
-        archived: context.req.valid("json").archived,
-        queue: options.queue,
-        spaceId,
-      });
+      const { archived } = context.req.valid("json");
+      const space = await requireMemberSpace(viewerUserId, spaceId);
+      const lead = await getSpaceLead(spaceId);
+      if (archived !== (space.archivedAt !== null)) {
+        // A Space archive applies whatever the Lead did since the page read
+        // it, so it does not check the Lead's activity.
+        const result = await setConversationArchive(
+          archived
+            ? {
+                applyToChildren: true,
+                archived: true,
+                conversationId: lead.conversationId,
+              }
+            : {
+                applyToChildren: true,
+                archived: false,
+                conversationId: lead.conversationId,
+                userId: viewerUserId,
+              },
+        );
+        await writeLegacySpaceArchive(
+          spaceId,
+          result.status === "archived" ? new Date(result.archivedAt) : null,
+        );
+      }
+      // A retry after a failed stop finds the Space archived, so it stops
+      // what is still running.
+      if (archived) await stopArchivedWork(lead.conversationId, options.queue);
       return await spaceResponse(viewerUserId, spaceId);
     },
   );
