@@ -20,9 +20,9 @@ export function createRecordingDelivery() {
       }
       return {
         providerMessageId: `message-${sends.length}`,
-        // A Slack reply goes to its Destination's thread.
-        ...(destination.platform === "slack" && destination.threadTs
-          ? { providerConversationId: destination.threadTs }
+        // A Slack reply with no thread starts one at its post.
+        ...(destination.platform === "slack" && !destination.threadTs
+          ? { providerConversationId: `message-${sends.length}` }
           : undefined),
       };
     },

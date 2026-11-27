@@ -29,7 +29,7 @@ export type Delivery = {
     text: string;
   }) => Promise<{
     providerMessageId?: string;
-    /** The provider thread that the reply went to, such as a Slack thread. */
+    /** The provider thread that the reply started, such as a Slack thread. */
     providerConversationId?: string;
   }>;
 };

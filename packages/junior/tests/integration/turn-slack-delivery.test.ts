@@ -52,10 +52,8 @@ describe("deployment Delivery", () => {
       }),
     ]);
     expect(posts[0]?.params["text"]).toContain("Three.");
-    expect(sent).toEqual({
-      providerMessageId: expect.any(String),
-      providerConversationId: "1700000000.000100",
-    });
+    // A reply in an existing thread starts no thread.
+    expect(sent).toEqual({ providerMessageId: expect.any(String) });
   });
 
   it("fails a send that Slack can take later as retryable", async () => {

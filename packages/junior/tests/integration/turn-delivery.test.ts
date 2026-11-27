@@ -226,18 +226,14 @@ describe("Turn delivery", () => {
     await publishTurnEnded(engineCtx, { conversationId, turnId });
     await harness.runUntilIdle();
     await expect(compatReplyEvents(harness)).resolves.toEqual(ended);
+    // A reply in an existing thread claims no thread.
     await expect(
       engineCtx.executor
         .db()
         .select()
         .from(juniorConversationBindings)
         .where(eq(juniorConversationBindings.conversationId, conversationId)),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        provider: "slack",
-        providerConversationId: harness.location.threadTs,
-      }),
-    ]);
+    ).resolves.toEqual([]);
 
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
       expect.objectContaining({ state: "sent", attempts: 1 }),
@@ -356,6 +352,35 @@ describe("Turn delivery", () => {
       expect.objectContaining({
         state: "sent",
         destination: expect.objectContaining({ threadTs }),
+      }),
+    ]);
+  });
+
+  it("claims the thread that a reply with no thread starts", async () => {
+    const { engineCtx, conversationId, location } = harness;
+    await setModelReplies([reply("Three.")]);
+
+    await harness.send({
+      text: "How many Turns?",
+      destination: {
+        platform: "slack",
+        teamId: location.teamId,
+        channelId: location.channelId,
+      },
+    });
+    await harness.runUntilIdle();
+
+    await expect(
+      engineCtx.executor
+        .db()
+        .select()
+        .from(juniorConversationBindings)
+        .where(eq(juniorConversationBindings.conversationId, conversationId)),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        provider: "slack",
+        providerDestinationId: location.channelId,
+        providerConversationId: "message-1",
       }),
     ]);
   });

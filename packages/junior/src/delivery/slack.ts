@@ -56,8 +56,9 @@ export function createSlackSender(args: {
       throw error;
     }
     const providerMessageId = messageIds.at(-1);
-    // A reply with no thread starts one at its first post.
-    const providerConversationId = threadTs ?? messageIds[0];
+    // Only a reply with no thread starts one, at its first post. Main binds
+    // only those posts, so a reply in an existing thread returns none.
+    const providerConversationId = threadTs ? undefined : messageIds[0];
     return {
       ...(providerMessageId ? { providerMessageId } : undefined),
       ...(providerConversationId ? { providerConversationId } : undefined),
