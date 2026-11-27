@@ -16,9 +16,19 @@ ignores:
 rule:
   any:
     - kind: import_statement
+      has:
+        kind: string
+        matches: baseline-module
     - kind: export_statement
-  has:
-    kind: string
+      has:
+        kind: string
+        matches: baseline-module
+    - pattern: import($MODULE)
+constraints:
+  MODULE:
+    matches: baseline-module
+utils:
+  baseline-module:
     regex: ^["']@/chat/conversations/provenance["']$
 ---
 id: core-import-baseline-history
@@ -33,9 +43,19 @@ ignores:
 rule:
   any:
     - kind: import_statement
+      has:
+        kind: string
+        matches: baseline-module
     - kind: export_statement
-  has:
-    kind: string
+      has:
+        kind: string
+        matches: baseline-module
+    - pattern: import($MODULE)
+constraints:
+  MODULE:
+    matches: baseline-module
+utils:
+  baseline-module:
     regex: ^["']@/chat/conversations/history["']$
 ---
 id: core-import-baseline-conversation-privacy
@@ -50,9 +70,19 @@ ignores:
 rule:
   any:
     - kind: import_statement
+      has:
+        kind: string
+        matches: baseline-module
     - kind: export_statement
-  has:
-    kind: string
+      has:
+        kind: string
+        matches: baseline-module
+    - pattern: import($MODULE)
+constraints:
+  MODULE:
+    matches: baseline-module
+utils:
+  baseline-module:
     regex: ^["']@/chat/conversation-privacy["']$
 ---
 id: core-import-baseline-reasoning-level
@@ -66,7 +96,17 @@ ignores:
 rule:
   any:
     - kind: import_statement
+      has:
+        kind: string
+        matches: baseline-module
     - kind: export_statement
-  has:
-    kind: string
+      has:
+        kind: string
+        matches: baseline-module
+    - pattern: import($MODULE)
+constraints:
+  MODULE:
+    matches: baseline-module
+utils:
+  baseline-module:
     regex: ^["']@/chat/reasoning-level["']$
