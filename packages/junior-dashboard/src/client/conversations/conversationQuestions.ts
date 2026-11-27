@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { use, useMemo } from "react";
 import {
   conversationQuestionsReportSchema,
+  inboxItemQuestion,
   type ConversationQuestion,
   type ConversationReportEvent,
   type InboxItemPayload,
@@ -94,12 +95,24 @@ export function useAskedQuestionId(
 }
 
 /**
- * Build the item of a question that waits on the viewer, for the Inbox item
- * actions. It waits on them only as an open, unsnoozed item assigned to
- * them, not to Everyone. The transcript reads no item, so the fields that
- * only the item has, such as assignees and visibility, hold placeholders.
+ * True while a question waits for an answer: it has a form, no answer, and
+ * has not closed. It waits on anyone who can see it.
  */
-export function waitingQuestionItem(
+export function questionWaits(question: ConversationQuestion): boolean {
+  return (
+    !question.closedAt &&
+    !question.answer &&
+    Boolean(inboxItemQuestion(question.request))
+  );
+}
+
+/**
+ * Build the item of an open question, for the Inbox item actions. The
+ * transcript reads no item, so the fields that only the item has, such as
+ * assignees and visibility, hold placeholders. The actions route decides
+ * whether the viewer may act.
+ */
+export function openQuestionItem(
   question: ConversationQuestion,
   ask: { conversationId: string; itemId: string },
 ): InboxItemPayload {

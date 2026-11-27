@@ -12,20 +12,19 @@ export type ConversationDisplayState =
   | "pinned";
 
 /**
- * Pick one state for a Conversation row, and whether the Inbox says it
- * waits on the viewer. When more than one applies: `needs_you` >
- * `working` > `watching` > `pinned`. A `done` tree shows nothing. A row
- * without a tree state works while its own Turn is queued or running.
+ * Pick one state for a Conversation row. When more than one applies:
+ * `needs_you` > `working` > `watching` > `pinned`. A `done` tree shows
+ * nothing. A row without a tree state works while
+ * its own Turn is queued or running.
  */
 export function conversationDisplayState(
   conversation: Pick<
     Conversation,
     "pinnedAt" | "treeState" | "turnActive" | "watching"
   >,
-  waitsOnViewer = false,
 ): ConversationDisplayState | undefined {
   const tree = conversation.treeState;
-  if (waitsOnViewer || tree === "needs_you") return "needs_you";
+  if (tree === "needs_you") return "needs_you";
   if (tree === "working") return "working";
   if (!tree && conversation.turnActive) return "working";
   if (conversation.watching) return "watching";

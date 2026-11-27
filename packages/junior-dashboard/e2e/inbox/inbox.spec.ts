@@ -95,6 +95,10 @@ test.describe("new UI", () => {
         /Billing migration$/,
         /Mobile app$/,
         /Pricing launch$/,
+        // In flight: the trees whose questions wait, then the running one.
+        /^Roll out payments-v42$/,
+        /^Triage Sentaur GoCD deployment failures$/,
+        /^Quarterly reliability review$/,
         new RegExp(checkout),
       ]);
       // Like the badge: the "Pull request ready for review" notice does not
@@ -783,10 +787,9 @@ test.describe("new UI", () => {
             .getByRole("link", { name: new RegExp(checkout) }),
         ).toBeVisible();
       },
-      // The pull request on the checkout row reads its live state, the
-      // pane reads the viewer's Spaces, and the sidebar reads what waits on
-      // the viewer from the Inbox.
-      { requests: 11, serialRounds: 2 },
+      // The pull request on the checkout row reads its live state, and the
+      // pane reads the viewer's Spaces.
+      { requests: 10, serialRounds: 2 },
     );
   });
 

@@ -23,19 +23,19 @@ test.describe("new UI", () => {
       exact: true,
       name: "Conversations",
     });
-    await list.getByRole("link", { name: /^Roll out payments-v42/ }).hover();
+    await list.getByRole("link", { name: /^Checkout latency triage/ }).hover();
     await list
-      .getByRole("button", { name: "Pin Roll out payments-v42" })
+      .getByRole("button", { name: "Pin Checkout latency triage" })
       .click();
     const pinned = inFlight.getByRole("link", {
-      name: /Roll out payments-v42/,
+      name: /Checkout latency triage/,
     });
     await expect(pinned).toBeVisible();
     // On hover, its `⋯` takes the place of its state on the right.
     const pinnedState = inFlight
       .getByRole("listitem")
       .filter({
-        has: page.getByRole("link", { name: /Roll out payments-v42/ }),
+        has: page.getByRole("link", { name: /Checkout latency triage/ }),
       })
       .getByRole("img", { name: "Pinned" });
     await expect(pinnedState).toBeVisible();
@@ -63,7 +63,7 @@ test.describe("new UI", () => {
     await pinned.hover();
     await inFlight
       .getByRole("button", {
-        name: /^Open menu for Roll out payments-v42/,
+        name: /^Open menu for Checkout latency triage/,
       })
       .click();
     await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
@@ -79,7 +79,7 @@ test.describe("new UI", () => {
     const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
     await expect(inbox.getByRole("region", { name: "To do" })).toBeVisible();
     await expect(
-      inbox.getByRole("link", { name: /^Roll out payments-v42/ }),
+      inbox.getByRole("link", { name: /^Checkout latency triage/ }),
     ).toHaveCount(0);
     await expect(pinned).toBeVisible();
     await screenshot(page, "inbox-in-flight", { view: "desktop" });

@@ -45,37 +45,6 @@ export function joinConversationFeedPages(
   };
 }
 
-function markWaits(
-  row: ConversationFeedItem,
-  waitingIds: ReadonlySet<string>,
-): ConversationFeedItem {
-  return {
-    ...row,
-    ...(waitingIds.has(row.conversationId)
-      ? { treeState: "needs_you" as const }
-      : undefined),
-    ...(row.threads
-      ? { threads: row.threads.map((thread) => markWaits(thread, waitingIds)) }
-      : undefined),
-  };
-}
-
-/**
- * Mark each row and Thread that waits on the viewer as `needs_you`. The
- * feed reads only Conversation data; what waits on the viewer comes from
- * the Inbox's own read.
- */
-export function withViewerWaits(
-  feed: ConversationFeed,
-  waitingIds: ReadonlySet<string>,
-): ConversationFeed {
-  if (waitingIds.size === 0) return feed;
-  return {
-    ...feed,
-    conversations: feed.conversations.map((row) => markWaits(row, waitingIds)),
-  };
-}
-
 /** Read every cached row of one feed, in feed order. */
 export function conversationFeedCacheRows(
   cache: ConversationFeedCache,

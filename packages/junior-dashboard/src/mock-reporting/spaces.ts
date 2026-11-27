@@ -30,6 +30,7 @@ import {
   readMockConversationFeed,
   setMockConversationArchived,
 } from "./fixtures";
+import { withMockQuestionWaits } from "./inbox-items";
 import { mockLeadEvents } from "./lead-transcript";
 import { createMockLead, mockLeadId, mockLeadSpaceId } from "./sends";
 
@@ -157,13 +158,6 @@ const SEEDED_PUBLIC_IDS = new Set<string>(
 const mockSpaces = new Map<string, MockSpace>();
 /** The Space of each root, by Conversation id. */
 const mockConversationSpaces = new Map<string, string>();
-
-/** The Space of a mock root, if it is in one. */
-export function mockConversationSpaceId(
-  conversationId: string,
-): string | undefined {
-  return mockConversationSpaces.get(conversationId);
-}
 
 /** A root in a private Space is private, as the API makes it. */
 function visibilityOf(
@@ -536,7 +530,10 @@ const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
 function spaceState(
   spaceId: string,
 ): Pick<SpaceReport, "latestTurnFailed" | "treeState"> {
-  const rows = readMockConversationFeed().conversations.filter(
+  const rows = withMockQuestionWaits(
+    readMockConversationFeed(),
+    NOW_MS,
+  ).conversations.filter(
     (row) =>
       !row.archivedAt &&
       mockConversationSpaces.get(row.conversationId) === spaceId,

@@ -7,7 +7,6 @@ import {
   mockInboxItems,
   rollout,
   rowHead,
-  waitingConversations,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { waitForRequestsToEnd, waitForSettingsReads } from "../harness";
@@ -172,9 +171,6 @@ test.describe("new UI", () => {
         });
       },
     );
-    await page.route("**/api/inbox-items/waiting-conversations", (route) =>
-      route.fulfill({ json: waitingConversations([question]) }),
-    );
     await page.goto(`${dashboard.baseURL}/inbox`);
 
     await page.keyboard.press("ControlOrMeta+k");
@@ -193,7 +189,7 @@ test.describe("new UI", () => {
     releaseQuestion();
     await expect(
       page.getByRole("region", { name: `Asked ${question.title}` }),
-    ).toContainText("Waiting on you");
+    ).toContainText("Waiting");
     await composer.pressSequentially(" 1");
     await expect(composer).toBeFocused();
     await expect(composer).toHaveText("Hold on 1", { useInnerText: true });

@@ -2479,7 +2479,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
         -2.9 * 60 * 60_000,
         DASHBOARD_QA_THREAD_ID,
       ),
-      // QA shows a Thread whose Inbox item waits on a person.
+      // QA shows a Thread whose question waits for an answer.
       status: "needs_input" as const,
     },
     threadConversation(
@@ -2517,7 +2517,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Sandbox validation",
       surface: "slack",
       channel: "CQA999",
-      // A root whose Inbox item waits on a person.
+      // A root whose question waits for an answer.
       status: "needs_input",
     }),
     simpleConversation(nowMs, {
@@ -3418,7 +3418,7 @@ export function readMockConversationChildAgents(
       conversationId,
     };
   }
-  // Both Sentaur Threads have Inbox items that wait on the viewer.
+  // Both Sentaur Threads have questions that wait for an answer.
   if (conversationId === SENTAUR_CONVERSATION_ID) {
     return {
       agents: [SENTAUR_RUNS_THREAD_ID, SENTAUR_LOGS_THREAD_ID].map((id) => ({

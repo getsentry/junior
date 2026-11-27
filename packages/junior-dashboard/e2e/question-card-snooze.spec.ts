@@ -37,11 +37,18 @@ function recordBodies(page: Page, path: string) {
   return bodies;
 }
 
+/** Close a phone's question sheet, back to the transcript. */
+async function closeSheet(page: Page) {
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("button", { exact: true, name: "Close" }).click();
+  await expect(sheet).toHaveCount(0);
+}
+
 const card = (page: Page, title: string) =>
   page.getByRole("region", { name: `Asked ${title}` });
 
 for (const view of [desktop, mobile]) {
-  test(`a question card snoozes in the transcript, and the pill skips it (${view.name})`, async ({
+  test(`a question card snoozes from the transcript, and still waits (${view.name})`, async ({
     dashboard,
     page,
   }) => {
@@ -95,19 +102,18 @@ for (const view of [desktop, mobile]) {
           wakeAt: expect.any(String),
         }),
       ]);
-    // The card stays in the transcript as a record, with no form.
-    await expect(windowCard).not.toContainText("Waiting on you");
-    await expect(
-      windowCard.getByRole("button", { name: "Send", exact: true }),
-    ).toHaveCount(0);
-    // A snooze shuts the sheet, back to the transcript.
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // A snooze shuts the menu. It hides the item from the viewer's Inbox,
+    // but the question stays open, so it still waits for anyone, and a
+    // phone's sheet stays until the reader closes it.
+    await expect(menu).toHaveCount(0);
+    if (phone) await closeSheet(page);
+    await expect(windowCard).toContainText("Waiting");
     // The transcript opens at the latest message again, and the pill counts
-    // the two questions that still wait.
+    // all three questions.
     await reloadConversation(page);
     if (!phone) {
       await expect(
-        page.getByRole("button", { name: "2 questions waiting" }),
+        page.getByRole("button", { name: "3 questions waiting" }),
       ).toBeVisible();
     }
   });
@@ -147,12 +153,11 @@ for (const view of [desktop, mobile]) {
           untilClosed: true,
         },
       ]);
-    // The card stays in the transcript as a record, with no form.
-    await expect(shared).not.toContainText("Waiting on you");
-    await expect(
-      shared.getByRole("button", { name: "Send", exact: true }),
-    ).toHaveCount(0);
-    // The details list of open items drops it too.
+    // The question stays open, so its card still waits.
+    await expect(menu).toHaveCount(0);
+    if (view === mobile) await closeSheet(page);
+    await expect(shared).toContainText("Waiting");
+    // The details list of the viewer's open items drops it.
     if (view === desktop) {
       await expect(
         page
@@ -169,7 +174,7 @@ for (const view of [desktop, mobile]) {
     // A phone's one-line cards fit on the screen, so it needs no pill.
     if (view === desktop) {
       await expect(
-        page.getByRole("button", { name: "2 questions waiting" }),
+        page.getByRole("button", { name: "3 questions waiting" }),
       ).toBeVisible();
     }
   });
@@ -188,7 +193,7 @@ test("Dismiss closes a shared question for everyone", async ({
     shared.getByRole("button", { name: /^(Dismiss|Snooze|Send)$/ }),
   ).toHaveText(["Dismiss", "Snooze", "Send"]);
   await shared.getByRole("button", { name: "Dismiss" }).click();
-  await expect(shared).not.toContainText("Waiting on you");
+  await expect(shared).not.toContainText("Waiting");
   await expect(
     shared.getByRole("button", { name: "Send", exact: true }),
   ).toHaveCount(0);

@@ -382,19 +382,17 @@ export function failedRunAlert(automationId: string, title: string) {
   };
 }
 
-/** The fields of an item that its question and its wait come from. */
+/** The fields of an item that its question comes from. */
 type AskItem = {
   answer?: unknown;
-  assignedToEveryone: boolean;
+  answeredBy?: { displayName?: string; email: string; userId: string };
   body: string;
-  canAct: boolean;
-  conversationIds: readonly string[];
+  closedAt?: string;
   createdAt: string;
   id: string;
-  kind: string;
   owner: { id: string };
   request?: unknown;
-  rootConversationId?: string;
+  status?: string;
   subject?: { id?: string; kind?: string };
   title: string;
   updatedAt: string;
@@ -421,40 +419,29 @@ export function conversationQuestions(
         id: item.subject?.id ?? item.id,
         title: item.title,
         updatedAt: item.updatedAt,
-        ...(item.answer ? { answer: item.answer } : undefined),
+        // A closed item closed its question.
+        ...(item.status && item.status !== "open"
+          ? { closedAt: item.closedAt ?? item.updatedAt }
+          : undefined),
+        ...(item.answer
+          ? {
+              answer: item.answer,
+              answeredAt: item.closedAt ?? item.updatedAt,
+              ...(item.answeredBy
+                ? {
+                    answeredBy: {
+                      email: item.answeredBy.email,
+                      userId: item.answeredBy.userId,
+                      ...(item.answeredBy.displayName
+                        ? { displayName: item.answeredBy.displayName }
+                        : undefined),
+                    },
+                  }
+                : undefined),
+            }
+          : undefined),
         ...(item.request ? { request: item.request } : undefined),
       })),
-  };
-}
-
-/**
- * The viewer's waiting read for open `items`: one entry per root
- * Conversation, as the server groups the items that wait on the viewer.
- */
-export function waitingConversations(items: readonly AskItem[]) {
-  const roots = new Map<string, AskItem[]>();
-  for (const item of items) {
-    if (item.kind !== "action" || !item.canAct || item.assignedToEveryone)
-      continue;
-    const root = item.rootConversationId;
-    if (root) roots.set(root, [...(roots.get(root) ?? []), item]);
-  }
-  return {
-    conversations: [...roots].map(([conversationId, waiting]) => ({
-      conversationId,
-      conversationIds: [
-        ...new Set([conversationId, ...waiting.map((i) => i.owner.id)]),
-      ],
-      items: waiting.map((i) => ({
-        conversationId: i.owner.id,
-        id: i.id,
-        title: i.title,
-      })),
-      waitingSince: waiting
-        .map((i) => i.createdAt)
-        .sort()
-        .at(0)!,
-    })),
   };
 }
 
@@ -612,12 +599,6 @@ export async function mockInboxItems(
   await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
-    if (path === "/waiting-conversations") {
-      const sleeping = await snoozedRows();
-      return route.fulfill({
-        json: waitingConversations(open.filter((i) => !asleep(sleeping, i))),
-      });
-    }
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
       const sleeping = await snoozedRows();
@@ -721,7 +702,9 @@ export async function mockInboxItems(
       if (item)
         closedNow.push({
           ...item,
-          ...(body?.action === "submit" ? { answer: body.answer } : undefined),
+          ...(body?.action === "submit"
+            ? { answer: body.answer, answeredBy: viewer }
+            : undefined),
           status: "done",
         });
       return route.fulfill({ json: { ...item, status: "done" } });
@@ -877,15 +860,4 @@ export const openRowOf = (page: Page) =>
 export async function expandRow(head: Locator) {
   const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
   await row.locator('[aria-controls^="inbox-row-"]').first().click();
-}
-
-/**
- * Answer that no ask waits on the viewer, so rows show their own state, as
- * the Conversation reads it.
- */
-export async function noViewerWaits(page: Page) {
-  await page.route(
-    (url) => url.pathname === "/api/inbox-items/waiting-conversations",
-    (route) => route.fulfill({ json: { conversations: [] } }),
-  );
 }
