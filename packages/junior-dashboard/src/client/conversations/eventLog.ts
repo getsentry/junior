@@ -64,7 +64,7 @@ const EVENT_SUMMARIES = {
   turn_context: (data) =>
     `${data.pluginName} · ${data.kind} · v${data.version}`,
   guardian_action_reviewed: (data) =>
-    `${data.decision} · ${data.toolName} · ${data.riskLevel} risk`,
+    [data.decision, data.toolName, data.rule].filter(Boolean).join(" · "),
   structured_event: (data) =>
     `${data.namespace}.${data.name} · ${data.presentation.title}`,
   attachments_delivered: (data) =>

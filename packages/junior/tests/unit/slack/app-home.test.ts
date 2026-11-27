@@ -10,6 +10,7 @@ import { discoverSkills } from "@/chat/skills";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import type { PluginCatalogRuntime } from "@/chat/plugins/registry";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import { useConfig } from "../../fixtures/config";
 
 const catalogPlugins = vi.hoisted(
   () =>
@@ -74,11 +75,12 @@ const catalogPlugins = vi.hoisted(
     ] satisfies PluginDefinition[],
 );
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getProviders: () => catalogPlugins,
-  } satisfies Pick<PluginCatalogRuntime, "getProviders">,
-}));
+  } satisfies Pick<PluginCatalogRuntime, "getProviders">;
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/discovery", () => ({
   homeDir: () => "/mock/app",
@@ -156,13 +158,12 @@ describe("buildHomeView", () => {
   });
 
   afterEach(() => {
-    delete process.env["VERCEL_GIT_COMMIT_SHA"];
     vi.restoreAllMocks();
     vi.mocked(discoverSkills).mockResolvedValue([]);
   });
 
   it("shows version metadata from VERCEL_GIT_COMMIT_SHA", async () => {
-    process.env["VERCEL_GIT_COMMIT_SHA"] = "abc123def456";
+    useConfig({ deployment: { commitSha: "abc123def456" } });
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);
 

@@ -244,6 +244,46 @@ describe("GitHub pull request snoozes", () => {
     expect((await asAna.inbox()).inbox).toEqual([TITLE]);
   });
 
+  it("reads an unchanged pull request again with its saved ETag, and a 304 keeps the merge conflict it found", async () => {
+    const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
+    const etag = 'W/"pull-1"';
+    const answers: number[] = [];
+    mswServer.use(
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/1",
+        ({ request }) => {
+          if (request.headers.get("if-none-match") === etag) {
+            answers.push(304);
+            return new HttpResponse(null, { headers: { etag }, status: 304 });
+          }
+          answers.push(200);
+          return HttpResponse.json(
+            pullRequest({ mergeable: false, mergeable_state: "dirty" }),
+            { headers: { etag } },
+          );
+        },
+      ),
+    );
+    for (const id of [4002, 4003]) {
+      await sendGitHubWebhook(app, "issue_comment", {
+        action: "created",
+        comment: { body: "Any update?", id, user: { login: "jane" } },
+        sender: { id: 3001, login: "jane" },
+        issue: {
+          number: 1,
+          pull_request: {
+            url: "https://api.github.com/repos/getsentry/junior/pulls/1",
+          },
+        },
+      });
+    }
+    expect(answers).toEqual([200, 304]);
+    expect((await asAna.inbox()).inbox).toEqual([]);
+
+    await push("bbb222", "MERGEABLE");
+    expect((await asAna.inbox()).inbox).toEqual([TITLE]);
+  });
+
   it("wakes a snooze when a comment finds that the merge conflict is gone", async () => {
     const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
     await sendGitHubWebhook(app, "pull_request", {

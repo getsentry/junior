@@ -141,7 +141,6 @@ describe("conversation child agents API", () => {
           cumulativeDurationMs: 0,
           kind: "task",
           status: "stopped",
-          task: "Private repo read",
           title: "Private repo read",
           // The test stops it without clearing its queued Turn.
           treeState: "working",
@@ -169,7 +168,6 @@ describe("conversation child agents API", () => {
           kind: "task",
           name: "reviewer",
           status: "running",
-          task: "Plan review",
           title: "Plan review",
           // The reviewer's Turn is queued.
           treeState: "working",
@@ -181,7 +179,7 @@ describe("conversation child agents API", () => {
           cumulativeDurationMs: 0,
           kind: "thread",
           status: "running",
-          task: "",
+          title: null,
           archivedAt: new Date(4_000).toISOString(),
           treeState: "working",
           updatedAt: new Date(500).toISOString(),

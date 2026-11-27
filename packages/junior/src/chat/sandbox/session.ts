@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { getChatConfig } from "@/chat/config";
 import {
   logWarn,
   setSpanAttributes,
@@ -119,14 +120,6 @@ interface SandboxRuntimeOptions {
   onSandboxRefChanged?:
     | ((sandboxRef: SandboxRef) => void | Promise<void>)
     | undefined;
-}
-
-function parseKeepAliveMs(): number {
-  const parsed = Number.parseInt(
-    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] ?? "0",
-    10,
-  );
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 /** Own sandbox acquisition, preparation, and session-scoped tool caching. */
@@ -750,7 +743,7 @@ export function createSandboxRuntime(
   };
 
   const extendKeepAlive = async (session: SandboxSession): Promise<void> => {
-    const keepAliveMs = parseKeepAliveMs();
+    const { keepAliveMs } = getChatConfig().sandbox;
     if (keepAliveMs === 0) return;
     try {
       await withSandboxSpan(
@@ -768,7 +761,7 @@ export function createSandboxRuntime(
   };
 
   const startKeepAlive = (session: SandboxSession): void => {
-    const keepAliveMs = parseKeepAliveMs();
+    const { keepAliveMs } = getChatConfig().sandbox;
     if (keepAliveMs === 0 || closed || keepAliveTimer) return;
     const intervalMs = Math.max(
       MIN_KEEPALIVE_INTERVAL_MS,

@@ -4,16 +4,16 @@
  * Only the viewer's own stored MCP login is used, never a service account
  * or another person's login. A read never asks the viewer to sign in and
  * never deletes their login: only the shared refresh lock saves the tokens
- * of a refresh. It calls only tools that the plugin allows and that the
- * provider marks read-only.
+ * of a refresh. It calls only tools that the plugin lists in `viewerTools`
+ * and that the provider marks read-only.
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
   PluginMcpContent,
   PluginViewerMcp,
 } from "@sentry/junior-plugin-api";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getChatConfig } from "@/chat/config";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { getMcpStoredOAuthCredentials } from "./auth-store";
 import { McpAuthorizationRequiredError, PluginMcpClient } from "./client";
@@ -29,7 +29,7 @@ function viewerAuthProvider(
   userId: string,
 ): OAuthClientProvider & { mcpLoginOwner(): Promise<McpLoginOwner> } {
   const provider = plugin.manifest.name;
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)",
@@ -101,12 +101,11 @@ export function createViewerMcp(
 ): PluginViewerMcp {
   return {
     async callTool(input) {
-      const plugin = pluginCatalogRuntime.getDefinition(provider);
+      const plugin = getAppContext().catalog.getDefinition(provider);
       if (!plugin?.manifest.mcp) {
         throw new Error(`Plugin "${provider}" does not support MCP`);
       }
-      const allowedTools = plugin.manifest.mcp.allowedTools;
-      if (!allowedTools?.includes(input.name)) {
+      if (!plugin.manifest.mcp.viewerTools?.includes(input.name)) {
         throw new Error(
           `Plugin ${provider} does not allow MCP tool ${input.name} for viewer reads`,
         );

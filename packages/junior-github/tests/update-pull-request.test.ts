@@ -70,31 +70,6 @@ function toolContext(
   };
 }
 
-/** The card facts that an update saves for this GitHub pull request response. */
-async function savedFacts(pullRequest: Record<string, unknown>) {
-  const { tool } = toolContext(
-    new Response(
-      JSON.stringify({
-        base: { ref: "main" },
-        draft: false,
-        head: { ref: "feat/events" },
-        html_url: "https://github.com/getsentry/junior/pull/691",
-        merged: false,
-        number: 691,
-        state: "open",
-        title: "Updated title",
-        ...pullRequest,
-      }),
-      { status: 200 },
-    ),
-  );
-  const result = (await tool.execute?.(
-    { repo: "getsentry/junior", pull_request: 691, title: "Updated title" },
-    { toolCallId: "update-pr" },
-  )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
-  return result.objectAnnotations[0]!.facts;
-}
-
 async function patchedBody(fetch: ReturnType<typeof toolContext>["fetch"]) {
   const call = fetch.mock.calls.find(
     ([input]) => input.operation === "github.pull.update",
@@ -129,7 +104,14 @@ describe("updatePullRequest", () => {
       base: "release",
       number: 691,
       state: "open",
-      objectAnnotations: [{ status: "open", description: "Updated body" }],
+      objectAnnotations: [
+        {
+          action: "changed",
+          key: "getsentry/junior#691",
+          title: "Updated title",
+          url: "https://github.com/getsentry/junior/pull/691",
+        },
+      ],
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {
@@ -296,7 +278,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("preserves merged status when updating a merged pull request", async () => {
+  it("updates a merged pull request without reading its description", async () => {
     const { fetch, tool } = toolContext(
       new Response(
         JSON.stringify({
@@ -321,103 +303,13 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       ),
     ).resolves.toMatchObject({
       objectAnnotations: [
-        {
-          // A closed pull request has no merge state to show.
-          facts: expect.not.objectContaining({ mergeable: false }),
-          key: "getsentry/junior#691",
-          status: "merged",
-          title: "Updated title",
-        },
+        { key: "getsentry/junior#691", title: "Updated title" },
       ],
     });
     // Without a body, the update does not read or rewrite the description.
     expect(fetch.mock.calls.map(([input]) => input.operation)).toEqual([
       "github.pull.update",
     ]);
-  });
-
-  it("saves card facts with the artifact and GitHub attachment images as previews", async () => {
-    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
-    const artifact =
-      "https://junior.example.com/public/artifacts/0123456789abcdef.png";
-    const after =
-      "https://junior.example.com/public/artifacts/fedcba9876543210.png";
-    const attachment =
-      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
-    const body = [
-      "![Unknown](https://github.com/user-attachments/assets/1)",
-      // A signed attachment URL expires in minutes.
-      "![Signed](https://private-user-images.githubusercontent.com/1/2.png?jwt=signed)",
-      `![Attachment](${attachment})`,
-      "![Other](https://example.com/public/artifacts/0123456789abcdef.png)",
-      "```md",
-      "![Example](https://junior.example.com/public/artifacts/code.png)",
-      "```",
-      // A `src=` inside another attribute value is not the image.
-      `| Before | After |\n| --- | --- |\n| ![Before][before] | <img alt=" src=https://junior.example.com/public/artifacts/alt.png" src="${after}"> |`,
-      `![Again](${artifact})`,
-      "",
-      `[before]: ${artifact}`,
-    ].join("\n");
-
-    await expect(
-      savedFacts({
-        body,
-        user: { login: "alex" },
-        requested_reviewers: [{ login: "sam" }],
-        changed_files: 8,
-        additions: 120,
-        deletions: 30,
-      }),
-    ).resolves.toEqual({
-      type: "code_change",
-      author: "alex",
-      reviewers: ["sam"],
-      sourceBranch: "feat/events",
-      targetBranch: "main",
-      changedFiles: 8,
-      additions: 120,
-      deletions: 30,
-      previewImageUrls: [attachment, artifact, after],
-    });
-    for (const other of [
-      "![Private](https://github.com/user-attachments/assets/1)",
-      "No image.",
-    ]) {
-      await expect(savedFacts({ body: other })).resolves.not.toHaveProperty(
-        "previewImageUrls",
-      );
-    }
-  });
-
-  it("saves as many preview images as fit in the facts limit", async () => {
-    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
-    const images = Array.from(
-      { length: 80 },
-      (_, index) =>
-        `https://junior.example.com/public/artifacts/${String(index).padStart(16, "0")}.png`,
-    );
-
-    const facts = await savedFacts({
-      body: images.map((url) => `![Step](${url})`).join("\n"),
-      // 180 extra UTF-8 bytes, more than one image entry, so counting
-      // characters instead of bytes would save one image too many.
-      user: { login: "ü".repeat(60) },
-      head: { ref: "ü".repeat(60) },
-      base: { ref: "ü".repeat(60) },
-    });
-    const saved = facts["previewImageUrls"] as string[];
-
-    const bytes = (value: unknown) =>
-      new TextEncoder().encode(JSON.stringify(value)).length;
-
-    // More than the old fixed 4, in body order, and the next one would not fit.
-    expect(saved.length).toBeGreaterThan(4);
-    expect(saved).toEqual(images.slice(0, saved.length));
-    expect(bytes(facts)).toBeLessThanOrEqual(4096);
-    expect(
-      bytes({ ...facts, previewImageUrls: images.slice(0, saved.length + 1) }),
-    ).toBeGreaterThan(4096);
   });
 
   it("marks a draft pull request ready for review through GraphQL", async () => {
@@ -452,7 +344,6 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       ),
     ).resolves.toMatchObject({
       draft: false,
-      objectAnnotations: [{ status: "open" }],
     });
 
     const [read, mutation] = fetch.mock.calls.map((call) => call[0]);

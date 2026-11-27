@@ -1,11 +1,16 @@
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import type { ReactNode } from "react";
+import type {
+  ActorIdentity,
+  ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 
+import { useDashboardCoreData } from "../../api";
 import { ConversationDetails } from "./ConversationDetails";
-import { ConversationGlance } from "./ConversationGlance";
+import { singleGitHubRepository } from "../../conversations/ConversationContextTags";
 import type { ConversationLink } from "../../conversations/ConversationLinkedWork";
 import {
   ConversationStats,
+  conversationCost,
+  conversationLocation,
   hasConversationStats,
 } from "../../conversations/ConversationMeta";
 import {
@@ -17,8 +22,10 @@ import type {
   ConversationMemoryList,
 } from "../../conversations/conversationMemory";
 import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
+import { GitHubMark } from "../../conversations/GitHubMark";
+import { SlackMark } from "../../conversations/SlackMark";
+import { OutboundLink } from "../../components/OutboundLink";
 import { conversationParticipants } from "../../components/ParticipantAvatarStack";
-import { ConversationParticipants } from "../../conversations/ConversationParticipants";
 import type { Conversation } from "../../types";
 
 /** Render the Conversation details side panel from the page's loaded data. */
@@ -33,62 +40,84 @@ export function ConversationDetailsPanel(props: {
   onClose(): void;
   onOpenSubagent(target: ConversationDrawerTarget): void;
   onSelectMemory(entry: ConversationMemoryEntry): void;
-  /** A Lead's Space: its description, members, and settings. */
-  space?: ReactNode;
 }) {
   const { conversation, detail } = props;
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const showUsageBreakdown = hasConversationUsageBreakdown({
     conversation,
     detail,
   });
+  const repository = singleGitHubRepository(detail?.annotations);
+  const location = conversationLocation(conversation, detail);
+  const stats = { conversation, detail, showUsageBreakdown };
   return (
     <ConversationDetails
-      agentTree={detail?.agentTree}
-      glance={
-        <ConversationGlance conversation={conversation} detail={detail} />
+      context={
+        // Details is the only desktop place that names the Slack location.
+        repository || location ? (
+          <p className="m-0 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-5 text-dashboard-text-muted">
+            {repository ? (
+              <OutboundLink
+                className="inline-flex min-w-0 items-center gap-1.5 hover:text-dashboard-text"
+                href={repository.href}
+              >
+                <GitHubMark className="size-3.5 shrink-0" />
+                {repository.label}
+              </OutboundLink>
+            ) : null}
+            {location ? (
+              <span className="inline-flex min-w-0 items-center gap-1.5">
+                <SlackMark className="size-3.5 shrink-0" />
+                {location}
+              </span>
+            ) : null}
+          </p>
+        ) : null
       }
-      summary={detail?.summary}
-      summaryMentions={detail?.summaryMentions}
       conversationId={props.conversationId}
+      cost={conversationCost(conversation, detail, "above")}
+      detail={detail}
       highlightReview={props.highlightReview}
-      participants={
-        <ConversationParticipants
-          conversationId={props.conversationId}
-          detail={detail}
-          participants={conversationParticipants(conversation)}
-        />
-      }
-      isParticipant={detail?.isParticipant === true}
+      links={props.links}
+      memoryList={props.memoryList}
       onClose={props.onClose}
       onOpenSubagent={props.onOpenSubagent}
       onSelectMemory={props.onSelectMemory}
-      links={props.links}
-      memoryList={props.memoryList}
-      space={props.space}
-      overview={
-        hasConversationStats({
-          conversation,
-          detail,
-          glance: true,
-          showUsageBreakdown,
-        }) ? (
-          <ConversationStats
-            conversation={conversation}
-            detail={detail}
-            glance
-            showUsageBreakdown={showUsageBreakdown}
-          />
-        ) : null
-      }
+      participants={withoutViewerWhoLeft(
+        conversationParticipants(conversation),
+        detail,
+        viewerEmail,
+      )}
+      repository={repository?.label}
       usage={
-        showUsageBreakdown ? (
-          <ConversationUsageBreakdown
-            conversation={conversation}
-            detail={detail}
-            glance
-          />
+        hasConversationStats(stats) || showUsageBreakdown ? (
+          <>
+            <ConversationStats {...stats} />
+            {showUsageBreakdown ? (
+              <ConversationUsageBreakdown
+                conversation={conversation}
+                detail={detail}
+              />
+            ) : null}
+          </>
         ) : null
       }
     />
+  );
+}
+
+/**
+ * The API always lists the root actor. A viewer who left the Conversation
+ * is not a participant, so their own avatar leaves the footer.
+ */
+function withoutViewerWhoLeft(
+  participants: readonly ActorIdentity[],
+  detail: ConversationDetailReport | undefined,
+  viewerEmail: string | undefined,
+): readonly ActorIdentity[] {
+  if (detail?.isParticipant !== false || !viewerEmail) return participants;
+  const viewer = viewerEmail.toLowerCase();
+  return participants.filter(
+    (participant) => participant.email?.toLowerCase() !== viewer,
   );
 }

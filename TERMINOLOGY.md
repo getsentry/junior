@@ -26,7 +26,7 @@ Canonical words for Junior code and docs. One concept, one word.
   Space's other Conversations are its child agents. It finds, starts, and
   steers them, and does no work itself.
 - **Top-level Conversation**: a Conversation with no parent, or a child of a
-  Lead. Top-level lists show these. It is not stored.
+  Lead. It is not stored.
 - **Space**: a named, shared home for a body of related work: metadata on
   its Lead. A **Member** of a Space is a Participant of its Lead.
 - **Thread**: a Conversation of kind `thread`, which people can message. It
@@ -45,7 +45,10 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Conversation metadata**: the stored facts about a Conversation: its
   title and summary. A core task updates the summary after each Turn. A
   public summary outlives the transcript.
-  Do not say "Brief"; it is the retired name.
+  Do not call it a Brief.
+- **Brief**: the work that startAgent, startConversation, or messageAgent
+  hands to another agent. Once Guardian allows it, it is the receiver's
+  instruction.
 - **Catch-up**: a short summary of the rows after a reader's read position,
   and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,
@@ -69,8 +72,10 @@ Canonical words for Junior code and docs. One concept, one word.
   starter has not read). `working`: a Turn is queued or running. `done`:
   anything else, also a stop. The first that applies wins, in that order.
   `completed` is a Turn or run outcome, never a Conversation status.
-- **Starter**: the User of a root's actor, the person whose message started
-  it or the creator of an Automation run. Its child Conversations share it.
+- **Starter**: the User of a Top-level Conversation's actor, the person whose
+  message started it or the creator of an Automation run. Its child
+  Conversations share it. In a Space, that is the person who started the
+  Thread, not the Lead's actor.
 - **Archived**: a flag on a Conversation, shared by everyone. It is not a
   status, and an archived Conversation keeps its status.
 - **Viewer state**: what a Conversation and its child Conversations need from
@@ -88,19 +93,19 @@ Canonical words for Junior code and docs. One concept, one word.
   provider-scoped. Junior is the web provider, so a web Actor id is the User
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
-- **Participant**: a User who is the Actor of a Turn in a root Conversation or
-  its children, or who was invited to it. Children inherit the Participants
+- **Participant**: a User who started a root Conversation, sent a Slack
+  Message in it or its children, joined it, or was invited to it. Children inherit the Participants
   of their root, so in a Space they are the Lead's. A Participant is active until they
   Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
 - **Invite**: a person subscribes someone to a Conversation's feed, with
-  the people picker of its Participants. In a public Conversation, a
-  dashboard or Slack Message that mentions them also does it, and access
-  stays the same, because anyone can already read it and join by posting.
+  the people picker of its Participants or by email. A mention does not
+  Invite. In a public Conversation, access stays the same, because anyone
+  can already read it and Join it.
   In a private Conversation, only a Participant may Invite, and it gives
-  access. A private Space and a Slack-backed private Conversation refuse it.
+  access. A Slack-backed private Conversation refuses it.
 - **Leave**: a Participant takes a Conversation out of their feed, and Join
   puts it back. In a private Conversation with its own Participant list,
   Leave also ends access until someone Invites them again. Nobody removes
@@ -216,19 +221,24 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.
-- **Annotation**: saved facts or a link on one Conversation, for an object
-  that it created or changed. A read saves none. An update sends no message.
+- **Annotation**: a pointer from one Conversation to an object that it
+  created, changed, or deleted. Linked work lists them. A read or a shared
+  link saves none. An update sends no message.
 - **Ticket** (`task`), **Calendar event** (`calendar_event`), **Item**: the
   Annotation types for provider work items, meetings, and other objects.
 - **Message card**: a Message's reference to an Annotation, shown with the
-  latest saved facts. No live provider fetch.
+  object's live card, else its label.
 - **Unfinished work** / **Assigned work**: plugin-owned work on a
   Conversation, open / open or done.
 - **Inbox item**: work for a person, shown in the **Inbox**. Not an
   Item or a Review item. **Assignee**: a User or Everyone (anyone who can see it). **Owner**:
-  what the item belongs to, `{ kind, id }`: the Conversation that added it,
-  or an Automation. The owner sets the item's visibility, tenant, and Inbox
-  stack. **Automation alert**: an Inbox item that an Automation owns. Core
+  what the item belongs to, `{ kind, id }`: a Conversation or an Automation.
+  The subject names it, so the item stores no owner. The Destination of the
+  owner sets the item's visibility, and the owner sets its Inbox stack. A
+  plugin's owner table maps each subject id of the plugin to its
+  Conversation. **Subject**: what the item is about, `{ kind, id }`, such as a
+  pull request. The kind says what the item asks, such as
+  `github:pull_request_review`. **Automation alert**: an Inbox item that an Automation owns. Core
   adds it for the creator when the Automation needs them, and closes it
   when the Automation recovers.
 - **Attention**: what Junior takes from a person with a reply, a question, a
@@ -252,8 +262,8 @@ Canonical words for Junior code and docs. One concept, one word.
   status is open, in progress, done, or dropped. It has one Assignee: the
   Conversation's own agent, one of its child agents, or a User. Each change
   gets a new version. In code: `todo`. A User's open To-do shows in their
-  Inbox as a **To do for you** item. **Done** on that row marks the To-do
-  done; it has no Dismiss.
+  Inbox as a **To do for you** item. **Mark done** on that row marks the
+  To-do done; it has no Dismiss.
 
 ## Naming
 

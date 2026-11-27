@@ -1,6 +1,5 @@
 import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import type { Source } from "@sentry/junior-plugin-api";
 import {
   conversationSubtree,
@@ -9,10 +8,7 @@ import {
 import * as z from "zod";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import type { ConversationStatus } from "@/chat/conversations/store";
-import {
-  conversationLastTurnOutcomeSql,
-  conversationTurnFailedSql,
-} from "@/chat/conversations/sql/status";
+import { conversationLastTurnOutcomeSql } from "@/chat/conversations/sql/status";
 import { TURN_OUTCOME_STATUSES } from "@/chat/conversations/turn-update";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
@@ -26,7 +22,11 @@ import {
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import type { ChildMessage } from "./child-message";
-import { isDroppedChildInput } from "./child-input";
+import {
+  isDroppedChildInput,
+  readChildInputDropFacts,
+  type ChildInputDropFacts,
+} from "./child-input";
 import type { ChildAgent } from "./types";
 
 const childConversationKindSchema = z.enum(["thread", "task"]);
@@ -39,9 +39,10 @@ const CHILD_AGENT_LIST_LIMIT = 200;
  * activity first. The state comes from each child's Turns and mailbox, not
  * from model output. Each child agent stores its agent config, so older
  * children of a parent, such as ones that a removed feature created, are not
- * listed. A child is `running` while a Turn or mailbox input that answers its
- * parent is open, and is `failed` when its last Turn failed, also when the
- * Turn ended with a model error and execution went back to idle.
+ * listed. A child is `stopped` while stopped, `running` while a Turn or
+ * mailbox input that answers its parent is open, `failed` when its stored
+ * execution failed, such as when its worker gave up and no Turn ended, and
+ * else `idle`.
  * `lastResult` is how its newest finished Turn that was not stopped ended:
  * the status that `readTurnUpdate` gives it, or `failed`.
  */
@@ -54,12 +55,12 @@ export async function listChildAgents(
       agentName: juniorAgentBindings.name,
       archivedAt: juniorConversations.archivedAt,
       conversationId: juniorConversations.conversationId,
+      executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       kind: juniorConversations.kind,
       lastTurnOutcome: conversationLastTurnOutcomeSql(juniorConversations),
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
-      turnFailed: conversationTurnFailedSql(juniorConversations),
       updatedAt: juniorConversations.updatedAt,
     })
     .from(juniorConversations)
@@ -89,51 +90,53 @@ export async function listChildAgents(
     getConversationWorkStates(ids),
     listActiveMailboxTurnSources(ids),
   ]);
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const children = await Promise.all(
-    rows.map(async (row): Promise<ChildAgent> => {
-      // Every child agent stores its kind.
-      const kind = childConversationKindSchema.parse(row.kind);
-      const stoppedAtMs = row.stoppedAt?.getTime();
-      const running =
-        stoppedAtMs === undefined &&
-        (await limit(() =>
-          runsOnConversationLoop(
-            workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
-            mailboxTurnSources.get(row.conversationId) ?? [],
-          ),
-        ));
-      const outcome = row.lastTurnOutcome;
-      const lastResult =
-        outcome === "failed"
-          ? "failed"
-          : outcome
-            ? TURN_OUTCOME_STATUSES[outcome]
-            : undefined;
-      return {
-        ...(row.agentName ? { agentName: row.agentName } : undefined),
-        ...(row.archivedAt
-          ? { archivedAtMs: row.archivedAt.getTime() }
-          : undefined),
-        childConversationId: row.conversationId,
-        kind,
-        ...(lastResult ? { lastResult } : undefined),
-        status:
-          stoppedAtMs !== undefined
-            ? "stopped"
-            : running
-              ? "running"
-              : row.turnFailed
-                ? "failed"
-                : "completed",
-        // The task text stays in the child's transcript. The spawn title
-        // names it.
-        task: row.title ?? "",
-        ...(row.title ? { title: row.title } : undefined),
-        updatedAtMs: (row.executionUpdatedAt ?? row.updatedAt).getTime(),
-      };
-    }),
+  const pendingInput = (conversationId: string) =>
+    workStates.get(conversationId)?.execution.pendingMessages ?? [];
+  const dropFacts = await readChildInputDropFacts(
+    rows.flatMap((row) =>
+      row.stoppedAt ? [] : pendingInput(row.conversationId),
+    ),
   );
+  const children = rows.map((row): ChildAgent => {
+    // Every child agent stores its kind.
+    const kind = childConversationKindSchema.parse(row.kind);
+    const stoppedAtMs = row.stoppedAt?.getTime();
+    const running =
+      stoppedAtMs === undefined &&
+      runsOnConversationLoop(
+        pendingInput(row.conversationId),
+        mailboxTurnSources.get(row.conversationId) ?? [],
+        dropFacts,
+      );
+    const outcome = row.lastTurnOutcome;
+    const lastResult =
+      outcome === "failed"
+        ? "failed"
+        : outcome
+          ? TURN_OUTCOME_STATUSES[outcome]
+          : undefined;
+    return {
+      ...(row.agentName ? { agentName: row.agentName } : undefined),
+      ...(row.archivedAt
+        ? { archivedAtMs: row.archivedAt.getTime() }
+        : undefined),
+      childConversationId: row.conversationId,
+      kind,
+      ...(lastResult ? { lastResult } : undefined),
+      status:
+        stoppedAtMs !== undefined
+          ? "stopped"
+          : running
+            ? "running"
+            : row.executionStatus === "failed"
+              ? "failed"
+              : "idle",
+      // The task text stays in the child's transcript. The spawn title
+      // names it.
+      ...(row.title ? { title: row.title } : undefined),
+      updatedAtMs: (row.executionUpdatedAt ?? row.updatedAt).getTime(),
+    };
+  });
   return children.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
 }
 
@@ -152,20 +155,15 @@ export async function listOpenChildAgents(
  * Event in its debounce window, or an open mailbox Turn. Every Turn of a
  * child answers its parent, whoever started it.
  */
-async function runsOnConversationLoop(
+function runsOnConversationLoop(
   pending: readonly InboundMessage[],
   mailboxTurnSources: ReadonlyArray<Source | undefined>,
-) {
-  if (mailboxTurnSources.length > 0) {
-    return true;
-  }
-  for (const message of pending) {
-    // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first input that runs ends the check.
-    if (!(await isDroppedChildInput(message))) {
-      return true;
-    }
-  }
-  return false;
+  dropFacts: ChildInputDropFacts,
+): boolean {
+  return (
+    mailboxTurnSources.length > 0 ||
+    pending.some((message) => !isDroppedChildInput(message, dropFacts))
+  );
 }
 
 /**

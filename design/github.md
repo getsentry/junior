@@ -71,12 +71,27 @@ also wake a Conversation or run an Event automation.
   draft that Junior held, Junior marks it ready, so GitHub asks its code
   owners only after the requester has looked.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
-  replies in that Conversation know it. When GitHub says that it can merge
-  and no reviewer requests changes, the requester gets a "Ready to merge"
-  Inbox item. Where GitHub requires no review, a PR with no approval gets
-  it too, and the item tells the requester to review it before they merge.
+  replies in that Conversation know it. When GitHub says that it can merge,
+  no reviewer requests changes, and the requester has write access to the
+  repo, the requester gets a "Ready to merge" Inbox item. A requester
+  without write access gets no merge ask, because a person with write
+  access merges the PR. Where GitHub requires no review, a PR with no
+  approval gets it too, and the item tells the requester to review it
+  before they merge.
   When a review is requested and still pending, the PR asks for that review
   instead, even where the repo allows merging without one.
+  A PR whose base branch is the head of another open PR gets no merge ask
+  until that PR merges, because GitHub checks the merge only against the
+  base branch. A review ask can still come.
+- An issue that Junior opened is an Inbox item for its GitHub assignees who
+  have a linked account. Assigning a person on GitHub adds them, and
+  unassigning removes them. The item closes when the issue closes or nobody
+  is left.
+- A dismiss on a GitHub item also removes that person on GitHub: from the
+  issue's assignees, or from the PR's requested reviewers. Junior posts
+  nothing about it. If GitHub refuses, the dismiss fails and the person
+  stays. When the person holds no GitHub role on the item, such as on Ready
+  to merge, the dismiss works as for any item.
 - When GitHub fails the next-action read for a while (rate limit or
   outage), Junior syncs the pull request again later, after the rate limit
   resets. A failed webhook never leaves a stale action in place.

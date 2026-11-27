@@ -105,11 +105,10 @@ export const plugins = {
 
       const { getChatConfig } = await import("@/chat/config");
       expect(getChatConfig().state.adapter).toBe("memory");
-      const { pluginCatalogRuntime } =
-        await import("@/chat/plugins/catalog-runtime");
+      const { getAppContext } = await import("@/app/context");
       expect(
-        pluginCatalogRuntime
-          .getProviders()
+        getAppContext()
+          .catalog.getProviders()
           .map((plugin) => plugin.manifest.name),
       ).toContain("local-chat-plugin");
       expect(executeAgentRunMock).toHaveBeenCalledWith(

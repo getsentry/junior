@@ -1,0 +1,1 @@
+DROP INDEX "junior_conversation_events_user_message_time_idx";

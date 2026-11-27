@@ -13,13 +13,14 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationAnnotations } from "@/chat/plugins/annotations";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 import { createPluginState } from "@/chat/plugins/state";
-import { readIdentityById, resolveViewerUser } from "@/chat/plugins/viewer";
+import { createPluginHttpCache } from "@/chat/plugins/http-cache";
+import { createPluginUsers, resolveViewerUser } from "@/chat/plugins/viewer";
 import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
@@ -200,19 +201,16 @@ export function getPluginRoutes(options: {
         dispatchForIdentity: (dispatchOptions) =>
           options.dispatchForIdentity(pluginName, dispatchOptions),
       },
-      annotations: {
-        forConversation: (conversationId) =>
-          createPluginAnnotations({
-            conversationId,
-            db: getDb(),
-            plugin: pluginName,
-          }),
-      },
+      annotations: createPluginConversationAnnotations({
+        db: getDb,
+        plugin: pluginName,
+      }),
       codeChanges: createPluginCodeChanges(pluginName),
       conversationChanges: createPluginConversationChanges({
         plugin: pluginName,
         show: options.showInboxItem ?? (async () => {}),
       }),
+      httpCache: createPluginHttpCache(pluginName),
       state: createPluginState(pluginName),
       inboxItems: {
         forConversation: (conversationId) =>
@@ -227,7 +225,7 @@ export function getPluginRoutes(options: {
         send: options.sendPluginTask,
         tasks: plugin.tasks,
       }),
-      users: { readIdentity: readIdentityById },
+      users: createPluginUsers(pluginName),
       events: createPluginEventPublisher(plugin, options.events),
     });
     if (!Array.isArray(pluginRoutes)) {

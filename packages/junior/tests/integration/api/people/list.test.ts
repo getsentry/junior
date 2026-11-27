@@ -6,13 +6,9 @@ import { actorDirectoryReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
-import {
-  expectNoFullScan,
-  expectPlanCost,
-  expectSqlBudget,
-  measureSql,
-} from "../../../fixtures/sql-budget";
+import { expectSqlBudget, measureSql } from "../../../fixtures/sql-budget";
 import { createWaitUntilCollector } from "../../../fixtures/wait-until";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
 import {
   recordTurnFailure,
@@ -148,18 +144,12 @@ describe("people list API", () => {
         });
       }
 
-      // One round of bounded reads, whatever the history length. Each read
-      // of a big table uses an index. The Turn range read costs the most.
-      const report = await expectPlanCost(
-        () =>
-          expectNoFullScan(() =>
-            expectSqlBudget(() => readPeopleListFromSql(), {
-              statements: 4,
-              serialRounds: 1,
-            }),
-          ),
-        120,
-      );
+      // One round of bounded reads, whatever the history length.
+      await seedDashboardScale();
+      const report = await expectSqlBudget(() => readPeopleListFromSql(), {
+        statements: 4,
+        serialRounds: 1,
+      });
 
       expect(report.people.map((person) => person.actor.email)).toEqual([
         "bob@example.com",

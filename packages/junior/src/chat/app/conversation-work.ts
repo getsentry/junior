@@ -15,16 +15,13 @@ import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
   failStoppedDispatch,
-  resolveAgentDispatchId,
 } from "@/chat/agent-dispatch/work";
-import { createChildConversationWorker } from "@/chat/child-agents/result";
-import { withSenderActors } from "@/chat/child-agents/sender-actors";
 import { stopChildAgentsOf } from "@/chat/child-agents/stop";
 import { logException, withLogContext } from "@/chat/logging";
 import { resumeForPersonInput } from "@/chat/conversations/session-stop";
-import { ownsLocation } from "@/chat/conversations/kind-behavior";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
-import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
+import { runConversation } from "@/chat/task-execution/run-conversation";
 import {
   getDispatchConversationId,
   getDispatchInputMessageId,
@@ -120,54 +117,9 @@ export function createConversationWork(
     }),
     { queue: options.queue, state: options.state },
   );
-  const childWorker = createChildConversationWorker({
-    runTurn: conversationTurnWorker,
-    state: options.state,
-  });
-  // A Slack Destination uses the Slack worker. All other root work must have
-  // been selected above this function.
-  const destinationWorker = async (
+  const runWithStopCascade = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    const destination = context.destination;
-    if (!destination) {
-      throw new Error(
-        `Conversation ${context.conversationId} is missing a destination`,
-      );
-    }
-    if (destination.platform === "slack") {
-      return await slackWorker(context);
-    }
-    throw new Error(
-      `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
-    );
-  };
-  const runRoot = async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const mailboxTurn = await resolveMailboxTurnWork(context);
-    if (mailboxTurn) {
-      const work = await withSenderActors(mailboxTurn);
-      if (!work) {
-        // A stop or parent check dropped every input.
-        await context.attempt.ack();
-        return { status: "completed" };
-      }
-      return await conversationTurnWorker(context, work);
-    }
-    const dispatchId = await resolveAgentDispatchId(context);
-    if (dispatchId) {
-      return await dispatchWorker(context, dispatchId);
-    }
-    return await destinationWorker(context);
-  };
-  const runByKind = async (
-    context: ConversationWorkerContext,
-    topLevel: boolean,
-  ): Promise<ConversationWorkerResult> => {
-    // The stored kind decides the worker, so child work never reaches a root
-    // worker. A child Turn can have any Source.
-    const worker = topLevel ? runRoot : childWorker;
     // A run can see its stop late. Then it stops the child agents that it
     // spawned or gave new work to after the stop.
     const readStopSignal = context.stopSignal;
@@ -179,12 +131,20 @@ export function createConversationWork(
     };
     let result: ConversationWorkerResult;
     try {
-      result = await worker({
-        ...context,
-        stopSignal: readStopSignal
-          ? () => (stopSignal = readStopSignal())
-          : undefined,
-      });
+      result = await runConversation(
+        {
+          ...context,
+          stopSignal: readStopSignal
+            ? () => (stopSignal = readStopSignal())
+            : undefined,
+        },
+        {
+          destinations: { slack: slackWorker },
+          runDispatch: dispatchWorker,
+          runTurn: conversationTurnWorker,
+          state: options.state,
+        },
+      );
     } catch (error) {
       // After a seen stop, the run throws only when saving the cancelled Turn
       // fails. With retries left, `recordConversationRetry` keeps the `runId`,
@@ -210,9 +170,7 @@ export function createConversationWork(
     const conversation = await options.conversationStore.get({
       conversationId: context.conversationId,
     });
-    // A Conversation with its own Location, such as a Slack Conversation
-    // that moved into a Space, runs as a root, so it still gets Slack work.
-    const topLevel = !conversation || ownsLocation(conversation);
+    const topLevel = !conversation || isTopLevel(conversation);
     // Bind the tree root once, so spans of child agents count by root.
     return await withLogContext(
       {
@@ -220,7 +178,7 @@ export function createConversationWork(
           conversation?.rootConversationId ??
           (topLevel ? context.conversationId : undefined),
       },
-      () => runByKind(context, topLevel),
+      () => runWithStopCascade(context),
     );
   };
   return {

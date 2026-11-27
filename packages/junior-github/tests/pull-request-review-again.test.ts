@@ -3,7 +3,7 @@ import { markGitHubReviewAsked } from "../src/pull-request-review-again";
 import { createGitHubFixture } from "./github-db";
 import { memoryState } from "./plugin-harness";
 import {
-  DEDUPE_KEY,
+  SUBJECT,
   PULL_URL,
   checkSuiteCompleted,
   commented,
@@ -106,7 +106,7 @@ describe("review again after a change request", () => {
       const ended = {
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The review request ended.",
           status: "done",
         },
@@ -134,14 +134,10 @@ describe("review again after a change request", () => {
         conversationId: "slack:C123:1712345.0001",
         kind: "upsert",
         notice: {
+          askedIdentityIds: ["identity-requester"],
           assigneeIdentityIds: ["identity-requester"],
           body: `Every comment on your review is handled.\n\n${PULL_URL}`,
-          dedupeKey: DEDUPE_KEY,
-          subject: {
-            id: PULL_URL,
-            title: "Add the Inbox notice (#946)",
-            url: PULL_URL,
-          },
+          subject: SUBJECT,
           title: "Review requested · #946",
           waitsOnAssignees: true,
         },
@@ -243,7 +239,7 @@ describe("review again after a change request", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The review request ended.",
           status: "done",
         },
@@ -528,7 +524,15 @@ describe("review again after a change request", () => {
       );
       await webhook.handler(checkSuiteCompleted());
       expect(asks()).toEqual(["request Requester"]);
-      expect(calls).toHaveLength(1);
+      // The text may change, but nobody gets a second push.
+      expect(
+        calls.filter(
+          (call) =>
+            call.kind === "upsert" &&
+            (call.notice as { askedIdentityIds: string[] }).askedIdentityIds
+              .length > 0,
+        ),
+      ).toHaveLength(1);
     } finally {
       vi.useRealTimers();
       await fixture.close();

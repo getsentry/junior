@@ -17,8 +17,30 @@ import type {
 } from "./conversation-events";
 import type { PluginCodeChanges } from "./code";
 import type { PluginConversationChanges } from "./conversation-changes";
+import type { PluginHttpCache } from "./http-cache";
 import type { PluginConversationInboxItems } from "./inbox-items";
 import type { PluginTaskStarter } from "./tasks";
+
+/** People that a plugin reads outside a Turn. */
+export interface PluginUsers {
+  /**
+   * Read one stored identity and the user it links to now, with every
+   * identity of that user. A plugin that saved an identity id uses this to
+   * find the person's other linked accounts later.
+   */
+  readIdentity(
+    identityId: string,
+  ): Promise<{ identity: Identity; user?: User } | undefined>;
+  /**
+   * Find the people who linked these accounts of the plugin's provider,
+   * such as GitHub logins, through account linking. Return each handle in
+   * lower case with the id of the one user Identity that linked it. Leave
+   * out a handle that nobody linked, or that two people linked.
+   */
+  findLinkedIdentityIds(
+    handles: readonly string[],
+  ): Promise<Map<string, string>>;
+}
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -46,6 +68,8 @@ export interface HeartbeatHookContext extends PluginContext {
   /** Inbox items, as from a plugin route. */
   inboxItems: PluginConversationInboxItems;
   state: PluginState;
+  /** People, as from a plugin route. */
+  users: PluginUsers;
   /** Start this plugin's tasks, as from a plugin route. */
   tasks: PluginTaskStarter;
 }
@@ -213,6 +237,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
   conversationChanges: PluginConversationChanges;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
+  /** Junior's HTTP cache, for reads with a token that the plugin minted. */
+  httpCache: PluginHttpCache;
   /** Inbox items that the plugin adds and closes from its events. */
   inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
@@ -222,16 +248,7 @@ export interface RouteRegistrationHookContext extends PluginContext {
    * when a write fails and must run again after the route returns.
    */
   tasks: PluginTaskStarter;
-  users: {
-    /**
-     * Read one stored identity and the user it links to now, with every
-     * identity of that user. A plugin that saved an identity id uses this to
-     * find the person's other linked accounts later.
-     */
-    readIdentity(
-      identityId: string,
-    ): Promise<{ identity: Identity; user?: User } | undefined>;
-  };
+  users: PluginUsers;
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {

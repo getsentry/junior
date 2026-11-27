@@ -8,125 +8,15 @@
  * are validated by the Pi adapter when it restores model context.
  */
 import * as z from "zod";
-import { conversationMessageProvenanceSchema } from "./provenance";
-import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
-
-const userMessageEventDataSchema = z
-  .object({
-    type: z.literal("user_message"),
-    role: z.never().optional(),
-    provenance: conversationMessageProvenanceSchema,
-  })
-  .passthrough();
-
-const assistantMessageEventDataSchema = z
-  .object({
-    type: z.literal("assistant_message"),
-    role: z.never().optional(),
-  })
-  .passthrough();
-
-const toolResultEventDataSchema = z
-  .object({
-    type: z.literal("tool_result"),
-    role: z.never().optional(),
-  })
-  .passthrough();
-
-// A Pi system message after the leading one. The leading one is rebuilt for
-// each slice and never saved.
-const systemMessageEventDataSchema = z
-  .object({
-    type: z.literal("system_message"),
-    role: z.never().optional(),
-  })
-  .passthrough();
-
-/**
- * One replayable agent-history item. Junior owns `type` and user provenance,
- * forbids the provider `role` discriminator, and leaves preserved message
- * fields for the Pi adapter to validate when restoring model context.
- */
-export const agentHistoryItemSchema = z.discriminatedUnion("type", [
-  userMessageEventDataSchema,
-  assistantMessageEventDataSchema,
-  toolResultEventDataSchema,
-  systemMessageEventDataSchema,
-]);
-
-/** A native replayable agent-history item. */
-export type AgentHistoryItem = z.output<typeof agentHistoryItemSchema>;
-
-const nativeReplacementHistoryItemSchema = z
-  .object({
-    item: agentHistoryItemSchema,
-    // Preserve the copied item's position when a turn resumes. Synthetic
-    // summary items have no source event.
-    sourceEventSeq: z.number().int().nonnegative().optional(),
-  })
-  .strict();
-
-/**
- * The complete agent history used immediately after a replacement. Later
- * native history events append to it. Replacement entries are replayed model
- * history, not new conversation activity.
- */
-const replacementHistorySchema = z.array(nativeReplacementHistoryItemSchema);
-
-const compactionDetailsSchema = z
-  .object({
-    reason: z.literal("capacity"),
-    estimatedInputTokens: z.number().int().nonnegative(),
-    replacementInputTokens: z.number().int().nonnegative().optional(),
-    triggerTokens: z.number().int().nonnegative(),
-    inputLimitTokens: z.number().int().positive(),
-    inputMessageCount: z.number().int().nonnegative(),
-    retainedMessageCount: z.number().int().nonnegative(),
-    summaryChars: z.number().int().nonnegative(),
-  })
-  .strict();
-
-// Model profiles are retired. Stored rows may still carry `modelProfile`.
-const legacyModelProfileSchema = z.string().min(1).optional();
-
-const historyReplacementEventDataSchema = z
-  .object({
-    type: z.literal("compaction"),
-    modelProfile: legacyModelProfileSchema,
-    modelId: z.string().min(1),
-    details: compactionDetailsSchema.optional(),
-    // Estimated cost of the summary requests. A swap of a prepared summary
-    // makes no model call, so it has none.
-    costUsd: z.number().finite().nonnegative().optional(),
-    summary: z.string().min(1).optional(),
-    replacementHistory: replacementHistorySchema,
-  })
-  .strict();
-
-// Model handoff is retired. Stored handoff rows still start a History version,
-// so replay reads their replacement history. Nothing writes new ones.
-const legacyHandoffEventDataSchema = z
-  .object({
-    type: z.literal("handoff"),
-    modelProfile: legacyModelProfileSchema,
-    modelId: z.string().min(1),
-    reasoningLevel: z.string().min(1).optional(),
-    triggeringToolCallId: z.string().min(1).optional(),
-    summary: z.string().min(1).optional(),
-    replacementHistory: replacementHistorySchema,
-  })
-  .strict();
-
-/** Validate an event that intentionally replaces active model history. */
-export const historyReplacementSchema = z
-  .object({
-    data: historyReplacementEventDataSchema,
-    createdAtMs: z.number().finite(),
-  })
-  .strict();
-
-/** One atomically persisted model-history replacement. */
-export type HistoryReplacement = z.output<typeof historyReplacementSchema>;
+import {
+  agentHistoryItemSchema,
+  historyReplacementDataSchema,
+  type HistoryReplacement,
+} from "@/core/history/items";
+import {
+  decodeAgentHistoryPayload,
+  isAgentHistoryType,
+} from "@/core/history/rows";
 
 /**
  * Result of a history replacement. `historyVersion` is the new version when
@@ -210,8 +100,13 @@ const guardianActionReviewedEventDataSchema = z
     toolName: z.string().min(1),
     costUsd: z.number().finite().nonnegative().optional(),
     decision: z.enum(["allow", "ask", "deny"]),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]),
-    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+    /** Set on decisions recorded since Guardian names one rule. */
+    rule: z.string().min(1).optional(),
+    /** Set on decisions recorded since the record keeps why. */
+    reason: z.string().min(1).optional(),
+    // Older decisions also kept the reviewer's ratings.
+    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
   })
   .strict();
 
@@ -451,6 +346,9 @@ const subagentEndedEventDataSchema = z
   })
   .strict();
 
+// Model profiles are retired. Stored rows may still carry `modelProfile`.
+const legacyModelProfileSchema = z.string().min(1).optional();
+
 // Background compaction bookkeeping. A request marks the history that a
 // prepared summary covers. A later Turn swaps the summary in only when the
 // History version still matches. Neither event is model context.
@@ -512,8 +410,7 @@ const appendableConversationEventDataSchema = z.union([
 /** Strict event-data contract reused by the SQL row codec. */
 export const conversationEventDataSchema = z.union([
   appendableConversationEventDataSchema,
-  historyReplacementEventDataSchema,
-  legacyHandoffEventDataSchema,
+  historyReplacementDataSchema,
   legacyTurnRoutedEventDataSchema,
   unownedMcpProviderConnectedEventDataSchema,
 ]);
@@ -599,7 +496,7 @@ export const conversationEventSchema = z.union([
     })
     .refine(
       (event) =>
-        event.schemaVersion === 1 || isEncodedHistoryType(event.data.type),
+        event.schemaVersion === 1 || isAgentHistoryType(event.data.type),
     ),
   conversationEventEnvelopeSchema.extend({
     data: unknownConversationEventDataSchema,
@@ -640,10 +537,10 @@ export function decodeStoredConversationEvent(
   const stored = storedConversationEventSchema.parse(value);
   const { type, payload, ...envelope } = stored;
   const knownType = knownConversationEventTypeSchema.safeParse(type).success;
-  if (stored.schemaVersion === 2 && isEncodedHistoryType(type)) {
+  if (stored.schemaVersion === 2 && isAgentHistoryType(type)) {
     return conversationEventSchema.parse({
       ...envelope,
-      data: { ...decodeHistoryPayload(type, payload), type },
+      data: { ...decodeAgentHistoryPayload(type, payload), type },
     });
   }
   if (stored.schemaVersion === 1 && knownType) {

@@ -1,46 +1,9 @@
 /**
- * Hybrid text search over the event history of one Conversation, across
- * every history version, so a query finds what compaction removed from the
- * model context.
- *
- * Two legs rank the searchable events. Keyword: BM25 over Postgres full-text
- * lexemes, which `event-lexemes.ts` stores after each Turn. An event with no
- * stored lexemes yet gets them computed for the query. Meaning: cosine
- * distance to the event embeddings that `event-embedding.ts` stores after
- * each Turn. Reciprocal rank fusion combines the two ranks, so neither leg
- * needs a score threshold.
- *
- * The agent's tool calls count half in the fusion, so what a tool returned
- * ranks above the call that repeats the query's words. The input of the
- * running Turn is not a result: it is in the model context already.
- *
- * The caller checks access to the Conversation first.
- *
- * Attributes on the `searchConversationEvents` `gen_ai.execute_tool` span:
- * - `app.event_search.keyword.candidate.count`: events with a query lexeme.
- * - `app.event_search.keyword.computed.count`: events whose lexemes were
- *   computed for this query because none were stored yet.
- * - `app.event_search.keyword_ms`, `app.event_search.meaning_ms`: time of
- *   each leg, which run at the same time.
- * - `app.event_search.meaning.candidate.count`: events with a vector.
- * - `app.event_search.meaning.top_distance`: cosine distance of the nearest
- *   event, to tune a similarity floor.
- * - `app.event_search.meaning.candidates`: the nearest events in rank order,
- *   as `seq:distance` pairs joined by commas, to label results per distance.
- * - `app.event_search.conversation.id`: the searched Conversation, which owns
- *   those seqs. It differs from `gen_ai.conversation.id` when a search reads
- *   another Conversation.
- * - `app.event_search.result.count`: events returned.
- * - `app.event_search.result.<kind>.count`, `app.event_search.top5.<kind>.count`:
- *   returned events, and the first 5, by kind: `tool_call`, `tool_result`,
- *   `user_message`, `assistant_message`, or `message` (a Conversation
- *   Message).
- * - `app.event_search.result.current_turn.count`,
- *   `app.event_search.top5.current_turn.count`: of those, events from the
- *   running Turn. Set only when the search knows the running Turn.
- * Without an embedder, the meaning attributes are not set. Without results,
- * the kind attributes are not set.
- * Policy: policies/observability.md.
+ * Hybrid search over one Conversation's events in every history version, so
+ * it finds what compaction removed. BM25 over lexemes, computed when none are
+ * stored, and cosine distance to event vectors, fused by rank, so neither leg
+ * needs a score threshold. The running Turn's input is in context already, so
+ * it is not a result. The caller checks access first.
  */
 import {
   and,

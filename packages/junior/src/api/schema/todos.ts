@@ -15,6 +15,8 @@ const todoAssigneeSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("user"),
       name: z.string().min(1).optional(),
+      /** The To-do is assigned to the person who reads it. */
+      viewer: z.literal(true).optional(),
     })
     .strict(),
 ]);

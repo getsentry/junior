@@ -25,6 +25,7 @@ import {
   applyCoreMigrations as applyCoreMigrationSlice,
   insertLegacyConversation,
   insertLegacyConversationEvent,
+  RETIRED_INBOX_ITEM_COLUMNS,
 } from "../fixtures/conversation-sql-migrations";
 
 const coreMigrations = readMigrationFiles({
@@ -496,6 +497,20 @@ ORDER BY table_name ASC, ordinal_position ASC
         "junior_conversation_embeddings",
         (actual.get("junior_conversation_embeddings") ?? []).filter(
           (column) => column !== "brief_version",
+        ),
+      );
+      // The schema drops these, and drop_space_members keeps them for one
+      // release. Remove this when the follow-up migration drops them.
+      actual.set(
+        "junior_spaces",
+        (actual.get("junior_spaces") ?? []).filter(
+          (column) => !["archived_at", "name", "visibility"].includes(column),
+        ),
+      );
+      actual.set(
+        "junior_inbox_items",
+        (actual.get("junior_inbox_items") ?? []).filter(
+          (column) => !RETIRED_INBOX_ITEM_COLUMNS.includes(column),
         ),
       );
       expect(actual).toEqual(expected);

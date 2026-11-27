@@ -6,6 +6,7 @@ import type {
 import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { executeCredentialedEgressRequest } from "@/chat/egress/credentialed";
+import { readThroughHttpCache } from "@/chat/egress/http-cache";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import type { SandboxEgressCredentialContext } from "@/chat/sandbox/egress/session";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
@@ -29,6 +30,16 @@ interface PluginEgressDeps {
   credentialAuditSource?: CredentialAuditSource;
   credentialContext?: CredentialContext | undefined;
   fetch?: typeof fetch;
+  /**
+   * Read GETs through Junior's HTTP cache, in entries of this egress's
+   * credential context. `onStale` gets the time that an entry served after
+   * its TTL was stored.
+   */
+  httpCache?: {
+    onStale?(storedAtMs: number): void;
+    staleIfError: boolean;
+    ttlMs: number;
+  };
   pluginAuth: PluginEgressAuth;
   /**
    * Use only the credential subject's own stored OAuth token, never a
@@ -59,7 +70,7 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
       )
     : undefined;
 
-  return {
+  const egress: PluginEgress = {
     async fetch(input) {
       const operation = input.operation.trim();
       if (!operation) {
@@ -102,6 +113,31 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
         await deps.pluginAuth.handleAuthRequired(result.authRequired);
       }
       return result.response;
+    },
+  };
+  const { httpCache } = deps;
+  if (!httpCache || !deps.credentialContext) return egress;
+  // The credential context names the credential that egress picks, so two
+  // viewers, or a viewer and the system Actor, never share an entry.
+  const scope = `egress:${JSON.stringify([
+    deps.credentialContext,
+    deps.userOAuthOnly ? "user-oauth" : "any",
+  ])}`;
+  return {
+    async fetch(input) {
+      if (input.request.method !== "GET") return await egress.fetch(input);
+      return await readThroughHttpCache({
+        ...httpCache,
+        request: input.request,
+        scope,
+        send: async (headers) => {
+          const request = new Request(input.request);
+          for (const [name, value] of Object.entries(headers)) {
+            request.headers.set(name, value);
+          }
+          return await egress.fetch({ ...input, request });
+        },
+      });
     },
   };
 }

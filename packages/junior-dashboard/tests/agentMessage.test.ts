@@ -46,7 +46,29 @@ describe("sentAgentMessage", () => {
     );
     expect(
       sentAgentMessage(call({ output: "not reachable", status: "error" })),
-    ).toMatchObject({ conversationId: undefined, delivery: "refused" });
+    ).toMatchObject({
+      conversationId: undefined,
+      delivery: "refused",
+      reason: "Not reachable.",
+    });
+  });
+
+  it("keeps only the part of a refusal meant for a person", () => {
+    const reason = (output: string) =>
+      sentAgentMessage(call({ output, status: "error" }))?.reason;
+    // The row names the target, so the reason does not repeat it.
+    expect(
+      reason(
+        '"reviewer" is not "parent" or a child agent of this conversation. Use listAgents to find an agent.',
+      ),
+    ).toBe('Not "parent" or a child agent of this conversation.');
+    expect(
+      reason(
+        "This conversation is stopped, so it cannot give work to child agents. Do not start more work. End this turn.",
+      ),
+    ).toBe(
+      "This conversation is stopped, so it cannot give work to child agents.",
+    );
   });
 
   it("shows no state for a result it cannot read", () => {
@@ -84,6 +106,30 @@ describe("receivedAgentMessage", () => {
       direction: "received",
       text: "Done. <b>Nothing</b> & no blockers.",
     });
+  });
+
+  it("reads a Parent message as a message from the parent", () => {
+    const role = "user" as const;
+    expect(
+      receivedAgentMessage({
+        fromParentAgent: true,
+        parts: [{ text: "Check the cache too.", type: "text" }],
+        role,
+      }),
+    ).toEqual({
+      direction: "received",
+      text: "Check the cache too.",
+      to: "parent",
+    });
+    // A Watch Event that reached the child is not one.
+    expect(
+      receivedAgentMessage({
+        eventType: "pull_request.checks.failed",
+        fromParentAgent: true,
+        parts: [{ text: "x", type: "text" }],
+        role,
+      }),
+    ).toBeUndefined();
   });
 
   it("ignores other Event messages and keeps hidden text hidden", () => {
@@ -178,6 +224,22 @@ describe("agentMessageConversationTitle", () => {
       agentMessageConversationTitle(
         { events: [subagent({ title: "Review it" })] },
         { conversationId: "root-9", to: "root-9" },
+      ),
+    ).toBe("Conversation");
+  });
+
+  it("names a refused message by the target that it used", () => {
+    expect(
+      agentMessageConversationTitle(
+        { events: [] },
+        { delivery: "refused", to: "designer" },
+      ),
+    ).toBe("designer");
+    // A Conversation id is not a name, so a neutral label stands in.
+    expect(
+      agentMessageConversationTitle(
+        { events: [] },
+        { delivery: "refused", to: "slack:C123:1700000000.000100" },
       ),
     ).toBe("Conversation");
   });

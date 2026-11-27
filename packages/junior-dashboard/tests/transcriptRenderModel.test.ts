@@ -134,6 +134,32 @@ describe("canonical event transcript reduction", () => {
         warning: "Saved annotation is unavailable.",
       },
     ]);
+
+    // A viewer who cannot read the object sees its label and its link.
+    const unreadable = conversationTranscriptMessages({
+      ...current,
+      annotations: [
+        {
+          kind: "resource_link",
+          key: ref.key,
+          label: "repo#1",
+          objectType: "code_change",
+          plugin: ref.plugin,
+          url: annotation.url,
+          createdAt: current.generatedAt,
+          updatedAt: current.generatedAt,
+        },
+      ],
+    });
+    expect(unreadable[0]?.cards).toEqual([
+      {
+        ...ref,
+        objectType: "code_change",
+        title: "repo#1",
+        label: "repo#1",
+        url: annotation.url,
+      },
+    ]);
   });
 
   it("preserves ordered reasoning and tool activity", () => {
@@ -646,51 +672,105 @@ describe("canonical event transcript reduction", () => {
     expect(entryMatchesSearch(entries[0]!, "memory-1")).toBe(false);
   });
 
-  it("correlates repeated child outcomes by start sequence", () => {
-    const messages = conversationTranscriptMessages(
-      conversation([
-        event(0, "2026-01-01T00:00:00.000Z", {
-          type: "subagent",
-          startedSeq: 0,
-          startedAt: "2026-01-01T00:00:00.000Z",
-          childConversationId: "child-1",
-          childKind: "task",
-          subagentKind: "advisor",
-          status: "running",
-        }),
-        event(1, "2026-01-01T00:00:01.000Z", {
-          type: "subagent",
-          startedSeq: 1,
-          startedAt: "2026-01-01T00:00:01.000Z",
-          childConversationId: "child-1",
-          childKind: "task",
-          subagentKind: "advisor",
-          status: "running",
-        }),
-        event(2, "2026-01-01T00:00:02.000Z", {
-          type: "subagent",
-          startedSeq: 1,
-          startedAt: "2026-01-01T00:00:01.000Z",
-          childConversationId: "child-1",
-          childKind: "task",
-          subagentKind: "advisor",
-          status: "completed",
-        }),
-        event(3, "2026-01-01T00:00:03.000Z", {
-          type: "subagent",
-          startedSeq: 0,
-          startedAt: "2026-01-01T00:00:00.000Z",
-          childConversationId: "child-1",
-          childKind: "task",
-          subagentKind: "advisor",
-          status: "error",
-        }),
-      ]),
-    );
+  it("keeps one card per child and shows later Parent messages as message rows", () => {
+    const child = {
+      childConversationId: "child-1",
+      childKind: "task",
+      subagentKind: "agent",
+    } as const;
+    const marker = (
+      seq: number,
+      startedSeq: number,
+      parentToolCallId: string,
+      status: "blocked" | "completed" | "error" | "running",
+    ) =>
+      event(seq, `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`, {
+        type: "subagent",
+        ...child,
+        startedSeq,
+        startedAt: `2026-01-01T00:00:${String(startedSeq).padStart(2, "0")}.000Z`,
+        parentToolCallId,
+        status,
+      });
+    const call = (
+      seq: number,
+      toolCallId: string,
+      name: string,
+      status: "completed" | "running",
+    ) =>
+      event(seq, `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`, {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId,
+            name,
+            status,
+            input:
+              name === "messageAgent"
+                ? { text: "Check the cache too.", to: "reviewer" }
+                : { task: "Review the plan." },
+            ...(status === "completed"
+              ? {
+                  output: JSON.stringify({
+                    conversation_id: "child-1",
+                    delivery: "queued",
+                  }),
+                }
+              : undefined),
+          },
+        ],
+      });
+    const events = [
+      call(1, "start-1", "startAgent", "running"),
+      marker(2, 2, "start-1", "running"),
+      call(3, "start-1", "startAgent", "completed"),
+      call(4, "message-1", "messageAgent", "running"),
+      marker(5, 5, "message-1", "running"),
+      call(6, "message-1", "messageAgent", "completed"),
+    ];
+    const rows = (page: ConversationReportEvent[]) =>
+      groupTranscriptMessages(
+        conversationTranscriptMessages(conversation(page)),
+      ).map((entry) =>
+        entry.kind === "subagent"
+          ? { key: entry.key, status: entry.part.status }
+          : { key: entry.key },
+      );
 
-    expect(messages.map((message) => message.parts[0])).toMatchObject([
-      { status: "error" },
-      { status: "completed" },
+    expect(rows(events)).toEqual([
+      { key: "subagent:child-1", status: "running" },
+      { key: "tool:message-1" },
+    ]);
+    expect(rows([...events, marker(8, 5, "message-1", "error")])).toEqual([
+      { key: "subagent:child-1", status: "error" },
+      { key: "tool:message-1" },
+    ]);
+    // A message to a child whose start this page does not hold starts no
+    // card: the start is on an earlier page, or the child is a Conversation
+    // that moved into the Lead's Space.
+    expect(rows(events.slice(3, 6))).toEqual([{ key: "tool:message-1" }]);
+    // The child's update shows the outcome when no card in view does.
+    const update = event(9, "2026-01-01T00:00:09.000Z", {
+      type: "message",
+      messageId: "update-1",
+      role: "user",
+      eventType: "agent.update",
+      eventIdentifier: "child-1",
+      trustedSummary: "Child agent blocked.",
+      text: "<agent-result>blocked</agent-result>",
+    });
+    expect(rows([...events, update])).toEqual([
+      { key: "subagent:child-1", status: "running" },
+      { key: "tool:message-1" },
+    ]);
+    expect(rows([...events.slice(3, 6), update])).toEqual([
+      { key: "tool:message-1" },
+      { key: "9:message:0" },
+    ]);
+    // A marker whose call is not loaded starts no card, as when a Lead's
+    // message ends a page after its call.
+    expect(rows([marker(8, 5, "message-1", "blocked"), update])).toEqual([
+      { key: "9:message:0" },
     ]);
   });
 

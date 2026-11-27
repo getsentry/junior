@@ -70,7 +70,7 @@ export const cancelCalendarEventTool = definePluginTool({
     const { event, path } = read;
     const result = {
       target: "cancelCalendarEvent" as const,
-      ...ownEventResult(event, timeZone, ctx.accountEmail),
+      ...ownEventResult(event, timeZone, ctx.accountEmail, "changed"),
     };
 
     const response = await googleApiRequest(ctx, {
@@ -82,14 +82,7 @@ export const cancelCalendarEventTool = definePluginTool({
     if (response.status !== 204 && response.status !== 410) {
       throw googleApiError("google.calendar.event.delete", response);
     }
-    return {
-      ...result,
-      // Keep the card in the Conversation, and show that the event is gone.
-      objectAnnotations: result.objectAnnotations.map((annotation) => ({
-        ...annotation,
-        status: "cancelled",
-      })),
-      cancelled: response.status === 204,
-    };
+    // The card stays in the Conversation and reads that the event is gone.
+    return { ...result, cancelled: response.status === 204 };
   },
 });

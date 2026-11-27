@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
 import { createJuniorApi } from "@/api";
 import {
+  conversationChildAgentsReportSchema,
   conversationEventPageSchema,
   conversationOutlineSchema,
 } from "@/api/schema";
@@ -311,6 +312,8 @@ describe("child agent task work", () => {
           type: "message",
           messageId: taskMessageId,
           fromParentAgent: true,
+          // The dashboard shows the parent's words, not the model's tag.
+          text: slackSpawnInput.input,
         }),
       );
       expect(run).toHaveBeenCalledOnce();
@@ -696,6 +699,13 @@ describe("child agent task work", () => {
         }).execute!({}, {});
         expect(agents).toEqual([expect.objectContaining({ status: "idle" })]);
         expect(agents[0]!.last_result).toBe(lastResult);
+        // The dashboard lists the child with its last result.
+        const report = await createJuniorApi().request(
+          `http://localhost/api/conversations/${encodeURIComponent(parentConversationId)}/agents`,
+        );
+        expect(
+          conversationChildAgentsReportSchema.parse(await report.json()).agents,
+        ).toEqual([expect.objectContaining({ lastResult, status: "idle" })]);
       } finally {
         await fixture.close();
       }

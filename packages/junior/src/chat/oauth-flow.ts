@@ -7,8 +7,9 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import {
   getSlackClient,
   isDmChannel,
@@ -84,22 +85,11 @@ export function parseOAuthStatePayload(
 
 /** Return the manifest-owned display label for a provider. */
 export function formatProviderLabel(provider: string): string {
-  const displayName = pluginCatalogRuntime.getDisplayName(provider);
+  const displayName = getAppContext().catalog.getDisplayName(provider);
   if (!displayName) {
     throw new Error(`Unknown plugin provider display name: "${provider}"`);
   }
   return displayName;
-}
-
-/** Resolve the public base URL from environment variables (JUNIOR_BASE_URL or Vercel). */
-export function resolveBaseUrl(): string | undefined {
-  const explicit = process.env["JUNIOR_BASE_URL"]?.trim();
-  if (explicit) return explicit;
-  const vercelProd = process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim();
-  if (vercelProd) return `https://${vercelProd}`;
-  const vercelUrl = process.env["VERCEL_URL"]?.trim();
-  if (vercelUrl) return `https://${vercelUrl}`;
-  return undefined;
 }
 
 /**
@@ -212,7 +202,7 @@ export async function startOAuthFlow(
 ): Promise<
   { ok: false; error: string } | { ok: true; delivery: PrivateDeliveryResult }
 > {
-  const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
+  const providerConfig = getAppContext().catalog.getOAuthConfig(provider);
   if (!providerConfig) {
     return {
       ok: false,
@@ -228,7 +218,7 @@ export async function startOAuthFlow(
     };
   }
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     return {
       ok: false,

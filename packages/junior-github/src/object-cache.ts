@@ -57,6 +57,9 @@ const label = z.union([z.string(), z.object({ name: z.string() })]);
 const objectFields = {
   body: z.string().nullable().optional(),
   html_url: z.string(),
+  // GitHub's id of the object, which names it when its repository is
+  // renamed. An entry that an older release cached has none.
+  id: z.number().int().positive().optional(),
   number: z.number().int().positive(),
   state: z.string(),
   title: z.string(),
@@ -101,12 +104,74 @@ export const githubPullRequestFieldsSchema = z.object({
     .optional(),
   merged: z.boolean().optional(),
   requested_reviewers: z.array(person).optional(),
+  // GitHub's review decision. Only the GraphQL card read has it, and a
+  // webhook payload does not, so a webhook merge keeps it. `null` is a read
+  // with no decision. Unset is not read yet, or cleared by a review webhook,
+  // so the next page read asks GitHub (`pull-request-prefetch.ts`).
+  review: z
+    .enum(["approved", "changes_requested", "required"])
+    .nullable()
+    .optional(),
 });
 
 export type GitHubIssueFields = z.infer<typeof githubIssueFieldsSchema>;
 export type GitHubPullRequestFields = z.infer<
   typeof githubPullRequestFieldsSchema
 >;
+
+/** The pull request fields without GitHub's review decision. */
+export function withoutGitHubReview(
+  fields: GitHubPullRequestFields,
+): GitHubPullRequestFields {
+  const { review: _, ...rest } = fields;
+  return rest;
+}
+
+// A card read takes at most a page budget (`pull-request-prefetch.ts`), so
+// a mark this old cannot overlap one.
+const REVIEW_CLEARED_TTL_MS = 60_000;
+
+function reviewClearedKey(key: string): string {
+  return `review-cleared:${key}`;
+}
+
+/**
+ * Record that a review webhook cleared the review decision of a pull
+ * request entry. Call it before the entry write, so a card read that
+ * GitHub answered before the change does not store the old decision
+ * (`clearGitHubReviewAfterRead`).
+ */
+export async function markGitHubReviewCleared(
+  cache: PluginCache,
+  key: string,
+): Promise<void> {
+  await cache.update<number>(reviewClearedKey(key), () => ({
+    ttlMs: REVIEW_CLEARED_TTL_MS,
+    value: Date.now(),
+  }));
+}
+
+/**
+ * Clear the review decision `review` that a card read started at
+ * `startedAtMs` stored, when a review webhook came since. The read writes
+ * first and checks after, so a webhook either comes before the check, which
+ * clears the decision here, or clears it itself after the write. A
+ * different decision is from a later read, so it stays.
+ */
+export async function clearGitHubReviewAfterRead(
+  cache: PluginCache,
+  key: string,
+  read: { review: GitHubPullRequestFields["review"]; startedAtMs: number },
+): Promise<void> {
+  if (read.review === undefined) return;
+  const clearedAt = await cache.get<number>(reviewClearedKey(key));
+  if (clearedAt === undefined || clearedAt < read.startedAtMs) return;
+  await cache.update<GitHubPullRequestFields | null>(key, (current) =>
+    !current || current.review !== read.review
+      ? undefined
+      : { ...GITHUB_PULL_REQUEST_CACHE, value: withoutGitHubReview(current) },
+  );
+}
 
 /**
  * The cache entry of pull request fields read from GitHub. An open pull

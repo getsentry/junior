@@ -8,10 +8,14 @@ function rollout(page: Page) {
   return page.locator("[data-inbox-row]").filter({ hasText: title });
 }
 
-async function answerHold(page: Page) {
-  const todo = page.getByRole("region", { name: "To do" });
+async function answerHold(page: Page, phone: boolean) {
   await rollout(page).locator('[aria-controls^="inbox-row-"]').first().click();
-  const card = todo.getByRole("region", {
+  // A phone opens the row in a sheet.
+  const card = (
+    phone
+      ? page.getByRole("dialog", { name: "Approve the payments-v42 rollout" })
+      : page.getByRole("region", { name: "To do" })
+  ).getByRole("region", {
     name: "Approve the payments-v42 rollout",
   });
   // A click picks the choice, and Send answers.
@@ -30,12 +34,10 @@ test.describe("new UI", () => {
     { height: 900, name: "desktop", width: 1440 },
     { height: 844, name: "phone", width: 390 },
   ]) {
-    test(`an answer shows no toast, then shows on its row (${view.name})`, async ({
+    test(`an answer shows no toast (${view.name})`, async ({
       dashboard,
       page,
     }) => {
-      // The mock's own items: its rollout question closes with its answer.
-      const ask = "I need your go-ahead before I roll out to every region.";
       let release = () => {};
       const held = new Promise<void>((resolve) => (release = resolve));
       // Hold the answer, so the row leaves before the server answers.
@@ -45,14 +47,16 @@ test.describe("new UI", () => {
       });
       await page.setViewportSize(view);
       await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
-      await answerHold(page);
+      const phone = view.name === "phone";
+      await answerHold(page, phone);
       // The row leaving is the confirmation. Count at once: a toast that
       // showed with the answer would still show now.
       await expect(rollout(page)).toHaveCount(0);
+      // The sheet closes with its row, back to the list.
+      if (phone) await expect(page.getByRole("dialog")).toHaveCount(0);
       expect(await toasts(page).count()).toBe(0);
 
-      // Its Conversation's row says the answer in place of the ask, and
-      // after a reload too.
+      // The test ends after the answer that it held.
       const answered = page.waitForResponse(
         (response) =>
           /\/api\/inbox-items\/[^/]+\/actions$/.test(response.url()) &&
@@ -60,17 +64,6 @@ test.describe("new UI", () => {
       );
       release();
       expect((await answered).ok()).toBe(true);
-      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-      const summary = rollout(page).locator('[data-inbox-slot="summary"]');
-      await expect(summary).toHaveText("You answered Hold");
-      await expect(page.getByText(ask)).toHaveCount(0);
-      // The summaries read the cards of their links.
-      const cardsRead = page.waitForResponse(
-        (response) => new URL(response.url()).pathname === "/api/objects",
-      );
-      await page.reload();
-      await expect(summary).toHaveText("You answered Hold");
-      await cardsRead;
     });
   }
 
@@ -82,7 +75,7 @@ test.describe("new UI", () => {
       route.fulfill({ json: { error: "Down." }, status: 503 }),
     );
     await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
-    await answerHold(page);
+    await answerHold(page, false);
     const failure = toasts(page).filter({
       hasText: "Could not send your answer",
     });

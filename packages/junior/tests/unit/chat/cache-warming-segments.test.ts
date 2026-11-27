@@ -15,7 +15,7 @@ import {
 } from "@/chat/events/store";
 import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
 import { createCacheWarmingRecorder } from "@/chat/cache-warming/recorder";

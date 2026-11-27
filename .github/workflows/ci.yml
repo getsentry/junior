@@ -15,6 +15,11 @@ on:
       - core-next
   pull_request:
     branches: [main, core-next]
+  # A merge queue tests each pull request merged with the ones ahead of it.
+  # Pull request CI already ran every suite, so a queue run checks only what
+  # two green pull requests can break together: lint (with the migration
+  # checks), format, and types. See the `changes` job.
+  merge_group:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -44,7 +49,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # On a merge queue run, no filter runs, so every output is empty and
+      # every path-gated job skips. Only `typecheck` opts back in.
       - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
+        if: github.event_name != 'merge_group'
         id: filter
         with:
           filters: |
@@ -187,7 +195,7 @@ jobs:
     name: check / types
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
+    if: github.event_name == 'push' || github.event_name == 'merge_group' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -227,15 +235,12 @@ jobs:
       matrix:
         include:
           - suite: unit
-            path: tests/unit
             max_workers: 4
             test_timeout: 5000
           - suite: component
-            path: tests/component
             max_workers: 4
             test_timeout: 5000
           - suite: integration
-            path: tests/integration
             max_workers: 2
             test_timeout: 20000
     env:
@@ -287,7 +292,11 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       # The example build tests load every plugin that the example app uses.
       - run: pnpm --filter "@sentry/junior-example^..." run build
-      - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=${{ matrix.max_workers }} --testTimeout=${{ matrix.test_timeout }} --coverage ${{ matrix.path }}
+      - run: pnpm --filter @sentry/junior exec vitest run --project "$SUITE" --maxWorkers="$MAX_WORKERS" --testTimeout="$TEST_TIMEOUT" --coverage
+        env:
+          SUITE: ${{ matrix.suite }}
+          MAX_WORKERS: ${{ matrix.max_workers }}
+          TEST_TIMEOUT: ${{ matrix.test_timeout }}
       - name: Upload coverage
         if: ${{ !cancelled() }}
         uses: getsentry/codecov-action@eb2b4a6c4be3ecb42867043570579fa3b6879f6e # 0.3.8
@@ -701,8 +710,9 @@ jobs:
           min-severity: medium
           version: 1.32.0
 
-  # Pull requests only: path filters return true on every push, and ios.yml
-  # runs on its own for pushes to main that change apps/ios.
+  # Pull requests only: path filters return true on every push and merge
+  # queue run, and ios.yml runs on its own for pushes to main that change
+  # apps/ios.
   ios:
     name: ios
     needs: changes

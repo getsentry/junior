@@ -11,7 +11,10 @@ const { Pool } = pg;
 
 declare global {
   // Vitest can re-evaluate setup modules inside a worker. Cache the worker
-  // database promise on globalThis so one worker owns one cloned database.
+  // database promise on globalThis so one worker owns one cloned database
+  // for its whole life. Tests empty its tables, and the global teardown
+  // drops it. Cloning it again for each file would drop the database under
+  // connections that earlier files in the same worker still hold.
   var __juniorPostgresWorkerDatabases:
     | Map<string, Promise<PostgresWorkerDatabase>>
     | undefined;
@@ -115,20 +118,6 @@ export async function createPostgresTransactionFixture<TResource>(
     resource: createResource({ client, close }),
     close,
   };
-}
-
-/** Close cached worker pools before global harness database cleanup. */
-export async function cleanupPostgresWorkerDatabases(): Promise<void> {
-  const databases = globalThis.__juniorPostgresWorkerDatabases;
-  if (!databases) {
-    return;
-  }
-  const pending = [...databases.values()];
-  globalThis.__juniorPostgresWorkerDatabases = undefined;
-  // One database per test worker, so close them all at once.
-  await Promise.all(
-    pending.map((database) => database.then(({ pool }) => pool.end())),
-  );
 }
 
 /** Create a committed empty database for migration contract tests. */

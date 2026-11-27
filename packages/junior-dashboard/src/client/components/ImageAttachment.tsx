@@ -137,7 +137,7 @@ export function ImagePreview(props: {
     setCurrent(props.images[(next + count) % count]!);
 
   return (
-    <Dialog {...sheet.rootProps} actionsRef={actions}>
+    <Dialog {...sheet.rootProps} actionsRef={actions} phoneFullScreen>
       <DialogContent
         {...sheet.contentProps}
         className="top-0 left-0 h-dvh w-screen max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-0 bg-dashboard-ink p-0 shadow-none max-h-none sm:top-0 sm:translate-y-0 md:top-1/2 md:left-1/2 md:h-[min(90dvh,960px)] md:w-[min(92vw,1440px)] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg md:border"

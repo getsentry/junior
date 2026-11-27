@@ -1075,7 +1075,7 @@ describe("github plugin", () => {
       // A person started the Turn, so the result names the Inbox item that
       // asks whether to implement the issue.
       note: expect.stringContaining(
-        '"github-issue-implement:getsentry/junior#660"',
+        '"Start a Thread to implement getsentry/junior#660?"',
       ),
       number: 660,
       subscribable: {
@@ -1135,9 +1135,7 @@ describe("github plugin", () => {
           kind: "object",
           objectType: "task",
           key: "getsentry/junior#660",
-          label: "getsentry/junior#660",
           title: "Typed issue",
-          status: "open",
           url: "https://github.com/getsentry/junior/issues/660",
         },
       ],
@@ -1319,27 +1317,6 @@ describe("github plugin", () => {
     });
   });
 
-  it("keeps issue annotation labels compact for long titles", async () => {
-    const ctx = githubToolsContext();
-    const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.["createIssue"],
-      ctx as any,
-    );
-
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "x".repeat(256),
-        },
-        { toolCallId: "call-create-issue-long-title" },
-      ),
-    ).resolves.toMatchObject({
-      number: 660,
-      objectAnnotations: [{ label: "getsentry/junior#660" }],
-    });
-  });
-
   it("adds dashboard and Sentry session links to issue footers when configured", async () => {
     process.env["SENTRY_DSN"] = "https://public@o450000.ingest.sentry.io/12345";
     process.env["SENTRY_ORG_SLUG"] = "acme";
@@ -1429,7 +1406,9 @@ Conversation: \`local:test:old-conversation\`
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
-      objectAnnotations: [{ description: "Issue summary" }],
+      objectAnnotations: [
+        { key: "getsentry/junior#660", title: "Typed issue" },
+      ],
     };
 
     await expect(
@@ -1758,9 +1737,7 @@ Conversation: \`local:test:old-conversation\`
           kind: "object",
           objectType: "code_change",
           key: "getsentry/junior#691",
-          label: "getsentry/junior#691",
           title: "Typed PR",
-          status: "draft",
           url: "https://github.com/getsentry/junior/pull/691",
         },
       ],
@@ -2648,39 +2625,6 @@ Conversation: \`local:test:old-conversation\`
     expect(ctx.egressRequests()).toEqual([]);
   });
 
-  it("keeps pull request annotation labels compact for long titles", async () => {
-    const ctx = githubToolsContext({
-      actor: PULL_REQUEST_REQUESTER,
-      egressFetch: async () =>
-        new Response(
-          JSON.stringify({
-            number: 691,
-            html_url: "https://github.com/getsentry/junior/pull/691",
-          }),
-          { status: 201 },
-        ),
-    });
-    const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
-      ctx as any,
-    );
-
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "x".repeat(256),
-          head: "long-title",
-          base: "main",
-        },
-        { toolCallId: "call-create-pull-request-long-title" },
-      ),
-    ).resolves.toMatchObject({
-      number: 691,
-      objectAnnotations: [{ label: "getsentry/junior#691" }],
-    });
-  });
-
   it("omits pull request subscription hints when GitHub webhooks are not configured", async () => {
     const ctx = githubToolsContext({
       actor: PULL_REQUEST_REQUESTER,
@@ -2839,17 +2783,7 @@ via **Pat Requester**.
       await expect(
         tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
       ).resolves.toMatchObject({
-        objectAnnotations: [
-          {
-            description: `${"A".repeat(3999)}…`,
-            facts: {
-              type: "code_change",
-              author: "alex",
-              sourceBranch: "feature/cards",
-              targetBranch: "main",
-            },
-          },
-        ],
+        objectAnnotations: [{ key: "getsentry/junior#691", title: "Typed PR" }],
         number: 691,
         subscribable: {
           identifier: "getsentry/junior#691",
@@ -2868,17 +2802,7 @@ via **Pat Requester**.
           { toolCallId: "call-idempotent-pr-create" },
         ),
       ).resolves.toMatchObject({
-        objectAnnotations: [
-          {
-            description: `${"A".repeat(3999)}…`,
-            facts: {
-              type: "code_change",
-              author: "alex",
-              sourceBranch: "feature/cards",
-              targetBranch: "main",
-            },
-          },
-        ],
+        objectAnnotations: [{ key: "getsentry/junior#691", title: "Typed PR" }],
         number: 691,
         subscribable: {
           identifier: "getsentry/junior#691",

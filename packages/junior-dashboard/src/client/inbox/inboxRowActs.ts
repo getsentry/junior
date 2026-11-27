@@ -46,10 +46,15 @@ function typing(): boolean {
   );
 }
 
+// On a phone, the open row stays closed in the list, and its asks show in
+// a sheet outside the list.
 function openRowKey(scroller: HTMLElement): string {
   return (
     scroller.querySelector<HTMLElement>("li[data-inbox-row][data-expanded]")
-      ?.dataset["inboxRow"] ?? ""
+      ?.dataset["inboxRow"] ??
+    document.querySelector<HTMLElement>("[data-inbox-sheet][data-sheet-open]")
+      ?.dataset["inboxSheet"] ??
+    ""
   );
 }
 
@@ -173,6 +178,7 @@ export function inboxCardActions(input: {
           : undefined;
       const todo = item.todoId !== undefined;
       return {
+        dismissNote: item.subject.dismissNote,
         eventSnooze: eventSnoozeOf([item], snooze),
         onDismiss: close("dismiss"),
         onDone: todo ? close("done") : undefined,
@@ -202,6 +208,7 @@ export function inboxStackActions(input: {
   title: string;
 }): {
   dismissCount?: number;
+  dismissNote?: string;
   eventSnooze?: EventSnooze | undefined;
   onDismiss?(): void;
   onSnooze?(untilMs: number): void;
@@ -219,8 +226,14 @@ export function inboxStackActions(input: {
       : undefined),
     title: input.title,
   };
+  // Dismiss closes each of these asks, so it says each other change that
+  // it makes, such as on GitHub.
+  const notes = [
+    ...new Set(open.flatMap((item) => item.subject.dismissNote ?? [])),
+  ];
   return {
     dismissCount: open.length,
+    ...(notes.length > 0 ? { dismissNote: notes.join(" ") } : undefined),
     eventSnooze: eventSnoozeOf(input.items, input.snooze),
     onDismiss:
       open.length > 0

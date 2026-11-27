@@ -9,3 +9,9 @@ config-keys:
 
 mcp:
   url: https://mcp.cloudflare.com/mcp
+  # `execute` calls the Cloudflare API, so it stays reviewed.
+  guardian:
+    skipReview:
+      - docs
+      - search
+      - whoami

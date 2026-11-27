@@ -133,14 +133,15 @@ test.describe("new UI", () => {
     await expect(details).toBeVisible();
     // The saved width rounds to whole pixels.
     await expect.poll(transcriptSize).toBeCloseTo(resizedTranscriptSize, 0);
-    const usage = details.getByRole("button", { name: /^Usage/ });
+    // Usage opens in place of the details, with a way back.
+    const usage = details.getByRole("button", { exact: true, name: "Usage" });
     const modelBreakdown = details.getByRole("table", { name: "Model" });
-    await expect(usage).toHaveAttribute("aria-expanded", "false");
     await expect(modelBreakdown).toBeHidden();
     await usage.click();
     await expect(modelBreakdown).toBeVisible();
-    await usage.click();
+    await details.getByRole("button", { name: "Back to details" }).click();
     await expect(modelBreakdown).toBeHidden();
+    await expect(usage).toBeVisible();
   });
 
   test("turn context takes the details panel and gives it back", async ({
@@ -306,8 +307,9 @@ test.describe("new UI", () => {
       }
     });
     const repeated = () => asked.filter((url, at) => asked.indexOf(url) !== at);
-    // A pull request of a row below the fold.
-    const below = "https://github.com/getsentry/relay/pull/3396";
+    // A link in the text of a row below the fold. The server reads the
+    // cards of a row's Annotations, so only text links come here.
+    const below = "https://code.example.com/acme/checkout/pull/5378";
     const firstRead = page.waitForResponse(
       (response) => new URL(response.url()).pathname === "/api/objects",
     );
@@ -666,7 +668,8 @@ test.describe("new UI", () => {
     ).toBeHidden();
     await screenshot(page, "conversation-child-agents");
 
-    // Details lists Tasks with the runtime status.
+    // Details list Tasks in Agents with their own state. A blocked Task
+    // names why, from the update that the transcript hides.
     await page
       .getByRole("button", { name: "Conversation details", exact: true })
       .click();
@@ -674,21 +677,17 @@ test.describe("new UI", () => {
       name: "Conversation details",
       exact: true,
     });
+    const work = details.getByRole("region", { exact: true, name: "Agents" });
     await expect(
-      details.getByRole("heading", { name: "Tasks 2", exact: true }),
+      work.getByRole("button", { name: /^Blocked reviewer/ }),
+    ).toContainText("The reviewer needs access to the dashboard repository.");
+    await work.getByRole("button", { name: "Show finished" }).click();
+    await expect(
+      work.getByRole("button", { name: /^Done Review the dashboard plan/ }),
     ).toBeVisible();
-    const tasks = details.getByRole("region", { name: "Tasks" });
-    await expect(tasks.getByRole("listitem")).toHaveCount(2);
-    await expect(tasks.getByRole("listitem").first()).toContainText(
-      "GitHub access is needed to read the pull request.",
-    );
     await screenshot(page, "conversation-subagents");
     // A row opens the same Task transcript drawer as the transcript row.
-    await tasks
-      .getByRole("button", {
-        name: /^blocked Review the open dashboard pull requests/,
-      })
-      .click();
+    await work.getByRole("button", { name: /^Blocked reviewer/ }).click();
     const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
     await expect(
       reviewerDrawer.getByText("blocked", { exact: true }),
@@ -713,9 +712,6 @@ test.describe("new UI", () => {
       drawer.getByRole("heading", { name: "Review the dashboard plan" }),
     ).toBeVisible();
     await screenshot(page, "conversation-child-agent-drawer");
-    await expect(
-      drawer.getByText(childConversationId, { exact: true }),
-    ).toBeVisible();
     await expect(
       drawer.getByRole("link", { name: "Open conversation" }),
     ).toHaveAttribute(
@@ -746,23 +742,16 @@ test.describe("new UI", () => {
     expect(await readClipboard(page)).toBe(
       "Review complete; no blocking issues found.",
     );
+    await reply.getByRole("button", { name: "Copy link to message" }).click();
+    expect(await readClipboard(page)).toBe(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:output`)}`,
+    );
 
-    // Its input copies too, and links to itself. Only replies take a rating.
-    const input = drawer
-      .getByRole("article")
-      .filter({ hasText: "Review the dashboard plan before editing." });
-    await input.hover();
-    await expect(input.getByRole("button", { name: "Good reply" })).toHaveCount(
-      0,
-    );
-    await input.getByRole("button", { name: "Copy message" }).click();
-    expect(await readClipboard(page)).toBe(
-      "Review the dashboard plan before editing.",
-    );
-    await input.getByRole("button", { name: "Copy link to message" }).click();
-    expect(await readClipboard(page)).toBe(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
-    );
+    // Its input is a Parent message, so it shows as a message from the
+    // parent, like every other message between agents.
+    await expect(
+      drawer.getByRole("group", { name: /^Message from / }),
+    ).toContainText("Review the dashboard plan before editing.");
 
     // The shortcut searches the drawer's transcript, not the page behind it.
     await page.keyboard.press("ControlOrMeta+f");

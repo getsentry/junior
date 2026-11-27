@@ -4,36 +4,26 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import {
   enqueueAutomatedInput,
   getConversationStoppedAtMs,
 } from "@/chat/conversations/session-stop";
+import { parentResultActor } from "@/chat/conversations/kind-behavior";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getConversationStore } from "@/chat/db";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
-import {
-  listActiveMailboxTurns,
-  resolveMailboxTurnWork,
-  type MailboxTurnWork,
-} from "@/chat/task-execution/mailbox-turn";
-import { parentResultActor } from "./parent-result";
+import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
+import type { InboundMessageSender } from "@/chat/task-execution/message-sender";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   getConversationWorkState,
   type RenderInboundText,
 } from "@/chat/task-execution/store";
-import type {
-  ConversationWorkerContext,
-  ConversationWorkerResult,
-} from "@/chat/task-execution/worker";
 import { readChildConversationSender } from "./child-input";
-import { resultAuthorId, withSenderActors } from "./sender-actors";
+import { resultAuthorId } from "./sender-actors";
 import { getAgentMessageId, getAgentReplyMessageId } from "./ids";
-import {
-  childMessageSenderMetadata,
-  listChildMessages,
-  type ChildMessage,
-} from "./child-message";
+import { listChildMessages, type ChildMessage } from "./child-message";
 import { childAgentStillWorks } from "./store";
 import { renderDataTag } from "@/chat/input-tags";
 import { remindsNoReplyForChildStatus } from "@/chat/conversations/kind-behavior";
@@ -41,7 +31,6 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { listUnreportedSiblingAgents } from "./list";
 import { recordChildAgentEnded, type SubagentOutcome } from "./markers";
 import {
-  AGENT_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
   AGENT_UPDATE_EVENT_TYPE,
 } from "./result-event-type";
@@ -55,7 +44,7 @@ import type { ChildAgent, ChildAgentSender } from "./types";
  * Render the parent agent input for one child agent result as one
  * `<agent-result>`, the agent update that a Watch on the child also gets.
  * The system prompt says what to do for each status. A Lead's done result
- * also reminds it that a status update needs no reply.
+ * also reminds it that only a status update with no news needs no reply.
  */
 function renderResultInput(
   sender: ChildAgentSender,
@@ -79,7 +68,7 @@ function renderResultInput(
     : agentResult;
 }
 
-const NO_REPLY_REMINDER = `If this is only a status update with nothing a member needs, end with \`${NO_REPLY_TOOL_NAME}\`.`;
+const NO_REPLY_REMINDER = `If this is only a status update with no news for a member, end with \`${NO_REPLY_TOOL_NAME}\`. A done signal that is now true is news.`;
 
 // A blocked, failed, or stopped child needs the parent to act, so only a
 // child's done result and its messages get the reminder.
@@ -188,7 +177,7 @@ export async function enqueueAgentMessageToParent(args: {
     eventKey: inboundMessageId,
     eventType: AGENT_MESSAGE_EVENT_TYPE,
     identifier: senderId,
-    namespace: AGENT_EVENT_NAMESPACE,
+    namespace: CORE_EVENT_NAMESPACE,
     trustedSummary: summary,
   });
   await enqueueAutomatedInput({
@@ -270,14 +259,14 @@ export async function enqueueStarterUpdate(args: {
       eventKey: inboundMessageId,
       eventType: AGENT_UPDATE_EVENT_TYPE,
       identifier: senderId,
-      namespace: AGENT_EVENT_NAMESPACE,
+      namespace: CORE_EVENT_NAMESPACE,
       ...(stillWorks ? undefined : { status }),
       trustedSummary: `${childAgentLabel(args.sender)} ${stillWorks ? "sent a message." : RESULT_SUMMARIES[status]}`,
     }),
-    ...childMessageSenderMetadata({
+    sender: {
       conversationId: senderId,
       turnId: args.turnId,
-    }),
+    } satisfies InboundMessageSender,
   };
   await enqueueAutomatedInput({
     message: {
@@ -379,40 +368,5 @@ export function createEndStoppedChildWork(options: {
         }),
       },
     );
-  };
-}
-
-/**
- * Build the worker for all work of a child Conversation. The caller selects
- * it from the stored kind of the Conversation, never from a Turn Source.
- * Every input, such as a parent task or message, a person's Message in a
- * Thread, a Watch Event, or a reply of the child's own child agent, runs on
- * the Conversation loop, like input to a root.
- */
-export function createChildConversationWorker(options: {
-  runTurn: (
-    context: ConversationWorkerContext,
-    work: MailboxTurnWork,
-  ) => Promise<ConversationWorkerResult>;
-  state?: StateAdapter | undefined;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const work = await resolveMailboxTurnWork(context);
-    const kept = work ? await withSenderActors(work) : undefined;
-    if (!kept) {
-      // No open Turn is left for an empty wake, such as a late stop request,
-      // or a stop or parent check dropped every input.
-      await context.attempt.ack();
-      return { status: "completed" };
-    }
-    const result = await options.runTurn(context, kept);
-    if (result.status === "completed") {
-      // A Turn that sent no result, such as a `noReply` Turn, ends the
-      // child's markers here.
-      await recordChildAgentEnded(context.conversationId, "success", options);
-    }
-    return result;
   };
 }

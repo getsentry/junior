@@ -4,13 +4,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { botConfig, setBotName } from "@/chat/config";
 import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
 import { buildPluginSystemPromptContributions } from "@/chat/prompt";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import type { SystemPromptTable } from "@/chat/system-prompt-table";
 import { juniorNitro, type JuniorNitroOptions } from "@/nitro";
+import { useConfig } from "../../fixtures/config";
 
 const tempDirs: string[] = [];
 
@@ -148,21 +148,16 @@ describe("juniorNitro system prompts", () => {
       sections.find((section) => section.name === "identity");
 
     expect(named.config).toContain('export const botName = "jr";');
-    const previousBotName = botConfig.userName;
-    setBotName("jr");
-    try {
-      for (const platform of ["slack", "local"] as const) {
-        const sections = table[platform].conversation;
-        // The runtime builds the same prompt when its bot name is `jr`.
-        expect(sections.map((section) => section.text).join("\n\n")).toBe(
-          await buildDeploymentSystemPrompt(platform, "conversation"),
-        );
-        expect(identity(sections)).not.toEqual(
-          identity(unnamed[platform].conversation),
-        );
-      }
-    } finally {
-      setBotName(previousBotName);
+    useConfig({ bot: { userName: "jr" } });
+    for (const platform of ["slack", "local"] as const) {
+      const sections = table[platform].conversation;
+      // The runtime builds the same prompt when its bot name is `jr`.
+      expect(sections.map((section) => section.text).join("\n\n")).toBe(
+        await buildDeploymentSystemPrompt(platform, "conversation"),
+      );
+      expect(identity(sections)).not.toEqual(
+        identity(unnamed[platform].conversation),
+      );
     }
   });
 

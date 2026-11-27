@@ -17,13 +17,16 @@ const check = {
   output: { title: "Cache refresh test failed", summary: failure },
 };
 const pullRequest = {
+  id: 30_691,
   number: 691,
   title: "Refresh cached values after expiry",
   state: "open",
   draft: false,
   merged: false,
   html_url: `${web}/pull/691`,
-  user: { login: "junior-eval[bot]", type: "Bot" },
+  // The eval bot opened it. Its id comes from the eval `GITHUB_APP_BOT_EMAIL`,
+  // and feedback tools work only on pull requests that the bot authored.
+  user: { id: 12_345, login: "junior-eval[bot]", type: "Bot" },
   head: { ref: "fix/cache-refresh", sha },
   base: { ref: "main" },
 };
@@ -42,6 +45,14 @@ const run = {
   check_suite_id: 42,
   pull_requests: [pullRequest],
 };
+// The reviews that the review Watch evals send for this PR, by id, with the
+// login that wrote each one.
+const reviewers = new Map([
+  [9_002, "octo-reviewer"],
+  [9_003, "octo-requester"],
+  [9_004, "octo-requester"],
+  [9_005, "octo-requester"],
+]);
 const job = {
   ...check,
   run_id: 1,
@@ -79,15 +90,36 @@ export async function interceptTestGitHubChecksHttp(
   if (url.hostname !== "api.github.com") return undefined;
   if (request.method === "POST" && url.pathname === "/graphql") {
     const body = (await request.clone().json()) as {
+      operationName?: string;
       query?: string;
       variables?: {
+        content?: string;
         number?: number;
         owner?: string;
         name?: string;
         repo?: string;
+        subjectId?: string;
       };
     };
     const query = body.query ?? "";
+    // A review body has no REST reactions endpoint, so its reactions go
+    // through GraphQL on the review's node id.
+    const reviewNodeId = /^PRR_eval(\d+)$/.exec(
+      body.variables?.subjectId ?? "",
+    )?.[1];
+    if (reviewNodeId && reviewers.has(Number(reviewNodeId))) {
+      const reaction = { reaction: { content: body.variables?.content } };
+      switch (body.operationName) {
+        case "ReviewReactions":
+          return Response.json({ data: { node: { reactionGroups: [] } } });
+        case "AddReviewReaction":
+          return Response.json({ data: { addReaction: reaction } });
+        case "RemoveReviewReaction":
+          return Response.json({ data: { removeReaction: reaction } });
+        default:
+          return undefined;
+      }
+    }
     if (
       !/\bmutation\b/.test(query) &&
       /\bpullRequest\s*\(/.test(query) &&
@@ -146,7 +178,45 @@ export async function interceptTestGitHubChecksHttp(
     }
     return undefined;
   }
+  // Nobody has a pending review request, so Junior can ask the requester.
+  if (url.pathname === `${api}/pulls/691/requested_reviewers`) {
+    if (request.method === "GET") {
+      return Response.json({ users: [], teams: [] });
+    }
+    if (request.method === "POST") {
+      return Response.json(pullRequest, { status: 201 });
+    }
+  }
+  // A review Watch marks each PR conversation comment as being reviewed.
+  const commentId = url.pathname.match(
+    new RegExp(`^${api}/issues/comments/(\\d+)/reactions$`),
+  )?.[1];
+  if (commentId && request.method === "POST") {
+    const { content } = (await request.clone().json()) as { content?: string };
+    return Response.json(
+      { id: Number(commentId), content, user: pullRequest.user },
+      { status: 201 },
+    );
+  }
   if (request.method !== "GET") return undefined;
+  const reviewId = url.pathname.match(
+    new RegExp(`^${api}/pulls/691/reviews/(\\d+)$`),
+  )?.[1];
+  if (reviewId) {
+    const login = reviewers.get(Number(reviewId));
+    return login
+      ? Response.json({
+          id: Number(reviewId),
+          node_id: `PRR_eval${reviewId}`,
+          user: { login, type: "User" },
+        })
+      : Response.json({ message: "Not Found" }, { status: 404 });
+  }
+  // The PR has reviews but no inline review comments, so GitHub finds no
+  // review comment for a review id.
+  if (url.pathname.startsWith(`${api}/pulls/comments/`)) {
+    return Response.json({ message: "Not Found" }, { status: 404 });
+  }
   // oxlint-disable-next-line junior/no-value-switch -- A fake server routes by URL path, not by type.
   switch (url.pathname) {
     // GitHub's issue endpoint also returns pull requests. Title generation

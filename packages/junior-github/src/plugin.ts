@@ -4,6 +4,10 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { githubAccountLinks } from "./account-links.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  githubInboxSubjectKinds,
+} from "./inbox-subjects.js";
 import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
@@ -22,13 +26,13 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
+import { GITHUB_CONFLICT_RESUME } from "./merge-conflict-checks/policy.js";
 import {
-  GITHUB_CONFLICT_RESUME,
-  parseGitHubConflictItemKey,
-} from "./merge-conflict-checks/policy.js";
-import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
-import { loadGitHubTitleParts } from "./webhooks/title-parts.js";
+  allowGitHubConflictAsk,
+  resumeGitHubConflictFixes,
+} from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
+import { wasGitHubPullRequestOpenedIn } from "./pull-request-requesters/store.js";
 import {
   GITHUB_PULL_REQUEST_PATCH_TASK,
   githubPullRequestPatchTask,
@@ -36,6 +40,7 @@ import {
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
+  loadGitHubObjectNames,
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
@@ -104,6 +109,12 @@ import {
   githubPullRequestActionSyncTask,
 } from "./webhooks/pull-request-action.js";
 import { githubSidebarAnnotations } from "./annotations.js";
+import {
+  GITHUB_ANNOTATION_NAMES_TASK,
+  githubAnnotationNamesTask,
+  startGitHubAnnotationNames,
+} from "./annotation-names.js";
+import { dismissGitHubItem } from "./inbox-dismiss.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
 import {
@@ -137,10 +148,12 @@ import {
   requireEnv,
   resolveUserAccount,
 } from "./credential-support.js";
+import { installationResponses } from "./installation-http-cache.js";
 
 // A failed check suite reports incidents that are open or ended in the last
 // hour. Older incidents rarely explain a suite that just finished.
 const CHECK_SUITE_INCIDENT_WINDOW_MS = 60 * 60 * 1000;
+// A Conversation opens pull requests in few repositories.
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -225,8 +238,17 @@ export function githubPlugin(
       repository: (name) => `https://github.com/${name}`,
     },
     images: githubImageSource,
+    inboxSubjects: githubInboxSubjectKinds,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     tasks: {
+      [GITHUB_ANNOTATION_NAMES_TASK]: githubAnnotationNamesTask(
+        async () =>
+          await loadGitHubObjectNames({
+            appIdEnv,
+            installationIdEnv,
+            privateKeyEnv,
+          }),
+      ),
       [GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK]:
         githubPullRequestActionBackfillTask({
           botEmail: () => readEnv(botEmailEnv),
@@ -421,19 +443,55 @@ export function githubPlugin(
           },
         ];
       },
+      async inboxItemDismissed(ctx) {
+        await dismissGitHubItem(ctx, {
+          appIdEnv,
+          installationIdEnv,
+          privateKeyEnv,
+        });
+      },
       async inboxItemAnswered(ctx) {
-        const ref = parseGitHubConflictItemKey(ctx.dedupeKey);
-        if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
+        if (
+          ctx.subject.kind !== GITHUB_INBOX_SUBJECTS.mergeConflict ||
+          ctx.choice !== GITHUB_CONFLICT_RESUME
+        ) {
+          return;
+        }
+        const db = gitHubDbSchema.parse(ctx.db);
+        const pullRequestId = ctx.subject.id;
+        // The item belongs to the Conversation that opened the pull request,
+        // and the opener's row holds the pull request's id. The code index
+        // holds its current name, also after a rename.
+        const opened = await wasGitHubPullRequestOpenedIn(db, {
+          conversationId: ctx.conversationId,
+          pullRequestId,
+        });
+        const [change] = opened
+          ? await ctx.codeChanges.list({ providerIds: [pullRequestId] })
+          : [];
+        if (!change) {
+          // Core closed the item already. Let the next conflict check ask
+          // again, so the Resume is not lost.
+          ctx.log.warn("GitHub merge conflict Resume found no pull request", {
+            conversationId: ctx.conversationId,
+            pullRequestId,
+          });
+          await allowGitHubConflictAsk(db, pullRequestId);
+          return;
+        }
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await resumeGitHubConflictFixes({
-          codeChanges: ctx.codeChanges,
-          db: gitHubDbSchema.parse(ctx.db),
+          db,
           events: ctx.events,
           itemId: ctx.itemId,
           loadPullRequest: async (pullRequest) =>
             await loadPullRequest(installationEnv, pullRequest),
           nowMs: ctx.nowMs,
-          ref,
+          pullRequestId,
+          ref: {
+            number: change.number,
+            repositoryFullName: change.repository.name,
+          },
           subscription: gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,
           ),
@@ -450,12 +508,6 @@ export function githubPlugin(
           events: ctx.events,
           loadHistory: async (ref) =>
             await loadPullRequestConflictHistory(installationEnv, ref),
-          loadTitleParts: async (input) =>
-            await loadGitHubTitleParts(
-              { ...installationEnv, responses: ctx.state },
-              input,
-              ctx.log,
-            ),
           log: ctx.log,
           now: new Date(ctx.nowMs),
           inboxItems: ctx.inboxItems,
@@ -472,8 +524,8 @@ export function githubPlugin(
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({
-          annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
+          cache: ctx.cache,
           codeChanges: ctx.codeChanges,
           conversationChanges: ctx.conversationChanges,
           db,
@@ -485,6 +537,8 @@ export function githubPlugin(
           log: ctx.log,
           nowMs: ctx.nowMs,
           inboxItems: ctx.inboxItems,
+          objectChanged: async (subject) =>
+            await ctx.annotations.objectChanged(subject),
           state: ctx.state,
         });
         await startGitHubRepositoryNameRepair({
@@ -492,6 +546,10 @@ export function githubPlugin(
           tasks: ctx.tasks,
         });
         await startGitHubPullRequestRequesterBackfill({
+          state: ctx.state,
+          tasks: ctx.tasks,
+        });
+        await startGitHubAnnotationNames({
           state: ctx.state,
           tasks: ctx.tasks,
         });
@@ -511,7 +569,9 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
-          responses: ctx.state,
+          responses: installationResponses(ctx.httpCache, () =>
+            readEnv(installationIdEnv),
+          ),
           tokens: new Map(),
         };
         return [
@@ -547,6 +607,8 @@ export function githubPlugin(
               linkedGitHubLogin(
                 (await ctx.users.readIdentity(identityId))?.user,
               ),
+            findLinkedIdentityIds: async (logins) =>
+              await ctx.users.findLinkedIdentityIds(logins),
             loadPullRequest: async (pullRequest) =>
               await loadPullRequest(installationEnv, pullRequest),
             loadPullRequestConflictHistory: async (pullRequest) =>
@@ -556,14 +618,13 @@ export function githubPlugin(
               ),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
-            loadTitleParts: async (input) =>
-              await loadGitHubTitleParts(installationEnv, input, ctx.log),
             log: ctx.log,
             markFeedbackReviewing: async (target) =>
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
             inboxItems: ctx.inboxItems,
+            responses: installationEnv.responses,
             state: ctx.state,
             tasks: ctx.tasks,
             tokens: installationEnv.tokens,

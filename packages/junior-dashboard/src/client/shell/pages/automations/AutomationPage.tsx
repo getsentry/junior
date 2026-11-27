@@ -34,6 +34,7 @@ import {
   TimeRangeSelector,
   type TimeRangeDays,
 } from "../../../components/controls/TimeRangeSelector";
+import { useRegisterMobileHeaderBack } from "../../../components/layout/DashboardChrome";
 import { PageLayout } from "../../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../../components/layout/SecondaryNavigation";
 import { useDocumentTitle } from "../../../documentTitle";
@@ -375,12 +376,22 @@ function AutomationHeader(props: {
   title: string;
 }) {
   useDocumentTitle(props.documentTitle ?? props.title);
+  const navigate = useNavigate();
+  // A phone shows the way back in the shell header, as other pages do.
+  useRegisterMobileHeaderBack(
+    "Back to automations",
+    () => void navigate(props.listPath),
+    "Automation",
+  );
   return (
     <header className="grid min-w-0 gap-1 border-b border-dashboard-border-subtle pb-4">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2">
         <Link
           aria-label="Back to automations"
-          className={buttonVariants({ size: "icon", variant: "ghost" })}
+          className={cn(
+            buttonVariants({ size: "icon", variant: "ghost" }),
+            "max-md:hidden",
+          )}
           to={props.listPath}
         >
           <ArrowLeft aria-hidden="true" size={16} strokeWidth={1.8} />
@@ -388,7 +399,7 @@ function AutomationHeader(props: {
         <h1
           className={cn(
             fadeTextClass,
-            "m-0 flex-1 font-display text-lg font-medium tracking-[-0.01em] text-dashboard-text",
+            "m-0 flex-1 font-display text-lg font-medium tracking-[-0.01em] text-dashboard-text max-md:basis-full",
           )}
         >
           {props.title}

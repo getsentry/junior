@@ -5,7 +5,7 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {
@@ -21,6 +21,7 @@ import {
   requireDetail,
   waitUntilApplicationWaitsOnLock,
 } from "../fixtures/dashboard-reporting";
+import { resetTestEnv } from "../fixtures/stub-env";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV["DATABASE_URL"];
@@ -33,11 +34,10 @@ if (!TEST_DATABASE_URL) {
 
 describe("dashboard canonical event reporting", () => {
   beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       DATABASE_URL: TEST_DATABASE_URL,
       JUNIOR_STATE_ADAPTER: "memory",
-    };
+    });
     vi.resetModules();
   });
 
@@ -47,7 +47,7 @@ describe("dashboard canonical event reporting", () => {
     await closeDb();
     await disconnectStateAdapter();
     vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   });
 
   it("returns one ordered safe event log without legacy detail projections", async () => {
@@ -341,19 +341,8 @@ describe("dashboard canonical event reporting", () => {
     expect((await requireDetail(publicChild)).eventHistory).toEqual({
       status: "available",
     });
-    const { getConversationStore, getDb, getSqlExecutor } =
-      await import("@/chat/db");
-    const { setConversationVisibility } =
-      await import("@/chat/conversations/sql/privacy");
+    const { getConversationStore, getDb } = await import("@/chat/db");
     const { resolveViewerUser } = await import("@/chat/plugins/viewer");
-    await setConversationVisibility(getSqlExecutor(), publicRoot, "private");
-    expect((await requireDetail(publicChild)).eventHistory.status).toBe(
-      "redacted",
-    );
-    await setConversationVisibility(getSqlExecutor(), publicRoot, "public");
-    expect((await requireDetail(publicChild)).eventHistory.status).toBe(
-      "available",
-    );
 
     const privateRoot = "slack:C-reporting:private-root";
     const privateChild = "child:reporting-private";

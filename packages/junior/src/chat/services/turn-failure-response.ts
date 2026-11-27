@@ -1,5 +1,4 @@
 import type { ConversationTurnFailureReason } from "@/chat/conversations/history";
-import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { formatSentryEventReference } from "@/chat/sentry-links";
 import { ToolActionReviewUnavailableError } from "@/chat/guardian/gate";
@@ -24,6 +23,11 @@ type LogException = (
   eventName: TurnFailureEventName,
   attributes?: Record<string, unknown>,
 ) => string | undefined;
+
+/** Build the static user-facing response for a failed turn. */
+export function buildTurnFailureResponse(eventId: string): string {
+  return `I ran into an internal error while processing that. Reference: ${formatSentryEventReference(eventId)}.`;
+}
 
 /** Require captured turn failures to carry a real Sentry event reference. */
 export function requireTurnFailureEventId(

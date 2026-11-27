@@ -48,7 +48,7 @@ describe("Threads", () => {
     expect(spawned.map((call) => spawnInput(call).kind)).toContain("thread");
   });
 
-  test("when a Thread is finished, archive it, and leave the Thread a person still uses", async ({
+  test("when a Thread is finished, archive it, also after a person messaged it", async ({
     run,
   }) => {
     const conversation = await run(
@@ -67,12 +67,10 @@ describe("Threads", () => {
     expect(changelog).toBeDefined();
     expect(upgrade).toBeDefined();
 
-    // The person keeps working in the changelog Thread.
+    // The person finishes the changelog Thread's work with it directly.
     const changelogThread = await conversation.child(childId(changelog!));
     await changelogThread.continue(
-      webMessage(
-        "Good start. Add a line about the new date filter. I'll send more notes after lunch.",
-      ),
+      webMessage("Good start. Add a line about the new date filter."),
     );
 
     await conversation.continue(
@@ -82,9 +80,7 @@ describe("Threads", () => {
     // Read the result as the dashboard shows it, however the agent made the
     // calls.
     expect((await conversation.child(childId(upgrade!))).archived).toBe(true);
-    expect((await conversation.child(childId(changelog!))).archived).toBe(
-      false,
-    );
+    expect((await conversation.child(childId(changelog!))).archived).toBe(true);
   });
 
   test("when a person writes in a Thread, the Thread answers them there", async ({

@@ -1,9 +1,7 @@
 import pLimit from "p-limit";
-import { githubObjectFacts } from "../object-facts.js";
-import { githubObjectAnnotation } from "../annotations.js";
+import { githubAnnotatedObject } from "../annotations.js";
 import {
-  objectFactsSchema,
-  type ObjectAnnotation,
+  type AnnotatedObject,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -144,6 +142,10 @@ const createPullRequestStateSchema = Type.Union([
       createdAtMs: Type.Number(),
       input: Type.Optional(createPullRequestInputSchema),
       number: Type.Number(),
+      /** GitHub's id of the pull request, for its opener's row. */
+      pullRequestId: Type.Optional(Type.String()),
+      // A state saved before Annotations stopped saving facts has these.
+      // Nothing reads them.
       facts: Type.Optional(Type.Unknown()),
       sourceUpdatedAt: Type.Optional(Type.String()),
       description: Type.Optional(Type.String({ maxLength: 4000 })),
@@ -169,9 +171,8 @@ const createPullRequestStateSchema = Type.Union([
 type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 
 interface GitHubPullRequestResult {
-  facts?: ObjectAnnotation["facts"] | undefined;
-  sourceUpdatedAt?: string | undefined;
-  description?: string | undefined;
+  /** GitHub's id of the pull request. Unset in a state saved before it. */
+  id?: string | undefined;
   number: number;
   url: string;
 }
@@ -294,6 +295,7 @@ async function createGitHubPullRequest(
   ctx: ToolRegistrationHookContext,
   request: { body: unknown; path: string },
 ): Promise<{
+  pullRequestId?: string;
   result: GitHubPullRequestResult;
   stackTarget?: GitHubStackTarget;
 }> {
@@ -321,7 +323,11 @@ async function createGitHubPullRequest(
       "GitHub pull request creation returned an invalid response.",
     );
   }
-  const pullRequest = parsed as { html_url?: unknown; number?: unknown };
+  const pullRequest = parsed as {
+    html_url?: unknown;
+    id?: unknown;
+    number?: unknown;
+  };
   if (
     typeof pullRequest.number !== "number" ||
     typeof pullRequest.html_url !== "string"
@@ -333,10 +339,12 @@ async function createGitHubPullRequest(
   const stackTarget = stackTargetSchema.safeParse(parsed);
   return {
     result: {
-      ...githubObjectFacts("code_change", parsed),
       number: pullRequest.number,
       url: pullRequest.html_url,
     },
+    ...(typeof pullRequest.id === "number"
+      ? { pullRequestId: String(pullRequest.id) }
+      : undefined),
     ...(stackTarget.success ? { stackTarget: stackTarget.data } : undefined),
   };
 }
@@ -348,7 +356,7 @@ async function createGitHubPullRequest(
 async function recordOpener(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
-  state: { createdAtMs: number; number: number },
+  state: { createdAtMs: number; number: number; pullRequestId?: string },
   requester: { conversationId: string; identityId: string | undefined },
 ): Promise<void> {
   const { conversationId, identityId } = requester;
@@ -360,6 +368,7 @@ async function recordOpener(
     createdAt: new Date(state.createdAtMs),
     identityId,
     number: state.number,
+    pullRequestId: state.pullRequestId,
     repositoryFullName: repo.ref,
   });
   // The `opened` webhook can record the code change before the row above.
@@ -574,18 +583,18 @@ async function gitHubPullRequestStructuredResult(
     result,
     ctx.events.canSubscribe,
   );
-  const objectAnnotations = [
-    githubObjectAnnotation({
-      facts: result.facts,
-      sourceUpdatedAt: result.sourceUpdatedAt,
-      description: result.description,
-      repo: input.repo,
-      number: result.number,
-      title: input.title,
-      url: result.url,
-      objectType: "code_change",
-      status: input.draft ? "draft" : "open",
-    }),
+  const objectAnnotations: AnnotatedObject[] = [
+    {
+      action: "created",
+      ...githubAnnotatedObject({
+        id: result.id,
+        repo: input.repo,
+        number: result.number,
+        title: input.title,
+        url: result.url,
+        objectType: "code_change",
+      }),
+    },
   ];
   if (!subscriptionConfig || !base.subscribable) {
     return {
@@ -688,12 +697,7 @@ export function createGitHubPullRequestTool(
             // The same stop can drop the reviewers named for a draft.
             await saveNamedDraftReviewers(ctx, completedInput, state.number);
             const completedResult = {
-              facts:
-                state.facts === undefined
-                  ? undefined
-                  : objectFactsSchema.parse(state.facts),
-              sourceUpdatedAt: state.sourceUpdatedAt,
-              description: state.description,
+              id: state.pullRequestId,
               number: state.number,
               url: state.url,
             };
@@ -735,12 +739,11 @@ export function createGitHubPullRequestTool(
             GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
           );
           let result: GitHubPullRequestResult;
+          let pullRequestId: string | undefined;
           let stackTarget: GitHubStackTarget | undefined;
           try {
-            ({ result, stackTarget } = await createGitHubPullRequest(
-              ctx,
-              request,
-            ));
+            ({ pullRequestId, result, stackTarget } =
+              await createGitHubPullRequest(ctx, request));
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
@@ -757,14 +760,8 @@ export function createGitHubPullRequestTool(
             ...pendingState,
             status: "completed",
             number: result.number,
+            ...(pullRequestId === undefined ? undefined : { pullRequestId }),
             url: result.url,
-            facts: result.facts,
-            ...(result.sourceUpdatedAt === undefined
-              ? undefined
-              : { sourceUpdatedAt: result.sourceUpdatedAt }),
-            ...(result.description === undefined
-              ? undefined
-              : { description: result.description }),
           };
           try {
             await ctx.state.set(
@@ -795,7 +792,7 @@ export function createGitHubPullRequestTool(
           return await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,
-            result,
+            { ...result, id: pullRequestId },
             subscriptionConfig,
             stack,
           );

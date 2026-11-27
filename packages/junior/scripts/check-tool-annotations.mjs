@@ -7,6 +7,11 @@ const TOOL_CONSTRUCTORS = new Set(["definePluginTool", "tool", "zodTool"]);
 // Static core definitions declare the annotations. A tool built from one gets
 // them from there.
 const DEFINITION_DECLARERS = new Set(["zodToolDefinition"]);
+// A file that never names one of these cannot hold a call that either check
+// reads, so the scan skips it before it parses.
+const CHECKED_CALL_NAME = new RegExp(
+  `\\b(?:${[...TOOL_CONSTRUCTORS, ...DEFINITION_DECLARERS].join("|")})\\b`,
+);
 const REQUIRED_HINTS = [
   "destructiveHint",
   "idempotentHint",
@@ -321,6 +326,7 @@ export async function checkRepoToolAnnotations(repoRoot) {
     try {
       for (const filePath of await sourceFiles(sourceRoot)) {
         const source = await fs.readFile(filePath, "utf8");
+        if (!CHECKED_CALL_NAME.test(source)) continue;
         const relativePath = path.relative(repoRoot, filePath);
         errors.push(
           ...checkToolAnnotationSource(source, relativePath),

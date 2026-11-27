@@ -16,7 +16,7 @@ function visionCacheKey(conversationId: string): string {
 const visionCacheSchema = z.object({
   schemaVersion: z.literal(VISION_CACHE_SCHEMA_VERSION),
   backfillCompletedAtMs: z.number().optional().catch(undefined),
-  byFileId: z.record(z.string(), z.unknown()).catch({}),
+  byFileId: z.record(z.string(), z.unknown()).catch(() => ({})),
 });
 
 const visionSummarySchema = z.object({

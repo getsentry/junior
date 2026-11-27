@@ -1,5 +1,6 @@
 import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { createECDH, randomBytes, randomUUID, type ECDH } from "node:crypto";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createRequire } from "node:module";
 import {
   createWebSource,
@@ -12,11 +13,11 @@ import { http, HttpResponse } from "msw";
 import webPush from "web-push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
 import { createSlackActor } from "@/chat/actor";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
   getConversationStore,
@@ -42,7 +43,9 @@ import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import {
   juniorConversationParticipants,
   juniorInboxItemDeliveries,
+  juniorInboxItems,
 } from "@/db/schema";
+import { patchConfig, useConfig } from "../fixtures/config";
 import { createConversationFixture } from "../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { useGitHubEvents } from "../fixtures/event-automations";
@@ -52,6 +55,7 @@ import {
   addPullRequestItem,
   api,
   conversation,
+  OTHER_PULL_REQUEST,
   PULL_REQUEST,
   ROOT,
   user,
@@ -61,6 +65,10 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 import { mswServer } from "../msw/server";
+import {
+  ownedPluginInboxItems,
+  TEST_PLUGIN_INBOX_OWNER,
+} from "../fixtures/plugin-inbox-owners";
 
 // web-push encrypts with http_ece. The test reads the payload with it.
 const ece = createRequire(createRequire(import.meta.url).resolve("web-push"))(
@@ -73,12 +81,6 @@ const ece = createRequire(createRequire(import.meta.url).resolve("web-push"))(
 };
 
 const PUSH_URL = "https://fcm.googleapis.com/fcm/send/phone";
-const ENV_NAMES = [
-  "JUNIOR_WEB_PUSH_PUBLIC_KEY",
-  "JUNIOR_WEB_PUSH_PRIVATE_KEY",
-  "JUNIOR_WEB_PUSH_SUBJECT",
-] as const;
-
 const queue = createConversationWorkQueueTestAdapter();
 const services = createSlackInboxItemToolServices(() => queue);
 const heartbeat = () =>
@@ -225,7 +227,6 @@ const ASK = {
   title: "Approve the deploy?",
   body: "**Deploy** of `api` waits for you.",
   assignees: ["ana@example.com"],
-  dedupe_key: "deploy:api",
   request: {
     question: "Approve the deploy?",
     fields: [
@@ -240,18 +241,21 @@ const ASK = {
 };
 
 describe("inbox item push", () => {
-  const savedEnv = new Map<string, string | undefined>();
-  let previousLinks: ReturnType<typeof setDashboardConversationLinkOptions>;
+  let webPushConfig: { privateKey: string; publicKey: string; subject: string };
   let pushes: Record<string, unknown>[];
 
   beforeEach(async () => {
-    for (const name of ENV_NAMES) savedEnv.set(name, process.env[name]);
     const keys = webPush.generateVAPIDKeys();
-    process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"] = keys.publicKey;
-    process.env["JUNIOR_WEB_PUSH_PRIVATE_KEY"] = keys.privateKey;
-    process.env["JUNIOR_WEB_PUSH_SUBJECT"] = "mailto:junior@example.com";
-    previousLinks = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    webPushConfig = {
+      privateKey: keys.privateKey,
+      publicKey: keys.publicKey,
+      subject: "mailto:junior@example.com",
+    };
+    useConfig({ webPush: webPushConfig });
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     await getStateAdapter().connect();
     pushes = [];
@@ -271,11 +275,6 @@ describe("inbox item push", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    for (const [name, value] of savedEnv) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    setDashboardConversationLinkOptions(previousLinks);
     await disconnectStateAdapter();
     await closeDb();
   });
@@ -295,12 +294,14 @@ describe("inbox item push", () => {
     ]);
 
     // A change of the same ask does not push again.
-    await execute(tools.add, { ...ASK, body: "The deploy still waits." });
+    await execute(tools.update, {
+      id: added.item.id,
+      body: "The deploy still waits.",
+    });
     // Everyone items and notices show only in the Inbox.
     const everyone = await execute(tools.add, {
       ...ASK,
       assignees: ["everyone"],
-      dedupe_key: "deploy:web",
     });
     // Ana takes it, so she is its assignee now, but needs no push for it.
     await actOnInboxItem({
@@ -314,7 +315,6 @@ describe("inbox item push", () => {
       title: "The deploy finished",
       body: "Nothing to do.",
       assignees: ["ana@example.com"],
-      dedupe_key: "deploy:done",
     });
     expect(pushes).toHaveLength(1);
 
@@ -333,11 +333,128 @@ describe("inbox item push", () => {
       .set({ status: "sent" })
       .where(eq(juniorInboxItemDeliveries.itemId, added.item.id));
     await syncInboxItemPush(added.item.id);
-    const next = await execute(tools.add, { ...ASK, dedupe_key: "deploy:db" });
+    const next = await execute(tools.add, ASK);
     expect(pushes[1]).toMatchObject({
       close: [added.item.id],
       tag: next.item.id,
     });
+  });
+
+  it("pushes a plugin item again on the same item when its ask changes", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          inboxSubjects: [
+            { kind: "change", label: "Change", owner: TEST_PLUGIN_INBOX_OWNER },
+          ],
+          manifest: {
+            description: "Review test plugin",
+            displayName: "Reviews",
+            name: "reviews",
+          },
+        }),
+      ]),
+    });
+    // The app loads config again, without the web push keys or the dashboard
+    // link, so install them again.
+    useConfig({
+      webPush: webPushConfig,
+      dashboard: { baseURL: "https://junior.example.com" },
+    });
+    const ana = await anaWithPhone();
+    const identityId = await resolveActorIdentityId(
+      getSqlExecutor(),
+      createSlackActor("T123", "U0ANA", { email: "ana@example.com" }),
+    );
+    const { conversationId } = await turnTools(ana);
+    const items = ownedPluginInboxItems({
+      conversationId,
+      plugin: "reviews",
+      show: syncInboxItemPush,
+    });
+    const review = {
+      askedIdentityIds: [identityId!],
+      assigneeIdentityIds: [identityId!],
+      body: "GitHub asks you to review #946.",
+      subject: { id: "1001", kind: "change" },
+      title: "Review requested · #946",
+      waitsOnAssignees: true,
+    };
+
+    await items.upsert(review);
+    const [item] = await getDb()
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems);
+    expect(pushes).toEqual([expect.objectContaining({ tag: item!.id })]);
+    // New content of the same ask does not push again.
+    await items.upsert({
+      ...review,
+      askedIdentityIds: [],
+      body: "The review still waits.",
+    });
+    expect(pushes).toHaveLength(1);
+    // The subject names the item, so the merge ask changes the same item,
+    // and its snooze and pin stay. The event that gives the new ask pushes
+    // again.
+    await items.upsert({
+      ...review,
+      body: "#946 is approved. Merge it.",
+      title: "Ready to merge · #946",
+    });
+    expect(pushes).toEqual([
+      expect.objectContaining({ tag: item!.id }),
+      expect.objectContaining({
+        tag: item!.id,
+        title: "Ready to merge · #946",
+      }),
+    ]);
+    expect(
+      await getDb().select({ id: juniorInboxItems.id }).from(juniorInboxItems),
+    ).toEqual([item]);
+
+    // A wake of Ana's snooze pushed the item to her too.
+    await getDb().insert(juniorInboxItemDeliveries).values({
+      channel: "web_push",
+      createdAt: new Date(),
+      event: "wake",
+      itemId: item!.id,
+      status: "sent",
+      updatedAt: new Date(),
+      userId: ana.id,
+    });
+
+    // Ana leaves while Ben's ask keeps the item open. A new ask brings her
+    // back, and it pushes to her again.
+    const ben = await person("ben@example.com");
+    await getDb().insert(juniorConversationParticipants).values({
+      lastMessageAt: new Date(),
+      rootConversationId: conversationId,
+      userId: ben.id,
+    });
+    const benIdentityId = await resolveActorIdentityId(
+      getSqlExecutor(),
+      createSlackActor("T123", "U0BEN", { email: "ben@example.com" }),
+    );
+    await items.upsert({
+      ...review,
+      askedIdentityIds: [benIdentityId!],
+      assigneeIdentityIds: [benIdentityId!],
+    });
+    expect(pushes).toHaveLength(2);
+    await items.upsert({
+      ...review,
+      assigneeIdentityIds: [identityId!, benIdentityId!],
+      title: "Review requested again · #946",
+    });
+    expect(pushes.at(-1)).toEqual(
+      expect.objectContaining({
+        tag: item!.id,
+        title: "Review requested again · #946",
+      }),
+    );
+    // Her rejoin forgets every push of the item that her leave cleared, so
+    // no later push closes it on her phone.
+    expect(pushes.at(-1)).not.toHaveProperty("close");
   });
 
   it("pushes a To-do for a person to each new assignee once, and closes it when it moves on", async () => {
@@ -405,7 +522,6 @@ describe("inbox item push", () => {
     });
     await execute((await turnTools(ana)).add, {
       ...ASK,
-      dedupe_key: "deploy:db",
     });
     expect(pushes[3]?.["close"]).toBeUndefined();
   });
@@ -457,7 +573,6 @@ describe("inbox item push", () => {
     // She is active in Slack, so Slack's own notification reached her.
     const active = await execute(tools.add, {
       ...ASK,
-      dedupe_key: "deploy:web",
     });
     queueSlackApiResponse("users.getPresence", {
       body: usersGetPresenceOk("active"),
@@ -471,7 +586,6 @@ describe("inbox item push", () => {
     // She dismisses the card before the wait ends, so nothing pushes.
     const dismissed = await execute(tools.add, {
       ...ASK,
-      dedupe_key: "deploy:db",
     });
     await actOnInboxItem({
       action: "dismiss",
@@ -487,18 +601,17 @@ describe("inbox item push", () => {
     // She is unassigned while her push waits, so the wait ends with no
     // push. Assigned again, she gets it at the next heartbeat.
     await person("bob@example.com");
-    const reassigned = await execute(tools.add, {
-      ...ASK,
-      dedupe_key: "deploy:queue",
-    });
-    await execute(tools.add, {
-      ...ASK,
+    const reassigned = await execute(tools.add, ASK);
+    await execute(tools.update, {
+      id: reassigned.item.id,
       assignees: ["bob@example.com"],
-      dedupe_key: "deploy:queue",
     });
     await later(5 * 60_000);
     expect(pushes).toHaveLength(1);
-    await execute(tools.add, { ...ASK, dedupe_key: "deploy:queue" });
+    await execute(tools.update, {
+      id: reassigned.item.id,
+      assignees: ["ana@example.com"],
+    });
     await later(60_000);
     expect(pushes).toEqual([
       expect.objectContaining({ tag: away.item.id }),
@@ -524,7 +637,6 @@ describe("inbox item push", () => {
     const attached = await execute(first.add, {
       ...ASK,
       conversation_ids: [second.conversationId],
-      dedupe_key: "deploy:web",
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
@@ -552,8 +664,12 @@ describe("inbox item push", () => {
   it("pushes each wake of a snooze from a time or an Event, once", async () => {
     // The app that GitHub Events need sets its own dashboard links.
     await useGitHubEvents();
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    // The app loads config again, without the web push keys.
+    useConfig({ webPush: webPushConfig });
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     const fixture = await createConversationFixture();
     // A User of the Slack workspace, so she can see the items of its thread.
@@ -661,7 +777,13 @@ describe("inbox item push", () => {
     expect((await asAna.unsnooze(row)).status).toBe(204);
     await heartbeat(wakeAtMs + 60_000);
     // A trigger that resolves the item closes it and pushes nothing.
-    const globex = await addPullRequestItem(ROOT, [ana], "Review globex entry");
+    // A subject names one open item, so it is about another pull request.
+    const globex = await addPullRequestItem(
+      ROOT,
+      [ana],
+      "Review globex entry",
+      OTHER_PULL_REQUEST.url,
+    );
     expect(
       (
         await asAna.snoozeOn({ conversationId: ROOT, inboxItemId: globex }, [
@@ -669,7 +791,11 @@ describe("inbox item push", () => {
         ])
       ).status,
     ).toBe(201);
-    await publisher.publish(merged);
+    await publisher.publish({
+      ...merged,
+      eventKey: `pull_request.merged:${OTHER_PULL_REQUEST.identifier}`,
+      identifier: OTHER_PULL_REQUEST.identifier,
+    });
     expect((await getInboxItem(getDb(), globex))?.status).toBe("dismissed");
     // An Everyone item does not push when its snooze wakes.
     const everyone = await addEveryoneItem(ROOT, "Review initech entry");
@@ -685,7 +811,12 @@ describe("inbox item push", () => {
     expect(pushes).toHaveLength(3);
 
     // Outside her notification hours, the wake is recorded as skipped.
-    const hooli = await addPullRequestItem(ROOT, [ana], "Review hooli entry");
+    const hooli = await addPullRequestItem(
+      ROOT,
+      [ana],
+      "Review hooli entry",
+      OTHER_PULL_REQUEST.url,
+    );
     await saveNotificationSchedule(
       getDb(),
       ana.id,
@@ -731,7 +862,12 @@ describe("inbox item push", () => {
     expect((await asAna.act(next.item.id, { action: "dismiss" })).status).toBe(
       200,
     );
-    await execute(tools.add, { ...ASK, dedupe_key: "deploy:db" });
-    expect(pushes[5]?.["close"]).toEqual([next.item.id, acme]);
+    await execute(tools.add, ASK);
+    // Her dismiss in the Conversation also closes its reply notice.
+    expect((await getInboxItem(getDb(), notice))?.status).toBe("done");
+    expect(pushes[5]?.["close"]).toEqual(
+      expect.arrayContaining([notice, next.item.id, acme]),
+    );
+    expect(pushes[5]?.["close"]).toHaveLength(3);
   });
 });

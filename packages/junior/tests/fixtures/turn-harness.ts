@@ -1,6 +1,6 @@
 // The harness of core's Turn engine integration tests. It runs the real path
 // from an input to a Slack post: `scheduleInput`, the host's Turn step
-// consumer with the host's prompt layouts, and the host's delivery consumer.
+// consumer with the host's prompt layouts, and the host's Turn-ended consumer.
 // Only the edges outside Junior are fakes: the AI emulator answers the model
 // requests, MSW captures the Slack API calls, and an in-process queue holds
 // each message until the test delivers it. Postgres is real. Each harness has
@@ -13,9 +13,8 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import { DELIVERY_TOPIC } from "@/core/delivery/topic";
 import type { EngineContext } from "@/core/engine-context";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { scheduleInput } from "@/core/turn/schedule";
 import type { ToolDefinition } from "@/core/tool";
 import type { AdvanceTurnOptions } from "@/core/turn/advance";
@@ -25,9 +24,10 @@ import {
   juniorTurnInbox,
   juniorTurns,
 } from "@/db/schema";
+import type { TurnDestination } from "@/db/schema/turn-inbox";
 import { turnStepConsumer } from "@/turn-steps/consumer";
 import { staticTools } from "./turn-engine";
-import { deliveryConsumer } from "@/turn-steps/delivery";
+import { turnEndedConsumer } from "@/turn-steps/turn-ended";
 import { turnGroupKey } from "@/turn-steps/group-key";
 import type { TurnInputPayload } from "@/turn-steps/input-payload";
 import { emulatedModelClient } from "./ai-emulator";
@@ -43,7 +43,7 @@ const LEASE_MS = 60_000;
 type SlackLocation = Extract<Location, { provider: "slack" }>;
 
 // A run that goes through more rounds than this is a loop, not a drain. One
-// round delivers every due step message, then every due delivery message.
+// round delivers every due step message, then every due Turn-ended message.
 const MAX_ROUNDS = 20;
 
 /** The Actor that sends a harness's inputs unless a test names another. */
@@ -74,11 +74,11 @@ export type TurnHarness = {
     text: string;
     actor?: TurnInputPayload["actor"];
     source?: Source;
-    destination?: Destination | null;
+    destination?: TurnDestination | null;
   }) => Promise<SentInput>;
   /** Delivers the next due step message. Throws when none is due. */
   runStep: () => Promise<void>;
-  /** Delivers due step and delivery messages until none is left. */
+  /** Delivers due step and Turn-ended messages until none is left. */
   runUntilIdle: () => Promise<void>;
   turn: (turnId: string) => Promise<typeof juniorTurns.$inferSelect>;
   /** The stored history events of the Conversation, oldest first. */
@@ -151,7 +151,10 @@ export async function createTurnHarness({
       tools: typeof tools === "function" ? tools : staticTools(tools),
     }),
   );
-  queue.mount(DELIVERY_TOPIC, deliveryConsumer(engineCtx, recording.delivery));
+  queue.mount(
+    TURN_ENDED_TOPIC,
+    turnEndedConsumer(engineCtx, recording.delivery),
+  );
 
   const slackSource: Source = {
     kind: "slack",
@@ -171,7 +174,7 @@ export async function createTurnHarness({
     text: string;
     actor?: TurnInputPayload["actor"];
     source?: Source;
-    destination?: Destination | null;
+    destination?: TurnDestination | null;
   }): Promise<SentInput> {
     const payload: TurnInputPayload = {
       text: input.text,
@@ -207,8 +210,8 @@ export async function createTurnHarness({
   async function runUntilIdle() {
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
       const steps = await queue.runUntilIdle(TURN_STEP_TOPIC);
-      const deliveries = await queue.runUntilIdle(DELIVERY_TOPIC);
-      if (steps + deliveries === 0) {
+      const ends = await queue.runUntilIdle(TURN_ENDED_TOPIC);
+      if (steps + ends === 0) {
         return;
       }
     }

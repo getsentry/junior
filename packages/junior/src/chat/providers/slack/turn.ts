@@ -145,7 +145,8 @@ import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
-import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
+import { buildTurnThreadContext } from "@/chat/slack/thread-context";
+import { withHeldInput } from "@/chat/conversations/held-input";
 import {
   scheduleSessionCompletedPluginTasks,
   type SendPluginTask,
@@ -1109,7 +1110,14 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   : undefined),
                 ...(slackMessageTs ? { slackTs: slackMessageTs } : undefined),
               },
-              ...savedInput,
+              ...(await withHeldInput(
+                {
+                  conversation: preparedState.conversation,
+                  conversationId,
+                  turnId,
+                },
+                savedInput,
+              )),
               context: promptConversationContext,
               inboundAttachmentCount: turnAttachments.length,
               omittedImageAttachmentCount,

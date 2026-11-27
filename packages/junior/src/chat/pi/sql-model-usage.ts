@@ -146,15 +146,15 @@ function usageFromRow(row: ModelUsageSums): AgentTurnUsage | undefined {
     : undefined;
 }
 
-/** Sum assistant calls by Conversation and model id, in the seq range of each Conversation. */
+/** Sum assistant calls by Conversation and model id within each seq range. */
 async function sumModelUsage(
   executor: JuniorSqlDatabase,
   ranges: readonly SeqRange[],
 ): Promise<
   Array<ModelUsageSums & { conversationId: string; modelId: string }>
 > {
-  // Prefer the model field when it already carries a vendor prefix so usage keys
-  // match configured model ids (openai/gpt-5.6-sol), not the transport
+  // Prefer the model field when it already carries a vendor prefix, so usage
+  // keys match configured model ids (openai/gpt-5.6-sol), not the transport
   // provider concatenated onto that id (vercel-ai-gateway/openai/gpt-5.6-sol).
   const modelText = sql`(${model} #>> '{}')`;
   const modelId = sql<string>`case
@@ -260,30 +260,11 @@ function mergeModels(
 }
 
 /**
- * Aggregate real assistant calls by provider/model in SQL, for one
- * Conversation and all its child agents at any depth. Replayed history is not
- * another call; its tokens appear in the next call's input usage.
- *
- * Reading assistant payloads is slow on long Conversations, so each
- * Conversation in the subtree has its own cache entry. The entry keeps its
- * own watermark: the last seq that it counted and the creation time of the
- * first event (`originMs`). A read sums only the events after the seq of
- * each entry. Only a Conversation with no entry, or with an entry whose
- * watermark does not match, gets a full read of its own events. A read never
- * reads the whole subtree again. This is correct because a row at or below a
- * counted seq never changes and never changes whether it counts:
- * - Events are append-only. The per-Conversation event lock serializes
- *   appends and is held to commit, so when seq N is visible, lower seqs are.
- * - `notInheritedByForkChild` reads only lower seqs of the same Conversation.
- * - `notCopiedByFork` reads a later fork note of the same Conversation, but a
- *   fork commits its copied events and the note in one transaction.
- * So both rules depend only on the events of the entry's own Conversation.
- * A purge removes the events of a Conversation, and new events start again
- * at seq 0 with a new first event. A lower seq or another `originMs` does
- * not match the watermark, so a read rebuilds that Conversation's entry
- * only.
- * Concurrent reads can overwrite each other's entry. Each entry is correct
- * at its own seq, so the last write wins safely.
+ * Sum real assistant calls, not replays, by model for a Conversation and its
+ * children. Each Conversation's cache watermark (last seq, `originMs`) limits a
+ * read to later events. Counted rows never change: appends commit under the
+ * event lock, and a fork commits its copies with its note. A purge resets the
+ * watermark. Racing reads each write a correct entry, so the last one wins.
  */
 export async function readConversationModelUsageFromSql(
   executor: JuniorSqlDatabase,

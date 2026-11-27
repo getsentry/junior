@@ -108,16 +108,25 @@ export function nextAction(
     /** `requesterFeedback`: the requester waits for Junior's answer. */
     feedback: boolean;
     login: string | undefined;
+    /**
+     * GitHub lets the requester merge on the repository. Without it, a
+     * person with write access merges, so the requester gets no merge ask.
+     */
+    mergeAccess: boolean;
   },
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
   if (state.state !== "open") return {};
-  // With auto-merge on, GitHub merges it, so no person needs to. A pending
+  // With auto-merge on or in the merge queue, GitHub merges it. A pending
   // review request comes first, even where GitHub requires no review. So
-  // does the requester's feedback, because Junior acts next.
+  // does the requester's feedback, because Junior acts next. A pull request
+  // above an open base merges after that base.
   const canMerge =
+    requester.mergeAccess &&
     !state.draft &&
     !state.autoMerge &&
+    !state.inMergeQueue &&
+    !state.baseOpen &&
     !state.reviewPending &&
     !requester.feedback;
   if (
@@ -159,13 +168,13 @@ function isRequested(
 /**
  * Whether a pull request whose action is none is in limbo: it waits on
  * nobody, so Junior asks for the requester's review on GitHub. It is open,
- * not a draft, and auto-merge is off. GitHub does not ask the requester
- * for a review, and the requester's feedback does not wait for Junior. The
- * requester has not reviewed since the last push, other than a comment-only
- * review. No reviewer approved it, so it does not wait only on others, and
- * no reviewer requests changes, so Junior does not act next. Junior does
- * not ask when the requester removed their own review request and no one
- * asked them since.
+ * not a draft, not in the merge queue, and auto-merge is off. GitHub does
+ * not ask the requester for a review, and the requester's feedback does
+ * not wait for Junior. The requester has not reviewed since the last push,
+ * other than a comment-only review. No reviewer approved it, so it does not
+ * wait only on others, and no reviewer requests changes, so Junior does not
+ * act next. Junior does not ask when the requester removed their own review
+ * request and no one asked them since.
  */
 export function inLimbo(
   state: GitHubPullRequestMergeState,
@@ -176,6 +185,7 @@ export function inLimbo(
     state.state === "open" &&
     !state.draft &&
     !state.autoMerge &&
+    !state.inMergeQueue &&
     !isRequested(state, login) &&
     !requesterFeedback(state, activity) &&
     timeOf(activity.removedAt) <= timeOf(activity.askedAt) &&

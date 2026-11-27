@@ -1,14 +1,15 @@
 import * as z from "zod";
 import {
+  inboxItemQuestion,
   normalizeUserInputAnswer,
   type InboxItemPayload,
+  type UserInputRequest,
 } from "@sentry/junior/api/schema";
 
 import { conversationPath } from "../conversations/conversationRoutes";
 import { withoutStandaloneUrl } from "../display-text/DisplayText";
 import { automationPath } from "../format";
 import { displayPlainText } from "../display-text/plainText";
-import type { Conversation } from "../types";
 
 /** Return the Inbox route that selects one item. */
 export function inboxItemPath(id: string): string {
@@ -57,7 +58,9 @@ export function inboxItemStatusLabel(item: InboxItemPayload): string {
   if (item.status === "open") {
     if (item.kind === "notice") return "Notice";
     // A plugin ask waits on a step outside Junior, so it has no question.
-    return item.request ? "Needs an answer" : "Waiting on you";
+    return inboxItemQuestion(item.request)
+      ? "Needs an answer"
+      : "Waiting on you";
   }
   return item.status === "done" ? "Done" : "Dismissed";
 }
@@ -114,7 +117,7 @@ export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
   return (
     item.status === "open" &&
     item.kind === "action" &&
-    Boolean(item.request) &&
+    Boolean(inboxItemQuestion(item.request)) &&
     item.canAnswer &&
     !item.snoozedByViewer
   );
@@ -125,7 +128,7 @@ export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
  * the note.
  */
 export function answerRows(
-  request: NonNullable<InboxItemPayload["request"]>,
+  request: UserInputRequest,
   answer: NonNullable<InboxItemPayload["answer"]>,
 ): Array<{ label: string; value: string }> {
   const normalized = normalizeUserInputAnswer(request, answer);
@@ -144,7 +147,7 @@ export function answerRows(
  * note, so a transcript row can show it after the question.
  */
 export function answerLine(
-  request: NonNullable<InboxItemPayload["request"]>,
+  request: UserInputRequest,
   answer: NonNullable<InboxItemPayload["answer"]>,
 ): string {
   return answerRows(request, answer)
@@ -152,51 +155,44 @@ export function answerLine(
     .join(" · ");
 }
 
-/** Say "You answered Hold" for picked options, or "You replied" for text. */
-function answeredLine(choices: readonly string[]): string {
-  return choices.length > 0
-    ? `You answered ${choices.join(", ")}`
-    : "You replied";
-}
-
 /**
- * Say what the viewer last answered in a Conversation, from the answer that
- * its feed row carries, until a later Message moves it on. The answer's own
- * Message has the close time, so it does not count as later.
+ * Whether the viewer cannot see the Conversation that owns the item. The
+ * API then names no root for it, as for a person whose role on the subject
+ * puts them on the item.
  */
-export function conversationAnswerLine(
-  conversation: Pick<Conversation, "lastMessageAt" | "viewerAnswer">,
-): string | undefined {
-  const answer = conversation.viewerAnswer;
-  if (!answer) return undefined;
-  if (
-    conversation.lastMessageAt &&
-    Date.parse(conversation.lastMessageAt) > Date.parse(answer.closedAt)
-  )
-    return undefined;
-  return answeredLine(answer.choices);
+export function itemConversationHidden(
+  item: Pick<InboxItemPayload, "owner" | "rootConversationId">,
+): boolean {
+  return item.owner.kind === "conversation" && !item.rootConversationId;
 }
 
 /**
  * The Conversation that owns an item, or undefined when something else owns
- * it, such as an Automation.
+ * it, such as an Automation, or when the viewer cannot see it.
  */
 export function itemConversationId(
-  item: Pick<InboxItemPayload, "owner">,
+  item: Pick<InboxItemPayload, "owner" | "rootConversationId">,
 ): string | undefined {
-  return item.owner.kind === "conversation" ? item.owner.id : undefined;
+  return item.owner.kind === "conversation" && !itemConversationHidden(item)
+    ? item.owner.id
+    : undefined;
 }
 
 /**
  * The route of an item's owner: its Conversation, with `options`, or its
- * Automation.
+ * Automation. When the viewer cannot see the Conversation, the item's own
+ * row, so nothing links to the Conversation.
  */
 export function itemOwnerPath(
-  item: Pick<InboxItemPayload, "owner">,
+  item: Pick<
+    InboxItemPayload,
+    "id" | "owner" | "rootConversationId" | "status"
+  >,
   options?: Parameters<typeof conversationPath>[1],
 ): string {
-  return item.owner.kind === "automation"
-    ? automationPath(item.owner.id)
+  if (item.owner.kind === "automation") return automationPath(item.owner.id);
+  return itemConversationHidden(item)
+    ? inboxRowPath(item)
     : conversationPath(item.owner.id, options);
 }
 

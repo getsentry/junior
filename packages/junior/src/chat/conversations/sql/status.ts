@@ -5,6 +5,7 @@ import {
   gt,
   gte,
   inArray,
+  isNull,
   or,
   sql,
   type SQL,
@@ -34,7 +35,6 @@ export interface ConversationStatusColumns {
   kind: AnyPgColumn;
   location: AnyPgColumn;
   parentConversationId: AnyPgColumn;
-  rootConversationId: AnyPgColumn;
   stoppedAt: AnyPgColumn;
 }
 
@@ -129,31 +129,65 @@ const starterRoot = alias(juniorConversations, "status_starter_root");
 const starterIdentity = alias(juniorIdentities, "status_starter_identity");
 const replyReader = alias(juniorIdentities, "status_reply_reader");
 
-/** SQL: the User id of the Conversation's starter, the User of its root's actor. */
+/** SQL: the Conversation with this id is a Lead. */
+function isLeadSql(conversationId: SQL | AnyPgColumn): SQL<boolean> {
+  return sql<boolean>`exists (select 1 from junior_conversations status_lead where status_lead.conversation_id = ${conversationId} and status_lead.kind = 'lead')`;
+}
+
+/**
+ * SQL: the id of the Conversation's Top-level Conversation: itself or the
+ * nearest ancestor with no parent or with a Lead as its parent. A Lead is
+ * the root of every Conversation in its Space, so the root alone would make
+ * the Lead's actor the starter of all Space work.
+ */
+function conversationTopLevelIdSql(
+  conversation: ConversationStatusColumns,
+): SQL<string> {
+  // The walk goes up one parent at a time and stops at a Top-level
+  // Conversation. UNION, not UNION ALL, so that bad parent links cannot
+  // loop forever; such a loop has no Top-level Conversation.
+  const ancestorParent = sql`status_ancestor.parent_conversation_id`;
+  return sql<string>`(case when ${conversation.parentConversationId} is null then ${conversation.conversationId} else (
+    with recursive status_ancestor(conversation_id, parent_conversation_id) as (
+      select ${conversation.conversationId}::text, ${conversation.parentConversationId}::text
+      union
+      select parent.conversation_id, parent.parent_conversation_id
+      from status_ancestor
+      join junior_conversations parent on parent.conversation_id = ${ancestorParent}
+      where not ${isLeadSql(ancestorParent)}
+    )
+    select conversation_id from status_ancestor
+    where ${ancestorParent} is null or ${isLeadSql(ancestorParent)}
+    limit 1
+  ) end)`;
+}
+
+/**
+ * SQL: the User id of the Conversation's starter, the User of its
+ * Top-level Conversation's actor.
+ */
 function conversationStarterUserIdSql(
   conversation: ConversationStatusColumns,
 ): SQL {
   return sql`(select ${starterIdentity.userId} from ${juniorConversations} as ${starterRoot} join ${juniorIdentities} as ${starterIdentity} on ${eq(
     starterIdentity.id,
     starterRoot.actorIdentityId,
-  )} where ${eq(
-    starterRoot.conversationId,
-    sql`coalesce(${conversation.rootConversationId}, ${conversation.conversationId})`,
-  )})`;
+  )} where ${eq(starterRoot.conversationId, conversationTopLevelIdSql(conversation))})`;
 }
 
 /**
  * SQL: the work of the Conversation waits on its starter. The starter is
- * the User of the root's actor: the person whose message started the root,
- * or the creator of an Automation run. A Task reports to its parent, so
- * only a root, an Automation run, or a Thread waits on its starter. A stop
+ * the User of its Top-level Conversation's actor: the person whose message
+ * started it, or the creator of an Automation run. A Task reports to its
+ * parent, so only a root, an Automation run, or a Thread waits on its
+ * starter. A stop
  * ends what the Conversation waits on, and a queued or running Turn is
  * `working`, not waiting. One of these applies:
  *
  * - The latest Turn failed.
  * - The starter has not read the latest assistant Message. The starter read
- *   it when Slack accepted it for a root's Location, when the starter
- *   wrote a later Message, or when their dashboard read position reaches it.
+ *   it when Slack accepted it for a root's Location, when the starter wrote
+ *   a later Message, or when their dashboard read position reaches it.
  *   With no starter, nobody reads it, so an answer does not wait.
  */
 function conversationWaitsOnStarterSql(
@@ -183,7 +217,9 @@ function conversationWaitsOnStarterSql(
   )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
   const readByStarter = or(
     and(
-      sql`${conversation.parentConversationId} is null`,
+      // Only a root delivers to its Location. A child copies its parent's
+      // Location but does not deliver to it.
+      isNull(conversation.parentConversationId),
       sql`${conversation.location} is not null`,
       // No reply must read false: `not (null)` is null, not true.
       sql`coalesce(${replyInSlack}, false)`,

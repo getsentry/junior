@@ -1,15 +1,14 @@
 // The AI emulator of the model tests: `emulate`'s AI service, in process on a
 // free port. It answers model requests on the real Anthropic Messages wire,
 // so pi-ai's `streamSimple` parses each reply as it does in production. Rules
-// script the replies and inject faults. Vitest loads this module once per
-// test file, so each test file gets its own emulator. Each test starts with
-// no rules and no recorded calls.
+// script the replies and inject faults. Each test worker runs one emulator,
+// which `ai-emulator-server.ts` owns. Each test starts with no rules and no
+// recorded calls.
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
-import { createEmulator } from "emulate";
-import { afterAll, afterEach } from "vitest";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { modelClient, type ModelClient } from "@/core/model/client";
+import { startAiEmulator } from "./ai-emulator-server";
 
 type ModelReplyEvent =
   | { type: "text"; text: string }
@@ -29,6 +28,7 @@ export type ModelRule = {
   match?: { stream?: boolean; hasToolResult?: boolean };
   times?: number;
   reply?: ModelReplyEvent[];
+  finish?: "stop" | "tool_calls" | "length" | "refusal" | "content_filter";
   error?: { status: number; message: string; headers?: Record<string, string> };
   fault?: { kind: "disconnect"; afterChunks: number };
 };
@@ -46,15 +46,7 @@ export type ModelCall = {
   }>;
 };
 
-const emulator = await createEmulator({ service: "ai", port: 0 });
-
-afterEach(async () => {
-  await control("/_ai/reset", { method: "POST" });
-});
-
-afterAll(async () => {
-  await emulator.close();
-});
+const emulator = await startAiEmulator();
 
 async function control(path: string, init: RequestInit = {}) {
   const response = await fetch(new URL(path, emulator.url), init);
@@ -123,6 +115,11 @@ export function modelRateLimited(retryAfterSeconds: number): ModelRule {
       headers: { "retry-after": String(retryAfterSeconds) },
     },
   };
+}
+
+/** Injected fault: the reply `text` hits the output token limit. */
+export function replyCutOff(text: string): ModelRule {
+  return { reply: [{ type: "text", text }], finish: "length" };
 }
 
 /** Injected fault: the stream closes after the first chunk of `text`. */

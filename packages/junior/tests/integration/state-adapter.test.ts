@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 import { createTestMessage } from "../fixtures/slack-harness";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../fixtures/stub-env";
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 
@@ -11,11 +10,10 @@ let stateAdapterModule: StateAdapterModule | undefined;
 async function loadMemoryStateAdapter(
   env: Record<string, string> = {},
 ): Promise<StateAdapterModule> {
-  process.env = {
-    ...ORIGINAL_ENV,
+  resetTestEnv({
     JUNIOR_STATE_ADAPTER: "memory",
     ...env,
-  };
+  });
   vi.resetModules();
   stateAdapterModule = await import("@/chat/state/adapter");
   return stateAdapterModule;
@@ -31,7 +29,7 @@ describe("state adapter lifecycle and lock lease", () => {
   afterEach(async () => {
     await stateAdapterModule?.disconnectStateAdapter();
     stateAdapterModule = undefined;
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     vi.useRealTimers();
     vi.resetModules();
   });

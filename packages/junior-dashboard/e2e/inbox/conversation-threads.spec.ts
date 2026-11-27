@@ -1,4 +1,4 @@
-import type { Page, Request } from "@playwright/test";
+import type { Locator, Page, Request } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -10,6 +10,7 @@ test.describe("new UI", () => {
   const THREAD_ID = "junior:internal:dashboard-qa:thread";
   const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
   const TASK_ID = "junior:internal:dashboard-qa:advisor-plan";
+  const BLOCKED_TASK_ID = "junior:internal:dashboard-qa:advisor-review";
   const ARCHIVED_THREAD_ID = "junior:internal:dashboard-qa:archived-thread";
 
   /** The Conversations bundle, which nests each Thread under its parent. */
@@ -66,18 +67,14 @@ test.describe("new UI", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
     );
 
-    const threads = details.getByRole("region", { name: "Threads" });
-    // Its one Thread is done, so Done starts collapsed.
-    await expect(
-      threads.getByRole("button", { name: "Done · 1" }),
-    ).toHaveAttribute("aria-expanded", "false");
-    // Archived Threads sit under Done, so showing them opens it.
-    await threads.getByRole("button", { name: "Show archived (1)" }).click();
-    await expect(
-      threads.getByRole("link", { name: /^archived Compare sidebar badges/ }),
-    ).toBeVisible();
-    await threads.getByRole("button", { name: "Hide archived" }).click();
-    await expect(threads.getByRole("listitem")).toHaveCount(1);
+    // An archived Thread is finished, so it waits behind "Show finished".
+    const work = details.getByRole("region", { exact: true, name: "Agents" });
+    const archived = work.getByRole("link", { name: /Compare sidebar badges/ });
+    await expect(archived).toHaveCount(0);
+    await work.getByRole("button", { name: "Show finished" }).click();
+    await expect(archived.getByRole("img", { name: "Done" })).toBeVisible();
+    await work.getByRole("button", { name: "Hide finished" }).click();
+    await expect(archived).toHaveCount(0);
   });
 
   test("sends a message from a Thread page", async ({ page, dashboard }) => {
@@ -363,7 +360,8 @@ test.describe("new UI", () => {
       `/conversations/${encodeURIComponent(THREAD_ID)}`,
     );
     await expect(threadCard).toContainText("Done");
-    // The feed leaves out an archived Thread, so its card has no status.
+    // The feed leaves out an archived Thread, so its card shows the status
+    // that the parent recorded.
     const archivedCard = transcript.getByRole("link", {
       name: /Compare sidebar badges/,
     });
@@ -371,19 +369,29 @@ test.describe("new UI", () => {
       "href",
       `/conversations/${encodeURIComponent(ARCHIVED_THREAD_ID)}`,
     );
-    await expect(archivedCard).not.toContainText(/Done|Working|Needs input/);
+    await expect(archivedCard).toContainText("Done");
 
     // Each Task is a chip under the reply. A chip opens the drawer.
     await screenshot(page, "conversation-task-line");
-    await transcript
-      .getByRole("button", {
-        name: /^Open Review the dashboard plan transcript/,
-      })
-      .click();
-    await expect(
-      page.getByRole("dialog", { name: "Review the dashboard plan" }),
-    ).toBeVisible();
+    const chip = transcript.getByRole("button", {
+      name: /^Open Review the dashboard plan transcript/,
+    });
+    const drawer = page.getByRole("dialog", {
+      name: "Review the dashboard plan",
+    });
+    const details = page.getByRole("complementary", {
+      name: "Conversation details",
+      exact: true,
+    });
+    // A held Esc closes only the drawer. Its repeats leave Details open.
+    // Opening and closing the drawer again proves the repeats were handled.
+    await expect(details).toBeVisible();
+    await holdEscapeOverDrawer(chip, drawer);
+    await chip.click();
+    await expect(drawer).toBeVisible();
     await page.keyboard.press("Escape");
+    await expect(drawer).toBeHidden();
+    await expect(details).toBeVisible();
 
     // A message to a child agent and the child's message back show as a
     // pair of rows that link the child.
@@ -404,10 +412,24 @@ test.describe("new UI", () => {
     await expect(
       transcript.getByRole("group", { name: "Message to reviewer" }),
     ).toContainText("Delivered");
-    // No agent got a refused message, so it names no Conversation.
+    // No agent got a refused message, so it names the target it used and
+    // says why.
+    const refused = transcript.getByRole("group", {
+      name: "Message to designer",
+    });
+    await expect(refused).toContainText("Refused");
+    // Only the words meant for a person show. The row names the target.
     await expect(
-      transcript.getByRole("group", { name: "Message to Conversation" }),
-    ).toContainText("Refused");
+      refused.getByText(
+        'Not "parent", a child agent of this conversation, or a top-level agent that you can message.',
+        { exact: true },
+      ),
+    ).toBeVisible();
+    // The viewer started this private Conversation and is no longer a
+    // Participant, so the dock says how to get back in.
+    await expect(
+      page.getByText("You left. A participant can invite you back."),
+    ).toBeVisible();
     await sent.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-agent-messages", { lightTheme: true });
 
@@ -424,6 +446,39 @@ test.describe("new UI", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
     );
     await outlineRead;
+  });
+
+  test("a held Esc with Details closed stays on the page", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
+    );
+    const transcript = page.getByLabel("Conversation transcript");
+    const details = page.getByRole("complementary", {
+      name: "Conversation details",
+      exact: true,
+    });
+    await expect(details).toBeVisible();
+    await page
+      .getByRole("button", { name: "Close conversation details" })
+      .click();
+    await expect(details).toBeHidden();
+    const chip = transcript.getByRole("button", {
+      name: /^Open Review the dashboard plan transcript/,
+    });
+    const drawer = page.getByRole("dialog", {
+      name: "Review the dashboard plan",
+    });
+    await holdEscapeOverDrawer(chip, drawer);
+    // The repeats do not go back to the list: the chip still opens it.
+    await chip.click();
+    await expect(drawer).toBeVisible();
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
+    );
   });
 
   test("shows the breadcrumb, status, and Turn authors of a Thread", async ({
@@ -450,7 +505,11 @@ test.describe("new UI", () => {
 
     // The parent agent started the first Turn; a person started the next.
     const transcript = page.getByLabel("Conversation transcript");
-    await expect(transcript.getByText("Parent agent")).toBeVisible();
+    await expect(
+      transcript.getByRole("group", {
+        name: "Message from Dashboard QA edge cases",
+      }),
+    ).toBeVisible();
     await expect(transcript.getByText("Taylor Chen")).toBeVisible();
     // A Watch Event of the Thread shows as an Event, not as parent input.
     await expect(
@@ -494,6 +553,18 @@ test.describe("new UI", () => {
       header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
     await screenshot(page, "conversation-task-page");
+
+    // A blocked Task is done with its work. Its parent's report says how
+    // its last Turn ended.
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(BLOCKED_TASK_ID)}`,
+    );
+    await expect(
+      breadcrumb.getByRole("heading", { name: "reviewer" }),
+    ).toBeVisible();
+    await expect(
+      header.getByText("Blocked").filter({ visible: true }),
+    ).toBeVisible();
   });
 
   test("a running row that needs input shows both", async ({
@@ -530,3 +601,15 @@ test.describe("new UI", () => {
     await expect(row.getByRole("status", { name: "Working" })).toBeVisible();
   });
 });
+
+/** Open the drawer, then hold Esc over it: one press, then two repeats. */
+async function holdEscapeOverDrawer(chip: Locator, drawer: Locator) {
+  await chip.click();
+  await expect(drawer).toBeVisible();
+  const keyboard = chip.page().keyboard;
+  await keyboard.down("Escape");
+  await expect(drawer).toBeHidden();
+  await keyboard.down("Escape");
+  await keyboard.down("Escape");
+  await keyboard.up("Escape");
+}

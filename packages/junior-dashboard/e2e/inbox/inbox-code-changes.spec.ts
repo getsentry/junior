@@ -1,6 +1,11 @@
 import type { Locator, Page } from "@playwright/test";
 
-import { mockInboxItems, prMerge, prReview } from "./inbox-fixture";
+import {
+  mockInboxItems,
+  prMerge,
+  prReview,
+  pullRequestSubject,
+} from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
@@ -8,8 +13,10 @@ import { expect, test } from "../test";
 // GitHub plugin parses it.
 const breakingReview = {
   ...prReview,
-  subject: {
-    ...prReview.subject,
+  subject: pullRequestSubject({
+    kind: prReview.subject.kind,
+    label: prReview.subject.label,
+    resource: prReview.subject.resource,
     title: "feat(release)!: Pin the release train (#91)",
     titleParts: {
       breaking: true,
@@ -17,7 +24,8 @@ const breakingReview = {
       text: "Pin the release train",
       type: "Feature",
     },
-  },
+    url: prReview.subject.url,
+  }),
 };
 
 // A merge conflict ask has Resume choices, so its kind is a Question. Its
@@ -36,9 +44,10 @@ const conflict = {
       },
     ],
   },
-  subject: {
-    ...prMerge.subject,
-    id: "https://github.com/getsentry/payments/pull/57",
+  subject: pullRequestSubject({
+    kind: "github:merge_conflict",
+    label: "Merge conflict",
+    resource: prMerge.subject.resource,
     title: "fix(slack): Keep thread replies in order",
     titleParts: {
       scope: "slack",
@@ -46,7 +55,7 @@ const conflict = {
       type: "Fix",
     },
     url: "https://github.com/getsentry/payments/pull/57",
-  },
+  }),
   title: "Merge conflict · #57",
 };
 
@@ -134,6 +143,42 @@ test.describe("new UI", () => {
     expect(order[0]).toBeGreaterThanOrEqual(0);
     expect(actions.at(-1)).toBe("Review on GitHub");
     await screenshot(page, "inbox-code-change-open", { lightTheme: true });
+  });
+
+  test("Dismiss's note shows only in its tooltip", async ({
+    dashboard,
+    page,
+  }) => {
+    const note = "Also removes you from the reviewers on GitHub.";
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...breakingReview,
+          subject: { ...breakingReview.subject, dismissNote: note },
+        },
+      ],
+    });
+    await page.setViewportSize({ height: 844, width: 390 });
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
+    const review = row(page, "Pin the release train");
+    await review.click();
+    // A phone opens the card in a sheet. It has no tooltips, and the note
+    // does not show as text on every card.
+    const card = page.getByRole("dialog", { name: breakingReview.title });
+    await expect(card.getByRole("button", { name: "Dismiss" })).toBeVisible();
+    await expect(page.getByText(note)).toHaveCount(0);
+    await screenshot(page, "inbox-code-change-dismiss-note", {
+      lightTheme: true,
+      view: "mobile",
+    });
+
+    // A desktop shows the note in the Dismiss tooltip.
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    // Closed, the row's only Dismiss is its hover action.
+    await review.hover();
+    await review.getByRole("button", { name: "Dismiss" }).hover();
+    await expect(page.getByRole("tooltip")).toContainText(note);
   });
 });
 

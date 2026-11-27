@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import type {
-  InboxItemActionBody,
-  InboxItemPayload,
+import {
+  inboxItemQuestion,
+  type InboxItemActionBody,
+  type InboxItemPayload,
+  type UserInputRequest,
 } from "@sentry/junior/api/schema";
 
 import { clearAnswerDraft } from "../components/answerDrafts";
@@ -11,7 +13,7 @@ import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useFailedInboxItemAnswer, useInboxItemAction } from "./queries";
-import { InboxItemEvidence } from "./InboxItemEvidence";
+import { InboxItemRelated } from "./InboxItemRelated";
 import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
@@ -36,7 +38,7 @@ function actionError(error: unknown): string {
 /** Show the submitted answer as one line for each answered field. */
 export function AnswerSummary(props: {
   answer: NonNullable<InboxItemPayload["answer"]>;
-  request: NonNullable<InboxItemPayload["request"]>;
+  request: UserInputRequest;
 }) {
   const rows = answerRows(props.request, props.answer);
   return (
@@ -57,6 +59,7 @@ export function AnswerSummary(props: {
 function ClosedSummary(props: { item: InboxItemPayload }) {
   const { item } = props;
   const what = item.status === "dismissed" ? "dismissed" : "closed";
+  const question = inboxItemQuestion(item.request);
   return (
     <div className="grid gap-2 text-sm">
       <p className="m-0 text-dashboard-text-muted">
@@ -66,8 +69,8 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
       {item.closeReason ? (
         <p className="m-0 text-dashboard-text-muted">{item.closeReason}</p>
       ) : null}
-      {item.request && item.answer ? (
-        <AnswerSummary answer={item.answer} request={item.request} />
+      {question && item.answer ? (
+        <AnswerSummary answer={item.answer} request={question} />
       ) : null}
     </div>
   );
@@ -77,8 +80,8 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
  * Show the actions that the viewer can take on one Inbox item, or how it
  * closed. The Inbox, the transcript, and the side panel use it, so a
  * question reads the same on each. A caller that shows
- * its own Dismiss turns this one off. A To-do for the viewer adds Done,
- * its main action, last. `onAction` takes the actions in its
+ * its own Dismiss turns this one off. A To-do for the viewer adds Mark
+ * done, its main action, last. `onAction` takes the actions in its
  * place and reports their failures itself. An answer that failed shows
  * again in the form.
  */
@@ -109,15 +112,19 @@ export function InboxItemActions(props: {
   if (item.status !== "open") return <ClosedSummary item={item} />;
   if (!item.canAct && !item.canAnswer) {
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="m-0 text-sm text-dashboard-text-muted">
-          Only an assignee can act on this item.
-        </p>
-        {props.extra ? (
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
-            {props.extra}
-          </div>
-        ) : null}
+      <div className="grid gap-3">
+        {/* Anyone who sees an item sees what it is about. */}
+        <InboxItemRelated item={item} />
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="m-0 text-sm text-dashboard-text-muted">
+            Only an assignee can act on this item.
+          </p>
+          {props.extra ? (
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+              {props.extra}
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -140,7 +147,7 @@ export function InboxItemActions(props: {
     }
   }
 
-  // A To-do for the viewer closes with Done, its main action.
+  // A To-do for the viewer closes with Mark done, its main action.
   const todo = item.todoId !== undefined;
   // A person who may only answer, such as a reader of a public question,
   // gets no Dismiss or Snooze.
@@ -166,6 +173,7 @@ export function InboxItemActions(props: {
       {dismiss ? (
         <RowDismissButton
           disabled={action.isPending || sending}
+          note={item.subject.dismissNote}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
         />
       ) : null}
@@ -180,29 +188,32 @@ export function InboxItemActions(props: {
           disabled={action.isPending || sending}
           onClick={() => void run({ action: "done" }).catch(() => {})}
         >
-          Done
+          Mark done
         </Button>
       ) : null}
     </>
   );
 
+  const question = inboxItemQuestion(item.request);
   return (
     <div className="grid gap-3">
-      {item.kind === "action" && item.request ? (
+      {/* The related links say what the item is about. A question shows
+          them under the question instead. */}
+      {item.kind === "action" && question ? null : (
+        <InboxItemRelated item={item} />
+      )}
+      {item.kind === "action" && question ? (
         <div className="grid gap-3 text-sm">
           {/* The question comes first and in full, then what Junior said
               around it. */}
           <section aria-label="Question" className="grid gap-1">
             <span className="text-xs text-dashboard-text-muted">Question</span>
             <div className="font-medium [&_p]:my-0">
-              <DisplayText
-                mentions={item.mentions}
-                text={item.request.question}
-              />
+              <DisplayText mentions={item.mentions} text={question.question} />
             </div>
           </section>
           {props.context}
-          <InboxItemEvidence item={item} />
+          <InboxItemRelated item={item} />
           <UserInputForm
             draft={draft}
             onUnsentChange={setUnsent}
@@ -215,7 +226,7 @@ export function InboxItemActions(props: {
                 },
               })
             }
-            request={item.request}
+            request={question}
             requestId={item.id}
             secondaryActions={secondaryActions}
             // Core takes an Automation alert's step and reads no words.

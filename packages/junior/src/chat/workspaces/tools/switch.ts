@@ -22,7 +22,6 @@ import type { Workspace } from "../types";
 
 /** Record optional reporting without changing the switchWorkspace outcome. */
 async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
-  if (!process.env["DATABASE_URL"]) return;
   try {
     await incrementStat({
       namespace: "junior",

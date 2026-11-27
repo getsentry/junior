@@ -23,7 +23,7 @@ import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation
 import {
   createEventSource,
   createLocalSource,
-  type ObjectAnnotation,
+  type SavedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { saveObjectAnnotations } from "@/chat/conversations/annotation-results";
@@ -234,14 +234,12 @@ describe("child agent spawn and result delivery", () => {
     const lifecycle = new ConversationTurnLifecycleService(events, {
       watchQueue: createConversationWorkQueueTestAdapter,
     });
-    const change = (key: string): ObjectAnnotation => ({
+    const change = (key: string): SavedObjectAnnotation => ({
       kind: "object",
       objectType: "code_change",
       key,
-      label: key,
       title: "Fix the parser",
       url: "https://github.com/getsentry/junior/pull/1",
-      status: "open",
     });
     try {
       const childId = await spawn("loop-cards");
@@ -263,7 +261,7 @@ describe("child agent spawn and result delivery", () => {
               toolName: "github_createPullRequest",
               details: {
                 objectCards: await saveObjectAnnotations(childId, "github", [
-                  change(key),
+                  { action: "created", ...change(key) },
                 ]),
               },
               isError: false,
@@ -300,7 +298,10 @@ describe("child agent spawn and result delivery", () => {
       await expect(
         loadPendingMessageCards(slackParentConversationId),
       ).resolves.toEqual([
-        { ...change("getsentry/junior#2"), plugin: "github" },
+        expect.objectContaining({
+          ...change("getsentry/junior#2"),
+          plugin: "github",
+        }),
       ]);
       // The root shows the annotations of every child below it.
       const keys = ["getsentry/junior#1", "getsentry/junior#2"];

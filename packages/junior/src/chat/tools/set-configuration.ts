@@ -12,7 +12,7 @@ import {
   unsetSpaceConfiguration,
 } from "@/chat/spaces/configuration";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { readSpace } from "@/chat/spaces/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -171,8 +171,8 @@ export function createSetConfigurationTool(
 // A typo still saves, the same as a key that a plugin adds later, but the
 // warning names the keys that the installed plugins read.
 function unknownKeyWarning(key: string): string | undefined {
-  const knownKeys = pluginCatalogRuntime
-    .getProviders()
+  const knownKeys = getAppContext()
+    .catalog.getProviders()
     .flatMap((plugin) => [...plugin.manifest.configKeys]);
   if (knownKeys.includes(key)) return undefined;
   const prefix = key.includes(".") ? key.slice(0, key.indexOf(".") + 1) : "";

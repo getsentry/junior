@@ -11,11 +11,10 @@ test.describe("new UI", () => {
   const DOC_URL =
     "https://docs.google.com/document/d/1MockReleaseChecklist_0123456789/edit";
 
-  // The mock viewer is not a participant of the release Conversation. Make
-  // them one, so the cards can attach.
-  async function viewAsParticipant(
+  // Add Annotations to the release Conversation.
+  async function withAnnotations(
     page: Page,
-    extraAnnotations: unknown[] = [],
+    extraAnnotations: unknown[],
   ): Promise<void> {
     await page.route(
       (url) =>
@@ -28,7 +27,6 @@ test.describe("new UI", () => {
             ...detail,
             // Linked work lists the newest Annotation first.
             annotations: [...extraAnnotations, ...(detail.annotations ?? [])],
-            isParticipant: true,
           },
         });
       },
@@ -69,10 +67,11 @@ test.describe("new UI", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
     );
     // A bare URL in a sentence is a plain link with the title, and no status.
-    const link = page.getByRole("link", {
-      name: "getsentry/junior#2201",
-      exact: true,
-    });
+    // The sidebar lists the same pull request by its title too.
+    const link = page
+      .getByRole("paragraph")
+      .filter({ hasText: "Opened the update pull request" })
+      .getByRole("link", { name: "getsentry/junior#2201", exact: true });
     await expect(link).toHaveAttribute(
       "href",
       "https://github.com/getsentry/junior/pull/2201",
@@ -121,6 +120,7 @@ test.describe("new UI", () => {
       page.getByRole("region", { name: /getsentry\/relay#44/ }),
     ).toBeVisible();
     await screenshot(page, "conversation-object-links", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -169,6 +169,7 @@ test.describe("new UI", () => {
       }),
     ).toBeVisible();
     await screenshot(page, "conversation-resolved-object-links", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -195,6 +196,7 @@ test.describe("new UI", () => {
     await expect(eventCard).toContainText("Mon, Feb 2, 15:00 – 15:30 PST");
     await expect(eventCard).toContainText("Decide go or no-go for 4.2.");
     await screenshot(page, "conversation-google-calendar-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -208,11 +210,8 @@ test.describe("new UI", () => {
     });
     await expect(docCard).toContainText("Morgan Lee");
     await expect(docCard).toContainText("Run these steps in order");
-    // Only a participant can attach the object.
-    await expect(docCard.getByRole("button", { name: "Attach" })).toHaveCount(
-      0,
-    );
     await screenshot(page, "conversation-google-document-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -254,6 +253,7 @@ test.describe("new UI", () => {
       )
       .toBeGreaterThan(0);
     await screenshot(page, "conversation-google-drive-file-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -267,6 +267,7 @@ test.describe("new UI", () => {
     await expect(folderCard).toContainText("Morgan Lee");
     await expect(folderCard.locator("img")).toHaveCount(0);
     await screenshot(page, "conversation-google-drive-folder-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -312,6 +313,7 @@ test.describe("new UI", () => {
       card.getByRole("figure", { name: "Events, last 24 hours" }),
     ).toBeVisible();
     await screenshot(page, "conversation-sentry-issue-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -357,6 +359,7 @@ test.describe("new UI", () => {
       card.nth(1).getByRole("figure", { name: "Last 24 hours" }),
     ).toBeVisible();
     await screenshot(page, "conversation-sentry-chart-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -408,6 +411,7 @@ test.describe("new UI", () => {
       card.nth(1).getByRole("figure", { name: "Top-level spans" }),
     ).toBeVisible();
     await screenshot(page, "conversation-sentry-trace-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -465,6 +469,7 @@ test.describe("new UI", () => {
       }),
     );
     await screenshot(page, "conversation-sentry-event-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -519,6 +524,7 @@ test.describe("new UI", () => {
       }),
     );
     await screenshot(page, "conversation-sentry-release-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -580,6 +586,7 @@ test.describe("new UI", () => {
     await expect(card).toHaveCount(2);
     await expect(card.nth(1)).toContainText("Checkout p95");
     await screenshot(page, "conversation-sentry-dashboard-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -632,6 +639,7 @@ test.describe("new UI", () => {
       await expect(preview).toContainText(text);
     }
     await screenshot(page, "conversation-sentry-monitor-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -681,101 +689,10 @@ test.describe("new UI", () => {
       await expect(preview).toContainText(text);
     }
     await screenshot(page, "conversation-sentry-alert-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
-  });
-
-  test("a participant attaches a Google Doc from its hover card", async ({
-    page,
-    dashboard,
-  }) => {
-    await page.setViewportSize(desktop);
-    await viewAsParticipant(page);
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
-    );
-    await waitForResolvedLinks(page);
-    const doc = page.getByRole("link", { name: /Release 4\.2 checklist/ });
-    await doc.hover();
-    const docCard = page.getByRole("region", {
-      name: "Google Doc: Release 4.2 checklist",
-    });
-    const attach = docCard.getByRole("button", { name: "Attach" });
-    await expect(attach).toBeVisible();
-    await screenshot(page, "conversation-object-attach", {
-      lightTheme: true,
-      view: "desktop",
-    });
-
-    const request = page.waitForRequest(
-      (candidate) =>
-        candidate.method() === "POST" &&
-        new URL(candidate.url()).pathname ===
-          `/api/conversations/${encodeURIComponent(CONVERSATION_ID)}/annotations`,
-    );
-    await attach.click();
-    // Only the link goes to the API, never the card text.
-    expect((await request).postDataJSON()).toEqual({ url: DOC_URL });
-    await expect(docCard).toContainText("Attached");
-    await expect(attach).toHaveCount(0);
-    await screenshot(page, "conversation-object-attached", {
-      lightTheme: true,
-      view: "desktop",
-    });
-
-    // After a reload, Linked work lists the link. It has no facts, so the
-    // transcript still shows the live card, as attached.
-    await page.reload();
-    await expect(
-      page
-        .getByTestId("conversation-side-panel")
-        .getByRole("link", { name: /Release 4\.2 checklist/ }),
-    ).toBeVisible();
-    const transcript = page.getByTestId("conversation-transcript");
-    for (const name of [/Release 4\.2 go\/no-go/, /#proj-release/]) {
-      await expect(transcript.getByRole("link", { name })).toBeVisible();
-    }
-    await transcript
-      .getByRole("link", { name: /Release 4\.2 checklist/ })
-      .hover();
-    await expect(docCard).toContainText("Morgan Lee");
-    await expect(docCard).toContainText("Attached");
-  });
-
-  test("a Doc attached by another link shows as attached", async ({
-    page,
-    dashboard,
-  }) => {
-    await page.setViewportSize(desktop);
-    const now = new Date().toISOString();
-    await viewAsParticipant(page, [
-      {
-        kind: "resource_link",
-        key: "1MockReleaseChecklist_0123456789",
-        label: `${DOC_URL}?usp=sharing`,
-        objectType: "document",
-        plugin: "google",
-        url: `${DOC_URL}?usp=sharing`,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ]);
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
-    );
-    await waitForResolvedLinks(page);
-    await page
-      .getByTestId("conversation-transcript")
-      .getByRole("link", { name: /Release 4\.2 checklist/ })
-      .hover();
-    const docCard = page.getByRole("region", {
-      name: "Google Doc: Release 4.2 checklist",
-    });
-    await expect(docCard).toContainText("Attached");
-    await expect(docCard.getByRole("button", { name: "Attach" })).toHaveCount(
-      0,
-    );
   });
 
   test("Linked work shows an attached link's title only to a viewer who can open it", async ({
@@ -785,7 +702,7 @@ test.describe("new UI", () => {
     await page.setViewportSize(desktop);
     const now = new Date().toISOString();
     // An attached link saves no title: its label is the link.
-    await viewAsParticipant(page, [
+    await withAnnotations(page, [
       {
         kind: "resource_link",
         key: "1MockReleaseChecklist_0123456789",
@@ -901,6 +818,7 @@ test.describe("new UI", () => {
     await expect(card).toHaveCount(2);
     await expect(card.last()).toContainText("Morgan Lee");
     await screenshot(page, "conversation-slack-message-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -957,6 +875,7 @@ test.describe("new UI", () => {
       /^\/api\/images\//,
     );
     await screenshot(page, "conversation-web-page-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });

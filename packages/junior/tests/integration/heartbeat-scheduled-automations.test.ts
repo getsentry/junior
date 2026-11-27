@@ -370,6 +370,24 @@ describe("scheduled automation heartbeat", () => {
     30_000,
   );
 
+  it("keeps a run's Conversation when its dispatch fails after the link", async () => {
+    const db = scheduledAutomationDb();
+    const task = createTask();
+    await saveScheduledAutomation(db, task);
+    // The dispatch links the run to its Conversation, then the queue fails.
+    // Work that the Conversation already holds still belongs to the run.
+    conversationWorkQueue.rejectSends();
+    await runAuthorizedHeartbeat();
+
+    const run = await readScheduledRun(db, `${task.id}:${TEST_RUN_AT_MS}`);
+    expect(run).toMatchObject({ dispatchId: null });
+    expect(run?.status).not.toBe("running");
+    expect(run?.conversationId).toEqual(expect.any(String));
+    await expect(
+      getConversationStore().get({ conversationId: run!.conversationId! }),
+    ).resolves.toMatchObject({ kind: "automation" });
+  }, 30_000);
+
   it("settles a run whose Scheduled automation was deleted while it ran", async () => {
     const db = scheduledAutomationDb();
     const task = createTask();

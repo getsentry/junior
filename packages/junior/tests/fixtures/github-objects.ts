@@ -205,7 +205,7 @@ export function checkRuns(counts: Record<string, number>) {
 }
 
 /** Card and patch queries name pull requests by repository and number. */
-interface GraphqlQuery {
+export interface GraphqlQuery {
   numbers: number[];
   operationName: string;
 }
@@ -231,9 +231,14 @@ export function stubGraphql(answers: {
         name.startsWith("number") ? [Number(value)] : [],
       );
       queries.push({ numbers, operationName });
+      // A patch read also names each pull request by GitHub's id, as the
+      // `pullRequest` payloads do.
       const cards =
         operationName === "PullRequestHeadFacts"
-          ? (answers.patches?.shift() ?? [])
+          ? (answers.patches?.shift() ?? []).map((node) => ({
+              databaseId: (node as { number: number }).number * 1000,
+              ...(node as object),
+            }))
           : typeof answers.cards === "function"
             ? answers.cards(numbers)
             : (answers.cards ?? []);
@@ -257,6 +262,16 @@ export function stubGraphql(answers: {
     }),
   );
   return queries;
+}
+
+/**
+ * The merge state and check patch queries. A page read also asks for the
+ * card of an entry with no review decision, such as a REST read.
+ */
+export function patchQueries(queries: GraphqlQuery[]): GraphqlQuery[] {
+  return queries.filter(
+    (query) => query.operationName === "PullRequestHeadFacts",
+  );
 }
 
 /** A card query result for one open pull request. */

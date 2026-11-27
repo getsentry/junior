@@ -272,6 +272,8 @@ async function resolveNotionLink(
 
 /** Notion page and database links that resolve to document cards. */
 export const notionPageLinks: PluginObjectLinkDefinition = {
+  // Pages are read through MCP, not egress, so Junior keeps the card.
+  cacheCards: true,
   filters: [
     { host: "notion.so" },
     { host: "www.notion.so" },

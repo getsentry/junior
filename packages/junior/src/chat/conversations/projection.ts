@@ -30,10 +30,10 @@ import {
   claimProviderConversation,
   type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
-import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { startLocationThread } from "@/chat/conversations/sql/location";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import {
-  historyItemFromPiMessage,
   projectConversationEvents,
   type PiConversationEventProjection,
   type PiConversationProjection,
@@ -939,8 +939,8 @@ export async function recordGuardianActionReviewed(args: {
   toolName: string;
   costUsd?: number | undefined;
   decision: "allow" | "ask" | "deny";
-  riskLevel: "low" | "medium" | "high" | "critical";
-  userAuthorization: "high" | "medium" | "low" | "unknown";
+  rule?: string | undefined;
+  reason?: string | undefined;
 }): Promise<void> {
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -951,8 +951,8 @@ export async function recordGuardianActionReviewed(args: {
         toolName: args.toolName,
         ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         decision: args.decision,
-        riskLevel: args.riskLevel,
-        userAuthorization: args.userAuthorization,
+        ...(args.rule ? { rule: args.rule } : undefined),
+        ...(args.reason ? { reason: args.reason } : undefined),
       },
       createdAtMs: Date.now(),
     },

@@ -1,39 +1,16 @@
 /**
- * How each surface renders each construct that reply content can hold.
- * `check-reply-rendering.mjs` reads this registry.
- *
- * A construct is what a surface has to render in a Message: a Markdown
- * feature, a Slack token that agents write, or structured content that comes
- * with the Message. Surface chrome, such as hover cards and link unfurls, is
- * not a construct.
- *
- * Each construct has one entry per surface:
- *
- * - `native`: the surface renders it as intended.
- * - `fallback`: the surface shows a simpler form that keeps the content.
- *   `note` says what the reader sees.
- * - `unsupported`: the surface drops it, or shows markup that the reader
- *   cannot resolve, such as a raw Slack user id. `note` says why. The check
- *   fails on it, unless `reply-rendering-baseline.json` lists it.
- *
- * `file` and `marker` point at the renderer code: `marker` is text in
- * `file`. `handles` lists the names that a surface's renderer uses for the
- * construct, such as dashboard Markdown components (`HANDLERS` in the
- * check).
- *
- * MCP and ACP send the Markdown source as written. Standard CommonMark and
- * GFM count as native there, because their clients render Markdown.
+ * How each surface renders each construct that reply content can hold: a
+ * Markdown feature, a Slack token agents write, or structured Message content,
+ * not surface chrome. `check-reply-rendering.mjs` reads it. `fallback` keeps
+ * the content in a simpler form; `unsupported` loses it. `note` says what the
+ * reader sees or why. MCP and ACP send Markdown source, so GFM is native there.
  */
 
 /**
  * @typedef {"slack" | "dashboard" | "ios" | "mcp" | "acp"} Surface
- * @typedef {{
- *   how: "native" | "fallback" | "unsupported",
- *   file: string,
- *   marker: string,
- *   note?: string,
- *   handles?: string[],
- * }} Support
+ * @typedef {"native" | "fallback" | "unsupported"} How
+ * @typedef {{ how: How, file: string, marker: string, note?: string,
+ *   handles?: string[] }} Support
  * @typedef {{ id: string, support: Record<Surface, Support> }} Construct
  */
 
@@ -341,10 +318,7 @@ export const CONSTRUCTS = [
         ),
       ),
       dashboard: native(
-        at(
-          `${DASHBOARD}/shell/inbox/InboxItemCard.tsx`,
-          "export function InboxItemCard(",
-        ),
+        at(`${DASHBOARD}/inbox/InboxItemSheet.tsx`, "function InboxItemBody("),
       ),
       ios: fallback(
         "the question, with a button that opens it on the web to answer",
@@ -354,7 +328,7 @@ export const CONSTRUCTS = [
         "the title, body, and question as text, with a dashboard link to answer; no answer fields",
         at(
           "packages/junior/src/api/mcp/inbox-item.ts",
-          "question: item.request.question",
+          "question: question.question",
         ),
       ),
       acp: unsupported(

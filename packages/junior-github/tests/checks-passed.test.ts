@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "../src/index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
+import { passThroughHttpCache } from "./plugin-harness";
 
 const HEAD_SHA = "abcdef1234567890abcdef1234567890abcdef12";
 
@@ -111,6 +112,7 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
     conclusion?: string,
   ): Promise<void> {
     const [route] = githubPlugin().hooks!.routes!({
+      httpCache: passThroughHttpCache,
       annotations: {
         forConversation() {
           return {

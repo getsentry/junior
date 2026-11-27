@@ -15,15 +15,29 @@ import { createAgentDispatchTestRecord } from "../fixtures/agent-dispatch";
 
 // Chat config reads the state adapter when it loads, so set it first. CI
 // runs Redis at REDIS_URL. Locally, compose.yaml runs it on port 6382.
-vi.hoisted(() => {
+const previousEnv = vi.hoisted(() => {
+  const previous = {
+    JUNIOR_STATE_ADAPTER: process.env["JUNIOR_STATE_ADAPTER"],
+    REDIS_URL: process.env["REDIS_URL"],
+    JUNIOR_STATE_KEY_PREFIX: process.env["JUNIOR_STATE_KEY_PREFIX"],
+  };
   process.env["JUNIOR_STATE_ADAPTER"] = "redis";
   process.env["REDIS_URL"] =
     process.env["REDIS_URL"]?.trim() || "redis://localhost:6382";
   process.env["JUNIOR_STATE_KEY_PREFIX"] = `junior_test_${crypto.randomUUID()}`;
+  return previous;
 });
 
+// Later files in the same worker must not run on this file's Redis state.
 afterAll(async () => {
-  await disconnectStateAdapter();
+  try {
+    await disconnectStateAdapter();
+  } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 describe("Redis lock contention", () => {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { getChatConfig } from "@/chat/config";
 import type { Workspace } from "@/chat/workspaces/types";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type {
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
@@ -12,7 +13,6 @@ import {
 import { getSandboxProvider } from "@/chat/sandbox/provider";
 
 const VERSION = 1;
-const DEFAULT_FLOATING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type Profile = {
   hash: string;
@@ -68,17 +68,6 @@ function mergeDependencies(
   return merged;
 }
 
-function floatingMaxAgeMs(): number {
-  const raw = process.env["SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS"];
-  if (!raw?.trim()) {
-    return DEFAULT_FLOATING_MAX_AGE_MS;
-  }
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0
-    ? parsed
-    : DEFAULT_FLOATING_MAX_AGE_MS;
-}
-
 /** Locale-independent string order for stable profile hashes. */
 function compareCodePoints(left: string, right: string): number {
   if (left < right) return -1;
@@ -110,11 +99,11 @@ export function create(runtime: string, workspace?: Workspace): Profile | null {
   const declared = {
     dependencies: mergeDependencies([
       ...GLOBAL_RUNTIME_DEPENDENCIES,
-      ...pluginCatalogRuntime.getRuntimeDependencies(),
+      ...getAppContext().catalog.getRuntimeDependencies(),
     ]),
     postinstall: [
       ...GLOBAL_RUNTIME_POSTINSTALL,
-      ...pluginCatalogRuntime.getRuntimePostinstall(),
+      ...getAppContext().catalog.getRuntimePostinstall(),
     ],
   };
   const { dependencies, postinstall } =
@@ -126,8 +115,7 @@ export function create(runtime: string, workspace?: Workspace): Profile | null {
     return null;
   }
 
-  const rebuildEpoch =
-    process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"]?.trim() ?? "";
+  const { rebuildEpoch } = getChatConfig().sandbox.snapshot;
   // Plugin postinstall commands may fetch mutable artifacts, so profiles
   // containing them expire on the same schedule as floating npm selectors.
   const floating =
@@ -170,6 +158,6 @@ export function isStale(profile: Profile, createdAtMs: number): boolean {
   if (!profile.floating) {
     return false;
   }
-  const maxAgeMs = floatingMaxAgeMs();
+  const maxAgeMs = getChatConfig().sandbox.snapshot.floatingMaxAgeMs;
   return maxAgeMs === 0 || Date.now() - createdAtMs > maxAgeMs;
 }

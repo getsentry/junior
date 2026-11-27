@@ -77,28 +77,12 @@ export const CONVERSATION_FEED_THREAD_LIMIT = 100;
  */
 export const CONVERSATION_FEED_WAITING_LIMIT = 50;
 
-/**
- * The viewer's newest answer to an Inbox item that the Conversation added:
- * when it closed and the options they picked. A text answer has no choices.
- */
-export const conversationFeedViewerAnswerSchema = z
-  .object({
-    choices: z.array(z.string()),
-    closedAt: z.string().datetime(),
-  })
-  .strict();
-
-export type ConversationFeedViewerAnswer = z.infer<
-  typeof conversationFeedViewerAnswerSchema
->;
-
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
   links?: string[] | undefined;
   media?: ConversationFeedMedia[] | undefined;
   omittedThreadCount?: number | undefined;
   threads?: ConversationFeedItem[] | undefined;
-  viewerAnswer?: ConversationFeedViewerAnswer | undefined;
 };
 
 /**
@@ -124,8 +108,6 @@ const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
      */
     omittedThreadCount: z.number().int().positive().optional(),
     threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
-    /** Only on the viewer's own feed. */
-    viewerAnswer: conversationFeedViewerAnswerSchema.optional(),
   });
 
 export const conversationFeedSchema = z

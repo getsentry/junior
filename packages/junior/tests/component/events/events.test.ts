@@ -12,13 +12,6 @@ import {
   createEventAutomation,
   deleteEventAutomation,
 } from "@/chat/event-automations/store";
-import {
-  getConfigDefaults,
-  setConfigDefaults,
-} from "@/chat/configuration/defaults";
-import { getPlugins, setPlugins } from "@/chat/plugins/hooks/registry";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -36,6 +29,7 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
+import { useAppContext } from "../../fixtures/app-context";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 
 function createRecordingStateAdapter() {
@@ -214,14 +208,7 @@ describe("event delivery", () => {
     const previousInstallationId = process.env["GITHUB_INSTALLATION_ID"];
     const previousSecret = process.env["GITHUB_WEBHOOK_SECRET"];
     const previousSlackBotToken = process.env["SLACK_BOT_TOKEN"];
-    const previousPlugins = getPlugins();
-    const previousConfigDefaults = getConfigDefaults();
-    const previousPluginCatalogConfig =
-      pluginCatalogRuntime.setConfig(undefined);
-    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
-    const previousDashboardOptions =
-      setDashboardConversationLinkOptions(undefined);
-    setDashboardConversationLinkOptions(previousDashboardOptions);
+    useAppContext();
     let eventAutomationId: string | undefined;
 
     try {
@@ -383,10 +370,6 @@ describe("event delivery", () => {
       if (eventAutomationId) {
         await deleteEventAutomation(getDb(), eventAutomationId);
       }
-      setPlugins(previousPlugins);
-      pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
-      setConfigDefaults(previousConfigDefaults);
-      setDashboardConversationLinkOptions(previousDashboardOptions);
       if (previousSecret === undefined) {
         delete process.env["GITHUB_WEBHOOK_SECRET"];
       } else {

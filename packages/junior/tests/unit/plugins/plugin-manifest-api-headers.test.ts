@@ -568,6 +568,67 @@ describe("plugin manifest API headers", () => {
     ).toThrow(message);
   });
 
+  it("parses the MCP tools that viewer reads may call", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "display-name: Example",
+        "description: Example MCP access",
+        "mcp:",
+        "  url: https://mcp.example.com/mcp",
+        "  viewer-tools:",
+        "    - fetch",
+      ].join("\n"),
+      "/tmp/example",
+    );
+    expect(manifest.mcp?.viewerTools).toEqual(["fetch"]);
+  });
+
+  it("rejects a viewer tool that the allow-list does not load", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example MCP access",
+          "mcp:",
+          "  url: https://mcp.example.com/mcp",
+          "  allowed-tools:",
+          "    - search",
+          "  viewer-tools:",
+          "    - fetch",
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example mcp.viewer-tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: fetch",
+    );
+  });
+
+  it("parses the MCP tools that skip Guardian review", () => {
+    const source = (skipReview: string) =>
+      [
+        "name: example",
+        "display-name: Example",
+        "description: Example MCP access",
+        "mcp:",
+        "  url: https://mcp.example.com/mcp",
+        "  allowed-tools:",
+        "    - search",
+        "    - create",
+        "  guardian:",
+        "    skipReview:",
+        `      - ${skipReview}`,
+      ].join("\n");
+
+    expect(
+      parsePluginManifest(source("search"), "/tmp/example").mcp?.guardian,
+    ).toEqual({ skipReview: ["search"] });
+    expect(() => parsePluginManifest(source("delete"), "/tmp/example")).toThrow(
+      "Plugin example mcp.guardian.skipReview must be listed in mcp.allowed-tools or mcp.wrapped-tools: delete",
+    );
+  });
+
   it("parses accounts with a service account", () => {
     const manifest = parsePluginManifest(
       [

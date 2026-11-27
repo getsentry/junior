@@ -6,7 +6,7 @@ const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const TIMER_INTENT = "Remind Morgan to confirm the rollback window.";
 const ALERT_INTENT = "Post when the checkout p95 alert resolves.";
 
-test("lists a Conversation's Watches and cancels one", async ({
+test("lists a Conversation's Watches in Waiting on and cancels one", async ({
   page,
   dashboard,
 }) => {
@@ -14,28 +14,30 @@ test("lists a Conversation's Watches and cancels one", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
   );
-  const details = page.getByRole("complementary", {
-    name: "Conversation details",
-    exact: true,
-  });
-  const timer = details.getByRole("button", {
-    name: `${TIMER_INTENT} fires in 25 minutes`,
-  });
-  const alert = details.getByRole("button", {
-    name: `${ALERT_INTENT} expires in 3 days`,
-  });
+  const work = page
+    .getByRole("complementary", { name: "Conversation details", exact: true })
+    .getByRole("region", { exact: true, name: "Waiting on" });
+  const timer = work.getByRole("listitem").filter({ hasText: TIMER_INTENT });
+  const alert = work.getByRole("listitem").filter({ hasText: ALERT_INTENT });
   await expect(timer).toBeVisible();
   await expect(alert).toBeVisible();
+  // A Timer has the clock and says when it fires. A Watch for an Event has
+  // the eye and says when it expires.
+  await expect(timer.getByRole("img", { name: "Timer" })).toBeVisible();
+  await expect(timer).toContainText(/Fires /);
+  await expect(alert.getByRole("img", { name: "Watching" })).toBeVisible();
+  await expect(alert).toContainText(/Expires /);
   await screenshot(page, "conversation-details-watches", {
     lightTheme: true,
-    target: details,
+    target: work,
     view: "desktop",
   });
 
   const cancelled = page.waitForResponse(
     (response) => response.request().method() === "DELETE",
   );
-  await details.getByRole("button", { name: `Cancel ${TIMER_INTENT}` }).click();
+  await work.getByRole("button", { name: `Change ${TIMER_INTENT}` }).click();
+  await page.getByRole("menuitem", { name: "Cancel" }).click();
   await expect(timer).toHaveCount(0);
   await cancelled;
   // The list reads the server again, so the cancel stays.
@@ -56,10 +58,10 @@ test("shows Watches in the mobile details sheet", async ({
   await conversationMenuRow(page, "Conversation details").click();
   const details = page.getByRole("dialog", { name: "Conversation details" });
   await expect(
-    details.getByRole("button", { name: `Cancel ${TIMER_INTENT}` }),
+    details.getByRole("button", { name: `Change ${TIMER_INTENT}` }),
   ).toBeVisible();
   await expect(
-    details.getByRole("button", { name: `Cancel ${ALERT_INTENT}` }),
+    details.getByRole("button", { name: `Change ${ALERT_INTENT}` }),
   ).toBeVisible();
   await screenshot(page, "conversation-details-watches", {
     lightTheme: true,
@@ -67,7 +69,7 @@ test("shows Watches in the mobile details sheet", async ({
   });
 });
 
-test("shows no Cancel to a viewer who does not take part", async ({
+test("shows no row menu to a viewer who does not take part", async ({
   page,
   dashboard,
 }) => {
@@ -75,16 +77,11 @@ test("shows no Cancel to a viewer who does not take part", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
   );
-  const details = page.getByRole("complementary", {
-    name: "Conversation details",
-    exact: true,
-  });
+  const work = page
+    .getByRole("complementary", { name: "Conversation details", exact: true })
+    .getByRole("region", { exact: true, name: "Waiting on" });
   await expect(
-    details.getByRole("button", {
-      name: "Check whether CI recovered after the retry. fires in 2 hours",
-    }),
+    work.getByText("Check whether CI recovered after the retry."),
   ).toBeVisible();
-  await expect(details.getByRole("button", { name: /^Cancel / })).toHaveCount(
-    0,
-  );
+  await expect(work.getByRole("button", { name: /^Change / })).toHaveCount(0);
 });

@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { connectionListSchema } from "@/api/schema";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -24,8 +24,7 @@ import {
   testWaitUntil,
   waitUntilCallbacks,
 } from "../../fixtures/oauth-callback-after-harness";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../../fixtures/stub-env";
 
 function authenticatedApi(email: string) {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
@@ -65,12 +64,11 @@ async function listConnections(app: ReturnType<typeof authenticatedApi>) {
 describe("connections API", () => {
   beforeEach(async () => {
     resetSlackApiMockState();
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       EVAL_OAUTH_CLIENT_ID: "eval-oauth-client",
       EVAL_OAUTH_CLIENT_SECRET: "eval-oauth-secret",
       JUNIOR_BASE_URL: "https://junior.example.com",
-    };
+    });
     await createEvalOAuthAccountApp({
       id: "eval-account-1",
       label: "person",
@@ -79,7 +77,7 @@ describe("connections API", () => {
   });
 
   afterEach(async () => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     await closeDb();
   });
 
@@ -167,6 +165,31 @@ describe("connections API", () => {
       expect.objectContaining({ connected: false, provider: "eval-oauth" }),
     ]);
     expect(await evalOAuthIdentities()).toEqual([]);
+  });
+
+  it("sends the OAuth callback to the host dashboard base URL", async () => {
+    await createEvalOAuthAccountApp(
+      { id: "eval-account-1", label: "person" },
+      "eval-oauth",
+      { baseURL: "https://dashboard.example.com", disabled: true },
+    );
+    const app = authenticatedApi("person@example.com");
+
+    const startResponse = await app.request(
+      "http://localhost/api/connections/eval-oauth",
+      {
+        body: "{}",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    expect(startResponse.status).toBe(200);
+    const { authorizationUrl } = (await startResponse.json()) as {
+      authorizationUrl: string;
+    };
+    expect(new URL(authorizationUrl).searchParams.get("redirect_uri")).toBe(
+      "https://dashboard.example.com/api/oauth/callback/eval-oauth",
+    );
   });
 
   it("keeps a connection saved under the legacy web Actor id", async () => {

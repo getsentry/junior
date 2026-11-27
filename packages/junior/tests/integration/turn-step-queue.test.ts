@@ -24,6 +24,7 @@ import * as Sentry from "@/chat/sentry";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { publishTurnStep, createTurnStepConsumer } from "@/core/turn/queue";
+import { useConfig } from "../fixtures/config";
 
 // Chat config reads the queue API URL when it loads, so pick the port first.
 // Each test starts its own local Vercel Queues server on this port.
@@ -41,7 +42,6 @@ const { port, previousApiUrl } = await vi.hoisted(async () => {
   return { port: address.port, previousApiUrl };
 });
 
-const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 const LEASE_MS = 60_000;
 const CONSUMER_GROUP = "local";
 const CALLBACK_URL = `http://app.localhost/api/queue/${TURN_STEP_TOPIC}`;
@@ -81,7 +81,10 @@ afterAll(async () => {
   }
 });
 
+// An earlier file in the worker can end with a span still active. Its
+// scope does not have this client, so bind the client to each test.
 beforeEach(() => {
+  if (client) Sentry.setCurrentClient(client);
   turnId = `turn_${randomUUID()}`;
   runs = [];
   spans.length = 0;
@@ -89,7 +92,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.useRealTimers();
-  process.env["JUNIOR_SECRET"] = originalJuniorSecret;
+  vi.unstubAllEnvs();
   await stopConsumer();
 });
 
@@ -309,7 +312,8 @@ describe("turn step queue on the local Vercel Queues server", () => {
           deliveries.push(metadata.deliveryCount);
           // The consumer cannot check the first delivery.
           if (metadata.deliveryCount === 1) {
-            delete process.env["JUNIOR_SECRET"];
+            vi.stubEnv("JUNIOR_SECRET", undefined);
+            useConfig();
           }
         }
         return turnStep.handler(payload, metadata);
@@ -318,7 +322,8 @@ describe("turn step queue on the local Vercel Queues server", () => {
     await publishFromRequest();
 
     await waitFor(() => deliveries.length > 0);
-    process.env["JUNIOR_SECRET"] = originalJuniorSecret;
+    vi.unstubAllEnvs();
+    useConfig();
     await waitFor(() => runsOfThisTurn().length > 0);
 
     expect(runsOfThisTurn()).toEqual([

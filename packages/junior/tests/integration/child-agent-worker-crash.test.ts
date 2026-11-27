@@ -7,6 +7,7 @@ import {
   getAgentReplyMessageId,
   getParentMessageId,
 } from "@/chat/child-agents/ids";
+import { listChildAgents } from "@/chat/child-agents/list";
 import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import { enqueueStarterUpdate } from "@/chat/child-agents/result";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
@@ -259,6 +260,10 @@ describe("child agent worker crash", () => {
         await expect(
           conversationStore.get({ conversationId: childConversationId }),
         ).resolves.toMatchObject({ execution: { status: "failed" } });
+        // No Turn ended, so the failed work alone makes the child fail.
+        const [listed] = await listChildAgents(parentConversationId);
+        expect(listed).toMatchObject({ status: "failed" });
+        expect(listed).not.toHaveProperty("lastResult");
       } finally {
         await fixture.close();
       }
@@ -353,6 +358,32 @@ describe("child agent worker crash", () => {
             turnId: killedTurnId,
           }),
         },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  // The host kills a request at its deadline. A child's agent run must stop
+  // first, so it pauses instead of losing its worker.
+  it("ends a child's agent run when its host request ends", async () => {
+    const { conversationStore, fixture } = await prepareParentConversation();
+    const runner = readingAgentRunner();
+    const { processNearRequestDeadline, queue, state } =
+      await createConversationWorkHarness(runner.agentRunner);
+    try {
+      const childId = await spawnChild(
+        { conversationStore, queue, state },
+        "near-deadline",
+      );
+      // Injected fault: the host request has 2.5s left.
+      const { requestDeadlineAtMs } = await processNearRequestDeadline(
+        queue.takeMessageFor(childId),
+        2_500,
+      );
+
+      expect(runner.runs.map(({ run }) => run.deadlineAtMs)).toEqual([
+        requestDeadlineAtMs,
       ]);
     } finally {
       await fixture.close();

@@ -1,26 +1,16 @@
 /**
- * Encrypt secrets that Junior keeps at rest, such as provider credentials.
- *
- * AES-256-GCM with keys from `JUNIOR_ENCRYPTION_KEYS` (see `keyring.ts`).
- * Each value is bound to a context, usually its storage key, and to its key
- * id as additional authenticated data. A value copied to another key does not
- * decrypt.
- *
- * New values use the active key. Any listed key decrypts. A value from a key
- * that is not active reports `stale`, so its owner can save it again with the
- * active key. A value that cannot be decrypted gives `UnreadableSecretError`:
- * `unknown_key` when its key id is not listed, `invalid` when it is malformed,
- * altered, or bound to another context.
- *
- * There is no per-value salt. The keys are random, not passwords, and each
- * value has a random IV. The storage key in the AAD already names the
- * identity that owns the value.
- *
- * Envelope: `jenc:v1:<keyId>:<iv>.<ciphertext>.<tag>` (base64url parts).
+ * Encrypt secrets at rest with AES-256-GCM and `JUNIOR_ENCRYPTION_KEYS`. The
+ * context, usually the storage key, and key id are AAD, so a copied value does
+ * not decrypt. New values use the active key; an inactive key reports `stale`.
+ * No per-value salt: keys are random, each value has a random IV, and the AAD
+ * names the owner. Envelope: `jenc:v1:<keyId>:<iv>.<ciphertext>.<tag>`.
  */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { getChatConfig } from "@/chat/config";
-import type { EncryptionKeyring } from "@/chat/encryption/keyring";
+import {
+  createEncryptionKeyring,
+  type EncryptionKeyring,
+} from "@/chat/encryption/keyring";
 
 const ENVELOPE_PREFIX = "jenc:v1:";
 const ALGORITHM = "aes-256-gcm";
@@ -61,7 +51,9 @@ export function isEncryptedSecret(value: unknown): value is string {
 export function encryptSecret(
   plaintext: string,
   context: string,
-  keyring: EncryptionKeyring = getChatConfig().encryption,
+  keyring: EncryptionKeyring = createEncryptionKeyring(
+    getChatConfig().encryption,
+  ),
 ): string {
   const { id, key } = keyring.active;
   const iv = randomBytes(IV_BYTES);
@@ -83,7 +75,9 @@ export function encryptSecret(
 export function decryptSecret(
   envelope: string,
   context: string,
-  keyring: EncryptionKeyring = getChatConfig().encryption,
+  keyring: EncryptionKeyring = createEncryptionKeyring(
+    getChatConfig().encryption,
+  ),
 ): DecryptedSecret {
   if (!isEncryptedSecret(envelope)) {
     throw new Error("Stored secret is not an encryption envelope");

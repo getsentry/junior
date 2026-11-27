@@ -184,6 +184,7 @@ export const createCalendarEventTool = definePluginTool({
         ownEventSchema.parse(event.body),
         timeZone,
         ctx.accountEmail,
+        "created",
       ),
     };
   },

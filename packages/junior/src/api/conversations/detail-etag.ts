@@ -22,7 +22,6 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
-  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
@@ -166,13 +165,14 @@ const versionSpaceConversation = alias(
 const versionSpaceRoot = alias(juniorConversations, "version_space_root");
 
 /**
- * Hash the root's Space. A move writes only the root, and a rename writes
- * only the Space, so a child's token reads both through its root.
+ * Hash the root's Space. A move and a rename write only the root, the Lead
+ * whose title is the Space's name, so a child's token reads both through
+ * its root.
  */
 function rootSpaceVersion(db: JuniorDatabase, conversationId: SQLWrapper) {
   const space = db
     .select({
-      state: sql<string>`md5(concat_ws(':', ${versionSpaceRoot.spaceId}, ${juniorSpaces.name}))`,
+      state: sql<string>`md5(concat_ws(':', ${versionSpaceRoot.spaceId}, ${versionSpaceRoot.title}))`,
     })
     .from(versionSpaceConversation)
     .innerJoin(
@@ -182,7 +182,6 @@ function rootSpaceVersion(db: JuniorDatabase, conversationId: SQLWrapper) {
         sql`coalesce(${versionSpaceConversation.rootConversationId}, ${versionSpaceConversation.conversationId})`,
       ),
     )
-    .leftJoin(juniorSpaces, eq(juniorSpaces.id, versionSpaceRoot.spaceId))
     .where(eq(versionSpaceConversation.conversationId, conversationId));
   return sql<string>`coalesce((${space}), '')`;
 }
@@ -287,8 +286,9 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId,
       // A child is in the Space of its root.
-      spaceId: juniorSpaces.id,
-      spaceName: juniorSpaces.name,
+      spaceId: spaceRoot.spaceId,
+      // A Space's name is its Lead's title.
+      spaceName: spaceRoot.title,
       unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
       version: sql<
         string | null
@@ -306,7 +306,6 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       ),
     )
     .leftJoin(spaceRoot, eq(spaceRoot.conversationId, rootConversationId))
-    .leftJoin(juniorSpaces, eq(juniorSpaces.id, spaceRoot.spaceId))
     .leftJoin(juniorConversationParticipants, viewerParticipant)
     .leftJoin(
       detailViewer,
@@ -402,11 +401,9 @@ async function readDetailState(
       ...(row?.lastReadSeq != null
         ? { readPosition: { lastReadSeq: row.lastReadSeq } }
         : undefined),
-      // Only members may learn a private Space's name.
+      // Only a reader of a private Space may learn its name.
       space:
-        row?.spaceId &&
-        row.spaceName &&
-        (!access?.privateSpaceId || access.canViewPrivateContent)
+        row?.spaceId && row.spaceName && access?.canViewPrivateContent
           ? { id: row.spaceId, name: row.spaceName }
           : null,
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),
@@ -449,7 +446,7 @@ export async function readConversationDetailState(
  * Shared content is covered by `detail_version`. The detail state is cheap,
  * so it is read on each request. Names, avatars, Automation titles, and
  * plugin sidebar labels are not covered: they refresh with the next detail
- * change or a reload.
+ * change or a reload. A plugin's `objectChanged` moves it for live cards.
  *
  * The read position is not hashed. The dashboard writes it as the reader
  * scrolls and puts the stored value in its cached detail, so a poll after a

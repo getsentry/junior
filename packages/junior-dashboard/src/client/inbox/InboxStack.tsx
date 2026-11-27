@@ -46,6 +46,8 @@ export function InboxStack(props: {
   keys: readonly string[];
   /** How many asks Dismiss closes. */
   dismissCount?: number;
+  /** What else Dismiss changes, such as on GitHub. */
+  dismissNote?: string | undefined;
   /** Dismiss: every open ask of the stack that the viewer can act on. */
   onDismiss?(): void;
   /** Snooze on an Event of the subject that the stack's items share. */
@@ -109,6 +111,7 @@ export function InboxStack(props: {
           <RowDismissButton
             look="quiet"
             name={`Dismiss ${itemCount(props.dismissCount ?? props.keys.length)} in this stack`}
+            note={props.dismissNote}
             onClick={props.onDismiss}
           />
         ) : null}

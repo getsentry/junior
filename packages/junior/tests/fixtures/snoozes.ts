@@ -52,17 +52,16 @@ export async function addItem(
   conversationId: string,
   assignees: User[],
   title: string,
-  visibility: "private" | "public" = "public",
   ownerConversationId = conversationId,
   linkedConversationIds: string[] = [],
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
+    subject: { id: title, kind: "question" },
     owner: { id: ownerConversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
     conversationIds: [conversationId, ...linkedConversationIds],
-    dedupeKey: title,
     kind: "action",
     nowMs: Date.now(),
     request: {
@@ -77,7 +76,6 @@ export async function addItem(
       question: title,
     },
     title,
-    visibility,
   });
   return item!.id;
 }
@@ -152,6 +150,7 @@ export async function addPullRequestItem(
   conversationId: string,
   assignees: User[],
   title: string,
+  url = PULL_REQUEST.url,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
     owner: { id: conversationId, kind: "conversation" },
@@ -159,7 +158,6 @@ export async function addPullRequestItem(
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
     conversationIds: [conversationId],
-    dedupeKey: title,
     kind: "action",
     nowMs: Date.now(),
     request: {
@@ -172,11 +170,11 @@ export async function addPullRequestItem(
         },
       ],
       question: title,
+      // A question about a pull request links it.
+      related: [{ label: "Pull request", url }],
     },
-    subject: { id: PULL_REQUEST.url, title, url: PULL_REQUEST.url },
-    tenant: { provider: "slack", providerTenantId: "T123" },
+    subject: { id: `review:${url}:${title}`, kind: "question" },
     title,
-    visibility: "public",
   });
   return item!.id;
 }
@@ -187,12 +185,12 @@ export async function addEveryoneItem(
   title: string,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
+    subject: { id: title, kind: "question" },
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: true,
     assigneeUserIds: [],
     body: title,
     conversationIds: [conversationId],
-    dedupeKey: title,
     kind: "action",
     nowMs: Date.now(),
     request: {
@@ -206,9 +204,7 @@ export async function addEveryoneItem(
       ],
       question: title,
     },
-    tenant: { provider: "slack", providerTenantId: "T123" },
     title,
-    visibility: "public",
   });
   return item!.id;
 }
@@ -220,16 +216,15 @@ export async function addNotice(
   title: string,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
+    subject: { id: title, kind: "question" },
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
     conversationIds: [conversationId],
-    dedupeKey: title,
     kind: "notice",
     nowMs: Date.now(),
     title,
-    visibility: "public",
   });
   return item!.id;
 }

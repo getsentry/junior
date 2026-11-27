@@ -1,23 +1,9 @@
 /**
- * `pull_request.merge_conflict.resolved`: a pull request that had a merge
- * conflict can merge cleanly again.
- *
- * GitHub sends no webhook when a pull request gets a conflict or loses it,
- * and it keeps no history of the merge state. So each read that finds a
- * conflict marks the pull request in plugin state. A later read that finds
- * no conflict publishes the event once and drops the mark. Without a mark,
- * a clean read publishes nothing, so a pull request that never had a
- * conflict sends no event on each push.
- *
- * The reads that mark are the webhook merge conflict check, the heartbeat
- * conflict check, a `pull_request` webhook, and the merge state patch after
- * a push. A card read cannot write plugin state, so a conflict that only a
- * card read found reaches the mark through the cache entry, at the next
- * push. The reads that publish are the patch, the heartbeat conflict check,
- * and the webhook merge conflict check, which reads when a waiter wants this
- * event. So a push that fixes the conflict publishes within minutes, and a
- * conflict that a change on the base branch fixes publishes at the next
- * read: the next comment, review, check result, or push.
+ * `pull_request.merge_conflict.resolved`: a PR that had a conflict merges
+ * cleanly again. GitHub has no webhook or history for merge state, so a read
+ * that finds a conflict marks the PR, and a later clean read publishes once
+ * and drops the mark. A card read cannot write state, so its conflict reaches
+ * the mark through the cache entry at the next push.
  */
 import type {
   EventInput,

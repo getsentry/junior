@@ -1,32 +1,87 @@
+import type { PluginAnnotations } from "./annotations";
 import type { PluginCodeChanges } from "./code";
 import type { PluginContext } from "./context";
+import type { ObjectAnnotation } from "./object-annotations";
 import type { EventPublisher } from "./events";
 import type { PluginState } from "./state";
 import type { PluginEventToolContext } from "./tools";
 
 /**
- * A code change title split by Conventional Commits, such as
- * `feat(api)!: Add retries`. The plugin that owns the code change parses it,
- * so the Inbox can lead with the words and show the rest as pills.
+ * One kind of Inbox item that a plugin adds, such as `pull_request`. Junior
+ * stores it as `<plugin>:<kind>`, so each kind is unique. `label` names the
+ * kind in the Inbox when the object's card cannot say more.
  */
-export interface InboxItemSubjectTitleParts {
-  /** The title without its type prefix, such as `Add retries`. */
-  text: string;
-  /** The change type as one word, such as `Feature`. Unset when unknown. */
-  type?: string;
-  /** The scope, such as `api`. */
-  scope?: string;
-  /** The title marks a breaking change, such as with `!`. */
-  breaking?: boolean;
+export interface PluginInboxSubjectKind {
+  kind: string;
+  label: string;
+  /**
+   * Name the ask of the person who reads the item, from the object's live
+   * card, such as `Review requested` for a reviewer and `Ready to merge`
+   * for the author. Return undefined to show `label`. The ask can change
+   * while the item stays the same, such as from review to merge.
+   */
+  ask?: (
+    object: ObjectAnnotation,
+    viewer: PluginInboxViewer,
+  ) => string | undefined;
+  /**
+   * Say what else a dismiss by the person who reads the item changes on
+   * the provider, such as `Also removes you from the reviewers on GitHub.`
+   * The Inbox shows it on Dismiss. `object` is the live card, unset when
+   * the kind has none or its read failed. Return undefined when their
+   * dismiss changes nothing there.
+   */
+  dismissNote?: (
+    object: ObjectAnnotation | undefined,
+    viewer: PluginInboxViewer,
+  ) => string | undefined;
+  /**
+   * The subject id is the provider id of a code change that this plugin
+   * records (`codeLinks`), such as a GitHub pull request id. Junior then
+   * reads the item's link and its search title from the code change.
+   */
+  codeChange?: boolean;
+  /**
+   * Where the owner Conversation of an item is, which decides who can see
+   * it. A table maps the subject id to a `conversationId`, with a unique
+   * index (columns in snake_case). `annotation` names the Conversation that
+   * first saved an Annotation of the subject, so register each kind that an
+   * object Annotation uses.
+   */
+  owner: PluginInboxSubjectOwner | "annotation";
+  /**
+   * Each assignee holds a role on the object, such as a GitHub assignee, so
+   * they are on the item without the owner Conversation. Nobody can take it.
+   * A dismiss first calls `inboxItemDismissed` to remove the person's role,
+   * and fails when the hook fails. With nobody left, the item closes.
+   */
+  assigneeRoles?: boolean;
 }
 
-/** What a plugin item is about, such as a pull request. */
-export interface InboxItemSubjectInput {
+/** The table and columns that map a subject id to its owner Conversation. */
+export interface PluginInboxSubjectOwner {
+  conversationId: string;
+  subjectId: string;
+  table: string;
+}
+
+/**
+ * The person who reads an item. `handle` is their account of the plugin's
+ * provider, such as a GitHub login, when they linked one.
+ */
+export interface PluginInboxViewer {
+  handle?: string;
+}
+
+/**
+ * What a plugin item is about: one of the plugin's registered `kind`s and
+ * the id of the object, such as a pull request. The pair names one item: a
+ * plugin has at most one open item for each pair. Junior reads the
+ * object's title, state, and link from the object, and does not store them.
+ */
+export interface PluginInboxItemSubject {
   id: string;
-  title?: string;
-  url?: string;
-  /** Set only for a code change whose title follows Conventional Commits. */
-  titleParts?: InboxItemSubjectTitleParts;
+  kind: string;
 }
 
 /**
@@ -35,19 +90,27 @@ export interface InboxItemSubjectInput {
  */
 export interface PluginReviewNotice {
   /**
-   * Junior assigns the User linked to each Identity, but only when that User
-   * is in the notice's Conversation. It leaves out the others.
+   * Everyone who has an ask on the object now. Junior assigns the User
+   * linked to each Identity, but only when that User is in the notice's
+   * Conversation. A person who is on the open item and not in this list
+   * leaves it: Junior cancels their snooze and clears their push. When
+   * nobody is left, the item closes.
    */
   assigneeIdentityIds: string[];
+  /**
+   * The people in `assigneeIdentityIds` whose ask the event behind this
+   * upsert gave, such as a review request. Only they join the item, and
+   * Junior pushes it to them. The others stay only when they are on the
+   * open item already, so a person who left comes back only with a new ask.
+   */
+  askedIdentityIds: string[];
   /** Markdown details for the person. */
   body: string;
   /**
-   * Stable key for what the notice is about. A plugin has at most one open
-   * item for each key.
+   * What the notice is about, such as a pull request. An upsert with the
+   * subject of an open item changes that item.
    */
-  dedupeKey: string;
-  /** What the notice is about, such as a pull request. Search matches `id`. */
-  subject?: InboxItemSubjectInput;
+  subject: PluginInboxItemSubject;
   /**
    * For an item that waits on its assignees, name their step, such as
    * `Ready to merge · #946`. It is the reason that the dashboard shows.
@@ -75,22 +138,56 @@ export interface PluginReviewNotice {
  * the Slack cards.
  */
 export interface PluginInboxItems {
-  /** Add an open item, or replace the content of the open one with the key. */
+  /** Add an open item, or change the open one of the subject. */
   upsert(notice: PluginReviewNotice): Promise<void>;
   /**
-   * Close the open item with the key. Do nothing when no item is open, such
-   * as after a person dismissed it. Return whether an open item closed.
+   * Close the open item of the subject. Do nothing when no item is open,
+   * such as after a person dismissed it. Return whether an open item closed.
    */
   close(input: {
-    dedupeKey: string;
+    subject: PluginInboxItemSubject;
     reason: string;
     status: "done" | "dismissed";
   }): Promise<boolean>;
 }
 
+/**
+ * A plugin changed an open item through a Conversation that does not own it.
+ * A plugin that picks the owner from provider data, such as a GitHub issue
+ * footer, can catch it when that data is stale.
+ */
+export class PluginInboxItemOwnerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PluginInboxItemOwnerError";
+  }
+}
+
 /** Inbox items of a plugin, for the Conversation that each item belongs to. */
 export interface PluginConversationInboxItems {
   forConversation(conversationId: string): PluginInboxItems;
+}
+
+/**
+ * A person dismissed an item of a subject kind with `assigneeRoles`. The
+ * plugin removes them from the object on the provider, such as from a
+ * GitHub issue's assignees.
+ */
+export interface InboxItemDismissedHookContext extends PluginContext {
+  /** Annotations of the Conversation that the item belongs to. */
+  annotations: PluginAnnotations;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: PluginCodeChanges;
+  /** The Conversation that the item belongs to. */
+  conversationId: string;
+  /**
+   * The person's account of the plugin's provider, such as a GitHub login.
+   * Unset when they linked none.
+   */
+  handle?: string;
+  nowMs: number;
+  /** The subject of the item, with the plugin's own kind. */
+  subject: PluginInboxItemSubject;
 }
 
 /** A person picked one of the `choices` of an item that this plugin added. */
@@ -101,8 +198,8 @@ export interface InboxItemAnsweredHookContext extends PluginContext {
   codeChanges: PluginCodeChanges;
   /** The Conversation that the item belongs to. */
   conversationId: string;
-  /** The plugin's own dedupe key of the item. */
-  dedupeKey: string;
+  /** The subject of the item, with the plugin's own kind. */
+  subject: PluginInboxItemSubject;
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   /** The closed item's id. It is the same on a retry of the same answer. */

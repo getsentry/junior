@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../fixtures/stub-env";
 
 describe("local OAuth credential sync integration", () => {
   beforeEach(() => {
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       JUNIOR_SECRET: "test-secret",
       JUNIOR_STATE_ADAPTER: "memory",
       NODE_ENV: "development",
-    };
+    });
     vi.resetModules();
   });
 
@@ -17,7 +15,7 @@ describe("local OAuth credential sync integration", () => {
     vi.unstubAllGlobals();
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   });
 
   it("copies a signed credential into the dev-server token store", async () => {
@@ -82,7 +80,11 @@ describe("local OAuth credential sync integration", () => {
         "https://junior.example/api/internal/local-oauth-credentials",
       ),
     );
-    process.env["NODE_ENV"] = "production";
+    // Config is read once per module load, so install a production config.
+    const { installChatConfig, readChatConfig } = await import("@/chat/config");
+    installChatConfig(
+      readChatConfig({ ...process.env, NODE_ENV: "production" }),
+    );
     const productionResponse = await receiveLocalOAuthCredential(
       new Request("http://127.0.0.1:3000/api/internal/local-oauth-credentials"),
     );

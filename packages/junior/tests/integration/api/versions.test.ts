@@ -1,11 +1,8 @@
 import { and, eq, max } from "drizzle-orm";
-import {
-  expectNoFullScan,
-  expectPlanCost,
-  expectSqlBudget,
-} from "../../fixtures/sql-budget";
+import { expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
+import { seedDashboardScale } from "../../fixtures/dashboard-scale";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -142,20 +139,14 @@ describe("versions API", () => {
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const first = await expectPlanCost(
-      () =>
-        expectSqlBudget(() => read(), {
-          statements: 1,
-          serialRounds: 1,
-        }),
-      // About 720. A feed token that works out each row's status again
-      // costs about 1,330.
-      1_000,
-    );
+    const detail = await detailVersion();
+    await seedDashboardScale();
+    const first = await expectSqlBudget(() => read(), {
+      statements: 1,
+      serialRounds: 1,
+    });
     expect(await read()).toEqual(first);
-    expect(await expectPlanCost(() => detailVersion(), 1_500)).toBe(
-      first.conversation,
-    );
+    expect(detail).toBe(first.conversation);
     // A Conversation that does not exist has no token.
     expect(
       (await read("slack:CVERSIONS:missing")).conversation,
@@ -230,12 +221,12 @@ describe("versions API", () => {
     expect(await detailVersion()).toBe(withPin.conversation);
 
     const item = await insertInboxItem(getDb(), {
+      subject: { id: "versions:approve", kind: "question" },
       owner: { id: OWN, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
       body: "Approve the change.",
       conversationIds: [OWN],
-      dedupeKey: "versions:approve",
       kind: "action",
       nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
       request: {
@@ -250,7 +241,6 @@ describe("versions API", () => {
         question: "Approve the change?",
       },
       title: "Approve",
-      visibility: "private",
     });
     // An open item is a status input, so the detail moves too. The feed row
     // moves from `working` to `needs_input`, which outranks it.
@@ -459,14 +449,16 @@ describe("versions API", () => {
     };
     const taskRunning = await taskTurn("running", nowMs + 300_000);
     expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
-    // A take changes whom a running Task's item for Everyone waits on.
+    // A take changes whom a running Task's item up for grabs waits on. The
+    // Conversation is private, so the item has no assignees: it cannot name
+    // Everyone yet.
     const everyone = await insertInboxItem(getDb(), {
       owner: { id: `${OWN}:child`, kind: "conversation" },
-      assignedToEveryone: true,
+      assignedToEveryone: false,
       assigneeUserIds: [],
       body: "Anyone may approve.",
       conversationIds: [`${OWN}:child`],
-      dedupeKey: "versions:everyone",
+      subject: { id: "versions:everyone", kind: "question" },
       kind: "action",
       nowMs: nowMs + 300_000,
       request: {
@@ -481,7 +473,6 @@ describe("versions API", () => {
         question: "Approve the task?",
       },
       title: "Approve the task",
-      visibility: "public",
     });
     const withEveryone = await read();
     const bob = await resolveViewerUser("bob@example.com");
@@ -568,26 +559,11 @@ describe("versions API", () => {
         )
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const first = await expectPlanCost(
-      () =>
-        expectNoFullScan(
-          () =>
-            expectSqlBudget(() => readVersions(app, onScreen), {
-              statements: 1,
-              serialRounds: 1,
-            }),
-          {
-            inboxItemsNeedingUser: {
-              reason:
-                "The Inbox token reads every open action item to find the ones assigned to the viewer. It needs a fix of its own.",
-              statement:
-                'from "junior_inbox_items" where (((("junior_inbox_items"."status" =',
-              table: "junior_inbox_items",
-            },
-          },
-        ),
-      5_000,
-    );
+    await seedDashboardScale();
+    const first = await expectSqlBudget(() => readVersions(app, onScreen), {
+      statements: 1,
+      serialRounds: 1,
+    });
     // Each token is the one that the detail report sends. A Conversation
     // that does not exist has no entry.
     expect(first.conversationDetails).toEqual({

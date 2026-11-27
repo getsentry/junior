@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toast } from "@base-ui/react/toast";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -25,12 +26,8 @@ import {
 } from "../src/client/conversations/ConversationDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
 import { ConversationHeader } from "../src/client/shell/conversations/ConversationHeader";
-import {
-  ConversationAnnotations,
-  ConversationStats,
-} from "../src/client/conversations/ConversationMeta";
+import { ConversationAnnotations } from "../src/client/conversations/ConversationMeta";
 import { conversationLinks } from "../src/client/conversations/ConversationLinkedWork";
-import { conversationFromDetail } from "../src/client/format";
 import { DisplayText } from "../src/client/display-text/DisplayText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
@@ -439,7 +436,6 @@ describe("dashboard canonical-event components", () => {
           <ConversationHeader
             detailsOpen={false}
             errors={[]}
-            lead={false}
             menu={{
               actions: {
                 archive: () => {},
@@ -880,10 +876,11 @@ describe("dashboard canonical-event components", () => {
     const detail = conversation([], {
       annotations: [
         {
-          kind: "resource_link",
+          kind: "object",
           objectType: "task",
           key: "issue",
           label: "Issue",
+          title: "Issue",
           plugin: "github",
           status: "closed",
           url: "https://example.com/issue",
@@ -895,7 +892,6 @@ describe("dashboard canonical-event components", () => {
           key: "pr",
           label: "PR",
           plugin: "github",
-          status: "closed",
           url: "https://example.com/change",
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:01.000Z",
@@ -923,7 +919,7 @@ describe("dashboard canonical-event components", () => {
       <ConversationAnnotations links={conversationLinks(detail)} />,
     );
     expect(html).toContain('aria-label="Ticket: closed"');
-    expect(html).toContain('aria-label="Code change: closed"');
+    expect(html).toContain('aria-label="Code change"');
     expect(html).toContain('aria-label="Item"');
   });
 
@@ -2121,32 +2117,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("tokens");
     expect(html).toContain("1.2k");
   });
-  it("links an automation-triggered conversation with compact source metadata", () => {
-    const detail = conversation([], {
-      sourceTask: {
-        id: "sched_source_task",
-        kind: "scheduled",
-        label: "Update getsentry/yc-scraper YC company data and open a PR.",
-        title: "Refresh YC company data",
-      },
-    });
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <ConversationStats
-          conversation={conversationFromDetail(detail)}
-          detail={detail}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(html).toMatch(
-      /href="\/automations\/sched_source_task"[^>]*>Automation: Refresh YC company data<\/a>/,
-    );
-    // Full automation instructions stay on the automation page.
-    expect(html).not.toContain("Update getsentry/yc-scraper");
-    expect(html).not.toContain("Instruction");
-  });
-
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
       kind: "thread",
@@ -2215,12 +2185,19 @@ function conversationQueryClient(): QueryClient {
   });
 }
 
-/** Read the detail like the shell does, then render the page. */
+/**
+ * Read the detail like the shell does, then render the page inside the
+ * toast provider that the shell mounts.
+ */
 function ConversationPageWithData(
   props: Omit<Parameters<typeof ConversationPage>[0], "detail">,
 ) {
   const detail = useConversationData(props.conversationId);
-  return <ConversationPage {...props} detail={detail} />;
+  return (
+    <Toast.Provider>
+      <ConversationPage {...props} detail={detail} />
+    </Toast.Provider>
+  );
 }
 
 function renderConversationPageWithClient(queryClient: QueryClient): string {

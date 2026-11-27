@@ -7,7 +7,6 @@ import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
 } from "@/chat/slack/footer";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   addReactionToMessage,
   postSlackEphemeralMessage,
@@ -24,6 +23,7 @@ import {
   queueSlackApiResponse,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
+import { useAppContext } from "../../fixtures/app-context";
 
 describe("Slack contract: outbound normalization", () => {
   const spans: ReturnType<typeof Sentry.spanToJSON>[] = [];
@@ -56,12 +56,15 @@ describe("Slack contract: outbound normalization", () => {
     await client?.close();
   });
 
+  // An earlier file in the worker can end with a span still active. Its
+  // scope does not have this client, so bind the client to each test.
   beforeEach(() => {
+    if (client) Sentry.setCurrentClient(client);
     spans.length = 0;
     events.length = 0;
     process.env["SLACK_BOT_TOKEN"] =
       process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
-    setPlugins([]);
+    useAppContext();
     resetSlackApiMockState();
   });
 
@@ -249,57 +252,55 @@ describe("Slack contract: outbound normalization", () => {
   });
 
   it("lets plugins replace the footer conversation link", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "dashboard",
-          displayName: "Dashboard",
-          description: "Dashboard",
-        },
-        hooks: {
-          slackConversationLink(ctx) {
-            return {
-              url: `https://junior.example.com/conversations/${encodeURIComponent(ctx.conversationId)}`,
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "dashboard",
+            displayName: "Dashboard",
+            description: "Dashboard",
           },
-        },
+          hooks: {
+            slackConversationLink(ctx) {
+              return {
+                url: `https://junior.example.com/conversations/${encodeURIComponent(ctx.conversationId)}`,
+              };
+            },
+          },
+        }),
+      ],
+    });
+    const footer = buildSlackReplyFooter({
+      conversationId: "slack:C123:1700000000.000100",
+    });
+
+    await postSlackMessage({
+      channelId: "slack:C123",
+      text: "hello",
+      blocks: buildSlackReplyBlocks("hello", footer),
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          blocks: [
+            {
+              type: "markdown",
+              text: "hello",
+            },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: "*ID:* <https://junior.example.com/conversations/slack%3AC123%3A1700000000.000100|slack:C123:1700000000.000100>",
+                },
+              ],
+            },
+          ],
+        }),
       }),
     ]);
-    try {
-      const footer = buildSlackReplyFooter({
-        conversationId: "slack:C123:1700000000.000100",
-      });
-
-      await postSlackMessage({
-        channelId: "slack:C123",
-        text: "hello",
-        blocks: buildSlackReplyBlocks("hello", footer),
-      });
-
-      expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            blocks: [
-              {
-                type: "markdown",
-                text: "hello",
-              },
-              {
-                type: "context",
-                elements: [
-                  {
-                    type: "mrkdwn",
-                    text: "*ID:* <https://junior.example.com/conversations/slack%3AC123%3A1700000000.000100|slack:C123:1700000000.000100>",
-                  },
-                ],
-              },
-            ],
-          }),
-        }),
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
   });
 
   it("normalizes adapter-scoped ids before file upload completion", async () => {

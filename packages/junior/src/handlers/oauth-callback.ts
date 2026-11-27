@@ -13,7 +13,6 @@ import {
   formatProviderLabel,
   parseOAuthStatePayload,
   type OAuthStatePayload,
-  resolveBaseUrl,
 } from "@/chat/oauth-flow";
 
 // ast-grep-ignore: no-raw-slack-turn-post -- "Account connected" notice when no Turn resumes
@@ -23,7 +22,7 @@ import { logWarn, runBestEffort } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
@@ -62,7 +61,7 @@ import type { PluginProviderAccount } from "@sentry/junior-plugin-api";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { parseSlackUserId } from "@/chat/slack/ids";
 import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
-import { botConfig } from "@/chat/config";
+import { botConfig, getChatConfig } from "@/chat/config";
 
 interface OAuthCallbackOptions {
   /** Queue used to wake parked turns after authorization completes. */
@@ -213,7 +212,7 @@ export async function GET(
   if (localRelay) {
     return localRelay;
   }
-  const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
+  const providerConfig = getAppContext().catalog.getOAuthConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse(
       "Unknown provider",
@@ -287,7 +286,7 @@ export async function GET(
     );
   }
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     return htmlErrorResponse(
       "Configuration error",

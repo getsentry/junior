@@ -2,12 +2,12 @@ import { AlarmClockOff, Archive, ArchiveRestore, Pin } from "lucide-react";
 import { useMemo, useState, type ReactNode, type RefCallback } from "react";
 import { Link } from "react-router";
 import type {
-  OwnedObjectAnnotation,
   InboxItemActionBody,
   InboxItemPayload,
   InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
 
+import { ToggleSheet } from "../components/BottomSheet";
 import { Button } from "../components/ui/button";
 import {
   browserMenuOnLinks,
@@ -35,11 +35,8 @@ import {
 } from "../conversations/ConversationSidebarThreadRow";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
-import {
-  DisplayText,
-  NearScreenObjects,
-  useNearScreen,
-} from "../display-text/DisplayText";
+import { NearScreenObjects, useNearScreen } from "../display-text/DisplayText";
+import { useMobileLayout } from "../layoutMedia";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
@@ -51,7 +48,6 @@ import {
   CodeChangeTitle,
 } from "./CodeChangeTitle";
 import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
-import { useLiveAnnotations } from "../conversations/liveAnnotations";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -60,7 +56,7 @@ import {
 } from "./inboxRowStyles";
 import { openOnClick, useOpenPath } from "./rowClick";
 import { useAnimatedHeight } from "./rowMotion";
-import { InboxItemObjects } from "./InboxItemObjects";
+import { RowSummary, rowSummary } from "./InboxRowSummary";
 import { InboxRowCard } from "./InboxRowCard";
 import { askPills, Pill, type AskPill } from "./inboxAsks";
 import { InboxFiles } from "./InboxFiles";
@@ -100,20 +96,12 @@ import { SpaceChip } from "../spaces/SpaceTile";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
+  itemConversationHidden,
   itemOwnerPath,
 } from "./inboxItemFormat";
 
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 const NO_NOTICES: readonly InboxItemPayload[] = [];
-
-/** The second line: the summary, or the newest message when there is none. */
-function rowSummary(conversation: Conversation | undefined) {
-  if (conversation?.summary)
-    return { mentions: undefined, text: conversation.summary };
-  const preview = conversation?.activityPreview;
-  if (!preview) return undefined;
-  return { mentions: preview.mentions, text: preview.text };
-}
 
 /**
  * Where the row opens. A row for one item, as in a stack, opens the item's
@@ -144,8 +132,6 @@ function rowOpenTarget(props: InboxRowProps): RowOpenTarget {
 }
 
 type InboxRowProps = {
-  /** What the viewer answered, such as "You answered Hold": the summary. */
-  answered?: string;
   bundle?: InboxBundle;
   /** Each card's own actions, in a stack whose cards act by themselves. */
   cardActions?(item: InboxItemPayload): InboxCardActions;
@@ -206,7 +192,12 @@ type InboxRowProps = {
  * the Conversation's context menu, Open, pin and archive on hover, and its
  * Threads.
  */
-export function InboxRow(props: InboxRowProps) {
+export function InboxRow(rowProps: InboxRowProps) {
+  // A phone has no room to open a row in place: an open row shows its asks
+  // in a sheet, and the row itself stays closed.
+  const mobile = useMobileLayout();
+  const props = mobile ? { ...rowProps, expanded: false } : rowProps;
+  const sheetOpen = mobile ? rowProps.expanded : undefined;
   // A row reads the live cards of its links once it comes near the screen.
   const card = useNearScreen<HTMLLIElement>();
   // The rows below move with the row as it opens and closes.
@@ -216,7 +207,8 @@ export function InboxRow(props: InboxRowProps) {
     props.itemActions && open?.length === 1 && props.cardActions ? (
       <RowQuickActions
         actions={props.cardActions(open[0]!)}
-        expanded={props.expanded}
+        // An open row's card has the actions, also in a phone's sheet.
+        expanded={rowProps.expanded}
         main={
           props.itemHead ? (
             <CodeChangeOpenLink head={props.itemHead} />
@@ -233,6 +225,7 @@ export function InboxRow(props: InboxRowProps) {
           cardRef={card.ref}
           conversation={props.conversation}
           quickActions={quickActions}
+          sheetOpen={sheetOpen}
         />
       ) : (
         <li
@@ -241,7 +234,11 @@ export function InboxRow(props: InboxRowProps) {
           data-inbox-row={props.rowKey}
           ref={card.ref}
         >
-          <InboxRowBody {...props} hoverActions={quickActions} />
+          <InboxRowBody
+            {...props}
+            hoverActions={quickActions}
+            sheetOpen={sheetOpen}
+          />
         </li>
       )}
     </NearScreenObjects>
@@ -259,6 +256,7 @@ function ConversationInboxRow(
     conversation: Conversation;
     /** A row with one ask acts on it instead of pinning or archiving. */
     quickActions?: ReactNode;
+    sheetOpen: boolean | undefined;
   },
 ) {
   const { conversation } = props;
@@ -346,6 +344,7 @@ function ConversationInboxRow(
             {...props}
             actionsBelow={actionsBelow}
             hoverActions={hoverActions}
+            sheetOpen={props.sheetOpen}
             threadsShown={hasThreads}
             titleMenu={actions}
           />
@@ -391,51 +390,6 @@ function ConversationInboxRow(
   );
 }
 
-function RowSummary(props: {
-  comfortable: boolean;
-  conversationId: string | undefined;
-  expanded: boolean;
-  /** The row's linked work, so the summary's links show their chips. */
-  objects: readonly OwnedObjectAnnotation[];
-  summary: NonNullable<ReturnType<typeof rowSummary>>;
-}) {
-  return (
-    <div
-      className="flex min-w-0 text-sm leading-snug text-dashboard-text-muted"
-      data-summary-lines={
-        props.expanded ? "all" : props.comfortable ? "2" : "1"
-      }
-    >
-      <div
-        className={cn(
-          "min-w-0",
-          props.expanded
-            ? "line-clamp-none"
-            : props.comfortable
-              ? "line-clamp-2"
-              : "line-clamp-1",
-        )}
-      >
-        {/* As messages show it: links show as chips, so the clamp ends on
-            a word or a chip, not inside a URL. One line runs the
-            paragraphs together; more lines keep them. */}
-        <InboxItemObjects
-          cards={props.objects}
-          conversationId={props.conversationId}
-        >
-          <DisplayText
-            chips
-            inline
-            mentions={props.summary.mentions}
-            paragraphs={props.expanded || props.comfortable}
-            text={props.summary.text}
-          />
-        </InboxItemObjects>
-      </div>
-    </div>
-  );
-}
-
 type TitleMenu = Pick<
   ReturnType<typeof useInboxRowActions>,
   "menu" | "onMenuOpenChange"
@@ -467,6 +421,11 @@ function InboxRowBody(
   props: InboxRowProps & {
     /** The row's own actions, shown in the meta's place on hover. */
     hoverActions?: ReactNode;
+    /**
+     * On a phone, whether the row is open, which shows its asks in a sheet.
+     * Undefined where rows open in place.
+     */
+    sheetOpen: boolean | undefined;
     /** Whether the row lists its Threads under the head. */
     threadsShown?: boolean;
     /** The Conversation menu that an open row's title opens. */
@@ -491,8 +450,7 @@ function InboxRowBody(
   const itemSize = useCodeChangeFacts(
     props.itemTitle ? bundle?.newest.subject : undefined,
   );
-  const annotations =
-    useLiveAnnotations(conversation?.sidebarAnnotations) ?? NO_ANNOTATIONS;
+  const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
   // An item row's title already names its ask, so it shows no pill.
   const asks = props.itemTitle ? [] : askPills(openItems, annotations);
   const subjects = new Set(
@@ -522,11 +480,7 @@ function InboxRowBody(
   const work = ranked.filter((annotation) => !named.has(annotation.url ?? ""));
   const main = mainRepo(annotations);
   const waiting = bundle?.needsYou ?? false;
-  const found = props.itemTitle ? undefined : rowSummary(conversation);
-  // The viewer's answer replaces the line that asked for it.
-  const summary = props.answered
-    ? { mentions: undefined, text: props.answered }
-    : found;
+  const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
   const media = conversation?.media ?? [];
@@ -547,9 +501,11 @@ function InboxRowBody(
   const inlineActions = Boolean(props.itemTitle) && openItems.length === 1;
   // A reply notice's card has nothing to answer, so its link to the reply is
   // its main action.
-  const replyNotice = inlineActions && openItems[0]?.replyNotice;
+  const replyNotice = inlineActions && openItems[0]?.subject.kind === "reply";
+  // A sheet keeps its asks through its closing motion.
   const asksShown =
-    props.expanded && (openItems.length > 0 || !props.actionsBelow);
+    (props.expanded || props.sheetOpen !== undefined) &&
+    (openItems.length > 0 || !props.actionsBelow);
   // The head controls what it opens. `regionId` always wraps the row bar:
   // the asks hold it, or, after the Threads, the line that holds it does.
   const controls = props.actionsBelow
@@ -579,6 +535,54 @@ function InboxRowBody(
     openConversation,
     opens ? undefined : props.onToggle,
   );
+  const asksRegion = asksShown ? (
+    <div
+      aria-label={`${props.title}: asks`}
+      className={cn(
+        "grid min-w-0 gap-3",
+        // In a sheet, the sheet's title names the row. In place, an item
+        // row's detail starts on its title's left edge, with no rule: the
+        // head and the detail are one card.
+        props.sheetOpen !== undefined
+          ? "p-4"
+          : inlineActions
+            ? "pr-4 pb-4 pl-8"
+            : "border-t border-dashboard-border px-3 pt-3 pb-3",
+      )}
+      data-inbox-sheet={
+        props.sheetOpen === undefined ? undefined : props.rowKey
+      }
+      data-sheet-open={props.sheetOpen || undefined}
+      id={props.actionsBelow ? `${regionId}-asks` : regionId}
+      role="region"
+    >
+      {openItems.map((item) => (
+        <InboxRowCard
+          actions={props.cardActions?.(item)}
+          headTitled={Boolean(props.itemTitle)}
+          item={item}
+          key={item.id}
+          notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
+          onAction={props.onItemAction}
+          primaryAction={
+            props.itemHead ? (
+              <CodeChangeOpenButton head={props.itemHead} />
+            ) : replyNotice ? (
+              <ReplyNoticeLink item={item} open={rowOpenTarget(props)} />
+            ) : undefined
+          }
+          rowActions={
+            inlineActions
+              ? rowActions(props, { inline: true, owner: !replyNotice })
+              : undefined
+          }
+          take={props.take}
+          wake={item.wake}
+        />
+      ))}
+      {props.actionsBelow || inlineActions ? null : rowActions(props)}
+    </div>
+  ) : null;
   return (
     <>
       <div
@@ -842,47 +846,18 @@ function InboxRowBody(
           </div>
         ) : null}
       </div>
-      {asksShown ? (
-        <div
-          aria-label={`${props.title}: asks`}
-          className={cn(
-            "grid min-w-0 gap-3",
-            // An item row's detail starts on its title's left edge, with no
-            // rule: the head and the detail are one card.
-            inlineActions
-              ? "pr-4 pb-4 pl-8"
-              : "border-t border-dashboard-border px-3 pt-3 pb-3",
-          )}
-          id={props.actionsBelow ? `${regionId}-asks` : regionId}
-          role="region"
+      {props.sheetOpen === undefined ? (
+        asksRegion
+      ) : (
+        <ToggleSheet
+          label={props.itemTitle ?? props.title}
+          onDismiss={props.onToggle}
+          open={props.sheetOpen}
+          size="content"
         >
-          {openItems.map((item) => (
-            <InboxRowCard
-              actions={props.cardActions?.(item)}
-              headTitled={Boolean(props.itemTitle)}
-              item={item}
-              key={item.id}
-              notices={props.foldedNotices?.get(item.id) ?? NO_NOTICES}
-              onAction={props.onItemAction}
-              primaryAction={
-                props.itemHead ? (
-                  <CodeChangeOpenButton head={props.itemHead} />
-                ) : replyNotice ? (
-                  <ReplyNoticeLink item={item} open={rowOpenTarget(props)} />
-                ) : undefined
-              }
-              rowActions={
-                inlineActions
-                  ? rowActions(props, { inline: true, owner: !replyNotice })
-                  : undefined
-              }
-              take={props.take}
-              wake={item.wake}
-            />
-          ))}
-          {props.actionsBelow || inlineActions ? null : rowActions(props)}
-        </div>
-      ) : null}
+          {asksRegion}
+        </ToggleSheet>
+      )}
     </>
   );
 }
@@ -908,7 +883,12 @@ function rowActions(
         : undefined)}
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
-      open={owner ? rowOpenTarget(props) : undefined}
+      // A viewer who cannot see the Conversation gets no link to it.
+      open={
+        owner && !(props.bundle && itemConversationHidden(props.bundle.newest))
+          ? rowOpenTarget(props)
+          : undefined
+      }
       snoozeMenuOpen={props.snoozeMenuOpen}
     />
   );

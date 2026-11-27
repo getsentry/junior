@@ -24,6 +24,7 @@ import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatTile } from "../../components/metrics/StatTile";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { ChartContainer, ChartTooltip } from "../../components/ui/chart";
+import { Skeleton, SkeletonText } from "../../components/ui/skeleton";
 import {
   formatCompactNumber,
   formatCostBreakdown,
@@ -70,8 +71,9 @@ export function CacheWarmingSavings(props: {
   range: TimeRangeDays;
 }) {
   const query = useCacheWarmingSavings(props.range);
+  const loading = !query.data && !query.error;
   return (
-    <section aria-label="Cache warming">
+    <section aria-busy={loading || undefined} aria-label="Cache warming">
       <Card>
         <div className="border-b border-dashboard-border-subtle px-4 py-4 sm:px-5">
           <SectionTitle>Cache warming</SectionTitle>
@@ -81,17 +83,19 @@ export function CacheWarmingSavings(props: {
             warmups. Effectiveness is net savings as a share of what an ideal
             warmer would save.
           </p>
-          {query.data ? <Totals totals={query.data.totals} /> : null}
+          {query.data ? (
+            <Totals totals={query.data.totals} />
+          ) : loading ? (
+            <TotalsLoading />
+          ) : null}
           {props.admin ? <CacheWarmingRefill /> : null}
         </div>
         {query.data ? (
           <SavingsChart days={query.data.days} />
+        ) : loading ? (
+          <SavingsChartLoading />
         ) : (
-          <EmptyTelemetry>
-            {query.error
-              ? "Cache warming savings failed to load."
-              : "Loading cache warming savings."}
-          </EmptyTelemetry>
+          <EmptyTelemetry>Cache warming savings failed to load.</EmptyTelemetry>
         )}
       </Card>
     </section>
@@ -138,6 +142,52 @@ function Totals(props: { totals: CacheWarmingSavingsReport["totals"] }) {
         </p>
       ) : null}
     </>
+  );
+}
+
+const totalLabels = [
+  "Net savings",
+  "Effectiveness",
+  "Cache hits",
+  "Warmup cost",
+];
+
+function TotalsLoading() {
+  return (
+    <div
+      aria-hidden="true"
+      className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4"
+    >
+      {totalLabels.map((label) => (
+        <StatTile
+          key={label}
+          label={label}
+          value={<SkeletonText className="w-16" />}
+        />
+      ))}
+    </div>
+  );
+}
+
+// The notes under the totals depend on the data, so they get no space here.
+function SavingsChartLoading() {
+  return (
+    <div className="px-2 py-3 sm:px-4 sm:py-4" role="status">
+      <span className="sr-only">Loading cache warming savings</span>
+      <div aria-hidden="true">
+        <div className="px-2 pb-2">
+          <ChartLegend
+            ariaLabel="Cache warming chart legend"
+            inline
+            items={legend.map((item) => ({
+              ...item,
+              color: "var(--color-dashboard-fill-soft)",
+            }))}
+          />
+        </div>
+        <Skeleton className="h-50 w-full" />
+      </div>
+    </div>
   );
 }
 

@@ -1,6 +1,5 @@
 import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import { and, desc, eq, like, sql } from "drizzle-orm";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -9,7 +8,6 @@ import {
   resumeConversationTree,
 } from "@/chat/conversations/session-stop";
 import type { CredentialContext } from "@/chat/credentials/context";
-import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
@@ -19,7 +17,6 @@ import {
   releaseInboundMessage,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { commitForkHistory, FORK_INSTRUCTIONS } from "./fork-history";
 import { getParentMessageId } from "./ids";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
@@ -188,35 +185,18 @@ export async function dropWaitingParentMessages(
 }
 
 /**
- * Read the stop of the child that received a parent message, when the
- * message names the child's stored parent with that parent's author id.
- * Returns undefined for another message, which the caller drops.
+ * Return whether a parent message has the author id of the parent that it
+ * names. The child must also have that parent as its stored parent before
+ * the message gets any authority.
  */
-export async function readChildOfStoredParent(
+export function hasParentMessageAuthor(
   message: InboundMessage,
   parentMessage: ParentMessage,
-): Promise<{ stoppedAt: Date | null } | undefined> {
-  if (
-    message.input.authorId !==
+): boolean {
+  return (
+    message.input.authorId ===
     parentMessageAuthorId(parentMessage.parentConversationId)
-  ) {
-    return undefined;
-  }
-  const [row] = await getSqlExecutor()
-    .db()
-    .select({ stoppedAt: juniorConversations.stoppedAt })
-    .from(juniorConversations)
-    .where(
-      and(
-        eq(juniorConversations.conversationId, message.conversationId),
-        eq(
-          juniorConversations.parentConversationId,
-          parentMessage.parentConversationId,
-        ),
-      ),
-    )
-    .limit(1);
-  return row;
+  );
 }
 
 /**
@@ -286,33 +266,6 @@ export function isParentMessageAuthor(
     typeof author?.userId === "string" &&
     author.userId.startsWith(PARENT_MESSAGE_AUTHOR_PREFIX)
   );
-}
-
-/**
- * Read when the root Turn code last saved a parent message to one child, or
- * undefined when it saved none.
- */
-export async function readLastParentMessageAtMs(
-  conversationId: string,
-): Promise<number | undefined> {
-  const payload = juniorConversationEvents.payload;
-  const [row] = await getSqlExecutor()
-    .db()
-    .select({ createdAt: juniorConversationEvents.createdAt })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.conversationId, conversationId),
-        eq(juniorConversationEvents.type, "message"),
-        like(
-          sql`${payload}->'meta'->'author'->>'userId'`,
-          `${PARENT_MESSAGE_AUTHOR_PREFIX}%`,
-        ),
-      ),
-    )
-    .orderBy(desc(juniorConversationEvents.createdAt))
-    .limit(1);
-  return row?.createdAt.getTime();
 }
 
 /**

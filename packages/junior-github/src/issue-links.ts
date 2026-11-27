@@ -7,6 +7,9 @@
  * the App reads the object, cached per object for every viewer. A viewer
  * without access gets the public web page card of the link, which shows
  * only what GitHub shows anyone signed out.
+ *
+ * A pull request card splits its title by the change types of the
+ * repository's `.github/release.yml`.
  */
 import type {
   ObjectAnnotation,
@@ -15,7 +18,13 @@ import type {
   PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { githubObjectAnnotation } from "./annotations.js";
+import { githubObjectCard } from "./annotations.js";
+import {
+  DEFAULT_CODE_CHANGE_CATEGORIES,
+  parseCodeChangeTitle,
+  type CodeChangeCategory,
+} from "./code-change-titles/parse.js";
+import { parseReleaseCategories } from "./code-change-titles/release-config.js";
 import {
   GITHUB_ISSUE_CACHE,
   githubObjectCacheOptions,
@@ -26,10 +35,27 @@ import {
   type GitHubIssueFields,
   type GitHubPullRequestFields,
 } from "./object-cache.js";
-import { githubObjectFacts } from "./object-facts.js";
+import {
+  githubObjectFacts,
+  withGitHubPreviewImages,
+  type CodeChangeFacts,
+} from "./object-facts.js";
 import { prefetchGitHubPullRequests } from "./pull-request-prefetch.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
+
+// The object cache is shared by every viewer, and webhooks refresh it, so
+// each of its loads asks GitHub. An unchanged object costs only a 304. The
+// object cache keeps the last object when GitHub fails.
+const OBJECT_CACHE_READS = { staleIfError: false, ttlMs: 0 } as const;
+
+// The change types of a repository change rarely.
+const RELEASE_CONFIG_TTL_MS = 60 * 60_000;
+
+const contentsSchema = z.object({
+  content: z.string(),
+  encoding: z.literal("base64"),
+});
 
 const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/;
 const REPO_PATTERN = /^[\w.-]{1,100}$/;
@@ -79,10 +105,11 @@ function issueCard(
   link: GitHubObjectLink,
   issue: GitHubIssueFields,
 ): ObjectAnnotation {
-  return githubObjectAnnotation({
+  return githubObjectCard({
     ...githubObjectFacts("task", issue),
     repo: repoRef(issue.html_url, link),
     number: issue.number,
+    id: issue.id,
     title: issue.title,
     url: issue.html_url,
     objectType: "task",
@@ -90,14 +117,43 @@ function issueCard(
   });
 }
 
+const TITLE_PART_MAX_LENGTH = 160;
+
+/**
+ * Add the title parts to code change facts. The preview images are packed
+ * again after them, so the facts stay in the 4 KiB limit.
+ */
+function withTitleParts(
+  facts: CodeChangeFacts,
+  titleParts: NonNullable<CodeChangeFacts["titleParts"]>,
+): CodeChangeFacts {
+  const { previewImageUrls = [], ...rest } = facts;
+  return withGitHubPreviewImages({ ...rest, titleParts }, previewImageUrls);
+}
+
 function pullRequestCard(
   link: GitHubObjectLink,
   pull: GitHubPullRequestFields,
+  categories: readonly CodeChangeCategory[] | undefined,
 ): ObjectAnnotation {
-  return githubObjectAnnotation({
-    ...githubObjectFacts("code_change", pull),
+  const card = githubObjectFacts("code_change", pull);
+  const parsed = categories && parseCodeChangeTitle(pull.title, categories);
+  // Card facts cap a title part at 160 characters, and a longer one would
+  // drop the whole card, so such a title shows without its parts.
+  const titleParts =
+    parsed &&
+    (parsed.scope?.length ?? 0) <= TITLE_PART_MAX_LENGTH &&
+    (parsed.type?.length ?? 0) <= TITLE_PART_MAX_LENGTH
+      ? parsed
+      : undefined;
+  return githubObjectCard({
+    ...card,
+    ...(titleParts && card.facts?.type === "code_change"
+      ? { facts: withTitleParts(card.facts, titleParts) }
+      : undefined),
     repo: repoRef(pull.html_url, link),
     number: pull.number,
+    id: pull.id,
     title: pull.title,
     url: pull.html_url,
     objectType: "code_change",
@@ -107,6 +163,70 @@ function pullRequestCard(
         ? "draft"
         : pull.state,
   });
+}
+
+function releaseConfigKey(link: Pick<GitHubObjectLink, "name" | "owner">) {
+  return `release-config:${link.owner}/${link.name}`.toLowerCase();
+}
+
+/**
+ * Read the text of a repository's `.github/release.yml` with the App, or
+ * an empty text when it has none. A failed read is not cached. A card whose
+ * page read ran out of time reads only the cache, and a miss rejects with
+ * `OUT_OF_TIME`.
+ */
+async function readReleaseConfig(
+  ctx: ObjectLinkContext,
+  link: Pick<GitHubObjectLink, "name" | "owner">,
+): Promise<string> {
+  const load = async () => {
+    const response = await githubApi(ctx.egress, {
+      apiVersion: "2022-11-28",
+      operation: "github.repository.release-config.get",
+      path: `${repoPath(link)}/contents/.github/release.yml`,
+    });
+    if (response.status === 404) {
+      return { value: "", ttlMs: RELEASE_CONFIG_TTL_MS };
+    }
+    const file = contentsSchema.safeParse(response.body);
+    if (!response.ok || !file.success) {
+      throw new Error(
+        `GitHub release config read failed with HTTP ${response.status}`,
+      );
+    }
+    return {
+      value: Buffer.from(file.data.content, "base64").toString("utf8"),
+      ttlMs: RELEASE_CONFIG_TTL_MS,
+    };
+  };
+  return await ctx.cache.getOrLoad<string>(
+    releaseConfigKey(link),
+    ctx.prefetchOutcome === "out_of_time"
+      ? () => Promise.reject(OUT_OF_TIME)
+      : load,
+  );
+}
+
+/**
+ * The change types of a repository. The defaults when the read fails, and
+ * none when the page read ran out of time before the cache held them.
+ */
+async function readCategories(
+  ctx: ObjectLinkContext,
+  link: Pick<GitHubObjectLink, "name" | "owner">,
+): Promise<readonly CodeChangeCategory[] | undefined> {
+  try {
+    const text = await readReleaseConfig(ctx, link);
+    return text ? parseReleaseCategories(text) : DEFAULT_CODE_CHANGE_CATEGORIES;
+  } catch (error) {
+    if (error === OUT_OF_TIME) return undefined;
+    // The title parts are optional, so the card still shows.
+    ctx.log.warn("GitHub release config read failed", {
+      error: error instanceof Error ? error.message : String(error),
+      repository: `${link.owner}/${link.name}`,
+    });
+    return DEFAULT_CODE_CHANGE_CATEGORIES;
+  }
 }
 
 /**
@@ -174,7 +294,14 @@ async function readObject(
       githubPullRequestFieldsSchema,
       githubPullRequestEntry,
     );
-    return pull && pullRequestCard(link, pull);
+    return (
+      pull &&
+      pullRequestCard(
+        link,
+        pull,
+        await readCategories(ctx, htmlUrlLink(pull.html_url) ?? link),
+      )
+    );
   }
   const issue = await readFields(
     ctx,
@@ -201,6 +328,12 @@ async function canViewLink(ctx: ObjectLinkContext, url: URL): Promise<boolean> {
   return Boolean(source && (await viewerCanSeeRepository(ctx, source)));
 }
 
+// The label of a live card, such as `owner/repo#12`, from the link alone.
+function linkLabel(url: URL): string | undefined {
+  const link = parseLink(url);
+  return link ? `${link.owner}/${link.name}#${link.number}` : undefined;
+}
+
 async function resolveLink(
   ctx: ObjectLinkContext,
   url: URL,
@@ -214,10 +347,10 @@ async function resolveLink(
  * A pull request at its issue URL shows the pull request card.
  */
 export const githubIssueLinks: PluginObjectLinkDefinition = {
-  // The object cache is shared by every viewer, and webhooks refresh it.
-  cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],
+  httpCache: OBJECT_CACHE_READS,
+  label: linkLabel,
   objectTypes: ["task", "code_change"],
   readTool: (object) =>
     object.objectType === "code_change"
@@ -260,9 +393,10 @@ async function prefetchLinks(
 
 /** GitHub pull request links, such as `https://github.com/owner/repo/pull/12`. */
 export const githubPullRequestLinks: PluginObjectLinkDefinition = {
-  cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
+  httpCache: OBJECT_CACHE_READS,
+  label: linkLabel,
   objectTypes: ["code_change"],
   // A page of pull request cards reads GitHub in one query.
   prefetch: prefetchLinks,

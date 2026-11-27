@@ -1,3 +1,4 @@
+import { type HistoryReplacement } from "@/core/history/items";
 import { Agent } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
@@ -10,17 +11,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAgentModelRequest } from "@/chat/agent/context-summary";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
-import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import { getGatewayApiKey } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import {
   processBackgroundCompaction,
   requestBackgroundCompaction,
 } from "@/chat/services/background-compaction";
 import type { BackgroundCompactionMessage } from "@/chat/services/background-compaction-queue";
 import { getAgentBackgroundCompactionMarkTokens } from "@/chat/services/context-budget";
-import type { HistoryReplacement } from "@/chat/conversations/history";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { contextProvenance } from "@/chat/conversations/provenance";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { closeConversationFixture } from "../fixtures/conversation";
 import {

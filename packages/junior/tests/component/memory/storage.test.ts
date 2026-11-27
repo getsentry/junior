@@ -38,7 +38,10 @@ import {
   type CreateMemoryRequest,
 } from "@/chat/memory/agent";
 import { createMemoryCliCommand } from "@/chat/memory/cli";
-import { createMemoryRegistration } from "@/chat/memory/registration";
+import {
+  createMemoryRegistration,
+  memoryRegistration,
+} from "@/chat/memory/registration";
 import { processMemorySession } from "@/chat/memory/process-session";
 import { reembedMemories } from "@/chat/memory/reembed";
 import { memoryArchiveTool } from "@/chat/memory/tools/archive";
@@ -54,6 +57,7 @@ import type {
   MemorySupersessionInput,
 } from "@/chat/memory/store";
 import { createMemoryFixture, type MemoryFixture } from "./fixture";
+import { useConfig } from "../../fixtures/config";
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
 
@@ -99,7 +103,13 @@ function memoryHeartbeatContext(args: {
       dispatchForIdentity: vi.fn(),
       get: vi.fn(),
     },
-    annotations: { forConversation: vi.fn() },
+    annotations: {
+      forConversation: vi.fn(),
+      listObjects: vi.fn(),
+      nameObject: vi.fn(),
+      objectChanged: vi.fn(),
+      objectsMoved: vi.fn(),
+    },
     cache: memoryCache,
     codeChanges: {
       associateConversations: vi.fn(),
@@ -119,6 +129,7 @@ function memoryHeartbeatContext(args: {
     inboxItems: { forConversation: vi.fn() },
     state: memoryState,
     tasks: { start: vi.fn() },
+    users: { findLinkedIdentityIds: vi.fn(), readIdentity: vi.fn() },
   };
 }
 
@@ -692,21 +703,11 @@ describe("memory plugin storage", () => {
   });
 
   it("defaults memory extraction to the host default model", () => {
-    const previousMemoryModel = process.env["AI_MEMORY_MODEL"];
-    delete process.env["AI_MEMORY_MODEL"];
+    useConfig({}, { AI_MEMORY_MODEL: undefined });
 
-    try {
-      const plugin = createMemoryRegistration();
-      expect(plugin.model).toEqual({
-        structuredModel: "default",
-      });
-    } finally {
-      if (previousMemoryModel === undefined) {
-        delete process.env["AI_MEMORY_MODEL"];
-      } else {
-        process.env["AI_MEMORY_MODEL"] = previousMemoryModel;
-      }
-    }
+    expect(memoryRegistration().model).toEqual({
+      structuredModel: "default",
+    });
   });
 
   it("configures automatic recall and passive extraction independently", () => {
@@ -941,21 +942,11 @@ describe("memory plugin storage", () => {
   });
 
   it("uses AI_MEMORY_MODEL as the memory plugin model default", async () => {
-    const previousModel = process.env["AI_MEMORY_MODEL"];
-    process.env["AI_MEMORY_MODEL"] = "anthropic/claude-sonnet-4.6";
+    useConfig({}, { AI_MEMORY_MODEL: "anthropic/claude-sonnet-4.6" });
 
-    try {
-      const plugin = createMemoryRegistration();
-      expect(plugin.model).toEqual({
-        structuredModelId: "anthropic/claude-sonnet-4.6",
-      });
-    } finally {
-      if (previousModel === undefined) {
-        delete process.env["AI_MEMORY_MODEL"];
-      } else {
-        process.env["AI_MEMORY_MODEL"] = previousModel;
-      }
-    }
+    expect(memoryRegistration().model).toEqual({
+      structuredModelId: "anthropic/claude-sonnet-4.6",
+    });
   });
 
   it("normalizes structured rejection responses", async () => {

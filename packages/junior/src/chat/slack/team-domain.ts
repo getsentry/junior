@@ -1,3 +1,4 @@
+import { getAppContext } from "@/app/context";
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
 import { parseSlackTeamDomain } from "@/chat/slack/location-url";
@@ -17,14 +18,18 @@ type TeamDomainCacheEntry =
   | { kind: "hit"; domain: string; expiresAt: number }
   | { kind: "miss"; expiresAt: number };
 
-const teamDomainCache = new Map<string, TeamDomainCacheEntry>();
-const teamDomainInflight = new Map<string, Promise<string | undefined>>();
+/** Slack workspace domains that an app looked up, by team id. */
+export interface SlackTeamDomainCache {
+  entries: Map<string, TeamDomainCacheEntry>;
+  inflight: Map<string, Promise<string | undefined>>;
+}
 
 function readTeamDomainCache(teamId: SlackTeamId): string | null | undefined {
-  const hit = teamDomainCache.get(teamId);
+  const { entries } = getAppContext().slackTeamDomains;
+  const hit = entries.get(teamId);
   if (!hit) return undefined;
   if (hit.expiresAt < Date.now()) {
-    teamDomainCache.delete(teamId);
+    entries.delete(teamId);
     return undefined;
   }
   return hit.kind === "hit" ? hit.domain : null;
@@ -34,15 +39,16 @@ function writeTeamDomainCache(
   teamId: SlackTeamId,
   domain: string | undefined,
 ): void {
+  const { entries } = getAppContext().slackTeamDomains;
   if (domain) {
-    teamDomainCache.set(teamId, {
+    entries.set(teamId, {
       kind: "hit",
       domain,
       expiresAt: Date.now() + TEAM_DOMAIN_CACHE_TTL_MS,
     });
     return;
   }
-  teamDomainCache.set(teamId, {
+  entries.set(teamId, {
     kind: "miss",
     expiresAt: Date.now() + TEAM_DOMAIN_NEGATIVE_CACHE_TTL_MS,
   });
@@ -106,13 +112,14 @@ export async function resolveSlackTeamDomain(
     return cached ?? undefined;
   }
 
-  const pending = teamDomainInflight.get(parsedTeamId);
+  const { inflight } = getAppContext().slackTeamDomains;
+  const pending = inflight.get(parsedTeamId);
   if (pending) return pending;
 
   const lookup = loadSlackTeamDomain(parsedTeamId).finally(() => {
-    teamDomainInflight.delete(parsedTeamId);
+    inflight.delete(parsedTeamId);
   });
-  teamDomainInflight.set(parsedTeamId, lookup);
+  inflight.set(parsedTeamId, lookup);
   return lookup;
 }
 

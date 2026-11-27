@@ -1,3 +1,4 @@
+import type { AnnotatedObject } from "@sentry/junior-plugin-api";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import * as z from "zod";
 import type { AutomationDestination } from "@/chat/automations/creator";
@@ -108,21 +109,12 @@ export async function scheduleAutomationToolResult(
   conversationId: string,
   task: ScheduledAutomation,
   isCreator: boolean,
+  action: AnnotatedObject["action"],
 ) {
   return saveAutomationCardResult(
     conversationId,
     compactTask(task, isCreator),
-    {
-      task: task.task,
-      fallbackTitle: "Scheduled automation",
-      trigger:
-        task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined
-          ? `${new Intl.DateTimeFormat("en-US", {
-              dateStyle: "medium",
-              timeStyle: "short",
-              timeZone: task.schedule.timezone,
-            }).format(task.nextRunAtMs)} · ${task.schedule.timezone}`
-          : task.schedule.description,
-    },
+    { task: task.task, fallbackTitle: "Scheduled automation" },
+    action,
   );
 }

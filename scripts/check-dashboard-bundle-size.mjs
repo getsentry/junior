@@ -5,28 +5,11 @@ import { fileURLToPath } from "node:url";
 import zlib from "node:zlib";
 
 /**
- * Gzip budget for the dashboard first load: the client entry and every file
- * that the entry imports statically, as listed in `dist/client-manifest.json`.
- * The baseline follows `main`:
- *
- * - The measured size must match the committed baseline within
- *   `NOISE_BYTES`. A change that grows the first load commits the new size.
- * - The committed baseline may grow at most 2% (`GROWTH_LIMIT`) over the
- *   baseline at the merge base with `origin/main`, so the limit applies to
- *   each change. CI needs the full history for the merge base.
- * - A first load that shrinks passes. Update the baseline to tighten it.
- *
- * It reads the last dashboard build and does not build:
- *
- *   pnpm --filter "@sentry/junior-dashboard..." run build
- *   pnpm dashboard-bundle-size:check
- *
- * Update the baseline in the change that grows or shrinks the first load:
- *
- *   pnpm dashboard-bundle-size:check --update
- *
- * When two open changes both grow it, the second to merge must merge `main`
- * and run `--update` again.
+ * Gzip budget for the dashboard first load (`dist/client-manifest.json`). The
+ * size must match the baseline within `NOISE_BYTES`, and the baseline may grow
+ * at most `GROWTH_LIMIT` over the merge base with `origin/main` (CI needs full
+ * history). It reads the last build. Run `--update` in the change that moves
+ * the size; of two growing changes, the second to merge updates again.
  */
 
 const REPO_ROOT = path.resolve(
@@ -141,7 +124,7 @@ function readBaseBaseline() {
   }
 }
 
-/** Compare the dashboard first load to the baseline, or rewrite it with `--update`. */
+/** Compare the first load to the baseline, or rewrite it with `--update`. */
 export function run({ args }) {
   const manifestPath = path.join(REPO_ROOT, MANIFEST_PATH);
   if (!fs.existsSync(manifestPath)) {

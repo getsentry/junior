@@ -1,12 +1,13 @@
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { type Identity, type User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { closeDb, getConversationStore } from "@/chat/db";
-import { setTrustConfig } from "@/chat/identities/trust";
+import { patchConfig } from "../config";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
@@ -20,8 +21,7 @@ import {
 } from "../conversation-work";
 import { slackEventsApiEnvelope } from "./factories/events";
 import { createSlackWebhookTestClient } from "./webhook-client";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../stub-env";
 export const THREAD = "slack:C123:1712345.0001";
 export const OTHER_THREAD = "slack:C456:1712345.0009";
 // The Slack API mock gives every posted message this ts.
@@ -82,7 +82,28 @@ export async function addItem(
     createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
   );
   return (await (tool as any).execute(input, {})) as {
-    item: { assignees: string[]; id: string };
+    item: { assignees: string[]; id: string; subject: { id: string } };
+  };
+}
+
+export async function updateItem(
+  user: User,
+  input: Record<string, unknown>,
+  conversationId = THREAD,
+) {
+  const tool = createUpdateInboxItemTool(
+    {
+      conversationId,
+      resolveActorIdentity: async () => ({
+        identity: { id: `identity:${user.id}` } as Identity,
+        user,
+      }),
+      source: { kind: "slack" } as any,
+    },
+    createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
+  );
+  return (await (tool as any).execute(input, {})) as {
+    item: { assignees: string[]; conversation_ids: string[]; id: string };
   };
 }
 
@@ -117,15 +138,14 @@ export function buttonValue(
 
 /** Give each test the Slack bot token and fresh Slack API mocks. */
 export function setUpInboxItemCards(): void {
-  process.env = { ...ORIGINAL_ENV, SLACK_BOT_TOKEN: "xoxb-test-token" };
+  resetTestEnv({ SLACK_BOT_TOKEN: "xoxb-test-token" });
   resetSlackApiMockState();
 }
 
-/** Restore the env, trust config, state, and database after each test. */
+/** Restore the env, state, and database after each test. */
 export async function tearDownInboxItemCards(): Promise<void> {
-  process.env = { ...ORIGINAL_ENV };
+  vi.unstubAllEnvs();
   resetSlackApiMockState();
-  setTrustConfig({ allowedBotUserIds: [], allowedDomains: [] });
   await disconnectStateAdapter();
   await closeDb();
 }
@@ -138,9 +158,11 @@ export function inboxItemCardHarness(
   options: { allowedDomains?: string[] } = {},
 ) {
   // Slack ingress reads the allowed domains that `createApp` applies.
-  setTrustConfig({
-    allowedBotUserIds: [],
-    allowedDomains: options.allowedDomains ?? [],
+  patchConfig({
+    trust: {
+      allowedBotUserIds: [],
+      allowedDomains: options.allowedDomains ?? [],
+    },
   });
   const state = getStateAdapter();
   const queue = createConversationWorkQueueTestAdapter();

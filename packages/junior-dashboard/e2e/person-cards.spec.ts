@@ -313,6 +313,7 @@ test("person references in a transcript", async ({ dashboard, page }) => {
         .first(),
     ).toBeVisible();
     await screenshot(page, "person-card", {
+      hover: true,
       lightTheme: true,
       view: view.name,
     });

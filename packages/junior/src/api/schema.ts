@@ -15,12 +15,12 @@ export {
 } from "../chat/child-agents/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
-  answeredChoices,
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
 } from "../chat/inbox-items/user-input-request";
+export { inboxItemQuestion } from "../chat/inbox-items/request";
 export type {
   UserInputAnswer,
   UserInputField,
@@ -141,7 +141,6 @@ export {
 export type {
   ConversationFeed,
   ConversationFeedItem,
-  ConversationFeedViewerAnswer,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
@@ -211,6 +210,7 @@ export {
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
+  ConversationInviteBody,
   ConversationInviteResponse,
   ConversationLeaveResponse,
   ConversationSubscriptionBody,
@@ -383,7 +383,6 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
-export { leadSchema } from "./schema/lead";
 export {
   archiveSpaceBodySchema,
   createSpaceBodySchema,
@@ -403,12 +402,6 @@ export type {
   SpaceReport,
   SpaceVisibilityReport,
 } from "./schema/space";
-export {
-  addSpaceMemberBodySchema,
-  spaceMemberListSchema,
-  spaceMemberSchema,
-} from "./schema/space-member";
-export type { SpaceMemberListReport } from "./schema/space-member";
 export {
   USER_SEARCH_DEFAULT_LIMIT,
   USER_SEARCH_MAX_LIMIT,

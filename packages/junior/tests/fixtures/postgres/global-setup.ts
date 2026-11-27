@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from "node:fs";
+import path from "node:path";
 import type { TestProject } from "vitest/node";
 import {
   assertLocalPostgresUrl,
@@ -6,6 +8,7 @@ import {
   type PostgresHarnessConfig,
 } from "@sentry/junior-testing/postgres";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 
@@ -52,4 +55,36 @@ export async function setupJuniorPostgresHarness(
   };
 }
 
-export default setupJuniorPostgresHarness;
+/**
+ * Add the tables of every first-party plugin, and the owner table of test
+ * plugins' Inbox items (`tests/fixtures/plugin-inbox-owners.ts`). Inbox reads
+ * join the owner table of each registered plugin, so the tables exist
+ * whatever plugins a test registers, as in a deployment.
+ */
+async function migrateTestPluginTables(
+  executor: JuniorSqlMigrationExecutor,
+): Promise<void> {
+  const packagesDir = path.resolve(process.cwd(), "..");
+  await migratePluginSchemas(
+    executor,
+    readdirSync(packagesDir)
+      .filter((name) => name.startsWith("junior-"))
+      .map((name) => ({
+        dir: path.join(packagesDir, name, "migrations"),
+        pluginName: name.slice("junior-".length),
+      }))
+      .filter((root) => existsSync(root.dir)),
+  );
+  await executor.execute(
+    "CREATE TABLE test_plugin_inbox_owners (subject_id text PRIMARY KEY, conversation_id text NOT NULL)",
+  );
+}
+
+/** Provide the harness with the plugin tables that tests use. */
+export default function setup(
+  project: TestProject,
+): Promise<() => Promise<void>> {
+  return setupJuniorPostgresHarness(project, {
+    migrateTemplate: migrateTestPluginTables,
+  });
+}

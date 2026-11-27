@@ -178,6 +178,11 @@ test.describe("new UI", () => {
     // The question came from the second page, and its card in the
     // transcript holds the form.
     const card = page.getByRole("region", { name: `Asked ${migration.title}` });
+    // The card shows below the latest message, and the transcript follows
+    // it a frame later. A click in that frame finds a moving option, and
+    // Playwright's retry scrolls the option to the bottom edge, which also
+    // leaves the latest message.
+    await expect(card).toBeInViewport({ ratio: 1 });
     const approve = card.getByRole("radio", { name: "Approve" });
     await approve.click();
     await expect(card.getByText("1 of 2 answered")).toBeVisible();

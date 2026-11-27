@@ -13,7 +13,7 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import {
-  answeredChoices,
+  inboxItemQuestion,
   conversationDetailReportSchema,
   inboxItemActionSchema,
   inboxItemCountSchema,
@@ -30,10 +30,7 @@ import {
   type ConversationSnapshot,
 } from "../conversations/queries";
 import { clearAnswerDraft } from "../components/answerDrafts";
-import {
-  mapConversationFeedCache,
-  type ConversationFeedCache,
-} from "../conversations/conversationFeedCache";
+import { conversationSideReadQueryKey } from "../conversations/conversationSideReads";
 import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import {
@@ -43,6 +40,7 @@ import {
   type ContentVersioned,
 } from "../revalidation";
 import { itemConversationId, itemNeedsViewer } from "./inboxItemFormat";
+import { isCodeChangeItem } from "./inboxModel";
 
 type InboxItemCount = z.output<typeof inboxItemCountSchema>;
 type InboxItemList = z.output<typeof inboxItemListSchema>;
@@ -359,10 +357,12 @@ function changeCounts(
           ...count,
           codeChanges: Math.max(
             0,
-            count.codeChanges +
-              (item.subject?.objectType === "code_change" ? by : 0),
+            count.codeChanges + (isCodeChangeItem(item) ? by : 0),
           ),
-          decisions: Math.max(0, count.decisions + (item.request ? by : 0)),
+          decisions: Math.max(
+            0,
+            count.decisions + (inboxItemQuestion(item.request) ? by : 0),
+          ),
           needsViewer: Math.max(0, count.needsViewer + by),
           todos: Math.max(
             0,
@@ -463,40 +463,6 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
   if (restored) changeCounts(queryClient, item, 1);
 }
 
-/**
- * Put the viewer's answer on its Conversation's feed rows, as the next feed
- * read sends it, so a row says "You answered Hold" at once. The feed sends
- * the answer on root rows only, so a Thread row keeps none.
- */
-async function showAnswerOnFeedRows(
-  queryClient: QueryClient,
-  item: InboxItemPayload,
-): Promise<void> {
-  if (!item.answer || !item.request || !item.closedAt) return;
-  const viewerAnswer = {
-    choices: answeredChoices(item.request, item.answer),
-    closedAt: item.closedAt,
-  };
-  const feeds = { queryKey: ["dashboard", "conversations"] };
-  // A feed read that started before the answer would overwrite the patch. A
-  // feed with no data yet keeps its first read.
-  await queryClient.cancelQueries({
-    ...feeds,
-    predicate: (query) => query.state.data !== undefined,
-  });
-  queryClient.setQueriesData<ConversationFeedCache>(feeds, (feed) =>
-    feed
-      ? mapConversationFeedCache(feed, (conversations) =>
-          conversations.map((conversation) =>
-            conversation.conversationId === itemConversationId(item)
-              ? { ...conversation, viewerAnswer }
-              : conversation,
-          ),
-        )
-      : feed,
-  );
-}
-
 /** How many Inbox item actions are in flight. */
 export function inboxItemActionsInFlight(queryClient: QueryClient): number {
   return queryClient.isMutating({ mutationKey: INBOX_ITEM_ACTION_KEY });
@@ -532,11 +498,16 @@ export function useInboxItemAction(options: { optimistic?: boolean } = {}) {
     },
     // The row of an item that this closes reads it by itself, so it starts
     // from the answer.
-    onSuccess: async (item, args) => {
+    onSuccess: async (item) => {
       if (item.status !== "open") clearAnswerDraft(item.id);
       queryClient.setQueryData(inboxItemQueryKey(item.id), item);
-      if (args.body.action === "submit")
-        await showAnswerOnFeedRows(queryClient, item);
+      // A To-do item's action can change the To-do, which Details lists.
+      const conversationId = itemConversationId(item);
+      if (item.todoId !== undefined && conversationId) {
+        await queryClient.invalidateQueries({
+          queryKey: conversationSideReadQueryKey(conversationId, "todos"),
+        });
+      }
     },
     // A read while another action is in flight would show its item again.
     onSettled: () =>

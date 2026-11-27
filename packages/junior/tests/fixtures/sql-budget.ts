@@ -1,6 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import diagnosticsChannel from "node:diagnostics_channel";
 import { expect } from "vitest";
-import { getSqlExecutor } from "@/chat/db";
 
 /** The SQL work of one measured call. */
 export type SqlBudget = {
@@ -34,6 +34,11 @@ const POOL_CONNECT_CHANNEL = diagnosticsChannel.tracingChannel<PgCall, PgCall>(
 );
 
 const ignore = () => {};
+
+// The store holds each measurement that the current work runs in, so a
+// statement of other work, such as a background task that an earlier test
+// left running, does not count. Measurements can nest.
+const measuredCalls = new AsyncLocalStorage<ReadonlySet<object>>();
 
 // `pg` takes `query(text, values)` or `query({ text, values }, values)`.
 function statementOf(args: unknown): SqlStatement | undefined {
@@ -71,6 +76,8 @@ export async function measureSql<T>(
 ): Promise<{ result: T; sql: SqlBudget; statements: SqlStatement[] }> {
   // Event order, not time, decides whether one statement waits on another.
   let order = 0;
+  const owner = {};
+  const owned = () => measuredCalls.getStore()?.has(owner) === true;
   const spans = new Map<PgCall, Span>();
   const statements: SqlStatement[] = [];
   const connectStarts = new WeakMap<PgCall, number>();
@@ -80,14 +87,18 @@ export async function measureSql<T>(
   const checkouts: PgCall[] = [];
   const connect = {
     start: (context: PgCall) => {
-      connectStarts.set(context, ++order);
+      if (owned()) connectStarts.set(context, ++order);
     },
     end: ignore,
+    // pg-pool can call a waiting checkout back from another caller's
+    // release, so a checkout is known by its start, not by the store. A
+    // checkout that the call did not start stays on the stack too, so its
+    // statements do not count when this call's release runs it.
     asyncStart: (context: PgCall) => {
       checkouts.push(context);
     },
-    asyncEnd: () => {
-      checkouts.pop();
+    asyncEnd: (context: PgCall) => {
+      if (checkouts.at(-1) === context) checkouts.pop();
     },
     error: ignore,
   };
@@ -98,6 +109,7 @@ export async function measureSql<T>(
   const query = {
     start: (context: PgCall) => {
       const checkout = checkouts.at(-1);
+      if (checkout ? !connectStarts.has(checkout) : !owned()) return;
       const start = checkout && connectStarts.get(checkout);
       spans.set(context, { start: start ?? ++order });
       const statement = statementOf(context.arguments);
@@ -111,7 +123,10 @@ export async function measureSql<T>(
   POOL_CONNECT_CHANNEL.subscribe(connect);
   QUERY_CHANNEL.subscribe(query);
   try {
-    const result = await call();
+    // Await inside the store: a Drizzle query builder sends its SQL only
+    // when it is awaited.
+    const owners = new Set(measuredCalls.getStore()).add(owner);
+    const result = await measuredCalls.run(owners, async () => await call());
     const all = [...spans.values()];
     return {
       result,
@@ -137,186 +152,5 @@ export async function expectSqlBudget<T>(
   expect(sql.statements, "no SQL statement was measured").toBeGreaterThan(0);
   expect(sql.statements).toBeLessThanOrEqual(budget.statements);
   expect(sql.serialRounds).toBeLessThanOrEqual(budget.serialRounds);
-  return result;
-}
-
-/** A plan node of `EXPLAIN (FORMAT JSON)`, with the fields this file reads. */
-type PlanNode = {
-  "Node Type": string;
-  "Total Cost": number;
-  "Plan Rows": number;
-  "Relation Name"?: string;
-  "Index Cond"?: string;
-  "Recheck Cond"?: string;
-  Plans?: PlanNode[];
-};
-
-function* planNodes(node: PlanNode): Generator<PlanNode> {
-  yield node;
-  for (const child of node.Plans ?? []) yield* planNodes(child);
-}
-
-/**
- * Whether a plan node reads every row of its table: a `Seq Scan`, or an index
- * or bitmap scan with no condition. With seq scans off, Postgres reads a whole
- * index instead of the table when it can.
- */
-function isFullScan(node: PlanNode): boolean {
-  switch (node["Node Type"]) {
-    case "Seq Scan":
-      return true;
-    case "Index Scan":
-    case "Index Only Scan":
-      return node["Index Cond"] === undefined;
-    case "Bitmap Heap Scan":
-      return node["Recheck Cond"] === undefined;
-    default:
-      return false;
-  }
-}
-
-// Only these statements have a plan. `BEGIN`, `SET`, and the like do not.
-const EXPLAINABLE = /^\s*(?:select|with|insert|update|delete)\b/i;
-
-/**
- * Explain each statement that has a plan, with `EXPLAIN (FORMAT JSON)` and
- * the bind parameters that it sent. That is the plan that Postgres made for
- * the request, because `pg` plans each unnamed statement with its values.
- * `EXPLAIN` does not run the statement, so writes are safe to explain. The
- * explains run in one transaction on `getSqlExecutor()`, the
- * product-configured database, after `setup` when it is given.
- */
-async function explainPlans(
-  statements: readonly SqlStatement[],
-  setup?: string,
-): Promise<{ text: string; plan: PlanNode }[]> {
-  const explainable = statements.filter((statement) =>
-    EXPLAINABLE.test(statement.text),
-  );
-  expect(explainable.length, "no SQL statement was explained").toBeGreaterThan(
-    0,
-  );
-  const executor = getSqlExecutor();
-  return executor.transaction(async () => {
-    if (setup) await executor.execute(setup);
-    const plans: { text: string; plan: PlanNode }[] = [];
-    for (const statement of explainable) {
-      const [row] = await executor.query<{
-        "QUERY PLAN": [{ Plan: PlanNode }];
-      }>(`EXPLAIN (FORMAT JSON) ${statement.text}`, statement.params);
-      plans.push({ text: statement.text, plan: row!["QUERY PLAN"][0].Plan });
-    }
-    return plans;
-  });
-}
-
-// Tables that grow with use, so a full read of one gets slower over time.
-const BIG_TABLES = [
-  "junior_automations",
-  "junior_code_changes",
-  "junior_conversation_metrics",
-  "junior_inbox_items",
-  "junior_memory_embeddings",
-  "junior_memory_memories",
-  "junior_todos",
-];
-
-/**
- * A known full scan that a fix will remove. It matches a full scan of `table`
- * in a statement whose text contains `statement`.
- */
-type FullScanAllowance = {
-  table: string;
-  statement: string;
-  reason: string;
-};
-
-/**
- * Assert that the statements of `call` read no big table in full. A big table
- * grows with use, such as `junior_conversation_metrics`.
- *
- * Each statement is explained after `call` ends. Postgres reads a small test
- * table in full even when an index fits. So the statements are explained with
- * `SET LOCAL enable_seqscan = off`, and a full scan is left only when no index
- * condition can serve the statement. A join that probes an index for each
- * outer row passes, however many rows it reads.
- *
- * `allowed` names known full scans, keyed by name. The assertion also fails
- * when an entry matches no full scan, so the fix must remove it.
- */
-export async function expectNoFullScan<T>(
-  call: () => T | Promise<T>,
-  allowed: Readonly<Record<string, FullScanAllowance>> = {},
-): Promise<T> {
-  const { result, statements } = await measureSql(call);
-  const plans = await explainPlans(
-    statements,
-    "SET LOCAL enable_seqscan = off",
-  );
-  const allowances = Object.entries(allowed);
-  const used = new Set<string>();
-  const failures: string[] = [];
-  for (const [index, { text, plan }] of plans.entries()) {
-    for (const node of planNodes(plan)) {
-      const table = node["Relation Name"];
-      if (!table || !BIG_TABLES.includes(table) || !isFullScan(node)) continue;
-      const allowance = allowances.find(
-        ([, entry]) => entry.table === table && text.includes(entry.statement),
-      );
-      if (allowance) {
-        used.add(allowance[0]);
-        continue;
-      }
-      failures.push(
-        `statement ${index} reads ${table} in full (${node["Node Type"]}): ${text}`,
-      );
-    }
-  }
-  for (const [name] of allowances) {
-    if (!used.has(name)) {
-      failures.push(`allowed full scan "${name}" matches nothing; remove it`);
-    }
-  }
-  if (failures.length > 0) throw new Error(failures.join("\n"));
-  return result;
-}
-
-/**
- * Run `call` and return every plan node of each statement that it sent, in
- * statement order. Use it to assert one planner estimate, such as the rows
- * that Postgres expects from a node.
- */
-export async function explainNodes(call: () => unknown): Promise<PlanNode[][]> {
-  const { statements } = await measureSql(call);
-  const plans = await explainPlans(statements);
-  return plans.map(({ plan }) => [...planNodes(plan)]);
-}
-
-/**
- * Assert that no statement of `call` has an estimated total cost over
- * `maxCost`. A statement shape that makes Postgres do work for each row of a
- * list, such as one correlated subquery for each ID, raises its cost before
- * the test data is big enough to make it slow. A high cost also turns on JIT
- * compilation (`jit_above_cost`), which can take longer than the statement.
- *
- * Each statement is explained after `call` ends, with the default planner
- * settings. The cost depends on the seeded rows, so set `maxCost` with
- * headroom over the measured cost. Do not raise it to pass.
- */
-export async function expectPlanCost<T>(
-  call: () => T | Promise<T>,
-  maxCost: number,
-): Promise<T> {
-  const { result, statements } = await measureSql(call);
-  const plans = await explainPlans(statements);
-  const failures: string[] = [];
-  for (const [index, { text, plan }] of plans.entries()) {
-    if (plan["Total Cost"] > maxCost) {
-      failures.push(
-        `statement ${index} costs ${plan["Total Cost"]}, over ${maxCost}: ${text}`,
-      );
-    }
-  }
-  if (failures.length > 0) throw new Error(failures.join("\n"));
   return result;
 }

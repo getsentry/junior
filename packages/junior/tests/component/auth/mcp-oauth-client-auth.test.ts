@@ -149,9 +149,8 @@ describe("pre-registered MCP OAuth client", () => {
       await import("@/chat/mcp/client");
     const { createMcpOAuthClientProvider, finalizeMcpAuthorization } =
       await import("@/chat/mcp/oauth");
-    const { pluginCatalogRuntime } =
-      await import("@/chat/plugins/catalog-runtime");
-    const plugin = pluginCatalogRuntime.getDefinition(PROVIDER);
+    const { getAppContext } = await import("@/app/context");
+    const plugin = getAppContext().catalog.getDefinition(PROVIDER);
     if (!plugin) throw new Error(`Missing ${PROVIDER} fixture plugin`);
     const connect = async () =>
       new PluginMcpClient(plugin, {

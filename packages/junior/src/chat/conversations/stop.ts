@@ -28,27 +28,11 @@ export type StopConversationResult =
   | { status: "duplicate" };
 
 /**
- * Stop a Conversation for a person, on every stop path. Every child agent
- * below it stops, then it and they are stopped Conversations until a person
- * sends input, and then its Turn stops. A Turn that waits for sign-in ends
- * too, so a later sign-in does not resume it. Their automated input is held.
- * Nothing above it changes: this reports the stop of a Task to its parent.
- *
- * A stop that comes from a message or a button press, such as the Slack
- * `stop` keyword or stop button, passes it. Its id is claimed in the mailbox
- * first, so a redelivery returns `duplicate` and stops nothing, not even
- * newer work. A stop that fails before its stop request is saved releases
- * its claim, so a redelivery can stop again. A failed claim check keeps a
- * claim that an earlier delivery saved. A failure after the stop request is
- * saved keeps the claim, as does a failed reply: the work is already
- * stopped, and a redelivery must not stop newer work. Its send time
- * is the stop time, and only person input sent at or before it is dropped.
- * So a retry writes the same stop and keeps input that the person sent after
- * it.
- *
- * The child agents and sessions stop first, so a failure leaves the Turn
- * running and the stop can be retried. A child agent can outlive the parent
- * Turn, so this runs even when no Turn runs.
+ * Stop a Conversation for a person on every path; a Turn waiting for sign-in
+ * ends too. A message or button stop claims its id first, so a redelivery gets
+ * `duplicate`. Only a failure before the stop request is saved frees the claim.
+ * Only person input sent by the stop's send time drops. Children and sessions
+ * stop first, even with no Turn, so a failure leaves work to retry.
  */
 export async function stopConversation(args: {
   conversationId: string;
@@ -122,12 +106,10 @@ export async function stopConversation(args: {
 }
 
 /**
- * Stop a Conversation and every child agent below it, through
- * `stopConversationTree`. A person's stop and the automated-turn limit call
- * this. The child agents stop first, so a failure leaves the Conversation
- * running and the stop can be retried. Its waiting parent messages are
- * dropped before its stop request is saved, so no stop request outlives
- * the stop.
+ * Stop a Conversation and every child agent below it, for a person's stop and
+ * the automated-turn limit. Children stop first, so a failure leaves the
+ * Conversation running for a retry. Its waiting parent messages drop before
+ * the stop request is saved, so no stop request outlives the stop.
  */
 export async function stopConversationAndChildAgents(
   args: Omit<Parameters<typeof stopConversationTree>[1], "nowMs"> & {

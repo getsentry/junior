@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   integer,
   jsonb,
@@ -5,6 +6,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import * as z from "zod";
 
@@ -115,6 +117,12 @@ export const juniorGitHubPullRequestRequesters = pgTable(
     identityId: text("identity_id").notNull(),
     /** The Conversation where the person asked Junior to open the pull request. */
     conversationId: text("conversation_id"),
+    /**
+     * GitHub's id of the pull request (`databaseId`), the id of its Inbox
+     * items. Set on the opener's row, so a Resume finds its pull request
+     * without a name, also after a rename.
+     */
+    pullRequestId: text("pull_request_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
@@ -122,5 +130,10 @@ export const juniorGitHubPullRequestRequesters = pgTable(
     primaryKey({
       columns: [table.repositoryFullName, table.number, table.identityId],
     }),
+    // The opener's row maps the id of a pull request to the Conversation that
+    // owns its Inbox items, so one id names one Conversation.
+    uniqueIndex("junior_github_pull_request_requesters_opener_id_uidx")
+      .on(table.pullRequestId)
+      .where(sql`${table.conversationId} is not null`),
   ],
 );

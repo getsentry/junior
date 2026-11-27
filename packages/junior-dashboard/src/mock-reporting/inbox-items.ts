@@ -4,14 +4,16 @@
  * like the API.
  */
 import {
-  answeredChoices,
-  type ConversationFeed,
-  type ConversationFeedViewerAnswer,
+  inboxItemQuestion,
   type InboxItemActionBody,
   type InboxItemPayload,
   type InboxSnoozeCreateBody,
   type InboxSnoozeSubjectBody,
 } from "@sentry/junior/api/schema";
+import type {
+  ObjectFacts,
+  OwnedObjectAnnotation,
+} from "@sentry/junior-plugin-api";
 import {
   type MockItemSeed,
   SENTAUR_CONVERSATION_ID,
@@ -19,6 +21,7 @@ import {
   teammate,
   viewer,
 } from "./inbox-item-seeds";
+import { readMockObjectLinks } from "./objects";
 
 type MockItemChange = Pick<
   InboxItemPayload,
@@ -126,6 +129,79 @@ function related(seed: MockItemSeed, all: readonly MockItemSeed[]) {
     : undefined;
 }
 
+// The card of a pull request that has no other mock card.
+function pullRequestCard(
+  url: string,
+  title: string | undefined,
+): OwnedObjectAnnotation | undefined {
+  if (!title || !URL.canParse(url)) return undefined;
+  const parsed = new URL(url);
+  const [owner, repo, type, number] = parsed.pathname.split("/").slice(1);
+  if (parsed.hostname !== "github.com" || type !== "pull" || !number) {
+    return undefined;
+  }
+  const key = `${owner}/${repo}#${number}`;
+  return {
+    displayType: "Pull request",
+    key,
+    kind: "object",
+    label: key,
+    objectType: "code_change",
+    plugin: "github",
+    status: "open",
+    title,
+    url,
+  };
+}
+
+type CodeChangeFacts = Extract<ObjectFacts, { type: "code_change" }>;
+
+// A mock card with the title and title parts that GitHub has now.
+function liveCard(
+  card: OwnedObjectAnnotation,
+  title: string | undefined,
+  titleParts: CodeChangeFacts["titleParts"],
+): OwnedObjectAnnotation {
+  const live: OwnedObjectAnnotation = { ...card };
+  if (title) live.title = title;
+  if (card.objectType === "code_change") {
+    const facts: CodeChangeFacts =
+      card.facts?.type === "code_change"
+        ? { ...card.facts }
+        : { type: "code_change" };
+    if (titleParts) facts.titleParts = titleParts;
+    live.facts = facts;
+  }
+  return live;
+}
+
+/**
+ * The subject of a seed, like the API: its kind and id, the label of the
+ * kind, and the card of its link with the title that GitHub has now.
+ */
+function subjectOf(seed: MockItemSeed): InboxItemPayload["subject"] {
+  const defaultKind =
+    seed.todoId !== undefined
+      ? "todo"
+      : seed.automationId
+        ? "automation"
+        : "question";
+  if (!seed.subject) {
+    return {
+      id: seed.todoId?.toString() ?? seed.automationId ?? seed.id,
+      kind: defaultKind,
+    };
+  }
+  const { kind = defaultKind, title, titleParts, ...rest } = seed.subject;
+  const subject: InboxItemPayload["subject"] = { ...rest, kind };
+  const card = subject.url
+    ? (readMockObjectLinks([subject.url]).objects[0]?.object ??
+      pullRequestCard(subject.url, title))
+    : undefined;
+  if (card) subject.object = liveCard(card, title, titleParts);
+  return subject;
+}
+
 function payload(
   seed: MockItemSeed,
   all: readonly MockItemSeed[],
@@ -138,6 +214,7 @@ function payload(
     linkedConversationIds = [],
     plugin: _plugin,
     shared,
+    subject: _subject,
     wake,
     ...rest
   } = seed;
@@ -169,6 +246,7 @@ function payload(
     owner: automationId
       ? { id: automationId, kind: "automation" }
       : { id: conversationId!, kind: "conversation" },
+    subject: subjectOf(seed),
     ...(root ? { rootConversationId: root } : undefined),
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
@@ -254,42 +332,6 @@ export function actOnMockInboxItem(
 }
 
 /**
- * Put the viewer's newest answer on each feed row of the Conversation that
- * added it, like the API.
- */
-export function withMockViewerAnswers(
-  feed: ConversationFeed,
-  nowMs: number,
-): ConversationFeed {
-  const answers = new Map<string, ConversationFeedViewerAnswer>();
-  // Closed items come newest closed first, so the first one wins.
-  for (const item of readMockInboxItems(nowMs, { closed: true })) {
-    const conversationId =
-      item.owner.kind === "conversation" ? item.owner.id : undefined;
-    if (
-      !conversationId ||
-      !item.answer ||
-      !item.request ||
-      !item.closedAt ||
-      item.closedBy?.userId !== viewer.userId ||
-      answers.has(conversationId)
-    )
-      continue;
-    answers.set(conversationId, {
-      choices: answeredChoices(item.request, item.answer),
-      closedAt: item.closedAt,
-    });
-  }
-  return {
-    ...feed,
-    conversations: feed.conversations.map((conversation) => {
-      const viewerAnswer = answers.get(conversation.conversationId);
-      return viewerAnswer ? { ...conversation, viewerAnswer } : conversation;
-    }),
-  };
-}
-
-/**
  * Close the oldest open question in a Conversation with a typed message as
  * its answer. It stands in for the model that decides which questions a
  * reply answers.
@@ -299,8 +341,8 @@ export function answerMockInboxItemByReply(
   conversationId: string,
   text: string,
 ): void {
-  const item = readMockInboxItems(nowMs, { conversationId }).find(
-    (candidate) => candidate.request,
+  const item = readMockInboxItems(nowMs, { conversationId }).find((candidate) =>
+    inboxItemQuestion(candidate.request),
   );
   if (!item) return;
   changes.set(item.id, {
@@ -362,10 +404,15 @@ export function readMockInboxItemCounts(nowMs: number) {
     // Like the server: the alerts that the Automations To do lists.
     automations: needsViewer.filter((item) => item.owner.kind === "automation")
       .length,
-    decisions: needsViewer.filter((item) => item.request).length,
+    decisions: needsViewer.filter((item) => inboxItemQuestion(item.request))
+      .length,
     needsViewer: needsViewer.length,
+    // Like the server: a code change's own asks. A question that cites one
+    // is a decision.
     codeChanges: needsViewer.filter(
-      (item) => item.subject?.objectType === "code_change",
+      (item) =>
+        item.subject?.objectType === "code_change" &&
+        item.subject.kind.includes(":"),
     ).length,
     // Like the server: each snoozed item that is still open.
     snoozed: seeds(nowMs).filter(

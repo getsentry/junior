@@ -43,6 +43,12 @@ const DECISION_REQUEST = {
   ],
 };
 
+// An earlier run asked about the pull request and linked it.
+const ENTRY_REQUEST = {
+  ...DECISION_REQUEST,
+  related: [{ label: "Acme entry", url: PULL_REQUEST_URL }],
+};
+
 function ownerItem(bug: string): InboxItem {
   return {
     body: `The ${bug} bug has no owner.`,
@@ -56,13 +62,12 @@ function ownerItem(bug: string): InboxItem {
 
 function itemOutput(call: Parameters<typeof toolOutput>[0]) {
   return toolOutput(call) as {
-    created?: boolean;
     item: { id: string; status: string };
   };
 }
 
 describe("Inbox", () => {
-  test("when a later run finds the open item for the same pull request, update it instead of adding another", async ({
+  test("when a later run gets the open question of an earlier run, change it instead of asking again", async ({
     run,
   }) => {
     const destination = slackChannel();
@@ -75,26 +80,20 @@ describe("Inbox", () => {
     const existing = await insertInboxItem({
       automationId: automation.id,
       body: "Acme uses BUSL with a six-year change date.",
-      dedupeKey: "fair-source:acme-entry",
       destination,
       kind: "action",
-      request: DECISION_REQUEST,
-      subject: { id: PULL_REQUEST_URL, url: PULL_REQUEST_URL },
+      request: ENTRY_REQUEST,
+      subject: { id: "ask:acme-entry", kind: "question" },
       title: "Review the Acme entry",
     });
 
     const delivery = await run(heartbeat());
 
-    // The run works with the Inbox. Each completed add updates the
-    // open item, so no second item starts.
-    expect(
-      toolCallsOf("addInboxItem", delivery).length +
-        toolCallsOf("searchInboxItems", delivery).length,
-    ).toBeGreaterThan(0);
-    const added = completedToolCalls("addInboxItem", delivery).map(itemOutput);
-    expect(added.filter((output) => output.created)).toEqual([]);
-    for (const output of added) {
-      expect(output.item.id).toBe(existing.id);
+    // The run's task lists the open question by its id, so the run changes
+    // that item, or leaves it, and asks no second question.
+    expect(completedToolCalls("addInboxItem", delivery)).toEqual([]);
+    for (const call of completedToolCalls("updateInboxItem", delivery)) {
+      expect(itemOutput(call).item.id).toBe(existing.id);
     }
   });
 
@@ -104,11 +103,10 @@ describe("Inbox", () => {
     const destination = slackChannel();
     const existing = await insertInboxItem({
       body: "Acme uses BUSL with a six-year change date.",
-      dedupeKey: "fair-source:acme-entry",
       destination,
       kind: "action",
-      request: DECISION_REQUEST,
-      subject: { id: PULL_REQUEST_URL, url: PULL_REQUEST_URL },
+      request: ENTRY_REQUEST,
+      subject: { id: "ask:acme-entry", kind: "question" },
       title: "Review the Acme entry",
     });
 

@@ -4,50 +4,31 @@
 
 import { Hono, type Context } from "hono";
 import {
-  getConfigDefaults,
-  setConfigDefaults,
-} from "@/chat/configuration/defaults";
-import {
   botConfig,
   getChatConfig,
-  resetRuntimeConfig,
-  restoreRuntimeConfig as restoreChatRuntimeConfig,
-  setBotModelConfig,
-  setBotName,
-  setRuntimeLimits,
-  snapshotRuntimeConfig,
+  installChatConfig,
   type BotModelConfig,
   type RuntimeLimits,
-  setSlackReactionConfig,
 } from "@/chat/config";
+import { loadConfig, type ConfigInput } from "@/config";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
+import type { ExperimentalFeaturesConfig } from "@/chat/experimental";
 import {
-  getExperimentalFeatures,
-  setExperimentalFeatures,
-  type ExperimentalFeaturesConfig,
-} from "@/chat/experimental";
-import { setEventEmbeddingsConfig } from "@/chat/conversations/event-embedding-config";
-import {
-  getSandboxResourceConfig,
-  setSandboxResourceConfig,
-  type SandboxResourceConfig,
-} from "@/chat/sandbox/resources";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
+  createAppContext,
+  getAppContext,
+  installAppContext,
+} from "@/app/context";
+import { validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
   type PluginRouteRegistration,
   type PluginApiRouteRegistration,
   getPluginApiRoutes,
   getPluginRoutes,
 } from "@/chat/plugins/hooks/routes";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import {
-  setMemoryConfig,
-  type MemoryOptions,
-} from "@/chat/memory/registration";
+import type { MemoryOptions } from "@/chat/memory/registration";
 import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
@@ -82,8 +63,8 @@ import {
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_TURN_ENDED_CALLBACK_ROUTE,
   JUNIOR_TURN_STEP_CALLBACK_ROUTE,
-  JUNIOR_DELIVERY_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
@@ -116,8 +97,12 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { turnTools } from "@/turn-steps/tools";
-import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
+import {
+  createDeploymentDelivery,
+  turnEndedConsumer,
+} from "@/turn-steps/turn-ended";
 import { sweepTurns } from "@/core/turn/sweep";
+import { sweepDeliveries } from "@/delivery/sweep";
 import { createEngineContext } from "@/turn-steps/engine-context";
 import {
   vercelBackgroundCompactionQueue,
@@ -136,7 +121,6 @@ import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
-import { setTrustConfig, type TrustConfig } from "@/chat/identities/trust";
 import {
   createIdentityDispatcher,
   type IdentityDispatcher,
@@ -158,10 +142,7 @@ import {
   type SignInAuth,
   type SignInAuthConfig,
 } from "@/chat/sign-in/auth";
-import {
-  assertNoLegacyAllowedDomains,
-  resolveAllowedDomains,
-} from "@/chat/sign-in/allowlist";
+import { assertNoLegacyAllowedDomains } from "@/chat/sign-in/allowlist";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -272,7 +253,12 @@ export interface JuniorAppOptions extends BotModelConfig {
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
-  sandbox?: SandboxResourceConfig & {
+  sandbox?: {
+    /**
+     * vCPUs of each sandbox. Each vCPU adds 2 GB of memory. A Workspace vCPU
+     * count wins over it, and it wins over `SANDBOX_VCPUS`.
+     */
+    vcpus?: number | undefined;
     /**
      * Egress domains allowed to carry Sentry trace propagation headers.
      * Entries may be exact domains or leading wildcard domains such as
@@ -281,23 +267,6 @@ export interface JuniorAppOptions extends BotModelConfig {
     egressTracePropagationDomains?: string[] | undefined;
   };
   waitUntil?: WaitUntilFn;
-}
-
-/** Resolve the public deployment URL used by ACP and MCP browser authorization. */
-function resolvePublicBaseURL(
-  dashboard: JuniorDashboardOptions | undefined,
-): string | undefined {
-  const configured =
-    dashboard?.baseURL?.trim() || process.env["JUNIOR_BASE_URL"]?.trim();
-  if (configured) return configured;
-
-  const vercelURL =
-    process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim() ||
-    process.env["VERCEL_URL"]?.trim();
-  if (!vercelURL) return undefined;
-  return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
-    ? vercelURL
-    : `https://${vercelURL}`;
 }
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
@@ -360,6 +329,57 @@ async function resolveVirtualConfig(): Promise<
   }
 }
 
+/** Config values that createApp options and the build set over env. */
+function appConfigInput(
+  options: JuniorAppOptions | undefined,
+  virtualConfig: JuniorVirtualConfig | undefined,
+): ConfigInput {
+  const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
+  return {
+    bot: {
+      modelId: options?.modelId,
+      decisionModelId: options?.decisionModelId,
+      embeddingModelId: options?.embeddingModelId,
+      fastModelId: options?.fastModelId,
+      rerankingModelId: options?.rerankingModelId,
+      guardianModelId: options?.guardianModelId,
+      imageGenerationModelId: options?.imageGenerationModelId,
+      transcriptionModelId: options?.transcriptionModelId,
+      visionModelId: options?.visionModelId,
+      webSearchModelId: options?.webSearchModelId,
+      refusalFallbackModelId: options?.refusalFallbackModelId,
+      userName: virtualConfig?.botName,
+    },
+    configDefaults: options?.configDefaults,
+    dashboard: dashboard && {
+      basePath: dashboard.basePath,
+      baseURL: dashboard.baseURL,
+      disabled: dashboard.disabled,
+    },
+    deployment: {
+      configuredBaseUrl: dashboard?.baseURL?.trim() || undefined,
+    },
+    eventEmbeddings: options?.eventEmbeddings,
+    experimental: options?.experimental,
+    functionMaxDurationSeconds: virtualConfig?.functionMaxDurationSeconds,
+    limits: options?.limits,
+    memory: {
+      disableExtraction: options?.memory?.disableExtraction,
+      disableRecall: options?.memory?.disableRecall,
+      modelId: options?.memory?.modelId?.trim() || undefined,
+    },
+    sandbox: { vcpus: options?.sandbox?.vcpus },
+    slack: {
+      completedReactionEmoji: options?.slack?.completedReactionEmoji,
+      processingReactionEmoji: options?.slack?.processingReactionEmoji,
+    },
+    trust: {
+      allowedBotUserIds: options?.slack?.allowedBotUserIds,
+      allowedDomains: options?.allowedDomains,
+    },
+  };
+}
+
 function hasConfiguredPluginCatalog(
   config: PluginCatalogConfig | undefined,
 ): boolean {
@@ -378,7 +398,7 @@ function warnUnregisteredConfigDefaults(
   defaults: Record<string, unknown> | undefined,
 ): void {
   for (const key of Object.keys(defaults ?? {})) {
-    if (!pluginCatalogRuntime.isConfigKey(key)) {
+    if (!getAppContext().catalog.isConfigKey(key)) {
       logWarn("config.default.unregistered", { "app.config.key": key });
     }
   }
@@ -477,31 +497,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousRuntimeConfig = snapshotRuntimeConfig();
-  const previousPluginCatalogConfig =
-    pluginCatalogRuntime.setConfig(pluginConfig);
-  const previousPlugins = setPlugins(plugins);
-  const previousConfigDefaults = getConfigDefaults();
-  const previousSandboxResources = getSandboxResourceConfig();
-  const previousExperimentalFeatures = getExperimentalFeatures();
-  const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
-    options?.eventEmbeddings,
+  const previousAppContext = installAppContext(
+    createAppContext({ plugins, pluginConfig }),
   );
-  const previousMemoryConfig = setMemoryConfig(options?.memory);
-  const previousDashboardLinkOptions =
-    setDashboardConversationLinkOptions(dashboard);
-  let previousTrustConfig: TrustConfig | undefined;
+  let restoreChatConfig: (() => void) | undefined;
   const restoreRuntimeConfig = (): void => {
-    if (previousTrustConfig) setTrustConfig(previousTrustConfig);
-    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
-    setPlugins(previousPlugins);
-    setConfigDefaults(previousConfigDefaults);
-    restoreChatRuntimeConfig(previousRuntimeConfig);
-    setSandboxResourceConfig(previousSandboxResources);
-    setExperimentalFeatures(previousExperimentalFeatures);
-    setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
-    setMemoryConfig(previousMemoryConfig);
-    setDashboardConversationLinkOptions(previousDashboardLinkOptions);
+    installAppContext(previousAppContext);
+    restoreChatConfig?.();
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
@@ -520,24 +522,19 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       normalizeSandboxEgressTracePropagationDomains(
         options?.sandbox?.egressTracePropagationDomains,
       );
-    setSandboxResourceConfig(options?.sandbox);
-    setExperimentalFeatures(options?.experimental);
-    setConfigDefaults(options?.configDefaults);
+    // Resolve the whole config from env and this app's options, so this app
+    // cannot inherit an earlier app's models, limits, or Slack settings.
+    const previousChatConfig = installChatConfig(
+      loadConfig({
+        env: process.env,
+        options: appConfigInput(options, virtualConfig),
+      }),
+    );
+    restoreChatConfig = () => installChatConfig(previousChatConfig);
     warnUnregisteredConfigDefaults(options?.configDefaults);
-    // Start from the defaults so this app cannot inherit an earlier app's
-    // models, limits, or Slack settings.
-    resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
-    setBotModelConfig(options ?? {});
-    setBotName(virtualConfig?.botName);
-    setRuntimeLimits(options?.limits);
-    setSlackReactionConfig(options?.slack ?? {});
     // One domain list for Slack authors and dashboard sign-ins.
     assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
-    allowedDomains = resolveAllowedDomains(options?.allowedDomains);
-    previousTrustConfig = setTrustConfig({
-      allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
-      allowedDomains,
-    });
+    allowedDomains = getChatConfig().trust.allowedDomains;
     if (allowedDomains.length === 0) {
       logWarn("app.allowed_domains.unset", {
         "app.reason":
@@ -557,7 +554,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     }
     if (shouldValidatePluginCatalog) {
-      pluginCatalogRuntime.getSignature();
+      getAppContext().catalog.getSignature();
       validatePluginRegistrations(configuredPlugins?.registrations ?? []);
       validatePluginEgressCredentialHooks(
         configuredPlugins?.registrations ?? [],
@@ -652,7 +649,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
           ? {
               browserAuth: {
                 agentName: botConfig.userName,
-                baseURL: resolvePublicBaseURL(dashboard),
+                baseURL: getChatConfig().deployment.baseUrl,
               },
             }
           : undefined),
@@ -678,7 +675,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     handler: (request, user) =>
       handleMcpConsentPage({
         agentName: botConfig.userName,
-        baseURL: resolvePublicBaseURL(dashboard),
+        baseURL: getChatConfig().deployment.baseUrl,
         request,
         state: getMcpState(),
         user,
@@ -749,7 +746,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     app.on(["GET", "POST", "DELETE"], MCP_ROUTE_PATHS, (c) => {
       handleMcpRequest ??= createMcpHttpHandler({
         allowedDomains,
-        baseURL: resolvePublicBaseURL(dashboard),
+        baseURL: getChatConfig().deployment.baseUrl,
         attachmentStorage,
         queue: conversationWorkQueue,
         state: getMcpState(),
@@ -816,11 +813,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  // Built after resetRuntimeConfig, so the lease and the queue visibility
+  // Built after createApp installs the config, so the lease and the queue visibility
   // timeout use this app's functionMaxDurationSeconds.
   const chatConfig = getChatConfig();
   const engineCtx = createEngineContext(chatConfig);
-  const deliveries = deliveryConsumer(engineCtx, deploymentDelivery);
+  const turnEnds = turnEndedConsumer(
+    engineCtx,
+    createDeploymentDelivery({ getSlackAdapter: getProductionSlackAdapter }),
+  );
   app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
@@ -872,12 +872,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
     return turnStepPOST(c.req.raw);
   });
-  let deliveryPOST:
+  let turnEndedPOST:
     | ReturnType<typeof engineCtx.queue.createCallback>
     | undefined;
-  app.post(JUNIOR_DELIVERY_CALLBACK_ROUTE, (c) => {
-    deliveryPOST ??= engineCtx.queue.createCallback(deliveries);
-    return deliveryPOST(c.req.raw);
+  app.post(JUNIOR_TURN_ENDED_CALLBACK_ROUTE, (c) => {
+    turnEndedPOST ??= engineCtx.queue.createCallback(turnEnds);
+    return turnEndedPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {
@@ -887,7 +887,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       events,
       sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
-      sweepTurns: () => sweepTurns(engineCtx),
+      sweepTurns: async () => {
+        await sweepTurns(engineCtx);
+        await sweepDeliveries(engineCtx);
+      },
     });
   });
 

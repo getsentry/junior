@@ -1,5 +1,5 @@
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
-import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
+import type { ObjectFacts } from "@sentry/junior-plugin-api";
 
 import type { Conversation } from "../types";
 
@@ -9,14 +9,14 @@ import type { Conversation } from "../types";
  * and the change's reference become short words around it.
  */
 export type CodeChangeHead = {
-  /** The plugin's name of the state, such as "Review requested". */
+  /** The label of the item's subject kind, such as "Review requested". */
   kind: string;
   /** The state in one word, such as "Review". */
   state: string;
   /** The change's reference, such as "payments#91". */
   reference: string;
   /** The title without its type prefix, with its type, scope and breaking mark. */
-  title: InboxItemSubjectTitleParts;
+  title: CodeChangeTitleParts;
   /** The change's page on its provider. */
   url: string;
   /** Name of the action that opens `url`, such as "Review on GitHub". */
@@ -27,9 +27,12 @@ export type CodeChangeHead = {
   onGitHub: boolean;
 };
 
-// The plugin titles each pull request item "<state> · #<number>"
-// (`junior-github` `showAction` and the merge conflict check).
-const STATE_TITLE = /^(.+) · (#\d+)$/;
+type CodeChangeTitleParts = NonNullable<
+  Extract<ObjectFacts, { type: "code_change" }>["titleParts"]
+>;
+
+// The number part of a code change key such as "getsentry/payments#91".
+const KEY_NUMBER = /(#\d+)$/;
 
 const STATE_WORDS: Record<string, string> = {
   "Merge conflict": "Conflict",
@@ -46,41 +49,46 @@ function hostName(url: string): string | undefined {
   return hostname === "github.com" ? "GitHub" : hostname;
 }
 
-// The repo part of a linked work key such as "getsentry/payments#91".
+// The repo part of a linked work key such as "getsentry/payments#91". With
+// no Conversation, such as one that the viewer cannot see, the key comes
+// from the subject's card.
 function shortRepo(
   url: string,
   conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
+  objectKey: string,
 ): string | undefined {
-  const key = conversation?.sidebarAnnotations?.find(
-    (annotation) => annotation.url === url,
-  )?.key;
+  const key = conversation
+    ? conversation.sidebarAnnotations?.find(
+        (annotation) => annotation.url === url,
+      )?.key
+    : objectKey;
   return key ? /^[\w.-]+\/([\w.-]+)#\d+$/.exec(key)?.[1] : undefined;
 }
 
 /**
  * The head of a row for one item about a code change, or undefined for
- * another item, which keeps its own title.
+ * another item, which keeps its own title. The state is the label of the
+ * subject kind, and the title is the change's title now, from its card.
  */
 export function codeChangeHead(
-  item: Pick<InboxItemPayload, "status" | "subject" | "title">,
+  item: Pick<InboxItemPayload, "status" | "subject">,
   conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
 ): CodeChangeHead | undefined {
-  const subject = item.subject;
-  const match = STATE_TITLE.exec(item.title);
+  const { label: kind, object, url } = item.subject;
+  const number = object && KEY_NUMBER.exec(object.key)?.[1];
   if (
     item.status !== "open" ||
-    subject?.objectType !== "code_change" ||
-    !subject.url ||
-    !subject.title ||
-    !match
+    !kind ||
+    !url ||
+    object?.objectType !== "code_change" ||
+    !object.title ||
+    !number
   ) {
     return undefined;
   }
-  const kind = match[1]!;
-  const number = match[2]!;
-  const host = hostName(subject.url);
+  const host = hostName(url);
   if (!host) return undefined;
-  const repo = shortRepo(subject.url, conversation);
+  const repo = shortRepo(url, conversation, object.key);
   const openText = kind === "Review requested" ? "Review" : "Open";
   return {
     kind,
@@ -89,9 +97,9 @@ export function codeChangeHead(
     openText,
     reference: repo ? `${repo}${number}` : number,
     state: STATE_WORDS[kind] ?? kind,
-    title: subject.titleParts ?? {
-      text: subject.title.replace(REFERENCE_TAIL, ""),
-    },
-    url: subject.url,
+    title: (object.facts?.type === "code_change"
+      ? object.facts.titleParts
+      : undefined) ?? { text: object.title.replace(REFERENCE_TAIL, "") },
+    url,
   };
 }

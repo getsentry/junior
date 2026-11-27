@@ -4,6 +4,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
+import type { AgentStatus } from "@/chat/conversations/agent-status";
 
 export type ConversationSource =
   | "api"
@@ -31,12 +32,8 @@ export type ChildConversationKind = Extract<
   "thread" | "task"
 >;
 
-export type ConversationStatus =
-  | "paused"
-  | "failed"
-  | "idle"
-  | "pending"
-  | "running";
+/** Conversation execution status. */
+export type ConversationStatus = Exclude<AgentStatus, "stopped">;
 
 /** Cumulative duration and usage that one Run reported. */
 export interface ConversationRunMetrics {
@@ -96,11 +93,6 @@ export interface Conversation {
    * a Lead stores it.
    */
   spaceId?: string;
-  /**
-   * Set on a child whose Location is its own, not a copy of its parent's,
-   * such as a Slack Conversation that moved into a Space.
-   */
-  ownLocation?: true;
   /**
    * When the Conversation was archived for everyone. Only archive, auto-archive,
    * pin, and a person's message write it; `upsertConversation` does not.

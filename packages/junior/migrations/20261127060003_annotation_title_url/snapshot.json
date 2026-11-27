@@ -1,0 +1,73 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "8a318893-4b46-4fb3-9e04-6361efea0a02",
+  "prevIds": ["89760bcd-1994-47e8-84ba-0c99d5b9f3b4"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_annotations",
+        "title"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_annotations.title",
+        "n|col|public.junior_conversation_annotations.title",
+        "e|col|public.junior_conversation_annotations.title"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_annotations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_annotations",
+        "url"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_annotations.url",
+        "n|col|public.junior_conversation_annotations.url",
+        "e|col|public.junior_conversation_annotations.url"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_annotations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_annotations",
+        "name": "url",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

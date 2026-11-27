@@ -1,5 +1,6 @@
 import http from "node:http";
 import type { Readable } from "node:stream";
+import { getChatConfig } from "@/chat/config";
 
 // Module overview: a small Docker Engine API client over the local unix
 // socket. It uses `node:http`, so the Docker provider needs no SDK.
@@ -30,7 +31,7 @@ export interface DockerRequest {
 
 /** Return the unix socket path of the Docker daemon from `DOCKER_HOST`. */
 function dockerSocketPath(): string {
-  const host = process.env["DOCKER_HOST"]?.trim();
+  const { host } = getChatConfig().sandbox.docker;
   if (!host) return DEFAULT_SOCKET_PATH;
   if (!host.startsWith("unix://")) {
     throw new Error(

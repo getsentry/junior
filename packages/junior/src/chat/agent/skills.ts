@@ -7,7 +7,7 @@ import { logInfo } from "@/chat/logging";
 import { discoverSkills, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { PiMessage } from "@/chat/pi/messages";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { readTaskInstructions } from "@/chat/task-input";
 
 let startupDiscoveryLogged = false;
@@ -52,7 +52,7 @@ export async function discoverRunSkills(args: {
   });
   if (!startupDiscoveryLogged) {
     startupDiscoveryLogged = true;
-    const plugins = pluginCatalogRuntime.getProviders();
+    const plugins = getAppContext().catalog.getProviders();
     const roots = [
       ...new Set(availableSkills.map((skill) => skill.skillPath)),
     ].sort();
