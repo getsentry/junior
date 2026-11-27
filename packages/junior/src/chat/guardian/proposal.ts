@@ -5,6 +5,7 @@
  * Guardian evals build it as snapshots. Only `context` is authoritative and
  * comes from core. Each other field is untrusted evidence.
  */
+import type { TurnWatch } from "@/chat/events/watch-creator";
 import type {
   Destination,
   Source,
@@ -122,6 +123,8 @@ export interface ToolActionProposal {
     lead?: true;
     source: Source;
     userIntent: string;
+    /** The Watch that started the Turn. Only the agent Guardian reads it. */
+    watch?: TurnWatch;
   };
   evidence?: ToolActionEvidence;
   input: Record<string, unknown>;

@@ -32,6 +32,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
+import type { WatchCreator } from "@/chat/events/watch-creator";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -121,6 +122,8 @@ interface BaseToolRuntimeContext {
     | undefined;
   /** Runtime-owned source where this invocation came from. */
   source: Source;
+  /** Who a Watch that this Run sets serves. Unset when nobody asked. */
+  watchCreator?: WatchCreator | undefined;
   /** Runtime surface that owns final delivery semantics for this turn. */
   surface?: AgentTurnSurface;
   userText?: string;

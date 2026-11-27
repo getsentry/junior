@@ -26,6 +26,30 @@ function currentAuthor(
 }
 
 /**
+ * The Watch that started the Turn (`follows-instruction`), named by who set
+ * it. Junior wrote its instructions, so they stay context
+ * (`text-is-context`): only the creator's own lines authorize, and a Watch
+ * cannot widen them (`handoff-check`).
+ */
+function watchMessages(
+  watch: ToolActionProposal["context"]["watch"],
+): Message[] {
+  if (!watch) return [];
+  return [
+    {
+      from: "context",
+      text: watch.creator.actor
+        ? "[The requester's Turn set the Watch that started this Turn. Its instructions:]"
+        : "[An agent's brief set the Watch that started this Turn. Its instructions:]",
+    },
+    ...watch.intents.map((intent): Message => ({
+      from: "context",
+      text: intent,
+    })),
+  ];
+}
+
+/**
  * The ordered messages of the work for one batch. Every proposal of a batch
  * has the same context and root Conversation, so the first one is enough.
  * Only the requester's root messages, which core labels `user`, and the
@@ -62,15 +86,27 @@ export function guardianMessages(proposal: ToolActionProposal): Message[] {
     (message) =>
       message.author === "user" && message.text === context.userIntent,
   );
-  if (!shown && author !== "automation" && context.userIntent) {
+  messages.push(...watchMessages(context.watch));
+  // A brief from another top-level agent is the instruction, so its data
+  // notice for the agent does not reach Guardian. Each one names its sender.
+  const briefs =
+    author === "brief"
+      ? readTopLevelAgentMessages(context.userIntent)
+      : undefined;
+  if (briefs) {
+    for (const brief of briefs) {
+      messages.push(
+        {
+          from: "context",
+          text: `[The agent of Conversation ${brief.conversationId ?? "unknown"} sent this brief:]`,
+        },
+        { from: "instruction", text: brief.text },
+      );
+    }
+  } else if (!shown && author !== "automation" && context.userIntent) {
     messages.push({
       from: author === "event" ? "context" : "instruction",
-      // A brief from another top-level agent is the instruction, so its
-      // data notice for the agent does not reach Guardian.
-      text:
-        (author === "brief"
-          ? readTopLevelAgentMessages(context.userIntent)
-          : undefined) ?? context.userIntent,
+      text: context.userIntent,
     });
   }
   return messages;

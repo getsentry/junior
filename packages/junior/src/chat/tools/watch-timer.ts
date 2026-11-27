@@ -50,6 +50,7 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
         afterMs: input.after_ms,
         intent: input.intent,
         conversationId: context.conversationId,
+        creator: context.watchCreator,
         ...(creatorUserId ? { creatorUserId } : undefined),
         toolCallId: options.toolCallId,
       });

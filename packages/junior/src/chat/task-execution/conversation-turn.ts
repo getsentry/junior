@@ -1,4 +1,5 @@
 /** Run a mailbox Turn and store its assistant Messages. */
+import { readTurnWatch } from "@/chat/events/turn-watch";
 import { blockRunAutomation } from "@/chat/automations/block-run";
 import {
   isPersonInput,
@@ -353,6 +354,14 @@ export function createConversationTurnWorker(
               fromParent,
             );
     }
+    // A Turn of Watch Events serves the instruction that set the Watch.
+    const turnWatch =
+      actor.platform === "system" && resolved.kind === "mailbox"
+        ? await readTurnWatch(
+            context.conversationId,
+            resolved.batch.map((entry) => entry.message),
+          )
+        : undefined;
     const source = sourceFromTurnInput({
       conversationId: context.conversationId,
       source: turnInputFacts.source,
@@ -637,6 +646,7 @@ export function createConversationTurnWorker(
                 )),
                 ...(instructionActor ? { actor: instructionActor } : undefined),
                 ...childTurn.instruction,
+                ...(turnWatch ? { watch: turnWatch } : undefined),
                 storedAttachments: attachments,
                 // Only a Slack thread holds Messages that are not Turn input.
                 context:

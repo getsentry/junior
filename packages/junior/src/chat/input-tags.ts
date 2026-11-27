@@ -87,16 +87,19 @@ function dataNotice(writer: string): string {
 export const TOP_LEVEL_AGENT_WRITER = "Another top-level agent";
 
 /**
- * Return the words of the `<agent-message>` inputs that other top-level
- * agents sent, without their tags and data notice. Returns nothing when the
- * text holds anything else. Core counts such a message as the brief of the
- * Run (`brief-is-instruction`), so Guardian reads its words, not the notice.
+ * Return the `<agent-message>` inputs that other top-level agents sent: the
+ * sender's Conversation and the words without their tag and data notice.
+ * Returns nothing when the text holds anything else. Core counts such a
+ * message as the brief of the Run (`brief-is-instruction`), so Guardian
+ * reads its words, not the notice.
  */
-export function readTopLevelAgentMessages(text: string): string | undefined {
+export function readTopLevelAgentMessages(
+  text: string,
+): Array<{ conversationId?: string; text: string }> | undefined {
   const blocks = findTags(text, "agent-message");
   const notice = dataNotice(TOP_LEVEL_AGENT_WRITER);
   let rest = text;
-  const bodies: string[] = [];
+  const bodies: Array<{ conversationId?: string; text: string }> = [];
   for (const block of blocks) {
     const body = block.body.trim();
     if (
@@ -106,9 +109,13 @@ export function readTopLevelAgentMessages(text: string): string | undefined {
       return undefined;
     }
     rest = rest.replace(text.slice(block.start, block.end), "");
-    bodies.push(unescapeTagText(body.slice(notice.length).trim()));
+    const sender = /\bconversation_id="([^"]*)"/.exec(block.opening)?.[1];
+    bodies.push({
+      ...(sender ? { conversationId: unescapeTagText(sender) } : undefined),
+      text: unescapeTagText(body.slice(notice.length).trim()),
+    });
   }
-  return bodies.length > 0 && !rest.trim() ? bodies.join("\n\n") : undefined;
+  return bodies.length > 0 && !rest.trim() ? bodies : undefined;
 }
 
 /**
