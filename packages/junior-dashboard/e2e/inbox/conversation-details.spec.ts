@@ -1,7 +1,7 @@
 import { conversationMenuRow } from "./conversationMenu";
 import { openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
-import { screenshot } from "../screenshot";
+import { mobile, screenshot } from "../screenshot";
 
 test.describe("new UI", () => {
   test("opens conversation details beside the chat", async ({
@@ -347,6 +347,40 @@ test.describe("new UI", () => {
     await expect(details.getByRole("button", { name: /^Change / })).toHaveCount(
       0,
     );
+  });
+
+  test("on a phone, an Inbox item in the details opens in its own sheet", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:questions-qa")}`,
+    );
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await conversationMenuRow(page, "Conversation details").click();
+    const details = page.getByRole("dialog", { name: "Conversation details" });
+    await details
+      .getByRole("region", { name: "Inbox" })
+      .getByRole("button", { name: "Handle the negative invoices" })
+      .click();
+    // The item does not open in place in the details, but over them.
+    const item = page.getByRole("dialog", {
+      name: "Handle the negative invoices",
+    });
+    await expect(item.getByRole("button", { name: "Skip them" })).toBeVisible();
+    await expect(
+      details.getByRole("button", { name: "Skip them" }),
+    ).toHaveCount(0);
+    await screenshot(page, "conversation-details-inbox-item", {
+      lightTheme: true,
+      view: "mobile",
+    });
+
+    // Close goes back to the details.
+    await item.getByRole("button", { exact: true, name: "Close" }).click();
+    await expect(item).toHaveCount(0);
+    await expect(details).toBeVisible();
   });
 
   test("keeps memories out of the transcript and jumps to their Turn", async ({

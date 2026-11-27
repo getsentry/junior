@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray, max } from "drizzle-orm";
 import type { NotificationPause } from "@/chat/notifications/pause";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorInboxItemDeliveries } from "@/db/schema";
+import { juniorInboxItemDeliveries, juniorInboxSnoozes } from "@/db/schema";
 
 /**
  * Why a delivery sent nothing. `taken`: the User took the item themselves,
@@ -33,6 +33,60 @@ export async function listInboxItemPushUserIds(
       ),
     );
   return new Set(rows.map((row) => row.userId));
+}
+
+/**
+ * Forget every web push of one open item to these Users, so the next show
+ * pushes it to them again and no cleared push closes it. Call it when an
+ * event gives them a new ask on the item, such as a review request.
+ */
+export async function resetInboxItemPushes(
+  db: JuniorDatabase,
+  input: { itemId: string; userIds: readonly string[] },
+): Promise<void> {
+  if (input.userIds.length === 0) return;
+  await db
+    .delete(juniorInboxItemDeliveries)
+    .where(
+      and(
+        eq(juniorInboxItemDeliveries.itemId, input.itemId),
+        inArray(juniorInboxItemDeliveries.userId, [...input.userIds]),
+        eq(juniorInboxItemDeliveries.channel, "web_push"),
+      ),
+    );
+}
+
+/**
+ * Take Users off an open item that they no longer have an ask on: cancel
+ * their snooze of it, and clear their pushes of it, so their devices close
+ * it as for a closed item.
+ */
+export async function leaveInboxItem(
+  db: JuniorDatabase,
+  input: { itemId: string; nowMs: number; userIds: readonly string[] },
+): Promise<void> {
+  if (input.userIds.length === 0) return;
+  const userIds = [...input.userIds];
+  await db
+    .update(juniorInboxSnoozes)
+    .set({ state: "cancelled" })
+    .where(
+      and(
+        eq(juniorInboxSnoozes.inboxItemId, input.itemId),
+        inArray(juniorInboxSnoozes.userId, userIds),
+        eq(juniorInboxSnoozes.state, "snoozed"),
+      ),
+    );
+  await db
+    .update(juniorInboxItemDeliveries)
+    .set({ status: "cleared", updatedAt: new Date(input.nowMs) })
+    .where(
+      and(
+        eq(juniorInboxItemDeliveries.itemId, input.itemId),
+        inArray(juniorInboxItemDeliveries.userId, userIds),
+        eq(juniorInboxItemDeliveries.status, "sent"),
+      ),
+    );
 }
 
 /**

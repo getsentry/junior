@@ -1,6 +1,7 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { STOPPED_CONVERSATION_SKIP_REASON } from "@/chat/conversations/held-input";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
@@ -11,10 +12,7 @@ import {
   renderEventBatchInputs,
 } from "@/chat/events/notification";
 import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
-import {
-  normalizeConversationText,
-  STOPPED_CONVERSATION_SKIP_REASON,
-} from "@/chat/services/conversation-memory";
+import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import {
   appendAndEnqueueInboundMessage,
   stopConversationWork,
@@ -275,8 +273,9 @@ export async function resumeForPersonInput(
 
 /**
  * Save held input as one skipped Message, the Message that a Turn would save
- * for it, so the next Turn reads it. The append is idempotent by Message id,
- * and the Message takes the id of the first input.
+ * for it. The next Turn gets it as Turn input (`withHeldInput`). The append
+ * is idempotent by Message id, and the Message takes the id of the first
+ * input.
  */
 export async function saveHeldInput(
   conversationId: string,

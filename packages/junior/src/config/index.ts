@@ -17,6 +17,8 @@ import {
   limitsSchema,
   readBotEnv,
 } from "@/config/bot";
+import { configDefaultsSchema } from "@/config/config-defaults";
+import { dashboardSchema } from "@/config/dashboard";
 import {
   deploymentSchema,
   deriveDeployment,
@@ -28,6 +30,9 @@ import {
   encryptionSchema,
   readEncryption,
 } from "@/config/encryption";
+import { developmentSchema, readDevelopmentEnv } from "@/config/development";
+import { eventEmbeddingsSchema } from "@/config/event-embeddings";
+import { experimentalSchema } from "@/config/experimental";
 import type { Env } from "@/config/fields";
 import {
   functionMaxDurationSecondsSchema,
@@ -38,6 +43,7 @@ import {
   killSwitchFields,
   readKillSwitchesEnv,
 } from "@/config/kill-switches";
+import { memorySchema, readMemoryEnv } from "@/config/memory";
 import { queueEnvNames, queueSchema, readQueueEnv } from "@/config/queue";
 import {
   readSandboxEnv,
@@ -46,9 +52,11 @@ import {
 } from "@/config/sandbox";
 import { readSecretsEnv, secretsSchema } from "@/config/secrets";
 import { readSignInEnv, signInSchema } from "@/config/sign-in";
+import { readSkillsEnv, skillsSchema } from "@/config/skills";
 import { readSlackEnv, slackEnvNames, slackSchema } from "@/config/slack";
 import { deriveSql, readSqlEnv, sqlEnvNames, sqlSchema } from "@/config/sql";
 import { readStateEnv, stateEnvNames, stateSchema } from "@/config/state";
+import { deriveTrust, trustSchema } from "@/config/trust";
 import { readWebPushEnv, webPushSchema } from "@/config/web-push";
 
 const configObjectSchema = z.strictObject({
@@ -57,7 +65,13 @@ const configObjectSchema = z.strictObject({
     provider: "vercel-blob",
   }),
   bot: botSchema.prefault({}),
+  configDefaults: configDefaultsSchema,
+  dashboard: dashboardSchema,
   deployment: deploymentSchema,
+  development: developmentSchema,
+  eventEmbeddings: eventEmbeddingsSchema,
+  experimental: experimentalSchema,
+  memory: memorySchema,
   queue: queueSchema,
   functionMaxDurationSeconds: functionMaxDurationSecondsSchema,
   limits: limitsSchema.optional(),
@@ -69,7 +83,9 @@ const configObjectSchema = z.strictObject({
   sql: sqlSchema,
   slack: slackSchema,
   sandbox: sandboxSchema,
+  skills: skillsSchema,
   state: stateSchema,
+  trust: trustSchema,
 });
 
 const configSchema = configObjectSchema.transform(derive);
@@ -78,7 +94,8 @@ function derive({
   limits = {},
   ...config
 }: z.output<typeof configObjectSchema>) {
-  const { bot, deployment, functionMaxDurationSeconds, sql } = config;
+  const { bot, deployment, functionMaxDurationSeconds, signIn, sql, trust } =
+    config;
   return {
     ...config,
     bot: deriveBot(bot, limits, functionMaxDurationSeconds),
@@ -87,6 +104,7 @@ function derive({
       functionMaxDurationSeconds,
     ),
     sql: deriveSql(sql),
+    trust: deriveTrust(trust, signIn.allowedDomains),
   };
 }
 
@@ -130,6 +148,8 @@ function readEnv(env: Env): ConfigInput {
     attachmentStorage: readAttachmentStorage(env),
     bot: readBotEnv(env),
     deployment: readDeploymentEnv(env),
+    development: readDevelopmentEnv(env),
+    memory: readMemoryEnv(env),
     queue: readQueueEnv(env),
     ...readKillSwitchesEnv(env),
     encryption: readEncryption(env),
@@ -139,6 +159,7 @@ function readEnv(env: Env): ConfigInput {
     sql: readSqlEnv(env),
     slack: readSlackEnv(env),
     sandbox: readSandboxEnv(env),
+    skills: readSkillsEnv(env),
     state: readStateEnv(env),
   };
 }

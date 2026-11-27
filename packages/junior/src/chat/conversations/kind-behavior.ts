@@ -237,7 +237,6 @@ const LEAD_TOOLS = [
   "listAgents",
   "stopAgent",
   "archiveAgent",
-  "searchConversations",
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",
@@ -259,7 +258,6 @@ const LEAD_TOOLS = [
 // The tools a Lead uses on most Turns to find and follow its person's work.
 const LEAD_DIRECT_TOOLS = [
   "listAgents",
-  "searchConversations",
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",
@@ -404,14 +402,6 @@ export function remindsNoReplyForChildStatus(
 export function storesSpace(
   kind: ConversationKind | null | undefined,
 ): boolean {
-  return kind === "lead";
-}
-
-/**
- * Return whether only members of the Conversation's Space can send it a
- * Message. A Space's Lead talks only to its members.
- */
-export function messagesNeedSpaceMembership(kind: ConversationKind): boolean {
   return kind === "lead";
 }
 

@@ -15,12 +15,12 @@ import {
   canActOnInboxItem,
   canAnswerInboxItem,
   canUserReadInboxItem,
-  inboxItemTodo,
   isAutomationAlertItem,
   isInboxItemForEveryone,
   isOnlyAssignee,
   isPluginInboxItem,
 } from "./access";
+import { subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
 import { matchReplyToInboxItems } from "./reply-match";
@@ -33,6 +33,7 @@ import {
   takeInboxItem,
   type InboxItem,
 } from "./store";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * What a person can do with an Inbox item. A To-do's item takes only
@@ -100,13 +101,14 @@ function submittedAnswer(
   item: InboxItem,
   answer: UserInputAnswer | undefined,
 ): UserInputAnswer {
-  if (item.kind !== "action" || !item.request) {
+  const question = inboxItemQuestion(item.request);
+  if (item.kind !== "action" || !question) {
     throw new InboxItemActionError(
       "invalid",
       "Only an action item takes an answer.",
     );
   }
-  const normalized = normalizeUserInputAnswer(item.request, {
+  const normalized = normalizeUserInputAnswer(question, {
     other: answer?.other,
     requestId: item.id,
     values: answer?.values ?? {},
@@ -146,7 +148,7 @@ export async function actOnInboxItem(args: {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
   const item = await readInboxItemForUser(user, args.id);
-  const todo = inboxItemTodo(item);
+  const todo = subjectTodo(item.subject);
   if (todo) {
     if (action !== "done" && action !== "dismiss") {
       throw new InboxItemActionError(
@@ -275,7 +277,7 @@ async function closeTodoItem(
   nowMs: number,
   action: "dismiss" | "done",
 ): Promise<InboxItem> {
-  const todo = inboxItemTodo(item)!;
+  const todo = subjectTodo(item.subject)!;
   if (item.status === "open") {
     if (!canActOnInboxItem(item, user.id)) {
       throw new InboxItemActionError(
@@ -320,8 +322,9 @@ function messageAnswer(
   item: InboxItem,
   text: string,
 ): UserInputAnswer | undefined {
-  if (!item.request) return undefined;
-  const answer = normalizeUserInputAnswer(item.request, {
+  const question = inboxItemQuestion(item.request);
+  if (!question) return undefined;
+  const answer = normalizeUserInputAnswer(question, {
     other: text,
     requestId: item.id,
     values: {},

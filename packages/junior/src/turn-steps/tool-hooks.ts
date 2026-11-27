@@ -3,14 +3,18 @@ import { reviewToolActions } from "@/chat/guardian/gate";
 import { capToolResult } from "@/chat/tool-support/result-cap";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { AnyToolDefinition } from "@/chat/tool-support/definition";
+import type { EngineContext } from "@/core/engine-context";
 import type { ToolExecutionHooks, ToolResult } from "@/core/tool";
+import { checkTurnLimits } from "./limits";
 
 /**
- * Builds the tool hooks of one step. Core has no Guardian yet, so a call that
- * needs review gets main's "review unavailable" error and does not run.
- * Calls that need no review run.
+ * Builds the tool hooks of one step. A batch past the Turn's limits does not
+ * run. Core has no Guardian yet, so a call that needs review gets main's
+ * "review unavailable" error and does not run. Calls that need no review run.
  */
 export function turnToolHooks(options: {
+  ctx: Pick<EngineContext, "executor">;
+  turnId: string;
   /** Main's definition of each of the step's tools, by name. */
   tools: Map<string, AnyToolDefinition>;
   /** Where a cut result's full text goes. */
@@ -18,6 +22,10 @@ export function turnToolHooks(options: {
 }): ToolExecutionHooks {
   return {
     async beforeBatch(calls, signal) {
+      const limited = await checkTurnLimits(options.ctx, options.turnId, calls);
+      if (limited) {
+        return limited;
+      }
       // Each call alone, as main reviews a direct call. One batch of more than
       // MAX_TOOL_ACTION_BATCH would also reject the calls that need no review.
       const reviews = await Promise.all(

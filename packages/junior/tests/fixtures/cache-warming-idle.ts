@@ -16,7 +16,7 @@ import { spawnChildAgent } from "@/chat/child-agents/create";
 import { IDLE_HORIZON_MS, WARMUP_MARGIN_MS } from "@/chat/cache-warming/model";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore } from "@/chat/db";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 

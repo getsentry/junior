@@ -6,7 +6,7 @@ import {
   type Message as PiAiMessage,
   type Model,
 } from "@/chat/pi/sdk";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import type { PiMessage } from "@/chat/pi/messages";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { installEvalAiGatewayDispatcher } from "../../src/eval-ai-gateway-dispatcher";

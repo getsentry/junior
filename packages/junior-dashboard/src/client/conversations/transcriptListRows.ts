@@ -48,7 +48,7 @@ export const UNREAD_MARKER_KEY = "unread-marker";
  * "New" marker becomes its own row before the first unread row. The Tasks of a Turn move to its end, so they do not split its
  * activity: under its reply, or in a Tasks row when it has no reply yet. A
  * question that Junior asked moves after them, and shows once: at its last
- * ask, since a later ask with the same dedupe key updates the same item.
+ * change, since a later Turn changes the same item by its id.
  * Memory capture events do not show: the turn context and the details panel
  * hold a Turn's memories.
  *

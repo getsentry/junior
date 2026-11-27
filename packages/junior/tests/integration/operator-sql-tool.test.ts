@@ -2,12 +2,12 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
-import { setExperimentalFeatures } from "@/chat/experimental";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { createRunOperatorSqlTool } from "@/chat/tools/operator-sql";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
+import { patchConfig } from "../fixtures/config";
 
 const rootTurnTools = turnBehavior({
   kind: "thread",
@@ -54,13 +54,17 @@ describe("operator SQL tool", () => {
     ): string[] => Object.keys(createTools([], {}, context(privacy)));
     expect(toolNames("private")).not.toContain("runOperatorSql");
 
-    setExperimentalFeatures({ ...SUITE_EXPERIMENTAL, "operator-tools": true });
+    patchConfig({
+      experimental: { ...SUITE_EXPERIMENTAL, "operator-tools": true },
+    });
     expect(toolNames("private")).toContain("runOperatorSql");
     expect(toolNames("public")).not.toContain("runOperatorSql");
   });
 
   it("reads and writes the deployment database and reports SQL mistakes", async () => {
-    setExperimentalFeatures({ ...SUITE_EXPERIMENTAL, "operator-tools": true });
+    patchConfig({
+      experimental: { ...SUITE_EXPERIMENTAL, "operator-tools": true },
+    });
     await getConversationStore().recordActivity({
       conversationId: CONVERSATION_ID,
       destination: { platform: "local", conversationId: CONVERSATION_ID },

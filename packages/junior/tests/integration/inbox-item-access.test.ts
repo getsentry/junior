@@ -11,6 +11,7 @@ import {
   searchInboxItems,
   type InboxItemVisibility,
 } from "@/chat/inbox-items/store";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { juniorAutomations, juniorIdentities } from "@/db/schema";
 
 const T123 = { provider: "slack", providerTenantId: "T123" };
@@ -18,6 +19,7 @@ const T999 = { provider: "slack", providerTenantId: "T999" };
 const PUBLIC_CONVERSATION = "slack:CPUB:1.000001";
 const PRIVATE_CONVERSATION = "slack:CPRIV:1.000002";
 const OTHER_CONVERSATION = "slack:COTHER:1.000003";
+const CONVERTED_CONVERSATION = "slack:CCONV:1.000004";
 
 async function conversation(
   conversationId: string,
@@ -46,17 +48,28 @@ async function addItem(input: {
   assigneeUserIds: string[];
   automationId?: string;
   conversationId: string;
-  dedupeKey: string;
+  key: string;
   kind?: "action" | "notice";
   visibility: InboxItemVisibility;
 }): Promise<string> {
+  // A run of an Automation adds its item from the run's own Conversation.
+  let ownerId = input.conversationId;
+  if (input.automationId) {
+    // Each run has its own channel, so it keeps its own visibility.
+    ownerId = `slack:CRUN${input.key.replaceAll("-", "").toUpperCase()}:1.000001`;
+    await conversation(ownerId, input.visibility);
+    await recordAutomationExecution(input.automationId, {
+      conversationId: ownerId,
+      executionId: `run-${input.key}`,
+    });
+  }
   const item = await insertInboxItem(getDb(), {
-    owner: { id: input.conversationId, kind: "conversation" },
+    subject: { id: input.key, kind: "question" },
+    owner: { id: ownerId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: input.assigneeUserIds,
     body: "Body",
     conversationIds: [input.conversationId],
-    dedupeKey: input.dedupeKey,
     kind: input.kind ?? "notice",
     nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
     // An action item asks a question.
@@ -68,12 +81,9 @@ async function addItem(input: {
           },
         }
       : undefined),
-    tenant: T123,
-    title: input.dedupeKey,
-    visibility: input.visibility,
-    ...(input.automationId ? { automationId: input.automationId } : undefined),
+    title: input.key,
   });
-  if (!item) throw new Error(`no item for ${input.dedupeKey}`);
+  if (!item) throw new Error(`no item for ${input.key}`);
   return item.id;
 }
 
@@ -86,6 +96,10 @@ describe("inbox item access", () => {
     await conversation(PUBLIC_CONVERSATION, "public");
     await conversation(PRIVATE_CONVERSATION, "private");
     await conversation(OTHER_CONVERSATION, "public");
+    // The private channel became public. Its Destination follows, but the
+    // Conversation stays private.
+    await conversation(CONVERTED_CONVERSATION, "private");
+    await conversation(CONVERTED_CONVERSATION, "public");
     const ana = await userId("ana@example.com");
     const carl = await userId("carl@example.com");
     await getDb()
@@ -119,35 +133,33 @@ describe("inbox item access", () => {
         assigneeUserIds: [ana],
         automationId: "auto-1",
         conversationId: PUBLIC_CONVERSATION,
-        dedupeKey: "public",
+        key: "public",
         visibility: "public",
       }),
       privateItem: await addItem({
         assigneeUserIds: [ana],
         conversationId: PRIVATE_CONVERSATION,
-        dedupeKey: "private",
+        key: "private",
         visibility: "private",
       }),
       publicQuestion: await addItem({
         assigneeUserIds: [ana],
         conversationId: PUBLIC_CONVERSATION,
-        dedupeKey: "public-question",
+        key: "public-question",
         kind: "action",
         visibility: "public",
       }),
-      // An item added before its Conversation became public stays private.
-      privateQuestionInPublic: await addItem({
+      convertedItem: await addItem({
         assigneeUserIds: [ana],
-        conversationId: PUBLIC_CONVERSATION,
-        dedupeKey: "private-question",
-        kind: "action",
+        conversationId: CONVERTED_CONVERSATION,
+        key: "converted",
         visibility: "private",
       }),
       privateAutomationItem: await addItem({
         assigneeUserIds: [carl],
         automationId: "auto-1",
         conversationId: PRIVATE_CONVERSATION,
-        dedupeKey: "private-automation",
+        key: "private-automation",
         visibility: "private",
       }),
     };
@@ -160,18 +172,13 @@ describe("inbox item access", () => {
       [
         "assigned User",
         { userId: ana },
-        [
-          "privateItem",
-          "privateQuestionInPublic",
-          "publicItem",
-          "publicQuestion",
-        ],
+        ["convertedItem", "privateItem", "publicItem", "publicQuestion"],
       ],
       ["other assigned User", { userId: carl }, ["privateAutomationItem"]],
       [
         "public linked Conversation",
         { conversationId: PUBLIC_CONVERSATION },
-        ["privateQuestionInPublic", "publicItem", "publicQuestion"],
+        ["publicItem", "publicQuestion"],
       ],
       [
         "person who views a public Conversation",

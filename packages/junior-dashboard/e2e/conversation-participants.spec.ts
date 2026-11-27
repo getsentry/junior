@@ -95,7 +95,7 @@ test("Invite adds the people that the picker finds to a public conversation", as
     .click();
   await invited;
   await expect(search).toHaveCount(0);
-  expect(invites).toEqual([{ slackUserId: "U456" }]);
+  expect(invites).toEqual([{ userId: "mock-user-U456" }]);
 });
 
 test("the picker fits a phone's details sheet", async ({ dashboard, page }) => {

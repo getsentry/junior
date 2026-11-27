@@ -70,10 +70,12 @@ export function DetailsPanel(props: {
   }, [panel, overlay, onClose]);
   if (!panel) {
     return (
+      // A resize mounts it, so it stays behind an open drawer.
       <BottomSheet
         label={props.label}
-        title={props.sheetTitle}
         onClose={onClose}
+        stayBehind
+        title={props.sheetTitle}
       >
         {props.actions ? (
           <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">

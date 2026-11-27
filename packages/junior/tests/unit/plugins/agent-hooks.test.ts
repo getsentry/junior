@@ -16,6 +16,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { patchConfig } from "../../fixtures/config";
 
 const { logWarnMock, resolveViewerUserMock } = vi.hoisted(() => ({
   logWarnMock: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   };
 });
 vi.mock("@/chat/plugins/viewer", () => ({
+  createPluginUsers: vi.fn(),
   readIdentityById: vi.fn(),
   resolveViewerUser: resolveViewerUserMock,
 }));
@@ -50,7 +52,6 @@ import {
 import { createPluginHookRunner } from "@/chat/plugins/hooks/runner";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -2241,17 +2242,15 @@ describe("getPluginTools channel resolution", () => {
   });
 
   it("exposes the dashboard conversation link outside Slack", () => {
-    const previous = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
-    try {
-      const ctx = capturePluginContext();
-      expect(ctx.slack).toBeUndefined();
-      expect(ctx.conversationLink).toEqual({
-        url: `https://junior.example.com/conversations/${encodeURIComponent(LOCAL_DESTINATION.conversationId)}`,
-      });
-    } finally {
-      setDashboardConversationLinkOptions(previous);
-    }
+    const ctx = capturePluginContext();
+    expect(ctx.slack).toBeUndefined();
+    expect(ctx.conversationLink).toEqual({
+      url: `https://junior.example.com/conversations/${encodeURIComponent(LOCAL_DESTINATION.conversationId)}`,
+    });
   });
 });

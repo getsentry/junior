@@ -467,7 +467,7 @@ describe("conversation stop API", () => {
     );
     await work.process(queue.takeMessageFor(created.conversationId));
     expect(rootRuns).toHaveLength(2);
-    expect(rootRuns[1]!.instruction.context).toContain("Child finding: 42.");
+    expect(rootRuns[1]!.instruction.text).toContain("Child finding: 42.");
   });
 
   it("keeps the stop below a child agent when its run sees the stop late", async () => {

@@ -9,7 +9,7 @@ import {
 } from "@/chat/conversations/projection";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationEventStore } from "@/chat/db";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import type { PiMessage } from "@/chat/pi/messages";
 import { getAgentBackgroundCompactionMarkTokens } from "@/chat/services/context-budget";
 import { textCharsForTokens } from "@/chat/services/token-estimate";

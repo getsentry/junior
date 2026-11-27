@@ -34,6 +34,26 @@ describe("renderTaskInput", () => {
     );
   });
 
+  it("lists the open questions of earlier runs by item id", () => {
+    const text = renderTaskInput({
+      instructions: "Review the Acme entry.",
+      openQuestions: [{ id: "item-1", title: "Approve the\nAcme entry?" }],
+    });
+
+    expect(text).toContain(
+      [
+        "<instructions>Review the Acme entry.</instructions>",
+        "<open-questions>",
+        "Earlier runs of this Automation asked these questions, and they are still open. To ask one of them again, change it by its id.",
+        "- item-1: Approve the Acme entry?",
+        "</open-questions>",
+      ].join("\n"),
+    );
+    expect(
+      renderTaskInput({ instructions: "Review.", openQuestions: [] }),
+    ).not.toContain("<open-questions>");
+  });
+
   it("renders optional facts, then the reply contract, then Event text last", () => {
     const text = renderTaskInput({
       about: "GitHub PR getsentry/junior#691",

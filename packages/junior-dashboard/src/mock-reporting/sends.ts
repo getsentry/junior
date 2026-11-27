@@ -86,14 +86,9 @@ export function createMockConversation(args: {
   return conversationId;
 }
 
-function mockLeadId(spaceId: string): string {
+/** The id of a Space's mock Lead. */
+export function mockLeadId(spaceId: string): string {
   return mockConversationId("lead", spaceId);
-}
-
-/** Find the mock Lead of a Space, if it was made. */
-export function findMockLead(spaceId: string): string | undefined {
-  const conversationId = mockLeadId(spaceId);
-  return createdConversations.has(conversationId) ? conversationId : undefined;
 }
 
 /**

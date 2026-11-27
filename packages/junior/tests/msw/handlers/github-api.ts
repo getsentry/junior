@@ -38,6 +38,12 @@ export const githubApiHandlers = [
         expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
   ),
+  // A pull request card reads the change types of its repository. A
+  // repository without `.github/release.yml` uses the default ones.
+  http.get(
+    `${GITHUB_API_ORIGIN}/repos/:owner/:repo/contents/.github/release.yml`,
+    () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+  ),
   // A failed check event reads githubstatus.com for GitHub incidents.
   http.get("https://www.githubstatus.com/api/v2/incidents.json", () =>
     HttpResponse.json({ incidents: [] }),

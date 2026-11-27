@@ -4,10 +4,6 @@
 
 import { Hono, type Context } from "hono";
 import {
-  getConfigDefaults,
-  setConfigDefaults,
-} from "@/chat/configuration/defaults";
-import {
   botConfig,
   getChatConfig,
   installChatConfig,
@@ -19,17 +15,7 @@ import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
-import {
-  getExperimentalFeatures,
-  setExperimentalFeatures,
-  type ExperimentalFeaturesConfig,
-} from "@/chat/experimental";
-import { setEventEmbeddingsConfig } from "@/chat/conversations/event-embedding-config";
-import {
-  getSandboxResourceConfig,
-  setSandboxResourceConfig,
-  type SandboxResourceConfig,
-} from "@/chat/sandbox/resources";
+import type { ExperimentalFeaturesConfig } from "@/chat/experimental";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
@@ -38,11 +24,7 @@ import {
   getPluginApiRoutes,
   getPluginRoutes,
 } from "@/chat/plugins/hooks/routes";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import {
-  setMemoryConfig,
-  type MemoryOptions,
-} from "@/chat/memory/registration";
+import type { MemoryOptions } from "@/chat/memory/registration";
 import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
@@ -131,7 +113,6 @@ import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
-import { setTrustConfig, type TrustConfig } from "@/chat/identities/trust";
 import {
   createIdentityDispatcher,
   type IdentityDispatcher,
@@ -153,10 +134,7 @@ import {
   type SignInAuth,
   type SignInAuthConfig,
 } from "@/chat/sign-in/auth";
-import {
-  assertNoLegacyAllowedDomains,
-  resolveAllowedDomains,
-} from "@/chat/sign-in/allowlist";
+import { assertNoLegacyAllowedDomains } from "@/chat/sign-in/allowlist";
 import { JUNIOR_VERSION } from "./version";
 import {
   createDashboardRouteRegistrations,
@@ -267,7 +245,12 @@ export interface JuniorAppOptions extends BotModelConfig {
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
-  sandbox?: SandboxResourceConfig & {
+  sandbox?: {
+    /**
+     * vCPUs of each sandbox. Each vCPU adds 2 GB of memory. A Workspace vCPU
+     * count wins over it, and it wins over `SANDBOX_VCPUS`.
+     */
+    vcpus?: number | undefined;
     /**
      * Egress domains allowed to carry Sentry trace propagation headers.
      * Entries may be exact domains or leading wildcard domains such as
@@ -359,14 +342,32 @@ function appConfigInput(
       refusalFallbackModelId: options?.refusalFallbackModelId,
       userName: virtualConfig?.botName,
     },
+    configDefaults: options?.configDefaults,
+    dashboard: dashboard && {
+      basePath: dashboard.basePath,
+      baseURL: dashboard.baseURL,
+      disabled: dashboard.disabled,
+    },
     deployment: {
       configuredBaseUrl: dashboard?.baseURL?.trim() || undefined,
     },
+    eventEmbeddings: options?.eventEmbeddings,
+    experimental: options?.experimental,
     functionMaxDurationSeconds: virtualConfig?.functionMaxDurationSeconds,
     limits: options?.limits,
+    memory: {
+      disableExtraction: options?.memory?.disableExtraction,
+      disableRecall: options?.memory?.disableRecall,
+      modelId: options?.memory?.modelId?.trim() || undefined,
+    },
+    sandbox: { vcpus: options?.sandbox?.vcpus },
     slack: {
       completedReactionEmoji: options?.slack?.completedReactionEmoji,
       processingReactionEmoji: options?.slack?.processingReactionEmoji,
+    },
+    trust: {
+      allowedBotUserIds: options?.slack?.allowedBotUserIds,
+      allowedDomains: options?.allowedDomains,
     },
   };
 }
@@ -491,28 +492,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPluginCatalogConfig =
     pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
-  const previousConfigDefaults = getConfigDefaults();
-  const previousSandboxResources = getSandboxResourceConfig();
-  const previousExperimentalFeatures = getExperimentalFeatures();
-  const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
-    options?.eventEmbeddings,
-  );
-  const previousMemoryConfig = setMemoryConfig(options?.memory);
-  const previousDashboardLinkOptions =
-    setDashboardConversationLinkOptions(dashboard);
-  let previousTrustConfig: TrustConfig | undefined;
   let restoreChatConfig: (() => void) | undefined;
   const restoreRuntimeConfig = (): void => {
-    if (previousTrustConfig) setTrustConfig(previousTrustConfig);
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
-    setConfigDefaults(previousConfigDefaults);
     restoreChatConfig?.();
-    setSandboxResourceConfig(previousSandboxResources);
-    setExperimentalFeatures(previousExperimentalFeatures);
-    setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
-    setMemoryConfig(previousMemoryConfig);
-    setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
@@ -531,10 +515,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       normalizeSandboxEgressTracePropagationDomains(
         options?.sandbox?.egressTracePropagationDomains,
       );
-    setSandboxResourceConfig(options?.sandbox);
-    setExperimentalFeatures(options?.experimental);
-    setConfigDefaults(options?.configDefaults);
-    warnUnregisteredConfigDefaults(options?.configDefaults);
     // Resolve the whole config from env and this app's options, so this app
     // cannot inherit an earlier app's models, limits, or Slack settings.
     const previousChatConfig = installChatConfig(
@@ -544,13 +524,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       }),
     );
     restoreChatConfig = () => installChatConfig(previousChatConfig);
+    warnUnregisteredConfigDefaults(options?.configDefaults);
     // One domain list for Slack authors and dashboard sign-ins.
     assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
-    allowedDomains = resolveAllowedDomains(options?.allowedDomains);
-    previousTrustConfig = setTrustConfig({
-      allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
-      allowedDomains,
-    });
+    allowedDomains = getChatConfig().trust.allowedDomains;
     if (allowedDomains.length === 0) {
       logWarn("app.allowed_domains.unset", {
         "app.reason":

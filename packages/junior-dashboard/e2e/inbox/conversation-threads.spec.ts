@@ -67,11 +67,7 @@ test.describe("new UI", () => {
     );
 
     const threads = details.getByRole("region", { name: "Threads" });
-    // Its one Thread is done, so Done starts collapsed.
-    await expect(
-      threads.getByRole("button", { name: "Done · 1" }),
-    ).toHaveAttribute("aria-expanded", "false");
-    // Archived Threads sit under Done, so showing them opens it.
+    await expect(threads.getByRole("listitem")).toHaveCount(1);
     await threads.getByRole("button", { name: "Show archived (1)" }).click();
     await expect(
       threads.getByRole("link", { name: /^archived Compare sidebar badges/ }),
@@ -408,6 +404,9 @@ test.describe("new UI", () => {
     await expect(
       transcript.getByRole("group", { name: "Message to Conversation" }),
     ).toContainText("Refused");
+    // The chip click left the pointer on the transcript. The scroll would
+    // move the sent row's link under it and show its hover underline.
+    await page.mouse.move(-1, -1);
     await sent.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-agent-messages", { lightTheme: true });
 

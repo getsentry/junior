@@ -5,7 +5,7 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {

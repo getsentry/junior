@@ -14,8 +14,12 @@ import {
   type Event,
   type TaskOutcome,
 } from "@sentry/junior-plugin-api";
-import { dispatchEventAutomation } from "@/chat/agent-dispatch/context";
+import {
+  dispatchEventAutomation,
+  eventAutomationDispatchId,
+} from "@/chat/agent-dispatch/context";
 import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
+import { listOpenAutomationQuestions } from "@/chat/inbox-items/automation-questions";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
@@ -62,13 +66,17 @@ function eventAutomationDispatchKey(
     .slice(0, 32)}`;
 }
 
-/** Render plain agent input for one matching event automation. */
+/**
+ * Render plain agent input for one matching event automation, with the open
+ * questions of its earlier runs.
+ */
 function eventInput(
   task: EventAutomation,
   event: Event,
   outcomes: TaskOutcome[],
   catalog: EventCatalog,
   author: AuthorTrust,
+  openQuestions: ReadonlyArray<{ id: string; title: string }>,
 ): string {
   const guidance = eventGuidance(catalog, event.namespace, event.eventType);
   return renderTaskInput({
@@ -78,6 +86,7 @@ function eventInput(
     creator: slackMention(task.createdBy.slackUserId),
     instructions: automationTaskText(task.task),
     ...(task.task.kind === "skill" ? { skill: task.task.skill } : undefined),
+    openQuestions,
     outcomes,
     guidance,
     trustedSummary: event.trustedSummary,
@@ -195,6 +204,13 @@ export async function ingestEventAutomations(
               taskId: task.id,
             }
           : undefined;
+      // The run's row exists before its dispatch, so the dispatch links it
+      // to the run's Conversation before the run's agent can act.
+      await recordEventAutomationRunStarted(db, {
+        automation: task,
+        dispatchId: eventAutomationDispatchId(idempotencyKey),
+        nowMs,
+      });
       const dispatch = await dispatchEventAutomation({
         automationId: task.id,
         conversationWorkQueue: options.queue,
@@ -204,17 +220,19 @@ export async function ingestEventAutomations(
           ...(credentialSubject ? { credentialSubject } : undefined),
           destination,
           destinationVisibility: task.destinationVisibility,
-          input: eventInput(task, event, outcomes, catalog, author),
+          input: eventInput(
+            task,
+            event,
+            outcomes,
+            catalog,
+            author,
+            await listOpenAutomationQuestions(db, task.id),
+          ),
           ...(skill ? { skill } : undefined),
           metadata: { eventAutomationId: task.id },
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,
         },
-      });
-      await recordEventAutomationRunStarted(db, {
-        automation: task,
-        dispatchId: dispatch.id,
-        nowMs,
       });
       if (dispatch.status === "created") {
         dispatched += 1;

@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAgentModelRequest } from "@/chat/agent/context-summary";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
-import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import { getGatewayApiKey } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import {
   processBackgroundCompaction,
   requestBackgroundCompaction,
@@ -20,7 +21,7 @@ import type { BackgroundCompactionMessage } from "@/chat/services/background-com
 import { getAgentBackgroundCompactionMarkTokens } from "@/chat/services/context-budget";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { contextProvenance } from "@/chat/conversations/provenance";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { closeConversationFixture } from "../fixtures/conversation";
 import {

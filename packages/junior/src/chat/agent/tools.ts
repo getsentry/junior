@@ -243,7 +243,6 @@ interface ToolWiringArgs {
 
 /** Record optional reporting without changing the loadSkill outcome. */
 async function tryRecordSkillLoadStat(skill: Skill) {
-  if (!process.env["DATABASE_URL"]) return;
   try {
     await incrementStat({
       namespace: skill.pluginProvider ?? "junior",

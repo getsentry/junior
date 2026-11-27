@@ -20,6 +20,7 @@ import { ConversationActivityChart } from "./ConversationActivityChart";
 import { GuardianActivity } from "./GuardianActivity";
 import { MergedChangeCostChart } from "./MergedChangeCostChart";
 import { PersonSpendCharts } from "./PersonSpendCharts";
+import { SystemActivityLoading } from "./SystemActivityLoading";
 
 function periodTotals(days: ConversationMetricDay[]) {
   return days.reduce(
@@ -57,14 +58,15 @@ export function SystemActivity(props: {
   stats: ConversationStatsReport | undefined;
 }) {
   if (!props.stats) {
+    if (props.loading) {
+      return <SystemActivityLoading range={props.range} />;
+    }
     return (
       <Card padding="sm">
         <EmptyTelemetry>
           {props.error
             ? "Conversation metrics failed to load."
-            : props.loading
-              ? "Loading conversation metrics."
-              : "No conversation metrics have been reported yet."}
+            : "No conversation metrics have been reported yet."}
         </EmptyTelemetry>
       </Card>
     );
