@@ -55,6 +55,7 @@ function SpaceNavRow(props: {
         >
           <ConversationIcon
             className="justify-self-center"
+            iconId={space.id}
             name={space.name}
             size="sm"
             visibility={space.visibility}

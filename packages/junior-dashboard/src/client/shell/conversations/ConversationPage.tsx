@@ -60,6 +60,7 @@ import { useSpaceActions } from "../../spaces/SpaceActions";
 import { useSpaceData } from "../../spaces/queries";
 import { SpaceChip } from "../../spaces/SpaceChip";
 import { ConversationIcon } from "../../conversations/ConversationIcon";
+import { conversationIconId } from "../../conversations/conversationIconMark";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import { ConversationDock } from "./ConversationDock";
 import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
@@ -397,7 +398,7 @@ export function ConversationPage(props: {
     { conversation, detail: conversationDetail },
     lead ? leadSpace : undefined,
   );
-  // A Lead has no pin, so its header shows only its status.
+  // A Lead has no pin, so its header shows no pin state.
   const displayState = conversation
     ? conversationDisplayState(
         lead ? { ...conversation, pinnedAt: null } : conversation,
@@ -725,7 +726,13 @@ export function ConversationPage(props: {
               icon={
                 // A Lead shows the icon that its Space shows elsewhere. No
                 // other Conversation shows its icon yet.
-                lead ? <ConversationIcon name={title} size="md" /> : null
+                lead && detail.data ? (
+                  <ConversationIcon
+                    iconId={conversationIconId(detail.data)}
+                    name={title}
+                    size="md"
+                  />
+                ) : null
               }
               forks={
                 detail.data?.forkedFromConversationId ||

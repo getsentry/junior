@@ -1,12 +1,10 @@
 import { LockKeyhole } from "lucide-react";
 
 import { cn } from "../styles";
-import { conversationInitials } from "./conversationIconMark";
-
-// The Product style (`brand/styles.md`): a solid fill in the text color with
-// the inverse text color for the glyph, so it keeps more than 15:1 contrast
-// in both themes and needs no other decoration. Change the icon's look here.
-const ICON_STYLE = "bg-dashboard-text text-dashboard-text-inverse";
+import {
+  conversationIconColor,
+  conversationInitials,
+} from "./conversationIconMark";
 
 const ICON_SIZES = {
   // The pane's icon column.
@@ -35,6 +33,8 @@ const LOCK_SIZES = {
  */
 export function ConversationIcon(props: {
   className?: string;
+  /** Picks the color. See `conversationIconId`. */
+  iconId: string;
   name: string;
   /** Set only on Space surfaces, where nothing else shows the visibility. */
   visibility?: "private" | "public" | undefined;
@@ -49,7 +49,7 @@ export function ConversationIcon(props: {
         GLYPH_SIZES[props.size][
           Array.from(initials).length > 1 ? "two" : "one"
         ],
-        ICON_STYLE,
+        conversationIconColor(props.iconId),
         props.className,
       )}
     >
