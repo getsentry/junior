@@ -80,7 +80,11 @@ export function InboxRowCard(props: {
     actions || props.rowActions ? (
       <>
         {actions?.onDismiss ? (
-          <RowDismissButton look={look} onClick={actions.onDismiss} />
+          <RowDismissButton
+            look={look}
+            note={actions.dismissNote}
+            onClick={actions.onDismiss}
+          />
         ) : null}
         {actions?.onSnooze ? (
           <RowSnoozeButton

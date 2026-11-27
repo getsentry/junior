@@ -586,7 +586,11 @@ describe("the Inbox item of an issue that Junior created", () => {
         canAct: true,
         conversationIds: [],
         body: expect.stringContaining(ISSUE_URL),
-        subject: { kind: "github:issue" },
+        subject: {
+          // Dismiss says that it also unassigns Out on GitHub.
+          dismissNote: "Also unassigns you on GitHub.",
+          kind: "github:issue",
+        },
       });
       // No root tells the dashboard that the viewer cannot see it.
       expect(card).not.toHaveProperty("rootConversationId");

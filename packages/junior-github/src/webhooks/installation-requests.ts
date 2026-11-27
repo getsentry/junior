@@ -47,7 +47,8 @@ export interface GitHubInstallationEnv {
   tokens?: InstallationTokens | undefined;
 }
 
-function splitRepository(fullName: string, label: string) {
+/** Split `owner/name`, or throw an error that names the request. */
+export function splitRepository(fullName: string, label: string) {
   const [owner, name, ...extra] = fullName.split("/");
   if (!owner || !name || extra.length > 0) {
     throw new Error(`GitHub ${label} received an invalid repository name`);
@@ -425,46 +426,6 @@ export async function requestPullRequestReviewers(
       token: token.token,
     },
   );
-}
-
-/**
- * Unassign people from one issue, with an issues write token. A gone issue
- * has nobody left to unassign.
- */
-export async function removeIssueAssignees(
-  env: GitHubInstallationEnv,
-  input: { assignees: string[]; number: number; repositoryFullName: string },
-): Promise<void> {
-  const { owner, name } = splitRepository(
-    input.repositoryFullName,
-    "issue unassign",
-  );
-  const token = await issueInstallationToken({
-    ...env,
-    permissions: { issues: "write" },
-    repositories: [name],
-  });
-  try {
-    await githubRequest(
-      "https://api.github.com",
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${input.number}/assignees`,
-      {
-        body: { assignees: input.assignees },
-        method: "DELETE",
-        token: token.token,
-      },
-    );
-  } catch (error) {
-    // GitHub answers 410 for a deleted issue, and 404 when the issue or its
-    // repository is out of reach.
-    if (
-      error instanceof GitHubRequestError &&
-      (error.status === 404 || error.status === 410)
-    ) {
-      return;
-    }
-    throw error;
-  }
 }
 
 /**

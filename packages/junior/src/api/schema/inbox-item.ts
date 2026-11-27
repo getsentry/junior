@@ -127,6 +127,12 @@ export const inboxItemSchema = z
       .object({
         id: z.string().min(1),
         kind: z.string().min(1),
+        /**
+         * What else the viewer's Dismiss changes on the provider, such as
+         * `Also removes you from the reviewers on GitHub.` Unset when it
+         * changes nothing there.
+         */
+        dismissNote: z.string().min(1).optional(),
         /** The name of a plugin kind's ask, such as `Review requested`. */
         label: z.string().min(1).optional(),
         /**

@@ -31,6 +31,7 @@ import {
 } from "@/chat/inbox-items/access";
 import {
   questionLinks,
+  subjectKindDismissNote,
   subjectKindLabel,
   subjectTodo,
 } from "@/chat/inbox-items/subjects";
@@ -197,6 +198,12 @@ function subjectPayload(
   const url = view?.url;
   const object = view?.object;
   const label = subjectKindLabel(subject.kind, getPlugins(), object, viewer);
+  const dismissNote = subjectKindDismissNote(
+    subject.kind,
+    getPlugins(),
+    object,
+    viewer,
+  );
   const objectType = url && readLinkObjectType(url);
   const snoozeUrl = url ?? questionLinks(item)[0];
   const resource =
@@ -205,6 +212,7 @@ function subjectPayload(
     id: subject.id,
     kind: subject.kind,
     ...(label ? { label } : undefined),
+    ...(dismissNote ? { dismissNote } : undefined),
     ...(url ? { url } : undefined),
     ...(object ? { object } : undefined),
     ...(objectType ? { objectType } : undefined),

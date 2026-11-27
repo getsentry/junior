@@ -1,5 +1,6 @@
 import { and, eq, gte, isNull, ne, notExists } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -55,6 +56,7 @@ export async function dismissPluginInboxItem(args: {
       db: getDb(),
       plugin: pluginName,
     }),
+    codeChanges: createPluginCodeChanges(pluginName),
     conversationId,
     ...(handle ? { handle } : undefined),
     nowMs: args.nowMs,

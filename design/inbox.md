@@ -66,6 +66,7 @@ groups and acts on its rows.
   assignee their own place, such as a GitHub assignee or reviewer. Then a
   dismiss removes only the person who dismissed it, in the subject too. A
   dismiss is not a decision, so it does not continue the work.
+- A plugin item's Dismiss says what else it changes on the provider.
 - A person who wants someone else to act snoozes it until it closes.
   Snooze is per person. The item then waits in their Snoozed view, where
   they can still answer it, dismiss it, or wake it.

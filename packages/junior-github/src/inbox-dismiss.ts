@@ -8,8 +8,9 @@ import type { InboxItemDismissedHookContext } from "@sentry/junior-plugin-api";
 import { GITHUB_INBOX_SUBJECTS } from "./inbox-subjects.js";
 import {
   removeIssueAssignees,
-  type GitHubInstallationEnv,
-} from "./webhooks/installation-requests.js";
+  removeRequestedReviewer,
+} from "./webhooks/dismiss-requests.js";
+import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
 
 /** Split an Annotation key, such as `getsentry/junior#12`. */
 function parseObjectKey(
@@ -45,13 +46,40 @@ async function unassignFromIssue(
   await removeIssueAssignees(env, { ...ref, assignees: [login] });
 }
 
+/**
+ * Remove the person who dismissed a pull request item from its requested
+ * reviewers. A requester, such as on Ready to merge, holds no reviewer role,
+ * so their dismiss changes nothing on GitHub.
+ */
+async function removeFromReviewers(
+  ctx: InboxItemDismissedHookContext,
+  env: GitHubInstallationEnv,
+): Promise<void> {
+  if (!ctx.handle) return;
+  const [change] = await ctx.codeChanges.list({
+    providerIds: [ctx.subject.id],
+  });
+  if (!change) {
+    throw new Error(`GitHub pull request ${ctx.subject.id} has no code change`);
+  }
+  await removeRequestedReviewer(env, {
+    login: ctx.handle,
+    number: change.number,
+    repositoryFullName: change.repository.name,
+  });
+}
+
 /** Remove the person who dismissed a GitHub item from the object on GitHub. */
 export async function dismissGitHubItem(
   ctx: InboxItemDismissedHookContext,
   env: GitHubInstallationEnv,
 ): Promise<void> {
+  if (ctx.subject.kind === GITHUB_INBOX_SUBJECTS.pullRequest) {
+    await removeFromReviewers(ctx, env);
+    return;
+  }
   if (ctx.subject.kind !== GITHUB_INBOX_SUBJECTS.issue) return;
-  // A person is on a GitHub item only through their linked login.
+  // A person is on an issue item only through their linked login.
   if (!ctx.handle) {
     throw new Error("The person who dismissed has no linked GitHub account");
   }

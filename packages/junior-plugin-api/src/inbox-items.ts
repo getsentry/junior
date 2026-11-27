@@ -25,6 +25,17 @@ export interface PluginInboxSubjectKind {
     viewer: PluginInboxViewer,
   ) => string | undefined;
   /**
+   * Say what else a dismiss by the person who reads the item changes on
+   * the provider, such as `Also removes you from the reviewers on GitHub.`
+   * The Inbox shows it on Dismiss. `object` is the live card, unset when
+   * the kind has none or its read failed. Return undefined when their
+   * dismiss changes nothing there.
+   */
+  dismissNote?: (
+    object: ObjectAnnotation | undefined,
+    viewer: PluginInboxViewer,
+  ) => string | undefined;
+  /**
    * The subject id is the provider id of a code change that this plugin
    * records (`codeLinks`), such as a GitHub pull request id. Junior then
    * reads the item's link and its search title from the code change.
@@ -165,6 +176,8 @@ export interface PluginConversationInboxItems {
 export interface InboxItemDismissedHookContext extends PluginContext {
   /** Annotations of the Conversation that the item belongs to. */
   annotations: PluginAnnotations;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: PluginCodeChanges;
   /** The Conversation that the item belongs to. */
   conversationId: string;
   /**
