@@ -154,4 +154,4 @@ jobs:
         if: ${{ !cancelled() && steps.results.outcome == 'success' }}
         env:
           SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
-        run: node packages/junior-evals/scripts/report.mjs guardian packages/junior-evals/guardian-results.json
+        run: node packages/junior-evals/scripts/report.mjs ${{ matrix.arm == 'current' && 'guardian' || format('guardian-{0}', matrix.arm) }} packages/junior-evals/guardian-results.json

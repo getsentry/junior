@@ -49,6 +49,8 @@ export function renderAction(action: Action, script?: string): string {
     tool: action.tool,
     call: action.call,
     input: action.input,
+    // The tool waits for the person's yes to this exact action.
+    ...(action.permission === "ask" ? { permission: "ask" } : undefined),
     ...(script ? { madeBy: "a Code Mode script" } : undefined),
   });
   if (text.length > MAX_ACTION_CHARS) {

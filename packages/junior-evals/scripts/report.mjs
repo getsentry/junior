@@ -4,7 +4,14 @@ import { pathToFileURL } from "node:url";
 // Upload completed Vitest artifacts, not live runtime state. Each suite has one
 // run across all shards. Keep CI gates and artifact storage independent.
 const API_URL = "https://evals.sentry.dev";
-const SUITES = ["behavioral", "integration", "guardian", "classifiers"];
+const SUITES = [
+  "behavioral",
+  "integration",
+  "guardian",
+  // The agent Guardian arm of the Guardian evals.
+  "guardian-agent",
+  "classifiers",
+];
 
 // Fixture evals are in `src/fixture/`, so an eval file can be outside `evals/`.
 function scenarioFile(filename) {
@@ -168,7 +175,7 @@ async function post(endpoint, body, apiKey) {
 export async function reportEvals(suite, files, env = process.env) {
   if (!SUITES.includes(suite) || files.length === 0) {
     throw new Error(
-      "Usage: report.mjs <behavioral|integration|guardian|classifiers> <results.json> [...]",
+      "Usage: report.mjs <behavioral|integration|guardian|guardian-agent|classifiers> <results.json> [...]",
     );
   }
   const apiKey = env.SENTRY_EVALS_API_KEY?.trim();

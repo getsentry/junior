@@ -34,6 +34,11 @@ import { ProviderError } from "@/chat/services/provider-error";
 // gives the reason.
 const assessmentFields = {
   rule: z.enum(AGENT_GUARDIAN_RULE_IDS),
+  answered: z
+    .boolean()
+    .describe(
+      "True only when one of the instruction person's own lines is a yes to a question that named this exact action.",
+    ),
   reason: z.string().trim().min(1).max(500),
   missingFacts: z
     .array(z.string().trim().min(1).max(200))
@@ -85,38 +90,47 @@ function isDenyRule(rule: Rule): boolean {
 
 /**
  * Derive the review of one assessment (`rule-kinds`, `allow-default`).
- * An edit of a target that this work created clears `unrequested` and no
+ * A deny rule always denies. The person's yes to this exact action clears
+ * every ask rule and the tool's `ask` permission (`answer-is-a-line`). An
+ * edit of a target that this work created clears `unrequested` and no
  * other rule (`conventional-steps`). A shell command is never an `edit`,
  * so upkeep never applies to one.
  */
 export function decide(
   assessment: AgentGuardianAssessment,
-  action: Pick<Action, "call">,
+  action: Pick<Action, "call" | "permission">,
 ): Review {
-  const { rule, reason, missingFacts } = assessment;
-  if (rule === "none") {
-    return { decision: "allow", reason };
-  }
-  if (isDenyRule(rule)) {
+  const { rule, answered, reason, missingFacts } = assessment;
+  if (rule !== "none" && isDenyRule(rule)) {
     return { decision: "deny", rule, reason };
   }
+  if (answered) {
+    return { decision: "allow", reason };
+  }
   const { call } = action;
-  if (
+  const upkeep =
     rule === "unrequested" &&
     call.effect === "edit" &&
-    call.target?.createdByThisWork
-  ) {
+    call.target?.createdByThisWork === true;
+  const missing =
+    missingFacts.length > 0 ? { missing: missingFacts } : undefined;
+  if (rule !== "none" && !upkeep) {
+    return { decision: "ask", rule, reason, ...missing };
+  }
+  if (action.permission === "ask") {
     return {
-      decision: "allow",
-      reason: `Upkeep: this work created ${call.target.ref}, and the call keeps it current.`,
+      decision: "ask",
+      reason: "The person must confirm this exact action before it runs.",
+      ...missing,
     };
   }
-  return {
-    decision: "ask",
-    rule,
-    reason,
-    ...(missingFacts.length > 0 ? { missing: missingFacts } : undefined),
-  };
+  if (upkeep) {
+    return {
+      decision: "allow",
+      reason: `Upkeep: this work created ${call.target!.ref}, and the call keeps it current.`,
+    };
+  }
+  return { decision: "allow", reason };
 }
 
 /** Create the agent Guardian over one review model, for one batch. */

@@ -12,6 +12,7 @@ function assessment(
 ): AgentGuardianAssessment {
   return {
     rule: "none",
+    answered: false,
     reason: "Requested work.",
     missingFacts: [],
     ...overrides,
@@ -43,24 +44,64 @@ const CALLS: Call[] = [
   })),
 ];
 
+const PERMISSIONS = ["review", "ask"] as const;
+
+/** Every assessment and action that `decide()` can get. */
+const COMBINATIONS = RULES.flatMap((rule) =>
+  [false, true].flatMap((answered) =>
+    PERMISSIONS.flatMap((permission) =>
+      CALLS.map((call) => ({ rule, answered, permission, call })),
+    ),
+  ),
+);
+
+function isDeny(rule: (typeof RULES)[number]): boolean {
+  return DENY_RULES.some((deny) => deny === rule);
+}
+
+function isUpkeep(rule: (typeof RULES)[number], call: Call): boolean {
+  return (
+    rule === "unrequested" &&
+    call.effect === "edit" &&
+    call.target?.createdByThisWork === true
+  );
+}
+
+/** The decision order of `design/guardian.md`, written out case by case. */
+function expected({
+  rule,
+  answered,
+  permission,
+  call,
+}: (typeof COMBINATIONS)[number]): "allow" | "ask" | "deny" {
+  if (isDeny(rule)) return "deny";
+  if (answered) return "allow";
+  if (rule !== "none" && !isUpkeep(rule, call)) return "ask";
+  if (permission === "ask") return "ask";
+  return "allow";
+}
+
 describe("agent Guardian decide", () => {
-  it("returns a decision for every rule and call", () => {
-    for (const rule of RULES) {
-      for (const call of CALLS) {
-        const review = decide(assessment({ rule }), { call });
-        expect(["allow", "ask", "deny"]).toContain(review.decision);
-        expect(review.reason).not.toBe("");
-      }
-    }
+  it("decides every combination in the design's order", () => {
+    const wrong = COMBINATIONS.filter((combination) => {
+      const { rule, answered, permission, call } = combination;
+      const review = decide(assessment({ rule, answered }), {
+        call,
+        permission,
+      });
+      return review.reason === "" || review.decision !== expected(combination);
+    });
+    expect(wrong).toEqual([]);
   });
 
-  it("denies every hard rule, whatever the call", () => {
+  it("never lets an answer change a deny", () => {
     for (const rule of DENY_RULES) {
-      for (const call of CALLS) {
-        expect(decide(assessment({ rule }), { call })).toMatchObject({
-          decision: "deny",
-          rule,
-        });
+      for (const permission of PERMISSIONS) {
+        for (const call of CALLS) {
+          expect(
+            decide(assessment({ rule, answered: true }), { call, permission }),
+          ).toMatchObject({ decision: "deny", rule });
+        }
       }
     }
   });
@@ -77,16 +118,16 @@ describe("agent Guardian decide", () => {
     });
     const changed = RULES.filter(
       (rule) =>
-        decide(assessment({ rule }), { call: edit(true) }).decision !==
-        decide(assessment({ rule }), { call: edit(false) }).decision,
+        decide(assessment({ rule }), {
+          call: edit(true),
+          permission: "review",
+        }).decision !==
+        decide(assessment({ rule }), {
+          call: edit(false),
+          permission: "review",
+        }).decision,
     );
     expect(changed).toEqual(["unrequested"]);
-    expect(
-      decide(assessment({ rule: "unrequested" }), { call: edit(true) }),
-    ).toMatchObject({
-      decision: "allow",
-      reason: expect.stringMatching(/^Upkeep/),
-    });
   });
 
   it("asks for an ask rule, with what the person must give", () => {
@@ -96,19 +137,13 @@ describe("agent Guardian decide", () => {
           rule: "unrequested",
           missingFacts: ["A confirmation of the public gist."],
         }),
-        { call: { effect: "write", summary: "Write." } },
+        { call: { effect: "write", summary: "Write." }, permission: "review" },
       ),
     ).toMatchObject({
       decision: "ask",
       rule: "unrequested",
       missing: ["A confirmation of the public gist."],
     });
-  });
-
-  it("allows an action that matches no rule", () => {
-    for (const call of CALLS) {
-      expect(decide(assessment({}), { call }).decision).toBe("allow");
-    }
   });
 });
 
