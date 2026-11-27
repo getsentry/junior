@@ -78,6 +78,14 @@ test.describe("new UI", () => {
     expect((await restoreRequest).postDataJSON()).toMatchObject({
       archived: false,
     });
+    // The menu offers Archive again only after the restore settles, which
+    // waits for the reads that it refreshes. Leave the page after that, so
+    // the navigation does not cut those reads off.
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await expect(
+      page.getByRole("menuitem", { name: "Archive", exact: true }),
+    ).toBeEnabled();
+    await page.keyboard.press("Escape");
     // The list shows the row again.
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await expect(sidebarLink).toBeVisible();
