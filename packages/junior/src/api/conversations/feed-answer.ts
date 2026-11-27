@@ -4,6 +4,8 @@ import { inboxItemOwnerConversationId } from "@/chat/inbox-items/owner";
 import type { InboxItemRequest } from "@/chat/inbox-items/request";
 import {
   inboxItemAnswer,
+  inboxItemAnsweredAt,
+  inboxItemAnsweredByUserId,
   inboxItemRequest,
   itemQuestion,
 } from "@/chat/inbox-items/question-content";
@@ -40,10 +42,10 @@ export function feedViewerAnswerSql(
   const answered = db
     .select({
       answer:
-        sql`jsonb_build_object('answer', ${inboxItemAnswer}, 'closedAt', ${juniorInboxItems.closedAt}, 'request', ${inboxItemRequest})`.as(
+        sql`jsonb_build_object('answer', ${inboxItemAnswer}, 'closedAt', ${inboxItemAnsweredAt}, 'request', ${inboxItemRequest})`.as(
           "answer",
         ),
-      closedAt: juniorInboxItems.closedAt,
+      closedAt: inboxItemAnsweredAt.as("closed_at"),
       id: juniorInboxItems.id,
       ownerId: inboxItemOwnerConversationId().as("owner_id"),
     })
@@ -51,7 +53,7 @@ export function feedViewerAnswerSql(
     .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
-        eq(juniorInboxItems.closedByUserId, userId),
+        eq(inboxItemAnsweredByUserId, userId),
         isNotNull(inboxItemAnswer),
         isNotNull(inboxItemRequest),
       ),

@@ -213,11 +213,11 @@ function closedNote(item: InboxItem): string {
     return `${who ?? "A person"} replied in the thread`;
   }
   const question = inboxItemQuestion(item.request);
-  if (item.status === "done" && question && item.answer && who) {
+  if (item.status === "done" && question && item.answer && item.answeredBy) {
     return slackUserInputAnswerNote({
       answer: item.answer,
       request: question,
-      who,
+      who: personName(item.answeredBy),
     });
   }
   if (who) {

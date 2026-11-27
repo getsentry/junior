@@ -97,7 +97,8 @@ function isSameClose(
 ): boolean {
   return (
     item.closeReason !== INBOX_ITEM_REPLIED_REASON &&
-    item.closedBy?.userId === user.id &&
+    (action === "submit" ? item.answeredBy : item.closedBy)?.userId ===
+      user.id &&
     item.status === closedStatus(action) &&
     (action === "submit") === Boolean(item.answer)
   );
