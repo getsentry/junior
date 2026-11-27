@@ -1,30 +1,9 @@
 /**
- * Service accounts.
- *
- * A plugin's `accounts` block can allow an optional install-wide provider
- * account, often a bot, that Junior itself uses. By default, the credential
- * order for one request is:
- *
- * 1. The Actor's own connection, when it exists.
- * 2. The plugin's service account, when an Admin connected it and
- *    `accounts.service-account` lists what the request uses.
- * 3. Otherwise, the Actor must connect their own account.
- *
- * With `accounts.user-oauth: false`, Junior uses only the service account.
- * It ignores Actor connections, never asks an Actor to connect, and hides
- * what the account does not list. Until an Admin connects the account, the
- * plugin is not available.
- *
- * This module is the one place that decides which requests the service
- * account may serve. Each request surface asks it before it uses the shared
- * account. An MCP plugin lists the MCP tools it may call. A plugin with a
- * top-level `oauth` block lists the operations that its host code passes to
- * `egress.fetch`. Sandbox egress names no operation, so commands that the
- * model writes never get the shared account.
- *
- * This module also owns the connect flow that the dashboard Admin page and
- * the `junior service-account` CLI share. The MCP surface stores MCP OAuth
- * state, and the OAuth surface stores provider tokens.
+ * Install-wide service accounts that a plugin's `accounts` block allows. A
+ * request uses the Actor's connection first, then the connected service account
+ * if `accounts.service-account` lists what it uses. With `user-oauth: false`,
+ * only the account serves. Only this module decides what it may serve. Sandbox
+ * egress names no operation, so model-written commands never get it.
  */
 import {
   deleteMcpServiceAccountCredentials,
@@ -62,7 +41,7 @@ export function serviceAccountAllows(
  * Return whether the plugin uses only its service account.
  *
  * Then no surface may fall back to an Actor's own connection or ask an
- * Actor to connect.
+ * Actor to connect. Until an Admin connects it, the plugin is unavailable.
  */
 export function serviceAccountOnly(
   manifest: Pick<PluginManifest, "accounts">,

@@ -87,7 +87,6 @@ test("a Space's Threads list what each one needs, in attention order", async ({
     /Reconcile Stripe balances/,
     /Check refund webhooks/,
   ]);
-  await page.mouse.move(0, 0);
   await screenshot(page, "space-threads", {
     lightTheme: true,
     view: "desktop",

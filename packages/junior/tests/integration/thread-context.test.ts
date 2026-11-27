@@ -3,10 +3,8 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
-import {
-  buildTurnThreadContext,
-  loadThreadContextTrimFloor,
-} from "@/chat/conversations/thread-context";
+import { loadThreadContextTrimFloor } from "@/chat/conversations/thread-context";
+import { buildTurnThreadContext } from "@/chat/slack/thread-context";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeDb, getConversationStore } from "@/chat/db";
 import { latestConversationMessageSeq } from "@/chat/services/conversation-memory";

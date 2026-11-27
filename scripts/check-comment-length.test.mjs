@@ -41,6 +41,9 @@ test("counts JSDoc text lines, not its delimiters or blank lines", () => {
   assert.deepEqual(within["block-lines"], {});
   const over = measure(["/**", ...body, " * more", " */", "function a() {}"]);
   assert.deepEqual(over["block-lines"], { [FILE]: 1 });
+  const plain = body.map((line) => line.replace(" * ", "   "));
+  const unstarred = measure(["/*", ...plain, "", "   ", "*/", "let a;"]);
+  assert.deepEqual(unstarred["block-lines"], {});
 });
 
 test("ignores blocks split by code, and comment text in strings", () => {
@@ -60,6 +63,43 @@ test("keeps trailing comments out of blocks", () => {
   );
   const counts = measure([...lineComments(MAX_BLOCK_LINES), ...trailing]);
   assert.deepEqual(counts["block-lines"], {});
+});
+
+test("measures a multiline block comment that starts after code", () => {
+  const body = Array.from({ length: MAX_BLOCK_LINES + 1 }, (_, i) => ` * ${i}`);
+  const counts = measure(["const a = 1; /* start", ...body, " */"]);
+  assert.deepEqual(counts["block-lines"], { [FILE]: 2 });
+});
+
+test("measures JSX comments like other comments", () => {
+  const file = "packages/junior/src/view.tsx";
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "comment-length-"));
+  try {
+    fs.mkdirSync(path.join(root, path.dirname(file)), { recursive: true });
+    const lines = Array.from(
+      { length: MAX_BLOCK_LINES + 1 },
+      (_, index) => `    {/* line ${index} */}`,
+    );
+    const body = Array.from({ length: MAX_BLOCK_LINES }, (_, i) => `    ${i}`);
+    fs.writeFileSync(
+      path.join(root, file),
+      [
+        "export const A = () => (",
+        "  <div>",
+        ...lines,
+        "    <span />",
+        "    {/*",
+        ...body,
+        "    */}",
+        "  </div>",
+        ");",
+      ].join("\n"),
+    );
+    const counts = measureComments(root, ["packages"]);
+    assert.deepEqual(counts["block-lines"], { [file]: 1 });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("counts wide comment lines, except links and directives", () => {

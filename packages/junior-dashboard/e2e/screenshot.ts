@@ -68,6 +68,11 @@ type ScreenshotOptions = {
     x: number;
     y: number;
   };
+  /**
+   * Keep the pointer where it is, for a shot of what it is on, such as a
+   * tooltip or hover card. Set the view's size first: a resize moves it off.
+   */
+  hover?: boolean;
   /** Also save `{name}-light__{view}.png` in the light theme. */
   lightTheme?: boolean;
   target?: Locator;
@@ -104,11 +109,11 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
 
   for (const view of views) {
     const size = page.viewportSize();
-    if (size?.width !== view.width || size.height !== view.height) {
-      // A resize moves the page under the pointer, so whichever element
-      // lands there shows its hover state or tooltip. Move the pointer off
-      // the page, which sends mouseleave. A spec that shoots a hover state
-      // sets this size first, so its pointer stays.
+    const resize = size?.width !== view.width || size.height !== view.height;
+    if (!options.hover || resize) {
+      // An earlier click or hover, or a resize that moves the page under the
+      // pointer, leaves an element under it that shows its hover state or
+      // tooltip. Move the pointer off the page, which sends mouseleave.
       await page.mouse.move(-1, -1);
     }
     await page.setViewportSize({
