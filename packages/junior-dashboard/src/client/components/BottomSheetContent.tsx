@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useKeyboardBand } from "../mobileViewport";
+import { keyboardBandStyle, useKeyboardBand } from "../mobileViewport";
 import { cn } from "../styles";
 import type {
   ActionSheetItem,
@@ -64,18 +64,7 @@ export function BottomSheetContent(props: BottomSheetProps) {
       )}
       sheet={sheet}
       stayBehind={props.stayBehind}
-      // While a touch keyboard is open, the sheet fills the band above it,
-      // as the shell does, so the field in focus stays in view.
-      style={
-        band
-          ? {
-              bottom: "auto",
-              height: `${band.heightPx}px`,
-              maxHeight: `${band.heightPx}px`,
-              top: `${band.offsetTopPx}px`,
-            }
-          : undefined
-      }
+      style={keyboardBandStyle(band)}
     >
       {/* Positioned so header overlays, such as transcript search,
               float over the body. */}

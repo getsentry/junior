@@ -1,10 +1,12 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { cn } from "@dashboard/lib/utils";
+import { useKeyboardBand } from "@dashboard/mobileViewport";
 
 import {
   PHONE_SHEET_BACKDROP_CLASS,
   PHONE_SHEET_POPUP_CLASS,
   PHONE_SHEET_POSITIONER_CLASS,
+  phoneSheetBandVars,
 } from "./phoneSheet";
 
 /** Own an anchored popover's state and dismissal. */
@@ -19,7 +21,8 @@ export function PopoverTrigger(props: PopoverPrimitive.Trigger.Props) {
 
 /**
  * Position popover content within the viewport and share its themed surface.
- * A phone shows it as a sheet on the bottom edge.
+ * A phone shows it as a sheet on the bottom edge, above the keyboard while
+ * it is open.
  */
 export function PopoverContent({
   className,
@@ -28,6 +31,8 @@ export function PopoverContent({
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<PopoverPrimitive.Positioner.Props, "align" | "side">) {
+  // A popover can hold a field, such as a comment or a search.
+  const band = useKeyboardBand();
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Backdrop className={PHONE_SHEET_BACKDROP_CLASS} />
@@ -36,6 +41,7 @@ export function PopoverContent({
         side={side}
         sideOffset={8}
         className={cn("isolate z-50", PHONE_SHEET_POSITIONER_CLASS)}
+        style={phoneSheetBandVars(band)}
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"

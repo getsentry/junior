@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useState, type CSSProperties, type RefObject } from "react";
 
 import { acquireBodyScrollLock, releaseBodyScrollLock } from "./bodyScrollLock";
 import { MOBILE_LAYOUT_QUERY } from "./layoutMedia";
@@ -290,6 +290,23 @@ function isEditableElement(element: Element | null): boolean {
     element instanceof HTMLTextAreaElement ||
     (element instanceof HTMLElement && element.isContentEditable)
   );
+}
+
+/**
+ * Place a fixed sheet in the band above an open touch keyboard, so the
+ * field in focus stays in view. Without a band, the sheet keeps its own
+ * place.
+ */
+export function keyboardBandStyle(
+  band: MobileViewportMetrics | undefined,
+): CSSProperties | undefined {
+  if (!band) return undefined;
+  return {
+    bottom: "auto",
+    height: `${band.heightPx}px`,
+    maxHeight: `${band.heightPx}px`,
+    top: `${band.offsetTopPx}px`,
+  };
 }
 
 /**

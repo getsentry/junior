@@ -1,8 +1,7 @@
-import type { CSSProperties } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 import { cn } from "@dashboard/lib/utils";
-import { useKeyboardBand } from "@dashboard/mobileViewport";
+import { keyboardBandStyle, useKeyboardBand } from "@dashboard/mobileViewport";
 
 import { Button } from "./button";
 import {
@@ -33,14 +32,6 @@ export function DialogSheetContent({
   ...props
 }: DialogContentProps) {
   const band = useKeyboardBand();
-  // While a touch keyboard is open, the sheet ends at the keyboard's top
-  // edge, so the field in focus stays in view.
-  const style: CSSProperties | undefined = band
-    ? {
-        bottom: `calc(100% - ${band.offsetTopPx + band.heightPx}px)`,
-        maxHeight: `${band.heightPx}px`,
-      }
-    : undefined;
   return (
     <DrawerContent
       {...props}
@@ -52,7 +43,9 @@ export function DialogSheetContent({
       data-slot="dialog-content"
       // As on a desktop, a dialog opened from a sheet dims it too.
       forceOverlay
-      style={style}
+      // While a touch keyboard is open, the sheet fills the band above it,
+      // as a `BottomSheet` does.
+      style={keyboardBandStyle(band)}
     >
       <div
         aria-hidden="true"
@@ -73,10 +66,18 @@ export function DialogSheetContent({
       <div
         className={cn(
           DIALOG_BODY_CLASS,
-          "min-h-0 overflow-y-auto overscroll-contain px-5 pt-3 [&>[data-slot=dialog-title]:first-child]:pr-10",
-          !band && "pb-[max(1.25rem,env(safe-area-inset-bottom))]",
-          band && "pb-5",
-          className,
+          "min-h-0 flex-1 [&_[data-slot=dialog-title]]:pr-10",
+          // The caller's classes style the centered dialog, such as its
+          // padding and overflow. A form sheet keeps its own padding and
+          // scroll. A tall sheet, such as the command palette, lays out
+          // its own body.
+          phoneSize === "full"
+            ? [className, !band && "pb-[env(safe-area-inset-bottom)]"]
+            : [
+                className,
+                "overflow-y-auto overscroll-contain px-5 pt-3",
+                band ? "pb-5" : "pb-[max(1.25rem,env(safe-area-inset-bottom))]",
+              ],
         )}
       >
         {children}
