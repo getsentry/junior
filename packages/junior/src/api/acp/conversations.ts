@@ -18,6 +18,7 @@ import { clearSlackPendingReactions } from "@/chat/task-execution/slack-work";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import type { ConversationEventStore } from "@/chat/conversations/history";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import { isTurnReply } from "@/chat/state/turn-id";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -238,12 +239,13 @@ export function createAcpConversations(
         types: ["message", "turn_completed", "turn_failed"],
       });
       const cursor = page.events.at(-1)?.seq ?? afterCursor;
-      const assistantPrefix = `${turnId}:assistant:`;
       const messages = page.events.flatMap((event) => {
         const data = event.data;
         return data.type === "message" &&
-          data.role === "assistant" &&
-          data.messageId.startsWith(assistantPrefix)
+          isTurnReply(
+            { id: data.messageId, meta: data.meta, role: data.role },
+            turnId,
+          )
           ? [
               {
                 id: data.messageId,

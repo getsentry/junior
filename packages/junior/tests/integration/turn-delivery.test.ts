@@ -207,6 +207,7 @@ describe("Turn delivery", () => {
         meta: expect.objectContaining({
           source: "slack",
           slackTs: "message-2",
+          turnId,
         }),
       },
       { type: "message_handled", messageId: assistantMessageId },

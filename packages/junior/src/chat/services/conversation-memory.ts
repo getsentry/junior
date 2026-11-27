@@ -16,6 +16,7 @@ import {
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
 import { escapeTagTextAndQuotes } from "@sentry/junior-plugin-api";
+import { isTurnReply } from "@/chat/state/turn-id";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
@@ -143,12 +144,11 @@ export function recordDeliveredAssistantMessage(args: {
   text: string;
   userMessageId?: string | undefined;
 }): string {
-  const prefix = `${args.sessionId}:assistant:`;
   const ordinal =
     args.conversation.messages.filter((message) =>
-      message.id.startsWith(prefix),
+      isTurnReply(message, args.sessionId),
     ).length + 1;
-  const messageId = `${prefix}${ordinal}`;
+  const messageId = `${args.sessionId}:assistant:${ordinal}`;
   markConversationMessage(args.conversation, args.userMessageId, {
     replied: true,
     skippedReason: undefined,
@@ -167,6 +167,7 @@ export function recordDeliveredAssistantMessage(args: {
       ...(objectCards?.length ? { objectCards } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),
+      turnId: args.sessionId,
     },
   });
   return messageId;
@@ -177,11 +178,7 @@ export function turnHasReply(
   conversation: ThreadConversationState,
   turnId: string,
 ): boolean {
-  const assistantPrefix = `${turnId}:assistant:`;
-  return conversation.messages.some(
-    (message) =>
-      message.role === "assistant" && message.id.startsWith(assistantPrefix),
-  );
+  return conversation.messages.some((message) => isTurnReply(message, turnId));
 }
 
 export function markConversationMessage(

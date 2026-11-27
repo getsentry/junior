@@ -66,6 +66,8 @@ export interface ConversationMessageMeta {
   reviewItemChanges?: InboxItemChangeRecord[];
   slackTs?: string;
   skippedReason?: string | undefined;
+  /** Turn that sent this assistant reply. */
+  turnId?: string;
 }
 
 export interface ConversationMessage {

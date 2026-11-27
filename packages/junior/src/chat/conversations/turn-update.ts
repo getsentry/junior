@@ -10,6 +10,7 @@ import type {
 } from "@/chat/child-agents/agent-update";
 import { piMessageFromHistoryItem } from "@/core/history/items";
 import { readTurnAnswer } from "@/chat/turn-answer";
+import { isTurnReply } from "@/chat/state/turn-id";
 import type {
   ConversationEvent,
   ConversationEventStore,
@@ -51,13 +52,18 @@ async function readReplyText(
   events: ConversationEventStore,
   turn: EndedTurn,
 ): Promise<string> {
-  const prefix = `${turn.turnId}:assistant:`;
   const replies = (
     await readTurnEvents(events, turn, ["message", "message_updated"])
   ).flatMap((event) =>
     (event.data.type === "message" || event.data.type === "message_updated") &&
-    event.data.role === "assistant" &&
-    event.data.messageId.startsWith(prefix)
+    isTurnReply(
+      {
+        id: event.data.messageId,
+        meta: event.data.meta,
+        role: event.data.role,
+      },
+      turn.turnId,
+    )
       ? [event.data.text]
       : [],
   );

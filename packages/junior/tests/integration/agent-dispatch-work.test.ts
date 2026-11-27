@@ -668,7 +668,7 @@ describe("agent dispatch conversation work", () => {
         meta: { replied: true },
       },
       {
-        id: `${turnId}:assistant:1`,
+        id: "delivered-digest",
         role: "assistant",
         text: "Already delivered digest",
         createdAtMs: dispatch.createdAtMs + 1,
@@ -676,6 +676,7 @@ describe("agent dispatch conversation work", () => {
         meta: {
           replied: true,
           slackTs: "1700000000.000009",
+          turnId,
         },
       },
     );
