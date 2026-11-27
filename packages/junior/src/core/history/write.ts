@@ -18,13 +18,14 @@ export type NewAgentHistoryItem = {
 };
 
 /**
- * Appends agent history items in order, at the current History version.
- * Skips an item whose idempotency key is already stored. Call it under
- * `withConversationEventLock`.
+ * Appends the agent history items that one Turn writes, in order, at the
+ * current History version. Skips an item whose idempotency key is already
+ * stored. Call it under `withConversationEventLock`.
  */
 export async function appendAgentHistory(
   executor: JuniorSqlDatabase,
   conversationId: string,
+  turnId: string,
   items: readonly NewAgentHistoryItem[],
 ): Promise<void> {
   const pending = await unseenEvents(executor, conversationId, items);
@@ -37,6 +38,7 @@ export async function appendAgentHistory(
       type: item.type,
       ...encodeAgentHistoryPayload(item),
       idempotencyKey,
+      turnId,
       createdAtMs,
     })),
   );

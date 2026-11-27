@@ -41,10 +41,8 @@ import {
   readConversationAccessRows,
 } from "./access";
 import {
-  conversationIdsWithParticipantUser,
   conversationPinnedForUser,
   conversationIsMemberRoot,
-  rootSpaceReadableBy,
   conversationIsNotUnsubscribedRoot,
   type ConversationMember,
   readMemberParticipants,
@@ -129,7 +127,6 @@ function conversationFeedMembershipFilter(
   const member = feedMember(filter);
   return and(
     conversationIsMemberRoot(member),
-    rootSpaceReadableBy(member),
     status === "archived"
       ? isNotNull(juniorConversations.archivedAt)
       : status === "all"
@@ -682,6 +679,15 @@ export async function readConversationFeedFromSql(
   const conversationIds = conversations.map(
     (conversation) => conversation.conversationId,
   );
+  // A Lead's Thread is a feed row whose root is the Lead.
+  const rootConversationIds = [
+    ...new Set(
+      conversations.map(
+        (conversation) =>
+          conversation.rootConversationId ?? conversation.conversationId,
+      ),
+    ),
+  ];
   // Every child of these roots, read once for work owners and Threads.
   const conversationTrees = readConversationTrees(db, conversationIds);
   const [
@@ -706,12 +712,11 @@ export async function readConversationFeedFromSql(
   ] = await Promise.all([
     readConversationAccessRows(db, conversationIds),
     conversationTrees,
-    // The viewer's rows give both access and pin marks. Without a viewer, an
-    // actor email feed reads only its pin marks. Feed rows are roots, so
-    // these roots cover the access check.
+    // The viewer's rows on the feed rows' roots give both access and pin
+    // marks. Without a viewer, an actor email feed reads only its pin marks.
     readMemberParticipants(
       db,
-      conversationIds,
+      rootConversationIds,
       options.viewer
         ? { userId: options.viewer.id }
         : filter
@@ -759,31 +764,9 @@ export async function readConversationFeedFromSql(
       conversations.flatMap(({ spaceId }) => (spaceId ? [spaceId] : [])),
     ),
   ]);
-  // A Lead's child has the Lead as its root. This reads only when a row is
-  // one, since other feed rows are their own roots.
-  const leadRootIds = [
-    ...new Set(
-      accessRows.flatMap((row) =>
-        row.storedRootConversationId &&
-        row.storedRootConversationId !== row.conversationId
-          ? [row.storedRootConversationId]
-          : [],
-      ),
-    ),
-  ];
-  const leadParticipantIds =
-    options.viewer && leadRootIds.length > 0
-      ? await conversationIdsWithParticipantUser(
-          db,
-          leadRootIds,
-          options.viewer.id,
-        )
-      : new Set<string>();
   const accessByConversation = conversationAccessFromRows(
     accessRows,
-    options.viewer
-      ? new Set([...participantsByRoot.keys(), ...leadParticipantIds])
-      : new Set(),
+    options.viewer ? new Set(participantsByRoot.keys()) : new Set(),
   );
   const tenantByConversation = new Map(
     rows.flatMap((row) => {
@@ -849,10 +832,9 @@ export async function readConversationFeedFromSql(
         ),
         conversation,
         access,
-        // Only members may learn a private Space's name.
+        // Only a reader of a private Space may learn its name.
         space:
-          conversation.spaceId &&
-          (!access?.privateSpaceId || access.canViewPrivateContent)
+          conversation.spaceId && access?.canViewPrivateContent
             ? (spaceRefs.get(conversation.spaceId) ?? null)
             : null,
         auxiliaryCosts: auxiliaryCosts?.total,

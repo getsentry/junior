@@ -95,11 +95,6 @@ export async function requireWebMessageConversation(
       "Only participants can add messages to a private conversation.",
     );
   }
-  // Only members post in a Space, as in a Slack channel that a person
-  // joins before they post.
-  if (conversation.spaceId) {
-    await requireSpaceForWork(viewer, conversation.spaceId);
-  }
   return conversationId;
 }
 

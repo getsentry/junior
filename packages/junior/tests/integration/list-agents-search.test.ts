@@ -1,11 +1,16 @@
 import { asc, eq } from "drizzle-orm";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { githubPlugin } from "@sentry/junior-github";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
+import { recordCodeChange } from "@/chat/code/store";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
 import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { parseSlackTeamId } from "@/chat/slack/ids";
+import { createSlackConversationSearchChannelPort } from "@/chat/slack/tool-support/conversation-search";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { juniorConversationEmbeddings, juniorConversations } from "@/db/schema";
 import { slackSpawnInput } from "../fixtures/child-agents";
@@ -14,6 +19,17 @@ import { storeConversationMetadataFixture } from "../fixtures/conversation-metad
 import { seedMcpConversation } from "../fixtures/mcp-tools";
 import { createHarness } from "../fixtures/thread-input";
 import { signedInViewer } from "../fixtures/user";
+import {
+  chatGetPermalinkOk,
+  slackError,
+} from "../fixtures/slack/factories/api";
+import { queueSlackApiResponse } from "../msw/handlers/slack-api";
+
+const teamId = parseSlackTeamId("T123");
+if (!teamId) {
+  throw new Error("test Slack team id did not parse");
+}
+const channels = createSlackConversationSearchChannelPort(teamId);
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -88,13 +104,20 @@ describe("listAgents query", () => {
       baseURL: "https://junior.example.com",
     });
 
-    const result = await executeTool(
-      createListAgentsTool({
-        conversationId: requester,
-        resolvePersonUserId: async () => person.id,
+    const tool = createListAgentsTool({
+      conversationId: requester,
+      resolvePersonUserId: async () => person.id,
+    });
+    // Default values and a limit alone still list the team.
+    expect(
+      await executeTool(tool, {
+        include_archived: false,
+        limit: 10,
+        participating: false,
+        roots_only: true,
       }),
-      { query: "launch decision" },
-    );
+    ).toEqual(await executeTool(tool, {}));
+    const result = await executeTool(tool, { query: "launch decision" });
 
     expect(result.agents).toEqual([
       expect.objectContaining({
@@ -109,6 +132,8 @@ describe("listAgents query", () => {
       {
         relation: "other",
         conversation_id: other,
+        excerpt: expect.stringContaining("**launch**"),
+        kind: "thread",
         status: "idle",
         summary: expect.stringMatching(
           /… \[\d+ more characters cut\. Read the conversation with searchConversationEvents\.\]$/,
@@ -135,6 +160,157 @@ describe("listAgents query", () => {
       true,
     );
     expect(Number(cut)).toBe(summary.length - 1_000);
+  });
+
+  it("returns bounded summary details with a dashboard link, else a best-effort Slack link", async () => {
+    // GitHub makes the label of the link. Search reads no state.
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const conversationId = "slack:CARCHIVE:1700000000.100000";
+    await getConversationStore().recordActivity({
+      conversationId,
+      channelName: "archive",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "CARCHIVE",
+      },
+      nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+      source: "slack",
+      title: "Launch decision",
+      visibility: "public",
+    });
+    await storeConversationMetadataFixture(getDb(), {
+      conversationId,
+      summary: "The launch decision uses a blue rollout.",
+      throughSeq: 1,
+    });
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "github",
+    }).upsert({
+      kind: "resource_link",
+      key: "getsentry/junior#1805",
+      url: "https://github.com/getsentry/junior/pull/1805",
+    });
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+
+    const tool = createListAgentsTool({
+      channels,
+      conversationId: "slack:CREQUEST:1700000000.900000",
+    });
+    expect(tool.inputSchema["properties"]).toHaveProperty("channel_id");
+    const result = await executeTool(tool, {
+      after: null,
+      annotation: null,
+      before: null,
+      channel_id: null,
+      limit: null,
+      query: "launch decision",
+    });
+
+    expect(result).toEqual({
+      agents: [
+        {
+          relation: "other",
+          channel_id: "CARCHIVE",
+          channel_name: "archive",
+          conversation_id: conversationId,
+          excerpt: expect.stringContaining("**launch**"),
+          kind: "thread",
+          links: [
+            {
+              label: "getsentry/junior#1805",
+              url: "https://github.com/getsentry/junior/pull/1805",
+            },
+          ],
+          status: "idle",
+          summary: "The launch decision uses a blue rollout.",
+          subscribable: expect.objectContaining({ identifier: conversationId }),
+          title: "Launch decision",
+          updated_at: expect.any(String),
+          url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
+        },
+      ],
+    });
+
+    // Without the dashboard, the Slack thread is the link.
+    setDashboardConversationLinkOptions(undefined);
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink:
+          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+      }),
+    });
+    const resultWithThreadUrl = await executeTool(tool, {
+      query: "launch decision",
+    });
+    expect(resultWithThreadUrl.agents[0]).toMatchObject({
+      url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+    });
+
+    queueSlackApiResponse("chat.getPermalink", {
+      body: slackError({ error: "missing_scope" }),
+    });
+    const resultWithoutUrl = await executeTool(tool, {
+      query: "launch decision",
+    });
+    expect(resultWithoutUrl.agents[0]).not.toHaveProperty("url");
+
+    // A child agent gives the Slack channel and thread of its root.
+    const childId = "agent:launch-child";
+    await getConversationStore().createChild({
+      childConversationId: childId,
+      kind: "thread",
+      parentConversationId: conversationId,
+      nowMs: Date.parse("2026-07-01T12:01:00.000Z"),
+      source: "slack",
+      title: "Launch decision follow-up",
+    });
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink:
+          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+      }),
+    });
+    const childResult = await executeTool(tool, {
+      query: "follow-up",
+      roots_only: false,
+    });
+    expect(childResult.agents).toEqual([
+      expect.objectContaining({
+        channel_id: "CARCHIVE",
+        channel_name: "archive",
+        conversation_id: childId,
+        kind: "thread",
+        url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+        root_conversation_id: conversationId,
+      }),
+    ]);
+
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    const publicTool = createListAgentsTool({
+      conversationId: "local:test:current",
+    });
+    expect(publicTool.inputSchema["properties"]).not.toHaveProperty(
+      "channel_id",
+    );
+    expect(() =>
+      publicTool.prepareArguments({ channel_id: "CARCHIVE" }),
+    ).toThrow("Invalid tool arguments");
+    const publicResult = await executeTool(publicTool, {
+      query: "launch decision",
+    });
+    expect(publicResult.agents[0]).toMatchObject({
+      conversation_id: conversationId,
+      url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
+    });
+    expect(publicResult.agents[0]).not.toHaveProperty("channel_id");
+    expect(publicResult.agents[0]).not.toHaveProperty("channel_name");
   });
 
   it("embeds summaries again after a model change, so search finds them by meaning", async () => {
@@ -229,8 +405,70 @@ describe("listAgents query", () => {
     ]);
   });
 
-  it("lets plugin tools find other Conversations by Annotation", async () => {
-    const key = "getsentry/junior#691";
+  it("finds a linked resource by its reference or link, also after its repository is renamed", async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const db = getDb();
+    const conversationId = "slack:CRENAME:1700000000.100000";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "slack", teamId: "T123", channelId: "CRENAME" },
+      nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+      source: "slack",
+      title: "Retry uploads",
+      visibility: "public",
+    });
+    // GitHub renamed the repository after the Conversation opened the
+    // pull request, so its Annotation keeps the old key and link.
+    await createPluginAnnotations({
+      conversationId,
+      db,
+      plugin: "github",
+    }).upsert({
+      kind: "object",
+      key: "getsentry/uploads#12",
+      objectType: "code_change",
+      subject: { id: "1200", kind: "pull_request" },
+      title: "Retry uploads",
+      url: "https://github.com/getsentry/uploads/pull/12",
+    });
+    await recordCodeChange(db, "github", {
+      number: 12,
+      openedAt: new Date("2026-07-01T12:00:00.000Z"),
+      providerId: "1200",
+      repository: { name: "getsentry/uploader", providerId: "repo-uploads" },
+      state: "open",
+      updatedAt: new Date("2026-07-02T12:00:00.000Z"),
+    });
+    const tool = createListAgentsTool({
+      conversationId: "local:test:rename-requester",
+    });
+    const found = async (annotation: string) =>
+      (await executeTool(tool, { annotation })).agents.map(
+        (match: { conversation_id: string }) => match.conversation_id,
+      );
+
+    await expect(found("getsentry/uploader#12")).resolves.toEqual([
+      conversationId,
+    ]);
+    await expect(
+      found("https://github.com/getsentry/uploader/pull/12"),
+    ).resolves.toEqual([conversationId]);
+    // The stored key, its repository, and the stored link still match.
+    await expect(found("GetSentry/Uploads#12")).resolves.toEqual([
+      conversationId,
+    ]);
+    await expect(found("getsentry/uploads")).resolves.toEqual([conversationId]);
+    await expect(
+      found("https://github.com/getsentry/uploads/pull/12"),
+    ).resolves.toEqual([conversationId]);
+    await expect(found("getsentry/uploader#13")).resolves.toEqual([]);
+    await expect(found("getsentry/upload")).resolves.toEqual([]);
+  });
+
+  it("lets plugin tools find other Conversations by the subject of an Annotation", async () => {
+    // The Annotations name the repository by its name before a rename. The
+    // subject is GitHub's id of the pull request, which the rename keeps.
+    const key = "getsentry/junior-old#691";
     const subject = { id: "2900691", kind: "pull_request" };
     const db = getDb();
     const nowMs = Date.now();
@@ -249,7 +487,7 @@ describe("listAgents query", () => {
         objectType: "code_change",
         subject,
         title: "Add events",
-        url: "https://github.com/getsentry/junior/pull/691",
+        url: "https://github.com/getsentry/junior-old/pull/691",
       });
     const record = async (args: {
       activityAtMs: number;
@@ -393,5 +631,44 @@ describe("listAgents query", () => {
     await expect(conversations.search({ limit: 1, subject })).resolves.toEqual([
       workingMatch,
     ]);
+  });
+
+  it("lets plugin tools find a card saved without its subject by its link", async () => {
+    // A card from a pasted link can lack GitHub's id, so it has only its link.
+    const db = getDb();
+    const url = "https://github.com/getsentry/junior/pull/691";
+    const subject = { id: "2900691", kind: "pull_request" };
+    const record = async (channelId: string) => {
+      const conversationId = `slack:${channelId}:1700000000.100000`;
+      await getConversationStore().recordActivity({
+        conversationId,
+        destination: { platform: "slack", teamId: "T123", channelId },
+        nowMs: Date.now(),
+        source: "slack",
+        title: `Work in ${channelId}`,
+        visibility: "public",
+      });
+      return conversationId;
+    };
+    const requester = await record("CREQUEST");
+    const linked = await record("CLINKED");
+    await createPluginAnnotations({
+      conversationId: linked,
+      db,
+      plugin: "github",
+    }).upsert({
+      kind: "object",
+      key: "getsentry/junior#691",
+      objectType: "code_change",
+      title: "Add events",
+      url,
+    });
+
+    const conversations = createPluginConversations(requester, "github");
+
+    await expect(
+      conversations.search({ subject, url: url.toUpperCase() }),
+    ).resolves.toEqual([expect.objectContaining({ conversationId: linked })]);
+    await expect(conversations.search({ subject })).resolves.toEqual([]);
   });
 });
