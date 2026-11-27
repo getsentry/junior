@@ -2282,10 +2282,12 @@ export type ClaimConversationAttemptResult =
  * Record the input of the attempt that the lease holder starts. Returns
  * `reselect` when the lease is lost or a stop already took some of the input.
  * Returns `held` with the input that a stop held from an attempt that ended
- * without saving it, so the worker saves it as held before it selects again.
+ * without saving it. `hold` keeps that input under the same lock, before it
+ * leaves pending input, so a failed hold loses nothing.
  */
 export async function claimConversationAttempt(args: {
   conversationId: string;
+  hold: (messages: InboundMessage[], state: StateAdapter) => Promise<void>;
   inboundMessageIds: readonly string[];
   leaseToken: string;
   nowMs?: number;
@@ -2306,6 +2308,7 @@ export async function claimConversationAttempt(args: {
       const pendingMessages = current.execution.pendingMessages.filter(
         (message) => !heldIds.has(message.inboundMessageId),
       );
+      await args.hold(messages, state);
       await writeConversation(
         state,
         lock,

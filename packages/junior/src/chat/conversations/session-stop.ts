@@ -15,7 +15,6 @@ import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import {
   holdInboundMessages,
-  holdInboundMessagesLocked,
   releaseHeldInput,
 } from "@/chat/task-execution/held-input";
 import {
@@ -205,7 +204,9 @@ export async function stopConversationTree(
     });
     if (pending.length > 0) {
       await saveHeldInput(conversationId, pending);
-      await releaseIfResumed(conversationId, options);
+      // A resume can release before this hold lands. The release skips a
+      // Conversation that is still stopped.
+      await releaseAndWake(conversationId, options);
     }
     await cancelSignInWait(conversationId);
     if (conversationId === options.finishedRunOf) {
@@ -286,6 +287,7 @@ async function releaseAndWake(
 ): Promise<void> {
   const released = await releaseHeldInput({
     conversationId,
+    isStopped: () => isHeld(conversationId),
     state: options.state,
   });
   if (released > 0) {
@@ -298,29 +300,17 @@ async function releaseAndWake(
   }
 }
 
-// A hold outside the append lock can land after a resume released. Then
-// release it again here, so it does not wait for the next stop.
-async function releaseIfResumed(
-  conversationId: string,
-  options: ResumeOptions,
-): Promise<void> {
-  if (!(await isHeld(conversationId))) {
-    await releaseAndWake(conversationId, options);
-  }
-}
-
 /**
- * Hold the input that a claim found held by a stop, and save it to the
- * transcript.
+ * Save the input that a claim held for a stop to the transcript, and release
+ * it again when a resume ran before the claim.
  */
-export async function holdClaimedInput(
+export async function saveClaimedHeldInput(
   conversationId: string,
   messages: readonly InboundMessage[],
   options: ResumeOptions,
 ): Promise<void> {
-  await holdInboundMessagesLocked(conversationId, messages, options.state);
   await saveHeldInput(conversationId, messages);
-  await releaseIfResumed(conversationId, options);
+  await releaseAndWake(conversationId, options);
 }
 
 /** Where a resume wakes the Conversations that get held input back. */

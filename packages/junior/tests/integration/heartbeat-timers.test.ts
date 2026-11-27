@@ -624,6 +624,7 @@ it("leaves a running attempt's timer to its Turn when a stop holds the rest", as
   await expect(
     claimConversationAttempt({
       conversationId,
+      hold: async () => {},
       inboundMessageIds: [running!.inboundMessageId],
       leaseToken: lease.leaseToken,
       state,

@@ -12,7 +12,7 @@ import {
 } from "@/chat/logging";
 import {
   getConversationStoppedAtMs,
-  holdClaimedInput,
+  saveClaimedHeldInput,
 } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
@@ -23,6 +23,7 @@ import {
   type ConversationQueueMessage,
   type ConversationWorkQueue,
 } from "./queue";
+import { holdInboundMessages } from "./held-input";
 import { requestLostLeaseRecovery } from "./lost-lease";
 import {
   ackMessages,
@@ -577,13 +578,15 @@ async function processConversationWorkInContext(
       if (attemptMessageIds.length > 0) {
         const claim = await claimConversationAttempt({
           conversationId,
+          hold: (messages, state) =>
+            holdInboundMessages(conversationId, messages, state),
           inboundMessageIds: attemptMessageIds,
           leaseToken: lease.leaseToken,
           nowMs: now(options),
           state: options.state,
         });
         if (claim.status === "held") {
-          await holdClaimedInput(conversationId, claim.messages, {
+          await saveClaimedHeldInput(conversationId, claim.messages, {
             queue: options.queue,
             state: options.state,
           });

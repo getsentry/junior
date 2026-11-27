@@ -536,6 +536,7 @@ export async function drainConversationMailbox(
 /** Record the input of the attempt that the lease holder starts. */
 export async function claimConversationAttempt(args: {
   conversationId: string;
+  hold: (messages: InboundMessage[], state: StateAdapter) => Promise<void>;
   inboundMessageIds: readonly string[];
   leaseToken: string;
   nowMs?: number;

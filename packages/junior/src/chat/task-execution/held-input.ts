@@ -40,17 +40,6 @@ export async function holdInboundMessages(
   await appendHeld(state, conversationId, messages);
 }
 
-/** Hold inbound messages under the mailbox lock of their Conversation. */
-export async function holdInboundMessagesLocked(
-  conversationId: string,
-  messages: readonly InboundMessage[],
-  state?: StateAdapter,
-): Promise<void> {
-  await withConversationMutation({ conversationId, state }, (connected) =>
-    appendHeld(connected, conversationId, messages),
-  );
-}
-
 async function appendHeld(
   state: StateAdapter,
   conversationId: string,
@@ -71,16 +60,18 @@ async function appendHeld(
  */
 export async function releaseHeldInput(args: {
   conversationId: string;
+  isStopped: () => Promise<boolean>;
   nowMs?: number;
   state?: StateAdapter | undefined;
 }): Promise<number> {
   const nowMs = args.nowMs ?? Date.now();
   const key = heldInputKey(args.conversationId);
-  // Most Conversations hold nothing, so check before taking the lock.
-  if ((await (await getConnectedState(args.state)).getList(key)).length === 0) {
-    return 0;
-  }
   return await withConversationMutation(args, async (state, lock) => {
+    // A stop takes pending input under this lock. So a stop that lands after
+    // this check takes the released input back and holds it again.
+    if (await args.isStopped()) {
+      return 0;
+    }
     const held = (await state.getList(key)).flatMap((value) => {
       const parsed = inboundMessageSchema.safeParse(value);
       return parsed.success ? [parsed.data] : [];
