@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import {
+  conversationOwnedSubjectKinds,
   inboxItemOwnerConversationId,
   todoItemOwnerConversationId,
   inboxItemTenantId,
@@ -10,6 +11,7 @@ import {
   and,
   eq,
   exists,
+  inArray,
   isNotNull,
   isNull,
   ne,
@@ -117,6 +119,29 @@ export function inboxItemOwnedByConversation(
   conversationId: SQL | AnyColumn | string,
 ): SQL {
   return eq(inboxItemOwnerConversationId(), conversationId);
+}
+
+/**
+ * SQL: the Conversation owns an Inbox item that matches `condition`, which
+ * must not read the outer row. No index holds an item's owner, so a check
+ * on each row would read every matching item again. The set has no outer
+ * reference, so Postgres reads the items once for the statement, through
+ * the subject kind index.
+ */
+export function conversationOwnsInboxItem(
+  conversationId: SQL | AnyColumn,
+  condition: SQL,
+): SQL<boolean> {
+  const owned = getDb()
+    .select({ ownerId: inboxItemOwnerConversationId() })
+    .from(juniorInboxItems)
+    .where(
+      and(
+        inArray(juniorInboxItems.subjectKind, conversationOwnedSubjectKinds()),
+        condition,
+      ),
+    );
+  return sql<boolean>`coalesce(${conversationId} in (${owned}), false)`;
 }
 
 const todoOwner = alias(juniorConversations, "todo_owner");
