@@ -1,23 +1,9 @@
 /**
- * A one-off backfill of the next action of open Junior pull requests.
- *
- * The next action derives only when a webhook that can change it arrives
- * (`webhooks/pull-request-action.ts`). A pull request that went quiet before
- * a derivation rule shipped has no action and no item for that rule until
- * its next webhook, which can be never. This task syncs each open pull
- * request once, through the same path as a webhook. That path changes an
- * item only when the derived action is not the saved one, so a pull request
- * whose saved action still holds keeps its item as it is, also one that a
- * person dismissed. A pull request in limbo, which waits on nobody, gets a
- * review request for its requester on GitHub once its required checks
- * pass, and so a review item.
- *
- * The heartbeat starts one page at a time until the last page is done. A
- * page with a pull request that a webhook was checking runs again, because
- * that webhook does not ask a requester who acted before the last push. Bump
- * `VERSION` when a new derivation rule must reach pull requests that went
- * quiet before it, and set `ASK_AFTER_REQUESTER_ACTED` to whether the rule
- * needs that ask.
+ * One-off backfill of the next action of open Junior PRs that went quiet
+ * before a derivation rule shipped. Each syncs once through the webhook path,
+ * which keeps an item whose saved action holds, also a dismissed one. A page
+ * a webhook was checking runs again. Bump `VERSION` for a new rule, and set
+ * `ASK_AFTER_REQUESTER_ACTED` to whether it asks after the requester acted.
  */
 import type {
   PluginStartedTaskDefinition,
@@ -35,9 +21,7 @@ export const GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK =
   "backfillPullRequestActions";
 
 const VERSION = "v2";
-// v1 brought limbo asks to quiet pull requests, also where the requester
-// acted before the last push. v2 brings only the merge access rule, so it
-// asks in limbo as a webhook does.
+// The merge access rule of this version asks in limbo as a webhook does.
 const ASK_AFTER_REQUESTER_ACTED = false;
 const CURSOR_KEY = `pull-request-action-backfill:${VERSION}:cursor`;
 const DONE_KEY = `pull-request-action-backfill:${VERSION}:done`;
