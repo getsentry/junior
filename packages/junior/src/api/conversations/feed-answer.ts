@@ -1,6 +1,6 @@
 import { and, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import type { ConversationFeedViewerAnswer } from "@/api/schema/conversation-feed";
-import { inboxItemOwnedByConversation } from "@/chat/inbox-items/access";
+import { inboxItemOwnerConversationId } from "@/chat/inbox-items/owner";
 import type { InboxItemRequest } from "@/chat/inbox-items/request";
 import {
   inboxItemAnswer,
@@ -34,23 +34,39 @@ export function feedViewerAnswerSql(
   db: JuniorDatabase,
   userId: string,
 ): SQL<StoredViewerAnswer | null> {
-  const latest = db
+  // No index holds an item's owner. The map of the viewer's newest answer
+  // by owner has no outer reference, so Postgres builds it once for the
+  // statement, not once for each feed row.
+  const answered = db
     .select({
-      answer: sql`jsonb_build_object('answer', ${inboxItemAnswer}, 'closedAt', ${juniorInboxItems.closedAt}, 'request', ${inboxItemRequest})`,
+      answer:
+        sql`jsonb_build_object('answer', ${inboxItemAnswer}, 'closedAt', ${juniorInboxItems.closedAt}, 'request', ${inboxItemRequest})`.as(
+          "answer",
+        ),
+      closedAt: juniorInboxItems.closedAt,
+      id: juniorInboxItems.id,
+      ownerId: inboxItemOwnerConversationId().as("owner_id"),
     })
     .from(juniorInboxItems)
     .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
-        inboxItemOwnedByConversation(juniorConversations.conversationId),
         eq(juniorInboxItems.closedByUserId, userId),
         isNotNull(inboxItemAnswer),
         isNotNull(inboxItemRequest),
       ),
     )
-    .orderBy(desc(juniorInboxItems.closedAt), desc(juniorInboxItems.id))
-    .limit(1);
-  return sql<StoredViewerAnswer | null>`(${latest})`;
+    .as("viewer_answered");
+  const answers = db
+    .selectDistinctOn([answered.ownerId], {
+      answer: answered.answer,
+      ownerId: answered.ownerId,
+    })
+    .from(answered)
+    .where(isNotNull(answered.ownerId))
+    .orderBy(answered.ownerId, desc(answered.closedAt), desc(answered.id))
+    .as("viewer_answers");
+  return sql<StoredViewerAnswer | null>`((select jsonb_object_agg(${answers.ownerId}, ${answers.answer}) from ${answers}) -> ${juniorConversations.conversationId})`;
 }
 
 /**
