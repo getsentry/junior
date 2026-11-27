@@ -481,7 +481,8 @@ onto the agent runtime's separate result channels.
 - `auto` is the default. Junior sets it when you omit the field. A tool with
   `readOnlyHint: true` and no `destructiveHint: true` runs without review.
   Guardian reviews each call of every other tool in this mode. Set
-  `readOnlyHint: true` only when the tool never writes.
+  `readOnlyHint: true` only when the tool never writes. Annotations that a
+  remote MCP server sends never skip review.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a
   child agent.

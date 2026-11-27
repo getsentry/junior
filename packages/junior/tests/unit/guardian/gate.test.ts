@@ -241,56 +241,68 @@ describe("tool action review", () => {
     expect(review).toHaveBeenCalledTimes(1);
   });
 
-  it("skips review of read-only plugin and MCP actions", async () => {
+  it("skips review of read-only plugin actions", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>();
-    const pluginTool = definition({
-      approvalMode: "auto",
-      annotations: {
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-        readOnlyHint: true,
-      },
-      identity: {
-        id: "github.getIssue",
-        name: "getIssue",
-        plugin: "github",
-      },
-      source: { id: "github", description: "GitHub" },
-    });
-    // MCP servers often send only `readOnlyHint`.
-    const mcpTool = definition({
-      approvalMode: "auto",
-      annotations: {
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: true,
-        readOnlyHint: false,
-      },
-      resolveApprovalMetadata: async () => ({
-        annotations: { readOnlyHint: true },
-        description: "Search Linear issues.",
-        name: "mcp__linear__search_issues",
-        source: { id: "linear", description: "MCP provider linear" },
-      }),
-    });
 
     await reviewToolAction(
       "plugin-call",
       "github_getIssue",
-      pluginTool,
+      definition({
+        approvalMode: "auto",
+        annotations: {
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+          readOnlyHint: true,
+        },
+        identity: {
+          id: "github.getIssue",
+          name: "getIssue",
+          plugin: "github",
+        },
+        source: { id: "github", description: "GitHub" },
+      }),
       { issue: 1, repo: "getsentry/junior" },
-      reviewContext({ review }),
-    );
-    await reviewToolAction(
-      "mcp-call",
-      "callMcpTool",
-      mcpTool,
-      { tool_name: "mcp__linear__search_issues" },
       reviewContext({ review }),
     );
 
     expect(review).not.toHaveBeenCalled();
+  });
+
+  it("reviews MCP actions that the server marks read-only", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "Server annotations are only hints.",
+      riskLevel: "low",
+      userAuthorization: "high",
+    }));
+
+    await reviewToolAction(
+      "mcp-call",
+      "callMcpTool",
+      definition({
+        approvalMode: "auto",
+        annotations: {
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: true,
+          readOnlyHint: false,
+        },
+        resolveApprovalMetadata: async () => ({
+          annotations: { readOnlyHint: true },
+          description: "Delete a Linear issue.",
+          name: "mcp__linear__delete_issue",
+          source: { id: "linear", description: "MCP provider linear" },
+        }),
+      }),
+      { tool_name: "mcp__linear__delete_issue" },
+      reviewContext({ review }),
+    );
+
+    expect(review).toHaveBeenCalledTimes(1);
+    expect(review.mock.calls[0]?.[0].tool.annotations).toEqual({
+      readOnlyHint: true,
+    });
   });
 
   it("reviews read-only actions that are also marked destructive", async () => {
@@ -303,17 +315,12 @@ describe("tool action review", () => {
 
     await reviewToolAction(
       "tool-call",
-      "callMcpTool",
+      "demo_purgeCache",
       definition({
         approvalMode: "auto",
-        resolveApprovalMetadata: async () => ({
-          annotations: { destructiveHint: true, readOnlyHint: true },
-          description: "Purge the demo cache.",
-          name: "mcp__demo__purge",
-          source: { id: "demo", description: "MCP provider demo" },
-        }),
+        annotations: { destructiveHint: true, readOnlyHint: true },
       }),
-      { tool_name: "mcp__demo__purge" },
+      { cache: "demo" },
       reviewContext({ review }),
     );
 

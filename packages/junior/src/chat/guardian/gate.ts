@@ -189,17 +189,12 @@ export class ToolActionReviewLimitError extends Error {
 }
 
 /**
- * True when an `auto` action must enter review. The tool's annotations alone
- * decide: an action marked read-only and not destructive skips review, like
- * MCP clients such as Codex do. MCP annotations come from the server, and
- * plugin annotations from the plugin. Anything else, including missing
- * annotations, is unknown risk.
+ * True when an `auto` action must enter review. Only the annotations that
+ * Junior or plugin code declares on the tool can skip review: read-only and
+ * not destructive. Annotations that an MCP server sends reach Guardian only as
+ * hints, because a server can mark a write as read-only.
  */
-function autoActionNeedsReview(
-  tool: AnyToolDefinition,
-  resolved: ToolApprovalResolution | undefined,
-): boolean {
-  const annotations = resolved?.annotations ?? tool.annotations;
+function autoActionNeedsReview({ annotations }: AnyToolDefinition): boolean {
   return !(
     annotations?.readOnlyHint === true && annotations.destructiveHint !== true
   );
@@ -453,7 +448,7 @@ async function prepareToolActionReview(
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
   // Each mode other than `auto`, also one that is not known, needs review.
-  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool, resolved)) {
+  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool)) {
     return;
   }
   assertAuthoritativeContext(context);
