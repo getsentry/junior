@@ -49,6 +49,16 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     #expect(!automation.automation.task.text.isEmpty)
   }
 
+  @Test func labelsAnInboxItemSubjectWithoutItsOpaqueId() {
+    // A pull request subject's id is GitHub's numeric id. With no card, such
+    // as when GitHub can't be read, the chip shows the link.
+    let url = "https://github.com/getsentry/junior/pull/4164"
+    var subject = InboxItem.Subject(id: "2984417615", title: nil, url: url)
+    #expect(subject.label == url)
+    subject.title = "Name each Inbox item by its subject kind and id"
+    #expect(subject.label == subject.title)
+  }
+
   @Test func readsConversationsFromAnOlderJunior() throws {
     // Junior 0.310 and older send their old statuses, and no `turnActive` or
     // `treeState`.
