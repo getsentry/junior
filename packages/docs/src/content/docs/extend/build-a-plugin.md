@@ -132,6 +132,26 @@ Set the client redirect URI to
 plugin read-only. `authorize-params` adds provider-specific parameters to the
 authorization URL. Do not declare both `mcp.auth` and `mcp.oauth-client`.
 
+### Guardian review of MCP tools
+
+Guardian reviews each MCP tool call before it runs. A server's own tool
+annotations do not change that, because a server can mark a write as
+read-only. List the tools that have no effect, such as search and fetch, by
+their exact remote names:
+
+```yaml title="plugin.yaml"
+mcp:
+  url: https://api.my-provider.example/mcp
+  guardian:
+    skip-review:
+      - search
+      - fetch
+```
+
+Calls of a listed tool skip review. Junior reviews every other tool, also one
+that the server adds or renames. When the plugin sets `mcp.allowed-tools`,
+each listed tool must be in it or in `mcp.wrapped-tools`.
+
 ### Service accounts
 
 Per-user OAuth is the default. A plugin can also let Junior use one shared
@@ -482,7 +502,8 @@ onto the agent runtime's separate result channels.
   `readOnlyHint: true` and no `destructiveHint: true` runs without review.
   Guardian reviews each call of every other tool in this mode. Set
   `readOnlyHint: true` only when the tool never writes. Annotations that a
-  remote MCP server sends never skip review.
+  remote MCP server sends never skip review. Use `mcp.guardian.skip-review`
+  for those tools.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a
   child agent.

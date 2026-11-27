@@ -305,6 +305,34 @@ describe("tool action review", () => {
     });
   });
 
+  it("skips review of MCP actions that the plugin lists", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>();
+
+    await reviewToolAction(
+      "mcp-call",
+      "callMcpTool",
+      definition({
+        approvalMode: "auto",
+        annotations: {
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: true,
+          readOnlyHint: false,
+        },
+        resolveApprovalMetadata: async () => ({
+          description: "Search Linear issues.",
+          name: "mcp__linear__list_issues",
+          skipReview: true,
+          source: { id: "linear", description: "MCP provider linear" },
+        }),
+      }),
+      { tool_name: "mcp__linear__list_issues" },
+      reviewContext({ review }),
+    );
+
+    expect(review).not.toHaveBeenCalled();
+  });
+
   it("reviews read-only actions that are also marked destructive", async () => {
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "allow",

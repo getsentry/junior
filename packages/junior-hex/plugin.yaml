@@ -22,3 +22,16 @@ mcp:
     - get_cell_output
     - get_run
     - list_data_connections
+  # Threads run Hex's agent, so creating or continuing one is reviewed.
+  guardian:
+    skip-review:
+      - get_thread
+      - search_projects
+      - get_me
+      - get_project
+      - list_cells
+      - get_cell
+      - get_cell_image
+      - get_cell_output
+      - get_run
+      - list_data_connections

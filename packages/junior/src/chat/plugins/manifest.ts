@@ -286,6 +286,12 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
+    guardian: z
+      .object({
+        "skip-review": nonEmptyStringArraySchema("skip-review").optional(),
+      })
+      .strict()
+      .optional(),
   })
   .passthrough();
 
@@ -1133,6 +1139,21 @@ function normalizeMcp(
         { reservedKeys: RESERVED_AUTHORIZE_PARAM_KEYS },
       )
     : undefined;
+  const skipReview = result.data.guardian?.["skip-review"];
+  const unloadedSkipReview = skipReview
+    ? unloadedMcpTools(
+        {
+          allowedTools: result.data["allowed-tools"],
+          wrappedTools: result.data["wrapped-tools"],
+        },
+        skipReview,
+      )
+    : [];
+  if (unloadedSkipReview.length > 0) {
+    throw new Error(
+      `Plugin ${name} mcp.guardian.skip-review must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unloadedSkipReview.join(", ")}`,
+    );
+  }
 
   return {
     transport: "http",
@@ -1165,6 +1186,7 @@ function normalizeMcp(
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
       : undefined),
+    ...(skipReview ? { guardian: { skipReview } } : undefined),
   } satisfies PluginMcpConfig;
 }
 
