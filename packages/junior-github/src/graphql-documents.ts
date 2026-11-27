@@ -220,9 +220,9 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
 
 /**
  * Read what decides a merge conflict fix on one pull request: the review
- * decision, when it opened, and its latest pushes, reviews, and comments.
- * Pushes have their own window, so comments, which anyone can add, cannot
- * push a person's latest push out of it.
+ * decision, when it opened, its latest pushes, reviews, and comments, and
+ * its base branch changes. Pushes and base changes have their own windows,
+ * so comments, which anyone can add, cannot push them out.
  */
 export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
   query PullRequestConflictHistory($owner: String!, $name: String!, $number: Int!) {
@@ -242,6 +242,13 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
             __typename
             ... on PullRequestReview { submittedAt author { __typename } }
             ... on IssueComment { createdAt author { __typename } }
+          }
+        }
+        baseChanges: timelineItems(last: 10, itemTypes: [AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT, BASE_REF_CHANGED_EVENT]) {
+          nodes {
+            __typename
+            ... on AutomaticBaseChangeSucceededEvent { createdAt actor { __typename } }
+            ... on BaseRefChangedEvent { createdAt actor { __typename } }
           }
         }
       }
