@@ -140,7 +140,16 @@ async function sendNextRow(
       .where(eq(juniorTurnOutbox.id, row.id));
     return { kind: "settled" } as const;
   };
-  const destination = destinationSchema.parse(row.destination);
+  // Core stores the Destination without reading it, so a Source can write one
+  // that this deployment cannot send to.
+  const parsed = destinationSchema.safeParse(row.destination);
+  if (!parsed.success) {
+    logException(parsed.error, "turn.delivery.failed", {
+      "gen_ai.conversation.id": conversationId,
+    });
+    return markFailed("The Destination is not valid");
+  }
+  const destination = parsed.data;
   const [event] = await db
     .select()
     .from(juniorConversationEvents)
