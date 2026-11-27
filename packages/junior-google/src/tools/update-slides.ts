@@ -11,7 +11,10 @@ import { readRequesterFile } from "../drive/file-access";
 import { FILE_ID_PATTERN, googleFileRequest } from "../drive/files";
 import type { GoogleToolContext } from "../google-api";
 import { checkTouchedSlides, SLIDE_CHECK_FIELDS } from "../slides/checks";
-import { publishSandboxImages } from "../slides/sandbox-images";
+import {
+  publishSandboxImages,
+  sandboxImagePaths,
+} from "../slides/sandbox-images";
 import {
   presentationReferenceSchema,
   presentationUrl,
@@ -234,6 +237,18 @@ function namesPredefinedLayout(
 
 const replySchema = z.object({ replies: z.array(z.unknown()).default([]) });
 
+/** Count request kinds for the current Guardian, such as `insertText ×2`. */
+function describeRequests(requests: Array<Record<string, unknown>>): string {
+  const counts = new Map<string, number>();
+  for (const request of requests) {
+    const kind = Object.keys(request)[0] ?? "unknown";
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([kind, count]) => (count > 1 ? `${kind} ×${count}` : kind))
+    .join(", ");
+}
+
 /** Apply Slides API batchUpdate requests to one presentation. */
 export const updateGoogleSlidesTool = definePluginTool({
   annotations: {
@@ -245,6 +260,10 @@ export const updateGoogleSlidesTool = definePluginTool({
   description:
     "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation. A Sheets chart needs a Sheet that the requester can open; videos must be from YouTube.",
   inputSchema,
+  describeProposal(input) {
+    const images = sandboxImagePaths(input.requests).length;
+    return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.${images ? ` Google fetches ${images} sandbox image(s) from public URLs that expire within 5 minutes.` : ""}`;
+  },
   guardian: async (input, ctx) =>
     await fileGuardian("Google Slides presentation", input.presentation, ctx),
   outputSchema,

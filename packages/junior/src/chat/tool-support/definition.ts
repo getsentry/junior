@@ -78,6 +78,8 @@ interface BaseToolDefinition<
   guardian?(
     input: TInput,
   ): ActionDescription | undefined | Promise<ActionDescription | undefined>;
+  /** The current Guardian's line for one call. Only `current.ts` reads it. */
+  describeProposal?(input: TInput): string;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;
@@ -144,6 +146,8 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
   guardian?(
     input: unknown,
   ): ActionDescription | undefined | Promise<ActionDescription | undefined>;
+  /** The current Guardian's line for one call. Only `current.ts` reads it. */
+  describeProposal?(input: unknown): string;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;

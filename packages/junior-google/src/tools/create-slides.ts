@@ -53,6 +53,9 @@ export const createGoogleSlidesTool = definePluginTool({
   inputSchema,
   // The new presentation goes to the requester, in the company's Workspace
   // domains.
+  describeProposal(input) {
+    return `Create Google Slides presentation "${input.title}", make the requester its owner (Google emails them), and keep edit access for your own account.`;
+  },
   guardian: async (input) => ({
     target: `new Google Slides presentation "${input.title}"`,
     audience: "internal",

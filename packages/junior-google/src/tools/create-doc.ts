@@ -62,6 +62,9 @@ export const createGoogleDocTool = definePluginTool({
     "Create a Google Doc with optional Markdown content and hand it to the requester: they become the owner, Google emails them about it, and your own Google account loses access. You cannot read or edit the Doc afterward unless the requester shares it with that account again. Only works for requesters in the same Google Workspace organization as that account.",
   inputSchema,
   // The new Doc goes to the requester, in the company's Workspace domains.
+  describeProposal(input) {
+    return `Create Google Doc "${input.title}"${input.content ? ` with ${input.content.length} characters of content` : ""}, make the requester its owner (Google emails them), and remove your own access.`;
+  },
   guardian: async (input) => ({
     target: `new Google Doc "${input.title}"`,
     audience: "internal",

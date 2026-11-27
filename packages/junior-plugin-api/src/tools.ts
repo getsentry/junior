@@ -496,6 +496,11 @@ export interface PluginToolDefinition<
    * write anything. Without it, the target counts as `world`.
    */
   guardian?(input: TInput, ctx: GuardianContext): Promise<GuardianResult>;
+  /**
+   * One line about the call for the current Guardian only. The agent Guardian
+   * reads `guardian`. Remove this with the current Guardian.
+   */
+  describeProposal?(input: TInput): string;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**

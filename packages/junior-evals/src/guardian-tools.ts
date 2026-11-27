@@ -204,7 +204,12 @@ export async function agentToolSpec(
         designGuardianContext(facts),
       )
     : await tool.guardian?.(input);
-  return proposalTool(name, tool, resolved, describedProposal(described));
+  return proposalTool(
+    name,
+    tool,
+    resolved,
+    describedProposal(described, tool, input),
+  );
 }
 
 /** Whether the agent has the tool, so its description comes from core. */

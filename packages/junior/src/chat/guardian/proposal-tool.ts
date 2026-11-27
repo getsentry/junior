@@ -10,13 +10,15 @@ import type { ToolActionProposal } from "@/chat/guardian/proposal";
 
 /**
  * The current Guardian's line for one call: the summary of the tool's
- * `guardian`, as main's `describeProposal` gave it. Other calls get no line,
- * as on main.
+ * `guardian`, else the tool's own `describeProposal`, as on main. Other
+ * calls get no line, as on main.
  */
 export function describedProposal(
   described: ActionDescription | undefined,
+  tool: AnyToolDefinition,
+  input: Record<string, unknown>,
 ): string | undefined {
-  return described?.summary;
+  return described?.summary ?? tool.describeProposal?.(input);
 }
 
 /** Cut the middle of `text` so it fits in `maxChars`. */
