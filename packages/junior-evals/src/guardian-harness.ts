@@ -18,6 +18,7 @@ import type {
   ToolActionProposal,
   ToolActionReviewDecision,
 } from "@/chat/guardian/proposal";
+import type { GuardianDesignFacts } from "./guardian-design-harness";
 
 const GUARDIAN_EVAL_TIMEOUT_MS = 60_000;
 
@@ -31,6 +32,11 @@ export interface GuardianEvalInput {
   expectedDecision: ToolActionDecision | ToolActionDecision[];
   /** Plugin destination facts, as an install declares them. */
   destinationFacts?: GuardianDestinationFact[];
+  /**
+   * Stored records that the agent Guardian's plugin lookups read, such as
+   * the agent's own pull requests. The current Guardian does not read them.
+   */
+  facts?: GuardianDesignFacts;
 }
 
 export interface GuardianEvalOutput extends Record<string, JsonValue> {
@@ -82,11 +88,15 @@ type HarnessDecision = Omit<
  */
 async function reviewWithAgentGuardian(
   proposal: ToolActionProposal,
+  facts: GuardianDesignFacts | undefined,
   signal: AbortSignal,
 ): Promise<HarnessDecision> {
   // Loaded here: the arms module imports this one.
   const { agentGuardianArm } = await import("./guardian-design-arms");
-  const result = await agentGuardianArm({ actions: [proposal] }, { signal });
+  const result = await agentGuardianArm(
+    { actions: [proposal], ...(facts ? { facts } : undefined) },
+    { signal },
+  );
   const action = result.actions[0]!;
   if (action.outcome === "unavailable") {
     throw new Error("The agent Guardian could not review the proposal.");
@@ -113,7 +123,11 @@ export const guardianHarness = createHarness<
       : timeoutSignal;
     const decision: HarnessDecision =
       process.env["GUARDIAN_DESIGN_ARM"]?.trim() === "agent"
-        ? await reviewWithAgentGuardian(input.proposal, reviewSignal)
+        ? await reviewWithAgentGuardian(
+            input.proposal,
+            input.facts,
+            reviewSignal,
+          )
         : await reviewGuardianProposal(input.proposal, {
             ...(input.destinationFacts
               ? { destinationFacts: input.destinationFacts }
