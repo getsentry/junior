@@ -173,15 +173,24 @@ function spaceRef(spaceId: string | undefined): SpaceRefReport | null {
   return space ? { id: space.id, name: space.name } : null;
 }
 
-/** Label each feed row with its Space, as the API does. */
+/**
+ * Label each feed row with its Space, as the API does. A row in a Space is
+ * a child of its Lead there.
+ */
 export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
   return {
     ...feed,
-    conversations: feed.conversations.map((row) => ({
-      ...row,
-      space: spaceRef(mockConversationSpaces.get(row.conversationId)),
-      visibility: visibilityOf(row.conversationId, row.visibility),
-    })),
+    conversations: feed.conversations.map((row) => {
+      const spaceId = mockConversationSpaces.get(row.conversationId);
+      return {
+        ...row,
+        ...(spaceId
+          ? { parentConversationId: mockLeadId(spaceId) }
+          : undefined),
+        space: spaceRef(spaceId),
+        visibility: visibilityOf(row.conversationId, row.visibility),
+      };
+    }),
   };
 }
 
