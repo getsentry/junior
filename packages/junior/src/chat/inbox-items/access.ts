@@ -112,8 +112,9 @@ export function inboxItemReaderForUser(user: User): InboxItemReader {
 }
 
 /**
- * SQL: a Conversation owns the Inbox item. The Conversation status and
- * feeds read the items that each Conversation owns.
+ * SQL: a Conversation owns the Inbox item. No index holds the owner, so a
+ * check that runs once for each Conversation row uses
+ * `inboxItemOwnedByThroughSubject`.
  */
 export function inboxItemOwnedByConversation(
   conversationId: SQL | AnyColumn | string,

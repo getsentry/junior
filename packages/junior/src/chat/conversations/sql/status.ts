@@ -15,9 +15,9 @@ import type { EndedTurn } from "@/chat/conversations/turn-update";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
 import {
   inboxItemNeedsInput,
-  inboxItemOwnedByConversation,
   inboxItemSetsConversationStatus,
 } from "@/chat/inbox-items/access";
+import { inboxItemOwnedByThroughSubject } from "@/chat/inbox-items/owner";
 import { awaitsAuthorization } from "./authorization-wait";
 import { conversationKindSql } from "./conversation-row";
 import {
@@ -269,7 +269,7 @@ export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
   const needsInput = sql`exists (select 1 from ${juniorInboxItems} where ${and(
-    inboxItemOwnedByConversation(conversation.conversationId),
+    inboxItemOwnedByThroughSubject(conversation.conversationId),
     inboxItemNeedsInput(),
     inboxItemSetsConversationStatus(),
   )})`;

@@ -1,6 +1,6 @@
 import { and, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import type { ConversationFeedViewerAnswer } from "@/api/schema/conversation-feed";
-import { inboxItemOwnedByConversation } from "@/chat/inbox-items/access";
+import { inboxItemOwnedByThroughSubject } from "@/chat/inbox-items/owner";
 import type { InboxItemRequest } from "@/chat/inbox-items/request";
 import {
   inboxItemAnswer,
@@ -42,7 +42,7 @@ export function feedViewerAnswerSql(
     .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
-        inboxItemOwnedByConversation(juniorConversations.conversationId),
+        inboxItemOwnedByThroughSubject(juniorConversations.conversationId),
         eq(juniorInboxItems.closedByUserId, userId),
         isNotNull(inboxItemAnswer),
         isNotNull(inboxItemRequest),
