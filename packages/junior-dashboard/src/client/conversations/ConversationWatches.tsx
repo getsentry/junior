@@ -83,7 +83,7 @@ export function WatchCancelItems(props: {
 /**
  * List what one Conversation waits on: its own Watches and Timers, each with
  * when it fires or expires. A child's Watch shows in that child's menu
- * instead, unless the child is not listed, such as a grandchild.
+ * instead, unless the child is private or not listed, such as a grandchild.
  */
 export function ConversationWaitingOn(props: {
   canEdit: boolean;
@@ -93,7 +93,12 @@ export function ConversationWaitingOn(props: {
     useConversationChildAgents(props.conversationId).data?.agents ?? [];
   const watches =
     useConversationWatches(props.conversationId).data?.watches ?? [];
-  const listed = new Set(children.map((child) => child.conversationId));
+  // A private child's row has no menu, so its Watches stay here to cancel.
+  const listed = new Set(
+    children
+      .filter((child) => !child.redacted)
+      .map((child) => child.conversationId),
+  );
   const own = watches.filter(
     (watch) =>
       !watch.childAgent || !listed.has(watch.childAgent.conversationId),

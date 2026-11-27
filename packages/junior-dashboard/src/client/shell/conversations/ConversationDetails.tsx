@@ -90,10 +90,13 @@ export function ConversationDetails(props: {
     setTask(undefined);
   }
   const needsYou = useConversationNeedsYou(props.conversationId);
+  // Items kept from the last Conversation must not hide this one's To-dos.
   const needsYouTodoIds = new Set(
-    needsYou.items.flatMap((item) =>
-      item.todoId === undefined ? [] : [item.todoId],
-    ),
+    needsYou.query.isPlaceholderData
+      ? []
+      : needsYou.items.flatMap((item) =>
+          item.todoId === undefined ? [] : [item.todoId],
+        ),
   );
   const canEdit = detail?.isParticipant === true;
   const hasMemories = Boolean(memoryList?.events.length);
