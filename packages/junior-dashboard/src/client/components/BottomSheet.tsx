@@ -60,11 +60,10 @@ export type BottomSheetProps = {
 
 /**
  * The phone sheet. It rises from the bottom edge over the page, with a
- * visible title, a close button, and a body that scrolls by itself. A swipe
- * down, a tap on the dimmed page, Esc, or the close button shuts it, and
- * nothing else does, so a tap inside it never loses it. Mount it to open
- * it. A sheet opened from inside another sheet stacks in front of it, shows
- * ← to go back to it, and its close button shuts both.
+ * visible title, a close button, and a body that scrolls by itself. Only a
+ * swipe down, a tap on the dimmed page, Esc, or the close button shuts it.
+ * Mount it to open it. A sheet opened from inside another sheet stacks in
+ * front of it, shows ← to go back to it, and its close button shuts both.
  */
 export function BottomSheet(props: BottomSheetProps) {
   return (
@@ -77,10 +76,9 @@ export function BottomSheet(props: BottomSheetProps) {
 /**
  * A `BottomSheet` for an open state that its owner keeps, such as a list's
  * open row on a phone. It shows while `open`, and through its motion once
- * `open` turns false. `onDismiss` runs when the reader shuts it while it is
- * still open, so the owner can close its state. When `open` turns true
- * again during the motion, as when a failed action restores its row, a new
- * sheet opens once the old one is shut.
+ * `open` turns false. `onDismiss` runs when the reader shuts it while still
+ * open. When `open` turns true again during the motion, as when a failed
+ * action restores its row, a new sheet opens once the old one is shut.
  */
 export function ToggleSheet(
   props: Omit<BottomSheetProps, "onClose" | "open"> & {

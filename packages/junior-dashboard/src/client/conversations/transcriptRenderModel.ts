@@ -22,12 +22,10 @@ import { memoryRecallContent } from "./turnContext";
 
 /**
  * True for the parent Event message that delivers a child's agent update,
- * or a child's result that an earlier release wrote, when the child's Thread
- * card or Task line is in `cardChildIds`. Core writes `subagent_ended`
- * before it sends the result, so that card already shows the outcome. The
- * transcript keeps this message only for the memories its Turn recalled,
- * folded into activity. An agent update that a Watch delivered, or one
- * whose card is on a page that is not loaded, has no card here, so it stays.
+ * or a child's result from an earlier release, when the child's Thread card
+ * or Task line is in `cardChildIds`. That card already shows the outcome, so
+ * the message stays only for its Turn's recalled memories, folded into
+ * activity. False for an update from a Watch or one whose card is unloaded.
  */
 export function isChildResultMessage(
   message: Pick<
@@ -162,8 +160,8 @@ export function groupTranscriptMessages(
     let textGroup = 0;
     const flushMessage = () => {
       if (textParts.length === 0) return;
-      // Keep the original message object when the whole body is one text group so
-      // memoized message rows can skip work on unchanged history.
+      // Keep the original message object when the whole body is one text
+      // group so memoized message rows can skip work on unchanged history.
       const nextMessage =
         textGroup === 0 && textParts.length === message.parts.length
           ? message
