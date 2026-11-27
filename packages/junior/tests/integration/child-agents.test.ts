@@ -669,9 +669,11 @@ describe("child agents", () => {
       await harness.processUntilRun(childId);
 
       const [first, resumed] = harness.runs;
+      // Resume reads the saved parent_message Source to rebuild the task.
       expect(resumed).toMatchObject({
         conversationId: childId,
         instruction: { provenance: { authority: "instruction" } },
+        source: { kind: "parent_message" },
         turnId: first!.turnId,
       });
       // The resumed Turn recalls from the same task words as the first.

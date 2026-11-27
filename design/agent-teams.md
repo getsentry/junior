@@ -94,6 +94,8 @@ end-of-Turn contract. A person can see and steer each agent.
   Conversation note.
 - `child-owns-watches` A child owns its Watch work, so the parent does not
   steer each Event.
+- `parent-resets-limit` A task or message from its parent resets a child's
+  count of automated Turns, as a person's message does for a root.
 - `no-early-done` A parent never sees a running child as done. Each result
   names the siblings that did not report yet.
 - `push-not-poll` An agent waits for updates. It does not check an agent

@@ -74,10 +74,7 @@ import {
   normalizeConversationText,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import {
-  recordFinishedTurnForAutomatedLimit,
-  resetAutomatedTurnLimit,
-} from "@/chat/services/automated-turn-limit";
+import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
 import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import {
@@ -207,7 +204,7 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
-    // A parent agent's task or message. On resume, its saved author says so.
+    // A parent agent's task or message. On resume, its saved Source says so.
     let fromParent =
       resolved.kind === "mailbox" &&
       resolved.batch.every((entry) => readParentMessage(entry.message));
@@ -219,13 +216,9 @@ export function createConversationTurnWorker(
       conversationId: context.conversationId,
     });
     const kind = storedConversation?.kind ?? "thread";
-    // The parent's task can carry the root's private content, so a child
-    // with missing visibility runs as private.
-    const visibility = isTopLevel({
-      parentConversationId: storedConversation?.parentConversationId,
-    })
-      ? storedConversation?.visibility
-      : (storedConversation?.visibility ?? "private");
+    // A child stores its root's visibility, so a child with none has a root
+    // with none. Missing visibility runs as private.
+    const visibility = storedConversation?.visibility ?? "private";
     const mailboxDestination =
       resolved.kind === "mailbox"
         ? resolved.batch[0]?.message.destination
@@ -278,17 +271,19 @@ export function createConversationTurnWorker(
         );
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
-      fromParent = isParentMessageAuthor(userMessage.author);
-      fromChildAgent = isChildAgentEvent(userMessage.meta);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
+      fromParent = savedTurn?.source
+        ? savedTurn.source.kind === "parent_message"
+        : isParentMessageAuthor(userMessage.author);
+      fromChildAgent = isChildAgentEvent(userMessage.meta);
       turnInputFacts = turnInputFactsFromConversationMessage(userMessage, {
         conversationId: context.conversationId,
         location: storedConversation?.location,
         savedActor: savedTurn?.actor,
         savedSource: savedTurn?.source,
-        visibility: storedConversation?.visibility,
+        visibility,
       });
       // Rebuild the inputs from every saved input Message. A web batch saved
       // each Message apart. An Event or parent batch saved one Message with
@@ -781,26 +776,18 @@ export function createConversationTurnWorker(
                   surface,
                 });
               }
-              if (fromParent) {
-                // A parent agent's task resets the limit, as a person's
-                // Message does.
-                await resetAutomatedTurnLimit({
-                  conversationId: context.conversationId,
-                });
-              } else {
-                const automatedTurnLimit =
-                  await recordFinishedTurnForAutomatedLimit({
-                    conversationId: context.conversationId,
-                    maxTurns: botConfig.maxConsecutiveAutomatedTurns,
-                    source,
-                  });
-                await stopAtAutomatedTurnLimit({
+              const automatedTurnLimit =
+                await recordFinishedTurnForAutomatedLimit({
                   conversationId: context.conversationId,
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
-                  update: automatedTurnLimit,
                 });
-              }
+              await stopAtAutomatedTurnLimit({
+                conversationId: context.conversationId,
+                maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                source,
+                update: automatedTurnLimit,
+              });
 
               completedSuccessfully = reply.diagnostics.outcome === "success";
               const delivered = assistantMessageDelivered

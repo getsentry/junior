@@ -76,7 +76,7 @@ const automationTurn = {
   waitsForSignIn: true,
   gated: true,
   sessionTasks: true,
-  conversationMetadata: true,
+  conversationMetadata: false,
   relatedConversations: false,
   tools: {
     ...rootTurn.tools,

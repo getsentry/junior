@@ -96,7 +96,10 @@ function emptyState(nowMs: number): AutomatedTurnLimitState {
   };
 }
 
-/** True when this Source starts an automated Turn rather than a user Turn. */
+/**
+ * True when this Source starts an automated Turn rather than a user Turn. A
+ * parent agent's task clears the count, as a person's Message does.
+ */
 export function isAutomatedTurnSource(source: Source | undefined): boolean {
   if (!source) {
     return false;
@@ -105,8 +108,7 @@ export function isAutomatedTurnSource(source: Source | undefined): boolean {
     source.kind === "event" ||
     source.kind === "event_automation" ||
     source.kind === "scheduled_automation" ||
-    source.kind === "plugin_dispatch" ||
-    source.kind === "parent_message"
+    source.kind === "plugin_dispatch"
   );
 }
 

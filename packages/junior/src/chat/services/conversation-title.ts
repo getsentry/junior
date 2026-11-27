@@ -1,3 +1,4 @@
+import { hasConversationMetadata } from "@/chat/conversations/kind-behavior";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { readLocationConfigurationValues } from "@/chat/configuration/sql";
@@ -110,8 +111,7 @@ async function ensureConversationTitleOnce(args: {
     if (stored?.title?.trim()) {
       return undefined;
     }
-    // A Task is execution machinery that people do not list or message.
-    if (stored?.kind === "task") {
+    if (stored && !hasConversationMetadata(stored.kind)) {
       return undefined;
     }
     // Only dispatched runs use bot-authored input as the title source.
