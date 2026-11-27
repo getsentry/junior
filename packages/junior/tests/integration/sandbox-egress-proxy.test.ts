@@ -23,14 +23,13 @@ import { githubPlugin } from "@sentry/junior-github";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import type { EmittedLogRecord } from "@/chat/logging";
 import { mswServer } from "../msw/server";
+import { resetTestEnv } from "../fixtures/stub-env";
 
 const rootTurnTools = turnBehavior({
   kind: "thread",
   hasParent: false,
   personInput: true,
 }).tools;
-
-const ORIGINAL_ENV = { ...process.env };
 const FIXTURE_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/sandbox-egress",
@@ -290,13 +289,16 @@ async function registerGitHubPlugin(
 }
 
 function configureGitHubAppEnv() {
-  process.env["GITHUB_APP_ID"] = "123";
-  process.env["GITHUB_INSTALLATION_ID"] = "456";
-  process.env["GITHUB_APP_PRIVATE_KEY"] = generateKeyPairSync("rsa", {
-    modulusLength: 2048,
-  })
-    .privateKey.export({ type: "pkcs8", format: "pem" })
-    .toString();
+  vi.stubEnv("GITHUB_APP_ID", "123");
+  vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
+  vi.stubEnv(
+    "GITHUB_APP_PRIVATE_KEY",
+    generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString(),
+  );
 }
 
 function mockGitHubInstallationToken() {
@@ -353,13 +355,12 @@ describe("sandbox egress proxy integration", () => {
   let pluginApp: PluginAppFixture | undefined;
 
   beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       JUNIOR_BASE_URL: BASE_URL,
       JUNIOR_SECRET: "integration-secret",
       JUNIOR_STATE_ADAPTER: "memory",
       SANDBOX_EGRESS_TEST_TOKEN: "integration-egress-token",
-    };
+    });
     pluginApp = await createPluginAppFixture([FIXTURE_PLUGIN_ROOT]);
     modules = await loadModules();
   });
@@ -368,7 +369,7 @@ describe("sandbox egress proxy integration", () => {
     await modules?.state.disconnectStateAdapter();
     await pluginApp?.cleanup();
     pluginApp = undefined;
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   });
 
   it("injects provider credentials through real plugin and broker wiring without command session state", async () => {
@@ -418,7 +419,7 @@ describe("sandbox egress proxy integration", () => {
     // Since the fixture has no `oauth` section, the broker throws CredentialUnavailableError
     // for the missing-env-token case. This should be normalized to an egress credential error
     // before reaching the proxy, and the proxy should return the canonical auth-required 401.
-    delete process.env["SANDBOX_EGRESS_TEST_TOKEN"]; // remove env token so broker has no credential
+    vi.stubEnv("SANDBOX_EGRESS_TEST_TOKEN", undefined); // remove env token so broker has no credential
     const records: EmittedLogRecord[] = [];
     const unregister = modules.logging.registerLogRecordSink((record) => {
       records.push(record);
@@ -467,7 +468,7 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("records OAuth authorization metadata for broker credential gaps", async () => {
-    delete process.env["OAUTH_BROKER_ACCESS_TOKEN"];
+    vi.stubEnv("OAUTH_BROKER_ACCESS_TOKEN", undefined);
     await registerOAuthBrokerPlugin();
 
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
@@ -509,7 +510,7 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("uses OAuth broker credentials when a credential hook returns no grant", async () => {
-    delete process.env["OAUTH_BROKER_ACCESS_TOKEN"];
+    vi.stubEnv("OAUTH_BROKER_ACCESS_TOKEN", undefined);
     await registerOAuthBrokerPlugin({
       grantForEgress: (ctx) =>
         ctx.request.method === "GET"
@@ -2112,9 +2113,9 @@ describe("sandbox egress proxy integration", () => {
   });
 
   it("returns a controlled egress auth response when GitHub App setup is unavailable", async () => {
-    delete process.env["GITHUB_APP_ID"];
-    delete process.env["GITHUB_APP_PRIVATE_KEY"];
-    delete process.env["GITHUB_INSTALLATION_ID"];
+    vi.stubEnv("GITHUB_APP_ID", undefined);
+    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", undefined);
+    vi.stubEnv("GITHUB_INSTALLATION_ID", undefined);
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },

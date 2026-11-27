@@ -20,8 +20,7 @@ import {
   getCapturedSlackFileDownloadCalls,
   queueSlackPrivateFileDownload,
 } from "../../msw/handlers/slack-api";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../../fixtures/stub-env";
 const MIB = 1024 * 1024;
 const PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
@@ -33,13 +32,12 @@ async function createRuntime(
   >[0],
   env: NodeJS.ProcessEnv = {},
 ) {
-  process.env = {
-    ...ORIGINAL_ENV,
+  resetTestEnv({
     AI_VISION_MODEL: "",
     SLACK_BOT_TOKEN: "xoxb-test-token",
     SLACK_BOT_USER_TOKEN: "",
     ...env,
-  };
+  });
   vi.resetModules();
   const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
   return createTestChatRuntime(args);
@@ -113,7 +111,7 @@ function chunkRecordingStorage() {
 
 describe("Slack behavior: mixed attachment media", () => {
   afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     vi.resetModules();
   });
 

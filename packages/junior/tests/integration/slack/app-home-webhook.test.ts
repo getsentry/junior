@@ -21,10 +21,10 @@ import {
 } from "../../fixtures/conversation-work";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
+import { resetTestEnv } from "../../fixtures/stub-env";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
-const ORIGINAL_ENV = { ...process.env };
 
 function createSlackAdapter() {
   return createJuniorSlackAdapter({
@@ -69,15 +69,14 @@ function createTokenStore(
 
 describe("Slack webhook: App Home events", () => {
   beforeEach(() => {
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       SLACK_BOT_TOKEN: "xoxb-test-token",
-    };
+    });
     resetSlackApiMockState();
   });
 
   afterEach(async () => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     resetSlackApiMockState();
     await disconnectStateAdapter();
   });

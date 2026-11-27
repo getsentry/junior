@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
@@ -12,9 +12,9 @@ import {
   createNoopSlackWebhookRuntime,
 } from "../../fixtures/conversation-work";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
+import { resetTestEnv } from "../../fixtures/stub-env";
 
 const SIGNING_SECRET = "test-signing-secret";
-const ORIGINAL_ENV = { ...process.env };
 
 async function deliverChannelCreated(autoJoinNewChannels: boolean) {
   const client = createSlackWebhookTestClient({
@@ -56,12 +56,12 @@ async function deliverChannelCreated(autoJoinNewChannels: boolean) {
 
 describe("Slack webhook: channel_created", () => {
   beforeEach(() => {
-    process.env = { ...ORIGINAL_ENV, SLACK_BOT_TOKEN: "xoxb-test-token" };
+    resetTestEnv({ SLACK_BOT_TOKEN: "xoxb-test-token" });
     resetSlackApiMockState();
   });
 
   afterEach(async () => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     resetSlackApiMockState();
     await disconnectStateAdapter();
   });
