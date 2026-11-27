@@ -51,7 +51,7 @@ export function guardianArm(
     const reviewed = await mapBounded(
       request.actions,
       async (proposal) =>
-        proposal.tool.name === "bash" || (await gateReviews(proposal.tool)),
+        proposal.tool.name === "bash" || (await gateReviews(proposal)),
     );
     const indexes = request.actions.flatMap((_, index) =>
       reviewed[index] ? [index] : [],

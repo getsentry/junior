@@ -162,4 +162,24 @@ describe("guardian design request", () => {
       "[github] Repository getsentry/getsentry has audience internal.",
     ]);
   });
+
+  it("skips the reads that a plugin lists in skipReview, as the gate does", async () => {
+    const { gateReviews } = await import("../../src/guardian-tools");
+    const mcpCall = (toolName: string) =>
+      proposal({
+        context: slackContext("check PRODENG-2640"),
+        input: {
+          arguments: { id: "PRODENG-2640" },
+          tool_name: toolName,
+        },
+        tool: "callMcpTool",
+      });
+
+    expect(await gateReviews(await mcpCall("mcp__linear__get_issue"))).toBe(
+      false,
+    );
+    expect(await gateReviews(await mcpCall("mcp__linear__save_issue"))).toBe(
+      true,
+    );
+  });
 });

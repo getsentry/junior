@@ -40,6 +40,21 @@ import { getPlugins } from "@/chat/plugins/hooks/registry";
 const MCP_TOOLS: ManagedMcpTool[] = [
   {
     annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
+    description:
+      "[linear] Retrieve detailed information about an issue by ID, including attachments, git branch name, and active Triage Intelligence suggestions when the issue is in triage",
+    name: "mcp__linear__get_issue",
+    rawName: "get_issue",
+    parameters: {},
+    provider: "linear",
+    execute: unavailable,
+  },
+  {
+    annotations: {
       destructiveHint: true,
       idempotentHint: false,
       openWorldHint: false,
@@ -159,7 +174,7 @@ async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
   return {
     ...(createTools([], {}, context) as Record<string, AnyToolDefinition>),
     callMcpTool: createCallMcpToolTool({
-      getResolvedActiveTools: () => MCP_TOOLS,
+      getResolvedActiveTools: () => MCP_TOOLS.map(withSkipReview),
     }),
   };
 }
@@ -241,16 +256,32 @@ export async function agentActionFacts(
 }
 
 /**
- * Whether the gate sends this call to Guardian. A call that it does not
- * review runs. A tool that the agent does not have is reviewed.
+ * Mark a remote tool that its plugin lists in `mcp.guardian.skipReview`, as
+ * the MCP tool manager does.
+ */
+function withSkipReview(tool: ManagedMcpTool): ManagedMcpTool {
+  const skipReview = getPlugins()
+    .find((plugin) => plugin.manifest.name === tool.provider)
+    ?.manifest.mcp?.guardian?.skipReview?.includes(tool.rawName);
+  return skipReview ? { ...tool, skipReview: true } : tool;
+}
+
+/**
+ * Whether the gate sends this call to Guardian, given the metadata that the
+ * tool resolves for its input. A call that it does not review runs. A tool
+ * that the agent does not have is reviewed.
  */
 export async function gateReviews(
-  tool: ToolActionProposal["tool"],
+  proposal: Pick<ToolActionProposal, "tool" | "input">,
 ): Promise<boolean> {
   agentTools ??= buildAgentTools();
+  const { tool, input } = proposal;
   const definition = (await agentTools)[tool.dispatcherName ?? tool.name];
   if (!definition) {
     return true;
   }
-  return toolActionNeedsReview(definition);
+  return toolActionNeedsReview(
+    definition,
+    await definition.resolveApprovalMetadata?.(input),
+  );
 }
