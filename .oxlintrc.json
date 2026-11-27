@@ -206,15 +206,6 @@
       }
     },
     {
-      "files": [
-        "packages/junior/src/api/conversations/membership.ts",
-        "packages/junior/src/api/spaces/state.ts"
-      ],
-      "rules": {
-        "junior/no-or-in-array-subqueries": "off"
-      }
-    },
-    {
       "files": ["packages/junior/src/**/*.ts", "packages/junior-*/src/**/*.ts"],
       "rules": {
         "junior/no-hand-built-prompt-tags": "error",

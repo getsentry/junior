@@ -95,6 +95,3 @@ each rule, so new code cannot drift from it.
   rule off for those files. `pnpm await-in-loop:check` fails when a count goes
   up, and when a count goes down but its entry does not. Do not add entries.
   When you change a listed file, fix its sites and lower its entry.
-- `.oxlintrc.json` turns `junior/no-or-in-array-subqueries` off for the files
-  that broke it when the rule was added. Do not add files. When you fix a
-  file, remove it from the list.
