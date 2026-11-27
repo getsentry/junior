@@ -108,9 +108,9 @@ function treeIsQuiet(run: ArchiveRun) {
 /**
  * True when nothing in the participant row's tree needs a person: no
  * `needs_input` status, no open action item, and no open To-do assigned to
- * a person. Archive
- * applies to everyone, so input that waits on anyone keeps the tree. An
- * archived child counts for nothing, as in the tree state.
+ * a person. Archive applies to everyone, so input that waits on anyone
+ * keeps the tree. An archived child counts for nothing, as in the tree
+ * state.
  */
 function treeNeedsNoOne() {
   const assignedToPerson = getDb()

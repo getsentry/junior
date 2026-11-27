@@ -588,7 +588,8 @@ test.describe("new UI", () => {
             page.getByText("Highest spend", { exact: true }),
           ).toBeVisible();
         },
-        { requests: 7, serialRounds: 2 },
+        // The sidebar reads what waits on the viewer from the Inbox.
+        { requests: 8, serialRounds: 2 },
       );
       expect(directoryReads).toBe(1);
 
@@ -622,7 +623,8 @@ test.describe("new UI", () => {
             .getByText("Warmups sent after", { exact: true }),
         ).toBeVisible();
       },
-      { requests: 9, serialRounds: 2 },
+      // The sidebar reads what waits on the viewer from the Inbox.
+      { requests: 10, serialRounds: 2 },
     );
   });
 });

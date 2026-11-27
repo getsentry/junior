@@ -246,8 +246,9 @@ test.describe("new UI", () => {
             .first(),
         ).toBeVisible();
       },
-      // One of them reads the viewer's Spaces for the pane.
-      { requests: 9, serialRounds: 2 },
+      // One of them reads the viewer's Spaces for the pane, and one what
+      // waits on the viewer, from the Inbox.
+      { requests: 10, serialRounds: 2 },
     );
     expect(requests).toBe(1);
 

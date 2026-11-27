@@ -3,6 +3,7 @@ import type { ConversationChildAgent } from "@sentry/junior/api/schema";
 
 import { NOW_MS } from "../src/mock-reporting/fixtures";
 import { conversationMenuRow } from "./conversationMenu";
+import { noViewerWaits } from "./inbox/inbox-fixture";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -15,6 +16,8 @@ const BILLING = `/spaces/${BILLING_ID}`;
  * the only `local:web:` Conversation that the page reads Threads for.
  */
 async function seedThreads(page: Page) {
+  // The rows' states are their own: no ask waits on the viewer.
+  await noViewerWaits(page);
   await page.route(
     (url) =>
       url.pathname.startsWith("/api/conversations/local%3Aweb%3A") &&

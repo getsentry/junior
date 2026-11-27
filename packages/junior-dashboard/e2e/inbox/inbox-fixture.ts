@@ -777,3 +777,14 @@ export async function expandRow(head: Locator) {
   const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
   await row.locator('[aria-controls^="inbox-row-"]').first().click();
 }
+
+/**
+ * Answer that no ask waits on the viewer, so rows show their own state, as
+ * the Conversation reads it.
+ */
+export async function noViewerWaits(page: Page) {
+  await page.route(
+    (url) => url.pathname === "/api/inbox-items/waiting-conversations",
+    (route) => route.fulfill({ json: { conversations: [] } }),
+  );
+}

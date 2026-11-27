@@ -11,6 +11,7 @@ import {
   mockInboxItems,
   rollout,
   rowHead,
+  noViewerWaits,
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -292,6 +293,9 @@ test.describe("new UI", () => {
     const long = `${CHECKOUT}${", then the p99 regression in the EU region".repeat(4)}`;
     let grown = false;
     let baseline = false;
+    // No ask waits on the viewer, so In flight leads with the running
+    // Conversation.
+    await noViewerWaits(page);
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
@@ -334,6 +338,8 @@ test.describe("new UI", () => {
     page,
   }) => {
     await comfortable(page);
+    // No ask waits on the viewer, so a pinned row shows its pin.
+    await noViewerWaits(page);
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = sentaurRow(page);
     await row.scrollIntoViewIfNeeded();

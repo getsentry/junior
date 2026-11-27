@@ -1,6 +1,11 @@
 import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { requestedConversationIds, withRequestedMailbox } from "./harness";
-import { mockInboxItems, prReview, rowHead } from "./inbox/inbox-fixture";
+import {
+  mockInboxItems,
+  noViewerWaits,
+  prReview,
+  rowHead,
+} from "./inbox/inbox-fixture";
 import { expect, test } from "./test";
 import { mockConversationDetail, mockObjectLinks } from "./mock-reports";
 
@@ -24,6 +29,9 @@ test("refreshes idle reads only when their version moves", async ({
   let detailReads = 0;
   let feedReads = 0;
   let slackReply = false;
+  // No ask waits on the viewer, so In flight leads with the running
+  // Conversation.
+  await noViewerWaits(page);
   await page.route("**/api/versions*", async (route) => {
     versionReads += 1;
     const { conversation, conversationIds: _, ...tokens } = versions;
