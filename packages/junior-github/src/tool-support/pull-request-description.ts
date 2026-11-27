@@ -41,7 +41,7 @@ const DESCRIPTION_CHECKS = [
  * tools, so the first draft can pass without a rejection.
  */
 export const PULL_REQUEST_BODY_RULES =
-  "Say what changes and why. Omit your test or CI runs of the change, test plans or coverage, work logs, and the chat behind it. Failed runs it fixes and what a test tool checks are fine. Attribution and the footer are added.";
+  "Say what changes and why. Omit your test or CI runs of the change, test plans, coverage, work logs, and the chat behind it. Failed runs it fixes and what test tools check are fine. The runtime appends attribution and footer.";
 
 /** List the fixes that a pull request description needs. Empty means it passes. */
 export async function pullRequestDescriptionFixes(
