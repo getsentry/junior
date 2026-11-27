@@ -53,4 +53,4 @@ mcp:
     - search_agent_analytics_conversations
     - get_agent_analytics_schema
   guardian:
-    skip-review: *read-tools
+    skipReview: *read-tools

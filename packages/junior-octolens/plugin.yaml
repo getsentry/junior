@@ -5,3 +5,36 @@ description: Search and analyze social mentions and manage Octolens monitoring t
 mcp:
   transport: http
   url: https://app.octolens.com/api/mcp/v2
+  # Reads only. Writes, `search_mentions` (it uses mention quota),
+  # `export_mentions` (it makes a download link), `select_workspace`, and
+  # the free-form SQL of `analytics` stay reviewed.
+  guardian:
+    skipReview:
+      - list_mentions
+      - analytics_context
+      - get_mention
+      - list_relevant_mentions
+      - list_negative_mentions
+      - list_mentions_by_author
+      - get_search
+      - mentions_summary
+      - volume_over_time
+      - breakdown
+      - top_keywords
+      - top_sources
+      - sentiment_by_keyword
+      - list_keywords
+      - get_keyword
+      - find_keyword
+      - keyword_health
+      - list_keyword_suggestions
+      - list_feeds
+      - get_feed
+      - search_slack_channels
+      - get_workspace
+      - get_usage
+      - get_global_filters
+      - list_tags
+      - workspace_signals
+      - app_link
+      - list_workspaces

@@ -5,3 +5,34 @@ description: Restream live streaming via the Restream MCP, using each user's own
 mcp:
   transport: http
   url: https://mcp.restream.io/mcp
+  # Reads only. Writes and the tools that make a download link anyone
+  # can open stay reviewed.
+  guardian:
+    skipReview:
+      - get_current_user
+      - list_channels
+      - check_channel_api_access
+      - list_user_events
+      - get_event
+      - list_event_destinations
+      - check_event_channels_activation
+      - get_studio_setup
+      - list_studio_brands
+      - list_studio_fonts
+      - get_studio_scene_notes
+      - list_studio_captions
+      - list_studio_tickers
+      - list_studio_qr_codes
+      - list_studio_widgets
+      - list_studio_images
+      - list_studio_video_backgrounds
+      - list_studio_music
+      - list_user_recordings
+      - list_user_storage_files
+      - list_event_webinar_registrants
+      - list_user_clips_projects
+      - get_user_clips_project_details
+      - get_event_analytics_viewers
+      - get_event_analytics_messages
+      - list_event_chat_messages
+      - get_event_transcript

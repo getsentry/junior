@@ -144,7 +144,7 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   setDefined(
     result,
     "guardian",
-    mcp.guardian && { "skip-review": mcp.guardian.skipReview },
+    mcp.guardian && { skipReview: mcp.guardian.skipReview },
   );
   return result;
 }

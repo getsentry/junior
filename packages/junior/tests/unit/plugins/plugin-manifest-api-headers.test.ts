@@ -580,7 +580,7 @@ describe("plugin manifest API headers", () => {
         "    - search",
         "    - create",
         "  guardian:",
-        "    skip-review:",
+        "    skipReview:",
         `      - ${skipReview}`,
       ].join("\n");
 
@@ -588,7 +588,7 @@ describe("plugin manifest API headers", () => {
       parsePluginManifest(source("search"), "/tmp/example").mcp?.guardian,
     ).toEqual({ skipReview: ["search"] });
     expect(() => parsePluginManifest(source("delete"), "/tmp/example")).toThrow(
-      "Plugin example mcp.guardian.skip-review must be listed in mcp.allowed-tools or mcp.wrapped-tools: delete",
+      "Plugin example mcp.guardian.skipReview must be listed in mcp.allowed-tools or mcp.wrapped-tools: delete",
     );
   });
 

@@ -143,7 +143,7 @@ their exact remote names:
 mcp:
   url: https://api.my-provider.example/mcp
   guardian:
-    skip-review:
+    skipReview:
       - search
       - fetch
 ```
@@ -502,7 +502,7 @@ onto the agent runtime's separate result channels.
   `readOnlyHint: true` and no `destructiveHint: true` runs without review.
   Guardian reviews each call of every other tool in this mode. Set
   `readOnlyHint: true` only when the tool never writes. Annotations that a
-  remote MCP server sends never skip review. Use `mcp.guardian.skip-review`
+  remote MCP server sends never skip review. Use `mcp.guardian.skipReview`
   for those tools.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a

@@ -288,7 +288,7 @@ const mcpSourceSchema = z
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
     guardian: z
       .object({
-        "skip-review": nonEmptyStringArraySchema("skip-review").optional(),
+        skipReview: nonEmptyStringArraySchema("skipReview").optional(),
       })
       .strict()
       .optional(),
@@ -1139,7 +1139,7 @@ function normalizeMcp(
         { reservedKeys: RESERVED_AUTHORIZE_PARAM_KEYS },
       )
     : undefined;
-  const skipReview = result.data.guardian?.["skip-review"];
+  const skipReview = result.data.guardian?.["skipReview"];
   const unloadedSkipReview = skipReview
     ? unloadedMcpTools(
         {
@@ -1151,7 +1151,7 @@ function normalizeMcp(
     : [];
   if (unloadedSkipReview.length > 0) {
     throw new Error(
-      `Plugin ${name} mcp.guardian.skip-review must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unloadedSkipReview.join(", ")}`,
+      `Plugin ${name} mcp.guardian.skipReview must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unloadedSkipReview.join(", ")}`,
     );
   }
 

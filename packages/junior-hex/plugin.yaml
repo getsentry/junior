@@ -24,7 +24,7 @@ mcp:
     - list_data_connections
   # Threads run Hex's agent, so creating or continuing one is reviewed.
   guardian:
-    skip-review:
+    skipReview:
       - get_thread
       - search_projects
       - get_me
