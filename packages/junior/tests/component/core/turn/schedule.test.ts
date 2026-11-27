@@ -5,7 +5,7 @@ import { withConversationEventLock } from "@/conversation-events/lock";
 import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { markInputsAttempted } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
   endFailedTurn,
   reconcileTurn,
@@ -70,6 +70,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   let engineCtx: EngineContext;
   let observer: LocalJuniorSqlFixture;
   let publishes: Publish[];
+  // The Turns whose end message was sent, in send order.
+  let ended: string[];
 
   beforeEach(async () => {
     fixture = await createJuniorSqlFixture();
@@ -99,12 +101,15 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       .insert(juniorConversations)
       .values(buildJuniorSqlConversation({ conversationId: CONVERSATION_ID }));
     publishes = [];
+    ended = [];
     // The queue is the external edge, so the test takes its sends.
     vi.spyOn(getQueueProvider(), "send").mockImplementation(
       async (topic, payload) => {
         if (topic === TURN_STEP_TOPIC) {
           const { turnId } = stepMessageSchema.parse(payload);
           publishes.push({ turnId, committed: await isCommitted(turnId) });
+        } else if (topic === TURN_ENDED_TOPIC) {
+          ended.push(stepMessageSchema.parse(payload).turnId);
         }
         return {};
       },
@@ -475,11 +480,9 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
     await stopTurns(engineCtx, CONVERSATION_ID);
-    // The stop's own message.
-    expect(publishes).toHaveLength(3);
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
-    expect(publishes).toHaveLength(3);
+    expect(publishes).toHaveLength(2);
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toHaveLength(1);
   });
@@ -578,16 +581,14 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
-  it("publishes a cancelled Turn, and reconcileTurn leaves its inputs on it", async () => {
+  it("says a cancelled Turn ended, and reconcileTurn leaves its inputs on it", async () => {
     const cancelled = await schedule("event-1");
 
     await stopTurns(engineCtx, CONVERSATION_ID);
     await reconcileTurn(engineCtx, cancelled.turnId);
 
-    expect(publishes).toEqual([
-      { turnId: cancelled.turnId, committed: true },
-      { turnId: cancelled.turnId, committed: true },
-    ]);
+    expect(publishes).toEqual([{ turnId: cancelled.turnId, committed: true }]);
+    expect(ended).toEqual([cancelled.turnId, cancelled.turnId]);
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toEqual([
       { turnId: cancelled.turnId, idempotencyKey: "event-1" },
@@ -608,9 +609,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     publishes = [];
 
     const stopped = await stopTurns(engineCtx, CONVERSATION_ID);
-    // The step consumer runs reconcileTurn for the stop's message.
-    const [published] = publishes;
-    await reconcileTurn(engineCtx, published!.turnId);
+    await reconcileTurn(engineCtx, running.turnId);
 
     expect([...stopped].sort()).toEqual([running.turnId, queued.turnId].sort());
     await expect(readEnd(running.turnId)).resolves.toMatchObject({
@@ -619,8 +618,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(readEnd(queued.turnId)).resolves.toMatchObject({
       state: "cancelled",
     });
-    // Only the stop's own message: reconcileTurn found no Turn to start.
-    expect(publishes).toEqual([published]);
+    expect([...ended].sort()).toEqual(
+      [running.turnId, queued.turnId, running.turnId].sort(),
+    );
+    // reconcileTurn found no Turn to start.
+    expect(publishes).toEqual([]);
   });
 
   it("keeps the first attempt time of an input", async () => {

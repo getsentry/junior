@@ -5,16 +5,16 @@
 // the message is acknowledged, and the Turn never runs. `assignTurn` picks
 // which Turn takes the input.
 //
-// After any change to a Turn, `reconcileTurn` brings delivery and the queue
-// in line with the Turn's stored state. It lives here because a failed Turn
-// hands on its late inputs through `assignTurn`, and only this file writes
-// input rows. Every part of it is safe to repeat, so it needs no marker: every
-// path in `advanceTurn` runs it, and a redelivered message runs it again.
+// After any change to a Turn, `reconcileTurn` brings the queue in line with
+// the Turn's stored state. It lives here because a failed Turn hands on its
+// late inputs through `assignTurn`, and only this file writes input rows.
+// Every part of it is safe to repeat, so it needs no marker: every path in
+// `advanceTurn` runs it, and a redelivered message runs it again.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { withConversationEventLock } from "@/conversation-events/lock";
-import { publishDelivery } from "@/core/delivery/queue";
+import { publishTurnEnded } from "@/core/turn/ended";
 import type { EngineContext } from "@/core/engine-context";
 import {
   findInputTurn,
@@ -234,11 +234,10 @@ export async function endFailedTurn(
 }
 
 /**
- * Brings delivery and the queue in line with this Turn's stored state. Safe
- * to repeat. It publishes the Turn's delivery message, then publishes the
- * Conversation's open Turn if it is queued. What it does depends only on the
- * stored state, not on why it runs. Call it outside a transaction, after the
- * commit that it follows, so a worker that takes a message sees that commit.
+ * Brings the queue in line with this Turn's stored state, so it is safe to
+ * repeat: it says the Turn ended if it has, then publishes the Conversation's
+ * open Turn if it is queued. Call it after the commit that it follows,
+ * outside a transaction, so a worker that takes a message sees that commit.
  */
 export async function reconcileTurn(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
@@ -248,13 +247,12 @@ export async function reconcileTurn(
   if (!turn) {
     return;
   }
-  await publishDelivery(
-    { queue },
-    {
-      conversationId: turn.conversationId,
-      turnId,
-    },
-  );
+  if (turn.state !== "queued" && turn.state !== "running") {
+    await publishTurnEnded(
+      { queue },
+      { conversationId: turn.conversationId, turnId },
+    );
+  }
   const openTurn = await findOpenTurn({ executor }, turn.conversationId);
   // A Turn that a step commit continued is the queued open Turn, so this also
   // sends its next step. A running Turn has a worker, so it needs no message.

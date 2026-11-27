@@ -10,7 +10,7 @@
 // the Turn instead of running the step again. Host code that throws
 // `TurnFailedError` ends the Turn as failed, with no retry. After every
 // change it makes to the Turn, and on a message whose claim misses, it runs
-// `reconcileTurn`, which sends the delivery message and the next step message
+// `reconcileTurn`, which sends the Turn-ended message or the next step message
 // that the stored state calls for.
 import {
   extractGenAiUsageSummary,

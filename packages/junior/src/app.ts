@@ -59,8 +59,8 @@ import {
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_TURN_ENDED_CALLBACK_ROUTE,
   JUNIOR_TURN_STEP_CALLBACK_ROUTE,
-  JUNIOR_DELIVERY_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
@@ -93,8 +93,9 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { turnTools } from "@/turn-steps/tools";
-import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
+import { deploymentDelivery, turnEndedConsumer } from "@/turn-steps/turn-ended";
 import { sweepTurns } from "@/core/turn/sweep";
+import { sweepDeliveries } from "@/delivery/sweep";
 import { createEngineContext } from "@/turn-steps/engine-context";
 import {
   vercelBackgroundCompactionQueue,
@@ -810,7 +811,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // timeout use this app's functionMaxDurationSeconds.
   const chatConfig = getChatConfig();
   const engineCtx = createEngineContext(chatConfig);
-  const deliveries = deliveryConsumer(engineCtx, deploymentDelivery);
+  const turnEnds = turnEndedConsumer(engineCtx, deploymentDelivery);
   app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
@@ -862,12 +863,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
     return turnStepPOST(c.req.raw);
   });
-  let deliveryPOST:
+  let turnEndedPOST:
     | ReturnType<typeof engineCtx.queue.createCallback>
     | undefined;
-  app.post(JUNIOR_DELIVERY_CALLBACK_ROUTE, (c) => {
-    deliveryPOST ??= engineCtx.queue.createCallback(deliveries);
-    return deliveryPOST(c.req.raw);
+  app.post(JUNIOR_TURN_ENDED_CALLBACK_ROUTE, (c) => {
+    turnEndedPOST ??= engineCtx.queue.createCallback(turnEnds);
+    return turnEndedPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {
@@ -877,7 +878,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       events,
       sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
-      sweepTurns: () => sweepTurns(engineCtx),
+      sweepTurns: async () => {
+        await sweepTurns(engineCtx);
+        await sweepDeliveries(engineCtx);
+      },
     });
   });
 

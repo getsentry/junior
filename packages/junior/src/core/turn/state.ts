@@ -32,11 +32,11 @@ import {
 import { withConversationEventLock } from "@/conversation-events/lock";
 import { historyItemFromPiMessage } from "@/core/history/items";
 import { appendAgentHistory } from "@/core/history/write";
-import { recordReplies } from "@/core/delivery/outbox";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
+import { publishTurnEnded } from "@/core/turn/ended";
 import { findUnreadInputs, inputEventKey } from "@/core/turn/inbox";
-import { publishTurnStep } from "@/core/turn/queue";
+import { recordReplies } from "@/core/turn/outbox";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
@@ -682,8 +682,8 @@ export async function releaseTurn(
 /**
  * Cancels every queued and running Turn of a Conversation in one commit, with
  * no lease. Moving each `lease_epoch` keeps a running step from committing,
- * and the lock sends a later input to a new Turn. It then publishes one
- * cancelled Turn, whose message runs `reconcileTurn` to send committed replies.
+ * and the lock sends a later input to a new Turn. It then publishes the
+ * message that each stopped Turn ended.
  */
 export async function stopTurns(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
@@ -711,11 +711,9 @@ export async function stopTurns(
         .returning({ id: juniorTurns.id }),
     ),
   );
-  // Delivery runs per Conversation, so one message sends every stopped
-  // Turn's replies.
-  const [first] = stopped;
-  if (first) {
-    await publishTurnStep({ queue }, first.id);
+  for (const { id } of stopped) {
+    // oxlint-disable-next-line no-await-in-loop -- Few Turns stop at once, and a failed send fails the stop.
+    await publishTurnEnded({ queue }, { conversationId, turnId: id });
   }
   return stopped.map(({ id }) => id);
 }
