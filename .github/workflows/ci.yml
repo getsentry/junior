@@ -235,15 +235,12 @@ jobs:
       matrix:
         include:
           - suite: unit
-            path: tests/unit
             max_workers: 4
             test_timeout: 5000
           - suite: component
-            path: tests/component
             max_workers: 4
             test_timeout: 5000
           - suite: integration
-            path: tests/integration
             max_workers: 2
             test_timeout: 20000
     env:
@@ -295,7 +292,11 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       # The example build tests load every plugin that the example app uses.
       - run: pnpm --filter "@sentry/junior-example^..." run build
-      - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=${{ matrix.max_workers }} --testTimeout=${{ matrix.test_timeout }} --coverage ${{ matrix.path }}
+      - run: pnpm --filter @sentry/junior exec vitest run --project "$SUITE" --maxWorkers="$MAX_WORKERS" --testTimeout="$TEST_TIMEOUT" --coverage
+        env:
+          SUITE: ${{ matrix.suite }}
+          MAX_WORKERS: ${{ matrix.max_workers }}
+          TEST_TIMEOUT: ${{ matrix.test_timeout }}
       - name: Upload coverage
         if: ${{ !cancelled() }}
         uses: getsentry/codecov-action@eb2b4a6c4be3ecb42867043570579fa3b6879f6e # 0.3.8
