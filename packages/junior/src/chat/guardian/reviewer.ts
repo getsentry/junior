@@ -97,7 +97,10 @@ function rootConversationSection(root: RootConversation, key: string): string {
  * new key for each call.
  */
 export function guardianPrompt(proposal: ToolActionProposal): string {
-  const { rootConversation, ...action } = proposal;
+  // The current Guardian never reads the Watch's creator.
+  const { rootConversation, context: fullContext, ...rest } = proposal;
+  const { watch: _watch, ...context } = fullContext;
+  const action = { context, ...rest };
   const proposalJson = JSON.stringify(z.json().parse(action), null, 2);
   // Before the size check, so a proposal over the limit also records it.
   setSpanAttributes({ "app.guardian.proposal.chars": proposalJson.length });

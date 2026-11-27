@@ -16,6 +16,10 @@ import { TIMER_WATCH_INDEX, updateTimerIndex } from "@/chat/events/timer-index";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { mapBounded } from "@/chat/fan-out";
+import {
+  watchCreatorSchema,
+  type WatchCreator,
+} from "@/chat/events/watch-creator";
 
 // Stores conversation id only. Destination lives on the conversation.
 // Keep the deployed Redis key prefix until retained Watches expire.
@@ -34,6 +38,8 @@ const subscriptionSchema = z
   .object({
     conversationId: z.string().min(1),
     createdAtMs: z.number().finite(),
+    /** Who set the Watch. Its Turns serve that instruction. */
+    creator: watchCreatorSchema.optional(),
     /** Timer creator whose grants the timer Turn may use. */
     credentialSubject: credentialSubjectSchema.optional(),
     events: z.array(eventTypeSchema).min(1),
@@ -59,6 +65,7 @@ export type Watch = z.output<typeof subscriptionSchema>;
 
 export interface CreateWatchInput {
   conversationId: string;
+  creator?: WatchCreator | undefined;
   events: string[];
   expiresAtMs: number;
   guidance?: Partial<Record<string, string>> | undefined;
@@ -384,6 +391,7 @@ export async function createWatch(
   const record: Watch = {
     conversationId: input.conversationId,
     createdAtMs: nowMs,
+    ...(input.creator ? { creator: input.creator } : undefined),
     events,
     expiresAtMs: input.expiresAtMs,
     ...(guidance ? { guidance } : undefined),
@@ -422,6 +430,7 @@ export async function createWatch(
 /** Create a retry-stable timer without keeping a process open. */
 export async function createTimerWatch(input: {
   conversationId: string;
+  creator?: WatchCreator | undefined;
   creatorUserId?: string;
   toolCallId: string;
   afterMs: number;
@@ -452,6 +461,7 @@ export async function createTimerWatch(input: {
       : undefined;
     const record = subscriptionSchema.parse({
       ...selector,
+      ...(input.creator ? { creator: input.creator } : undefined),
       ...(credentialSubject ? { credentialSubject } : undefined),
       id,
       firesAtMs,

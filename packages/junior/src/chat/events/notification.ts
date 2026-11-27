@@ -156,7 +156,7 @@ export function timerWatchCredentialSubject(
  * without a Watch or saved facts, such as child agent results and input queued
  * before facts were saved, return undefined and keep their own text.
  */
-function readEventTaskFacts(
+export function readEventTaskFacts(
   message: InboundMessage,
 ):
   | { facts: EventTaskFacts; metadata: EventMailboxMetadata; watchId: string }
@@ -344,7 +344,10 @@ function eventMessageAuthor(
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
   event: EventNotification;
-  subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
+  subscription: Pick<
+    Watch,
+    "conversationId" | "creator" | "credentialSubject" | "id"
+  >;
   text: string;
   /** Facts behind `text`, used when several Events share one message. */
   task?: EventTaskFacts;
@@ -359,6 +362,9 @@ export function createEventInboundMessage(input: {
     ...(input.task ? { task: input.task } : undefined),
     ...(input.subscription.credentialSubject
       ? { credentialSubject: input.subscription.credentialSubject }
+      : undefined),
+    ...(input.subscription.creator
+      ? { watchCreator: input.subscription.creator }
       : undefined),
     event: {
       eventKey: input.event.eventKey,
@@ -439,6 +445,7 @@ export async function enqueueEventNotification(args: {
       event: args.event,
       subscription: {
         conversationId: args.subscription.conversationId,
+        creator: args.subscription.creator,
         credentialSubject: args.subscription.credentialSubject,
         id: args.subscription.id,
       },

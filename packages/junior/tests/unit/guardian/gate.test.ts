@@ -350,7 +350,7 @@ describe("tool action review", () => {
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
         userIntent: () => "Push the fix.",
-        reviewsShell: true,
+        agentReviews: true,
       },
       guardian: () => ({
         review: async (request) => {
@@ -381,6 +381,44 @@ describe("tool action review", () => {
       tool: "bash",
     });
     expect(requests[0]!.sandbox).toEqual({ placeholders: [] });
+  });
+
+  it("reviews setting a Watch only for the agent Guardian", async () => {
+    const reviewed = async (agentReviews: boolean) => {
+      const requests: ReviewRequest[] = [];
+      const actionReview = createToolActionReview({
+        context: {
+          actor: { platform: "local", userId: "local-user" },
+          conversationId: "local:approval-test",
+          destination: LOCAL_DESTINATION,
+          source: LOCAL_SOURCE,
+          userIntent: () => "Tell me when acme/app#1 merges.",
+          ...(agentReviews ? { agentReviews } : undefined),
+        },
+        guardian: () => ({
+          review: async (request) => {
+            requests.push(request);
+            return request.actions.map(() => ({
+              decision: "allow" as const,
+              reason: "The person asked for the Watch.",
+            }));
+          },
+        }),
+        onFatal: () => undefined,
+        onDecision: vi.fn(async () => undefined),
+      });
+      await reviewToolAction(
+        "tool-call",
+        "watchEvents",
+        // Like the real watchEvents tool, it has no approval mode.
+        definition(),
+        { identifier: "acme/app#1", intent: "Tell the thread when it merges." },
+        actionReview,
+      );
+      return requests.length;
+    };
+    expect(await reviewed(true)).toBe(1);
+    expect(await reviewed(false)).toBe(0);
   });
 
   it("fails only the action that cannot be reviewed in a batch", async () => {

@@ -23,6 +23,8 @@ export type EventMailboxMetadata = {
   };
   /** Signed timer creator subject. Verified before the Turn uses it. */
   credentialSubject?: CredentialSubject;
+  /** Who set the Watch, copied at delivery (`follows-instruction`). */
+  watchCreator?: unknown;
   /**
    * Watch task facts. A batch of several Events uses them to write one
    * message. Input without them keeps its own text.

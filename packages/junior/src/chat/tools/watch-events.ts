@@ -157,6 +157,10 @@ async function findStarterWatch(
 /** Static definition of `watchEvents` for the deployment event catalog. */
 export function watchEventsToolDefinition(catalog: EventCatalog) {
   return zodToolDefinition({
+    // The intent is stored for this Conversation's later Turns only.
+    guardian: (input: { label: string }) => ({
+      target: { ref: `Watch on ${input.label}`, audience: "internal" },
+    }),
     annotations: {
       destructiveHint: false,
       idempotentHint: false,
@@ -218,6 +222,7 @@ export function createWatchEventsTool(
       const nowMs = Date.now();
       const subscription = await createWatch({
         conversationId: context.conversationId,
+        creator: context.watchCreator,
         events,
         expiresAtMs: nowMs + ttlMs(input),
         intent,

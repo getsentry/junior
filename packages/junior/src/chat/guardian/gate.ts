@@ -4,6 +4,7 @@
  * Deterministic host checks establish authority before the model evaluates
  * untrusted action evidence.
  */
+import type { TurnWatch } from "@/chat/events/watch-creator";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -65,8 +66,10 @@ export interface ToolActionReviewContext {
   evidence?: () => ToolActionEvidence;
   /** Read the Run's own Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
-  /** Guardian reviews shell commands, which only the agent Guardian does. */
-  reviewsShell?: boolean;
+  /** The agent Guardian reviews, so it also reviews `AGENT_REVIEWED_TOOLS`. */
+  agentReviews?: boolean;
+  /** The Watch that started the Turn. Set for the agent Guardian only. */
+  watch?: TurnWatch | undefined;
   /**
    * The repositories of the active Workspace. Set for the agent Guardian,
    * which reads the plugins' `guardian.context`.
@@ -342,6 +345,7 @@ function buildProposal(
       ...(context.lead ? { lead: true as const } : undefined),
       source: context.source,
       userIntent: context.userIntent(),
+      ...(context.watch ? { watch: context.watch } : undefined),
     },
     ...(context.evidence ? { evidence: context.evidence() } : undefined),
     input,
@@ -529,15 +533,24 @@ interface PreparedReview {
   proposal: ToolActionProposal;
 }
 
+/**
+ * Tools with no approval mode that only the agent Guardian reviews: each
+ * shell command (getsentry/junior#4550), and setting a Watch, which hands
+ * work to later Turns (`handoff-check`).
+ */
+export const AGENT_REVIEWED_TOOLS: ReadonlySet<string> = new Set([
+  "bash",
+  "watchEvents",
+  "watchTimer",
+]);
+
 /** Whether the gate reviews this call, before its metadata resolves. */
 function mayReviewCall(
   action: ToolAction,
   context: ToolActionReviewContext,
 ): boolean {
-  // Bash has no approval mode, so the current Guardian skips it
-  // (getsentry/junior#4550). The agent Guardian reviews each command.
-  return action.toolName === "bash"
-    ? context.reviewsShell === true
+  return AGENT_REVIEWED_TOOLS.has(action.toolName)
+    ? context.agentReviews === true
     : mayNeedReview(action.tool);
 }
 
@@ -552,7 +565,10 @@ async function prepareToolActionReview(
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  if (action.toolName !== "bash" && !toolActionNeedsReview(tool, resolved)) {
+  if (
+    !AGENT_REVIEWED_TOOLS.has(action.toolName) &&
+    !toolActionNeedsReview(tool, resolved)
+  ) {
     return;
   }
   assertAuthoritativeContext(context);
