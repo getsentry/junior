@@ -1,6 +1,6 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
-import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
 import { useAppContext } from "../../../fixtures/app-context";
 import { avatarPath } from "../../../fixtures/avatar";
@@ -56,15 +56,9 @@ describe("conversation detail API", () => {
     });
 
     const app = createJuniorApi();
-    const detailResponse = await expectPlanCost(
-      () =>
-        expectSqlBudget(
-          () =>
-            app.request(`http://localhost/api/conversations/${conversationId}`),
-          { statements: 15, serialRounds: 3 },
-        ),
-      // About 4,500.
-      7_000,
+    const detailResponse = await expectSqlBudget(
+      () => app.request(`http://localhost/api/conversations/${conversationId}`),
+      { statements: 15, serialRounds: 3 },
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),

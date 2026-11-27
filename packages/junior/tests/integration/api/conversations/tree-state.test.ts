@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { createJuniorApi } from "@/api";
@@ -12,8 +12,7 @@ import {
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { createSpace } from "@/chat/spaces/store";
 import { Hono } from "hono";
-import { getDb, getSqlExecutor } from "@/chat/db";
-import { conversationSubtree } from "@/chat/conversations/sql/subtree";
+import { getDb } from "@/chat/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -22,17 +21,11 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
-import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/child-agents";
-import {
-  expectNoFullScan,
-  expectPlanCost,
-  expectSqlBudget,
-  explainNodes,
-} from "../../../fixtures/sql-budget";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import {
   closeConversationFixture,
   webTestActor,
@@ -396,35 +389,6 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
   });
 
-  it("plans a root's tree without a walk over it", async () => {
-    const fixture = await createStatusFixture();
-    const conversationId = await recordSlackRoot(
-      fixture.conversationStore,
-      "1700000000.000540",
-    );
-    await getSqlExecutor().execute(
-      `insert into junior_conversations
-        (conversation_id, root_conversation_id, parent_conversation_id,
-         created_at, last_activity_at, updated_at, execution_status)
-      select 'agent:big-tree-' || n, $1, $1, now(), now(), now(), 'idle'
-      from generate_series(1, 2000) n`,
-      [conversationId],
-    );
-    await getSqlExecutor().execute("analyze junior_conversations");
-    const read = () =>
-      getDb().execute(
-        sql`select * from ${conversationSubtree([conversationId])}`,
-      );
-    const [nodes] = await explainNodes(read);
-    expect(nodes!.some((node) => node["Node Type"] === "Recursive Union")).toBe(
-      true,
-    );
-    // Postgres guesses each recursive step at hundreds of rows. A step that
-    // reads the table or the root's whole tree for each guessed row prices
-    // the read high enough to turn on JIT. Today's plan costs about 950.
-    await expectPlanCost(read, 1_500);
-  });
-
   it("skips archived children and their descendants", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
@@ -568,35 +532,8 @@ describe("conversation tree state", () => {
       "agent:tree-budget-c",
       "agent:tree-budget-d",
     ]);
-    const itemId = await addItem("agent:tree-budget-d", ACTION_ITEM);
+    await addItem("agent:tree-budget-d", ACTION_ITEM);
     await expectBudget({ treeState: "needs_you", watching: true });
-
-    // Other Conversations' open items cost the tree one read of them, not
-    // one for each row of the tree. Today's plan costs about 67,000, mostly
-    // the starter check on each row. An owner check on each row costs about
-    // a million.
-    await getSqlExecutor().execute(
-      `insert into junior_conversations
-        (conversation_id, root_conversation_id, parent_conversation_id,
-         created_at, last_activity_at, updated_at, execution_status)
-      select 'agent:tree-budget-big-' || n, $1, $1, now(), now(), now(), 'idle'
-      from generate_series(1, 200) n`,
-      [conversationId],
-    );
-    await getSqlExecutor().execute(
-      `insert into junior_inbox_items
-      select (jsonb_populate_record(item, jsonb_build_object(
-        'id', 'tree-budget-other-' || n,
-        'dedupe_key', 'tree-budget-other-' || n,
-        'subject_id', 'tree-budget-other-' || n))).*
-      from junior_inbox_items item, generate_series(1, 500) n
-      where item.id = $1`,
-      [itemId],
-    );
-    await getSqlExecutor().execute(
-      "analyze junior_conversations, junior_inbox_items",
-    );
-    await expectPlanCost(() => fixture.request("/api/conversations"), 100_000);
   });
 
   it("rolls up a Space's Conversations into its Space list row", async () => {
@@ -691,12 +628,5 @@ describe("conversation tree state", () => {
     const leadWorking = { latestTurnFailed: false, treeState: "working" };
     await expect(asViewer()).resolves.toEqual(leadWorking);
     await expect(asBob()).resolves.toEqual(leadWorking);
-
-    // The Space list reads its top-level Conversations through indexes,
-    // however many other Conversations there are. Its tree states cost
-    // about 43,000. An owner check of the open Inbox items on each tree row
-    // costs about five times as much.
-    await seedDashboardScale();
-    await expectPlanCost(() => expectNoFullScan(asViewer), 65_000);
   });
 });

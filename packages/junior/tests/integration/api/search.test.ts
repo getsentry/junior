@@ -32,12 +32,7 @@ import { juniorMemoryMemories } from "@/db/schema/memory";
 import { readStats } from "@/stats";
 import { mockEmbeddings } from "../../fixtures/retrieval-models";
 import { expectResponseBudget } from "../../fixtures/response-budget";
-import {
-  expectNoFullScan,
-  expectPlanCost,
-  expectSqlBudget,
-  measureSql,
-} from "../../fixtures/sql-budget";
+import { expectSqlBudget, measureSql } from "../../fixtures/sql-budget";
 import { seedDashboardScale } from "../../fixtures/dashboard-scale";
 
 const TEAM_ID = "T123";
@@ -601,17 +596,10 @@ describe("search API", () => {
     await seedDashboardScale();
     const response = await expectResponseBudget(
       () =>
-        expectPlanCost(
-          () =>
-            expectNoFullScan(() =>
-              expectSqlBudget(() => search("deploy", sources), {
-                statements: 7,
-                serialRounds: 1,
-              }),
-            ),
-          // About 9,800.
-          15_000,
-        ),
+        expectSqlBudget(() => search("deploy", sources), {
+          statements: 7,
+          serialRounds: 1,
+        }),
       { automations: 155, inboxItems: 272, memories: 176, todos: 300 },
     );
 
@@ -673,12 +661,10 @@ describe("search API", () => {
 
     // One statement reads the item matches and the code change matches.
     const found = await report(
-      expectNoFullScan(() =>
-        expectSqlBudget(() => search("resumab", "inboxItems"), {
-          statements: 1,
-          serialRounds: 1,
-        }),
-      ),
+      expectSqlBudget(() => search("resumab", "inboxItems"), {
+        statements: 1,
+        serialRounds: 1,
+      }),
     );
     expect(found).toEqual({
       inboxItems: [

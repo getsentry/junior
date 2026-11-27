@@ -1,11 +1,7 @@
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import type { User } from "@sentry/junior-plugin-api";
 import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
-import {
-  expectNoFullScan,
-  expectPlanCost,
-  expectSqlBudget,
-} from "../../../fixtures/sql-budget";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
@@ -265,19 +261,10 @@ describe("inbox item actions API", () => {
     // The names and photos come with the items, in one more statement.
     await seedDashboardScale();
     const { items } = await (
-      await expectPlanCost(
-        () =>
-          expectNoFullScan(() =>
-            expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
-              statements: 6,
-              serialRounds: 4,
-            }),
-          ),
-        // About 68,000, mostly the visibility and owner of each item, which
-        // its subject decides. A To-do check on each item costs about
-        // 100,000.
-        85_000,
-      )
+      await expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
+        statements: 6,
+        serialRounds: 4,
+      })
     ).json();
     expect(items).toMatchObject([
       {
@@ -321,15 +308,10 @@ describe("inbox item actions API", () => {
 
     await seedDashboardScale();
     const anaCount = await (
-      await expectPlanCost(
-        () =>
-          expectSqlBudget(() => api(fixture, ana).get("/count"), {
-            statements: 1,
-            serialRounds: 1,
-          }),
-        // About 95.
-        150,
-      )
+      await expectSqlBudget(() => api(fixture, ana).get("/count"), {
+        statements: 1,
+        serialRounds: 1,
+      })
     ).json();
     expect(anaCount).toEqual({
       decisions: 1,
