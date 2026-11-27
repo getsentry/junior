@@ -219,11 +219,15 @@ describe("the ask of a Junior pull request", () => {
           return HttpResponse.json({
             data: {
               repository: {
+                defaultBranchRef: { name: "main" },
                 pullRequest: {
                   autoMergeRequest: null,
+                  baseRef: null,
+                  baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,
+                  isInMergeQueue: false,
                   mergeStateStatus: "CLEAN",
                   reviewRequests: { nodes: [] },
                   reviews: {
@@ -364,11 +368,15 @@ describe("the ask of a Junior pull request", () => {
           return HttpResponse.json({
             data: {
               repository: {
+                defaultBranchRef: { name: "main" },
                 pullRequest: {
                   autoMergeRequest: null,
+                  baseRef: null,
+                  baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,
+                  isInMergeQueue: false,
                   mergeStateStatus: "CLEAN",
                   reviewRequests: {
                     nodes: github.approved

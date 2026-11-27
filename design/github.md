@@ -80,6 +80,9 @@ also wake a Conversation or run an Event automation.
   before they merge.
   When a review is requested and still pending, the PR asks for that review
   instead, even where the repo allows merging without one.
+  A PR whose base branch is the head of another open PR gets no merge ask
+  until that PR merges, because GitHub checks the merge only against the
+  base branch. A review ask can still come.
 - When GitHub fails the next-action read for a while (rate limit or
   outage), Junior syncs the pull request again later, after the rate limit
   resets. A failed webhook never leaves a stale action in place.
