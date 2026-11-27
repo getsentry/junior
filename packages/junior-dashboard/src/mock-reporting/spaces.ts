@@ -378,6 +378,9 @@ export function addMockConversationSpaceRoutes(
       await c.req.json(),
     );
     if (!body.success) return errorResponse("Invalid request body.", 400);
+    // Match the API: only a public Lead takes a Join from a non-Participant.
+    if (!space.viewerParticipant && space.visibility === "private")
+      return errorResponse("Conversation not found.", 404);
     space.viewerMember = body.data.subscribed;
     if (body.data.subscribed) space.viewerParticipant = true;
     return jsonResponse(conversationSubscriptionResponseSchema, {
