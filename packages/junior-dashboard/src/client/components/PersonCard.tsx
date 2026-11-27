@@ -178,7 +178,6 @@ export function PersonCard(props: { actions?: ReactNode; person: Person }) {
       <ObjectCard
         card={data?.card ?? referenceCard(props.person)}
         className="my-0 rounded-none border-0"
-        live
       >
         {email !== undefined && isPending ? (
           <p className="m-0 text-xs text-dashboard-text-muted">

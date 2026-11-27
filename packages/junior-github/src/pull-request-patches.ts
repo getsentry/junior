@@ -27,6 +27,7 @@ import {
   type GitHubPullRequestFields,
   isOlderGitHubObject,
 } from "./object-cache.js";
+import { GITHUB_INBOX_SUBJECTS } from "./inbox-subjects.js";
 import {
   markGitHubConflict,
   publishGitHubConflictResolved,
@@ -86,7 +87,13 @@ export async function startGitHubPullRequestPatch(args: {
   });
 }
 
-type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
+// GitHub's id names the pull request in Annotations. GitHub's schema
+// lets it be null, and the patch does not need it.
+const headFactsNodeSchema = pullRequestHeadFactsNodeSchema.extend({
+  databaseId: z.number().int().positive().nullish(),
+});
+
+type HeadFactsNode = z.output<typeof headFactsNodeSchema>;
 
 // Write the read fields, only over an entry of the same head commit that
 // is not newer than the read. Return `again` to read again: GitHub still
@@ -100,10 +107,15 @@ async function writeHeadFacts(
   key: string,
   node: HeadFactsNode,
   last: boolean,
-): Promise<{ outcome: "again" | "done" | "expire"; written: boolean }> {
+): Promise<{
+  changed: boolean;
+  outcome: "again" | "done" | "expire";
+  written: boolean;
+}> {
   const mergeable = githubMergeable(node.mergeable);
   let outcome: "again" | "done" | "expire" = "done";
   let written = false;
+  let changed = false;
   await cache.update<GitHubPullRequestFields | null>(key, (current) => {
     if (!current) return undefined;
     if (current.head?.sha !== node.headRefOid) {
@@ -119,19 +131,23 @@ async function writeHeadFacts(
     const computing = mergeable === null && current.mergeable === "pending";
     if (computing && !last) outcome = "again";
     written = true;
+    const value = {
+      ...current,
+      checks: githubCheckCounts(node.commits),
+      // A check event leaves a known merge state as it is.
+      mergeable: mergeable ?? current.mergeable,
+    };
+    changed =
+      JSON.stringify([current.checks, current.mergeable]) !==
+      JSON.stringify([value.checks, value.mergeable]);
     return {
       ...(computing && last
         ? GITHUB_PULL_REQUEST_PENDING_CACHE
         : GITHUB_PULL_REQUEST_CACHE),
-      value: {
-        ...current,
-        checks: githubCheckCounts(node.commits),
-        // A check event leaves a known merge state as it is.
-        mergeable: mergeable ?? current.mergeable,
-      },
+      value,
     };
   });
-  return { outcome, written };
+  return { changed, outcome, written };
 }
 
 // A patch reads the merge state that a push or a new base changes, so it
@@ -189,7 +205,7 @@ async function expirePending(cache: PluginCache, key: string): Promise<void> {
  * that GitHub still computes stays pending only briefly, so the next read
  * asks GitHub. A pull request missing from the answer, of another head
  * commit, or whose query fails on the last delivery, leaves its pending
- * fields fresh only briefly too.
+ * fields fresh only briefly too. A change calls `objectChanged`.
  */
 export function githubPullRequestPatchTask(
   loadHeadFacts: (refs: PullRequestRef[]) => Promise<unknown>,
@@ -210,7 +226,7 @@ export function githubPullRequestPatchTask(
         [node] = aliasedPullRequests(
           await loadHeadFacts([ref]),
           1,
-          pullRequestHeadFactsNodeSchema,
+          headFactsNodeSchema,
         );
       } catch (error) {
         if (ctx.lastDelivery) await expirePending(ctx.cache, key);
@@ -222,6 +238,12 @@ export function githubPullRequestPatchTask(
       // A read that the entry rejects is stale: a newer push or webhook
       // came after it, so its merge state must not mark or publish.
       if (node && write?.written) await observeMergeState(ctx, ref, node);
+      if (node?.databaseId && write?.changed) {
+        await ctx.annotations.objectChanged({
+          id: String(node.databaseId),
+          kind: GITHUB_INBOX_SUBJECTS.pullRequest,
+        });
+      }
       const outcome = write?.outcome ?? "expire";
       if (outcome === "again" && !ctx.lastDelivery) {
         throw new GitHubPullRequestPatchPendingError(key, sha);

@@ -13,6 +13,8 @@ import { MessageObjectsProvider, ResolveWhenVisible } from "./resolvedObjects";
 import { SkillReferencesProvider } from "./skills";
 
 export { KnownObjectsProvider } from "./ObjectLinks";
+export { PreviewLinksProvider } from "./links";
+export { TranscriptAnchor } from "./markdown";
 export { MentionText } from "./mentions";
 export {
   type ListedObject,

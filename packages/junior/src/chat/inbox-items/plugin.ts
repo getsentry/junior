@@ -2,10 +2,11 @@ import { sql } from "drizzle-orm";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
-import type {
-  PluginInboxItemSubject,
-  PluginInboxItems,
-  PluginReviewNotice,
+import {
+  PluginInboxItemOwnerError,
+  type PluginInboxItemSubject,
+  type PluginInboxItems,
+  type PluginReviewNotice,
 } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
@@ -24,6 +25,8 @@ import {
   type InboxItemContent,
 } from "./store";
 import { leaveInboxItem, resetInboxItemPushes } from "./deliveries";
+import { InboxItemOwnerMismatchError } from "./owner";
+import { hasAssigneeRoles } from "./plugin-dismiss";
 import {
   pluginSubjectKind,
   subjectKindLabel,
@@ -33,19 +36,23 @@ import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * Resolve the Users to assign. A plugin notice goes only to people in its
- * Conversation, public or private. Junior leaves out an Identity without a
- * User and a User who is not in the Conversation.
+ * Conversation, public or private, unless its subject kind has
+ * `assigneeRoles`: then a person's role on the object puts them on it.
+ * Junior leaves out an Identity without a User, and otherwise a User who
+ * is not in the Conversation.
  */
 async function assigneeUsers(
   db: JuniorDatabase,
   identityIds: readonly string[],
   conversationId: string,
+  roles: boolean,
 ): Promise<Array<{ identityId: string; userId: string }>> {
   const users = await mapBounded(
     [...new Set(identityIds)],
     async (identityId) => {
       const user = (await readIdentityByIdFromSql(db, identityId))?.user;
       if (!user) return [];
+      if (roles) return [{ identityId, userId: user.id }];
       const access = (
         await readConversationAccessFromSql(db, [conversationId], user)
       ).get(conversationId);
@@ -102,7 +109,7 @@ function pluginItemSubject(plugin: string, subject: PluginInboxItemSubject) {
 /** Throw when the plugin's owner table gives the item another Conversation. */
 function requireOwner(item: InboxItem, conversationId: string): void {
   if (ownerConversationId(item) !== conversationId) {
-    throw new Error(
+    throw new PluginInboxItemOwnerError(
       `Inbox item ${item.id} belongs to another Conversation than ${conversationId}`,
     );
   }
@@ -164,9 +171,10 @@ export function createPluginInboxItems(args: {
   ): Promise<{ itemId: string; waitText?: string } | undefined> => {
     const existing = await getOpenInboxItemBySubject(db, subject);
     if (existing) requireOwner(existing, conversationId);
+    const roles = hasAssigneeRoles({ subject });
     const [withAsk, asked] = await Promise.all([
-      assigneeUsers(db, notice.assigneeIdentityIds, conversationId),
-      assigneeUsers(db, notice.askedIdentityIds, conversationId),
+      assigneeUsers(db, notice.assigneeIdentityIds, conversationId, roles),
+      assigneeUsers(db, notice.askedIdentityIds, conversationId, roles),
     ]);
     // A person joins only with the event that gives them an ask. The
     // others with an ask stay only when they are on the item already, so
@@ -181,8 +189,11 @@ export function createPluginInboxItems(args: {
     // The item closes when nobody is left: everyone with an ask left it,
     // or everyone who was on it no longer has one. One for nobody Junior
     // knows, such as a person with no linked account, stays open with no
-    // assignees.
-    if (userIds.length === 0 && (withAsk.length > 0 || current.size > 0)) {
+    // assignees, unless roles put people on it: then it needs a person.
+    if (
+      userIds.length === 0 &&
+      (roles || withAsk.length > 0 || current.size > 0)
+    ) {
       if (!existing) return undefined;
       const itemId = await closePluginInboxItem(db, {
         conversationId,
@@ -241,6 +252,11 @@ export function createPluginInboxItems(args: {
         ...content,
         owner: { id: conversationId, kind: "conversation" },
         nowMs: Date.now(),
+      }).catch((error: unknown) => {
+        // The subject names another owner, as `requireOwner` checks for an
+        // item that exists.
+        if (!(error instanceof InboxItemOwnerMismatchError)) throw error;
+        throw new PluginInboxItemOwnerError(error.message);
       });
       // Undefined means another writer added the item first.
       if (!item) return undefined;

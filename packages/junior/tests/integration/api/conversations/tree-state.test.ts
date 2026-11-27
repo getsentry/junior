@@ -22,11 +22,13 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/child-agents";
 import {
+  expectNoFullScan,
   expectPlanCost,
   expectSqlBudget,
   explainNodes,
@@ -566,8 +568,35 @@ describe("conversation tree state", () => {
       "agent:tree-budget-c",
       "agent:tree-budget-d",
     ]);
-    await addItem("agent:tree-budget-d", ACTION_ITEM);
+    const itemId = await addItem("agent:tree-budget-d", ACTION_ITEM);
     await expectBudget({ treeState: "needs_you", watching: true });
+
+    // Other Conversations' open items cost the tree one read of them, not
+    // one for each row of the tree. Today's plan costs about 67,000, mostly
+    // the starter check on each row. An owner check on each row costs about
+    // a million.
+    await getSqlExecutor().execute(
+      `insert into junior_conversations
+        (conversation_id, root_conversation_id, parent_conversation_id,
+         created_at, last_activity_at, updated_at, execution_status)
+      select 'agent:tree-budget-big-' || n, $1, $1, now(), now(), now(), 'idle'
+      from generate_series(1, 200) n`,
+      [conversationId],
+    );
+    await getSqlExecutor().execute(
+      `insert into junior_inbox_items
+      select (jsonb_populate_record(item, jsonb_build_object(
+        'id', 'tree-budget-other-' || n,
+        'dedupe_key', 'tree-budget-other-' || n,
+        'subject_id', 'tree-budget-other-' || n))).*
+      from junior_inbox_items item, generate_series(1, 500) n
+      where item.id = $1`,
+      [itemId],
+    );
+    await getSqlExecutor().execute(
+      "analyze junior_conversations, junior_inbox_items",
+    );
+    await expectPlanCost(() => fixture.request("/api/conversations"), 100_000);
   });
 
   it("rolls up a Space's Conversations into its Space list row", async () => {
@@ -662,5 +691,12 @@ describe("conversation tree state", () => {
     const leadWorking = { latestTurnFailed: false, treeState: "working" };
     await expect(asViewer()).resolves.toEqual(leadWorking);
     await expect(asBob()).resolves.toEqual(leadWorking);
+
+    // The Space list reads its top-level Conversations through indexes,
+    // however many other Conversations there are. Its tree states cost
+    // about 43,000. An owner check of the open Inbox items on each tree row
+    // costs about five times as much.
+    await seedDashboardScale();
+    await expectPlanCost(() => expectNoFullScan(asViewer), 65_000);
   });
 });

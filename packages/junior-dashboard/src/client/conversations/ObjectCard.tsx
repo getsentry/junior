@@ -26,7 +26,7 @@ import { displayPlainText } from "../display-text/plainText";
 import { DashboardPreview } from "./DashboardPreview";
 import { ObjectImage } from "./ObjectImage";
 import { objectSource } from "./objectSource";
-import { useSavedObject } from "./savedObjects";
+import { useObjectPreviews } from "./objectPreviews";
 import { formatRelativeTime, formatTime } from "../time";
 
 // Its type and its core plugin tell the viewer nothing, and the label of a
@@ -73,29 +73,26 @@ function webPageSite(card: OwnedObjectAnnotation): string | undefined {
 }
 
 /**
- * Show the full card of the latest saved annotation, or a `live` card that
- * the API resolved for a link: images, facts, and details. A link preview
- * shows it; a reply shows `ObjectRow`. Opening a source is always explicit.
- * A saved card tells when Junior fetched its facts. With `fill`, the card
- * fills the height of its container and its body scrolls. `children` end the
- * body, such as the recent activity of a person.
+ * Show the full card of an annotation's object, or a card that the API
+ * resolved for a link: images, facts, and details. A link preview shows it;
+ * a reply shows `ObjectRow`. Opening a source is always explicit. A card that
+ * a cache serves after a failed read tells when Junior last fetched it. With
+ * `fill`, the card fills the height of its container and its body scrolls.
+ * `children` end the body, such as the recent activity of a person.
  */
 export function ObjectCard({
   card,
   children,
   className,
   fill,
-  live,
 }: {
   card: OwnedObjectAnnotation;
   children?: ReactNode;
   className?: string;
   fill?: boolean | undefined;
-  live?: boolean | undefined;
 }) {
-  const saved = useSavedObject(card);
-  const images = saved.previewImages;
-  const fetchedAt = live ? undefined : saved.updatedAt;
+  const images = useObjectPreviews(card);
+  const { fetchedAt } = card;
   if (card.plugin === "junior" && card.objectType === "automation") {
     return (
       <AutomationCard

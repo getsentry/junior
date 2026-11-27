@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findUnreadInputs } from "@/core/turn/inbox";
-import { findDiscardedUsage } from "@/core/turn/state";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import {
+  createTurn,
+  findDiscardedUsage,
+  TURN_PRIORITY,
+} from "@/core/turn/state";
+import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
   modelCalls,
   modelOverloaded,
   modelRateLimited,
   modelRejected,
+  replyCutOff,
   setModelReplies,
   streamDisconnected,
 } from "../fixtures/ai-emulator";
@@ -77,6 +82,25 @@ describe("advanceTurn after a failed model request", () => {
     expect(pendingSteps(turnId)).toBe(0);
   });
 
+  it("fails the Turn when the reply hits the output token limit, and writes none of its text", async () => {
+    await setModelReplies([replyCutOff("Here is the first half")]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+
+    await harness.runStep();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "failed",
+      endReason: "The reply hit the output token limit",
+      failureCode: "model_execution_failed",
+      failureReason: "cut_off_output",
+      stepSeq: 0,
+    });
+    await expect(harness.history()).resolves.toEqual([]);
+    await expect(modelCalls()).resolves.toHaveLength(1);
+    const discarded = await findDiscardedUsage(harness.engineCtx, turnId);
+    expect(discarded?.tokens?.outputTokens).toBeGreaterThan(0);
+  });
+
   it("runs the step again after a backoff when the model stream closes mid-reply, and writes the reply once", async () => {
     // Injected fault: the stream closes after the first chunk.
     const reply = createAssistantMessage({ type: "text", text: "Three." });
@@ -119,6 +143,15 @@ describe("advanceTurn after a failed model request", () => {
     await expect(harness.history()).resolves.toEqual([
       userText("How many Turns?"),
       storedReply(reply),
+    ]);
+    // Compat: the second claim of step 0 writes main's rows again,
+    // and their idempotency keys keep one of each.
+    const types = (await harness.events()).map((event) => event.data.type);
+    expect(types).toEqual([
+      "message",
+      "turn_started",
+      "user_message",
+      "assistant_message",
     ]);
   });
 
@@ -187,6 +220,36 @@ describe("advanceTurn after a failed model request", () => {
       expect.objectContaining({ inputId }),
     ]);
     expect(pendingSteps(turnId)).toBe(0);
+  });
+
+  it("ends a superseded Turn at its retryable failure, and sends no retry", async () => {
+    // Injected fault: the model provider is overloaded.
+    await setModelReplies([modelOverloaded()]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+    let aheadId = "";
+    const send = globalThis.fetch;
+    // A Turn that supersedes this one arrives while its model request runs.
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (...args) => {
+      ({ turnId: aheadId } = await createTurn(harness.engineCtx, {
+        conversationId: harness.conversationId,
+        priority: TURN_PRIORITY.supersede,
+      }));
+      return send(...args);
+    });
+
+    await harness.runStep();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "cancelled",
+      endReason: "superseded",
+    });
+    expect(pendingSteps(turnId)).toBe(0);
+    expect(stepDelays(aheadId)).toEqual([0]);
+    expect(
+      harness.queue
+        .pending(TURN_ENDED_TOPIC)
+        .map((message) => [messageTurnId(message.payload), message.due]),
+    ).toEqual([[turnId, true]]);
   });
 
   it("waits the Retry-After of a rate limit, up to a minute", async () => {

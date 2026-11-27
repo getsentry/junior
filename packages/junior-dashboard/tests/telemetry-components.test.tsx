@@ -880,10 +880,11 @@ describe("dashboard canonical-event components", () => {
     const detail = conversation([], {
       annotations: [
         {
-          kind: "resource_link",
+          kind: "object",
           objectType: "task",
           key: "issue",
           label: "Issue",
+          title: "Issue",
           plugin: "github",
           status: "closed",
           url: "https://example.com/issue",
@@ -895,7 +896,6 @@ describe("dashboard canonical-event components", () => {
           key: "pr",
           label: "PR",
           plugin: "github",
-          status: "closed",
           url: "https://example.com/change",
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:01.000Z",
@@ -923,7 +923,7 @@ describe("dashboard canonical-event components", () => {
       <ConversationAnnotations links={conversationLinks(detail)} />,
     );
     expect(html).toContain('aria-label="Ticket: closed"');
-    expect(html).toContain('aria-label="Code change: closed"');
+    expect(html).toContain('aria-label="Code change"');
     expect(html).toContain('aria-label="Item"');
   });
 

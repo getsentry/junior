@@ -10,6 +10,7 @@ import {
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import { AGENT_STATUSES } from "@/chat/conversations/agent-status";
+import { resolveAnnotationFilter } from "@/chat/conversations/sql/annotation-filter";
 import { agentWatch } from "@/chat/conversations/watch-events";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
@@ -96,7 +97,6 @@ const listedAgentFields = z
         z
           .object({
             label: z.string(),
-            status: z.string().optional(),
             url: z.string(),
           })
           .strict(),
@@ -225,7 +225,7 @@ function listAgentsInputSchema(
         .nullable()
         .optional()
         .describe(
-          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created or changed the resource.",
+          "Linked resource, by its reference such as owner/repo#123 or by its link. owner/repo matches each resource of the repository. Matches when the conversation or one of its child agents links it.",
         ),
       conversation_ids: z
         .array(z.string().trim().min(1))
@@ -392,12 +392,15 @@ export function createListAgentsTool(
           "`participating` needs a person: this Turn has none. Leave out `participating`.",
         );
       }
+      const annotation = input.annotation
+        ? await resolveAnnotationFilter(getDb(), input.annotation)
+        : undefined;
       const matches = await searchConversations(getDb(), {
         ...(context.embedder ? { embedder: context.embedder } : undefined),
         requesterConversationId: context.conversationId,
         search: {
           ...(afterMs !== undefined ? { afterMs } : undefined),
-          ...(input.annotation ? { annotation: input.annotation } : undefined),
+          ...(annotation ? { annotation } : undefined),
           ...(beforeMs !== undefined ? { beforeMs } : undefined),
           ...(channelId ? { channelId } : undefined),
           ...(input.conversation_ids

@@ -23,6 +23,12 @@ import {
 import { subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
+import {
+  hasAssigneeRoles,
+  dismissPluginInboxItem,
+  leavePluginInboxItem,
+  takeOverPluginClose,
+} from "./plugin-dismiss";
 import { matchReplyToInboxItems } from "./reply-match";
 import { closeHandledReplyNotices } from "./reply-notice";
 import {
@@ -172,6 +178,14 @@ export async function actOnInboxItem(args: {
         "Only an assignee can take this item.",
       );
     }
+    // The roles on the object are the assignees, and a take cannot change
+    // them on the provider.
+    if (hasAssigneeRoles(item)) {
+      throw new InboxItemActionError(
+        "invalid",
+        "Roles on the object set who is on this item.",
+      );
+    }
     // A retry after a failed send finds the User already the only assignee.
     // It still sends: each take message has a key, so only missing ones go.
     if (
@@ -193,7 +207,27 @@ export async function actOnInboxItem(args: {
 
   let closed = item;
   let closedNow = false;
-  if (item.status === "open") {
+  if (
+    action === "dismiss" &&
+    item.status === "open" &&
+    hasAssigneeRoles(item)
+  ) {
+    const left = await leavePluginItemOnDismiss(item, user, nowMs);
+    if (left === "closed") {
+      // The dismiss took over the close that its removal caused.
+      closedNow = true;
+      closed = await readInboxItemForUser(user, item.id);
+    } else if (left !== "close") {
+      await deliverInboxItemChange({
+        delivery: args.delivery,
+        item: left,
+        nowMs,
+      });
+      return left;
+    }
+  }
+
+  if (!closedNow && item.status === "open") {
     // Anyone who can see a public question can answer it. Dismiss keeps the
     // assignee rule (`canAnswerInboxItem`).
     const allowed =
@@ -253,6 +287,59 @@ export async function actOnInboxItem(args: {
     nowMs,
   });
   return closed;
+}
+
+/**
+ * Dismiss an `assigneeRoles` item for one assignee: the plugin removes them
+ * on its provider first, and a refusal fails the dismiss. Return the item
+ * when others stay, `close` when they were the only one, and `closed` when
+ * the provider's webhook closed it first and this dismiss took that over.
+ */
+async function leavePluginItemOnDismiss(
+  item: InboxItem,
+  user: User,
+  nowMs: number,
+): Promise<InboxItem | "close" | "closed"> {
+  if (!canActOnInboxItem(item, user.id)) {
+    throw new InboxItemActionError(
+      "forbidden",
+      "Only an assignee can act on this item.",
+    );
+  }
+  try {
+    await dismissPluginInboxItem({ item, nowMs, user });
+  } catch (error) {
+    logWarn("inbox_item.plugin_dismiss.failed", {
+      "app.inbox_item.id": item.id,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    throw new InboxItemActionError(
+      "conflict",
+      "The provider did not remove you, so you stay on this item. Try again.",
+    );
+  }
+  const outcome = await leavePluginInboxItem({ item, nowMs, userId: user.id });
+  if (outcome === "closed") {
+    // The provider's webhook for this removal can close the item first,
+    // when it left nobody on it. That close is this dismiss.
+    const taken = await takeOverPluginClose({
+      item,
+      nowMs: Date.now(),
+      sinceMs: nowMs,
+      userId: user.id,
+    });
+    if (taken) return "closed";
+    throw new InboxItemActionError("conflict", "Inbox item is closed.");
+  }
+  if (outcome === "last") return "close";
+  // Their role may have been their only way to see the item, and they just
+  // left it, so this read does not check their access again.
+  const left = await getInboxItem(getDb(), item.id);
+  if (!left) {
+    throw new InboxItemActionError("not_found", "Inbox item not found.");
+  }
+  return left;
 }
 
 /**

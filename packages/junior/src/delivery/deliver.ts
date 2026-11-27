@@ -1,19 +1,23 @@
-// Delivery of a Turn's replies to the Destination of its inputs. The commit
-// of a step writes an outbox row for each reply (see `recordReplies`), and
-// each change of a Turn publishes a delivery message (see `reconcileTurn`).
-// Its consumer sends the Conversation's pending rows in event order under a
-// lock on the Conversation. Each send commits its own row, so a crash sends
-// at most that one reply again.
+// Delivery of a Turn's replies to the Destination of its inputs. Core writes
+// an outbox row for each reply (`recordReplies`) and says when the Turn ended
+// (`publishTurnEnded`). This sends the Conversation's pending rows of ended
+// Turns in event order under a lock on the Conversation. Each send commits
+// its own row, so a crash sends at most that one reply again.
 import { and, asc, eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import { logException } from "@/chat/logging";
-import { publishDelivery, type DeliveryMessage } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
+import { publishTurnEnded, type TurnEndedMessage } from "@/core/turn/ended";
 import { replyText } from "@/core/turn/replies";
-import { juniorConversationEvents, juniorTurnOutbox } from "@/db/schema";
+import { compat__writeReplyDelivered } from "@/delivery/compat__turn-ended";
+import {
+  juniorConversationEvents,
+  juniorTurnOutbox,
+  juniorTurns,
+} from "@/db/schema";
 
-/** What the host gives core to deliver a Turn's replies. */
+/** Sends a Turn's replies to their Destinations, one at a time. */
 export type Delivery = {
   /**
    * Sends one reply to its Destination. It throws `DeliveryRetryableError`
@@ -23,7 +27,11 @@ export type Delivery = {
     conversationId: string;
     destination: Destination;
     text: string;
-  }) => Promise<{ providerMessageId?: string }>;
+  }) => Promise<{
+    providerMessageId?: string;
+    /** The provider thread that the reply started, such as a Slack thread. */
+    providerConversationId?: string;
+  }>;
 };
 
 /**
@@ -60,11 +68,12 @@ const tryLockResultSchema = z.object({
 
 /**
  * Sends the Conversation's pending outbox rows in event order, each to the
- * Destination stored on its row.
+ * Destination stored on its row. To try again later, it sends the message
+ * that the Turn ended again, with a delay.
  */
 export async function deliverTurn(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
-  message: DeliveryMessage,
+  message: TurnEndedMessage,
   delivery: Delivery,
 ): Promise<void> {
   while (true) {
@@ -77,7 +86,7 @@ export async function deliverTurn(
     }
     if (next.kind === "later") {
       // oxlint-disable-next-line no-await-in-loop -- The loop ends here.
-      await publishDelivery({ queue }, message, { delayMs: next.delayMs });
+      await publishTurnEnded({ queue }, message, { delayMs: next.delayMs });
       return;
     }
   }
@@ -90,8 +99,8 @@ type NextRow =
 
 /**
  * Sends the Conversation's first pending row, if this transaction gets the
- * Conversation's lock. A retryable failure leaves the row pending, so the
- * rows after it wait.
+ * Conversation's lock and the row's Turn has ended. A retryable failure
+ * leaves the row pending, so the rows after it wait.
  */
 async function sendNextRow(
   { executor }: Pick<EngineContext, "executor">,
@@ -110,11 +119,14 @@ async function sendNextRow(
   const [row] = await db
     .select({
       id: juniorTurnOutbox.id,
+      turnId: juniorTurnOutbox.turnId,
       eventSeq: juniorTurnOutbox.eventSeq,
       destination: juniorTurnOutbox.destination,
       attempts: juniorTurnOutbox.attempts,
+      turnState: juniorTurns.state,
     })
     .from(juniorTurnOutbox)
+    .innerJoin(juniorTurns, eq(juniorTurns.id, juniorTurnOutbox.turnId))
     .where(
       and(
         eq(juniorTurnOutbox.conversationId, conversationId),
@@ -123,7 +135,8 @@ async function sendNextRow(
     )
     .orderBy(asc(juniorTurnOutbox.eventSeq))
     .limit(1);
-  if (!row) {
+  // The row's Turn is still running. Its end sends the message that sends it.
+  if (!row || row.turnState === "queued" || row.turnState === "running") {
     return { kind: "idle" };
   }
   const markFailed = async (error: string) => {
@@ -133,7 +146,16 @@ async function sendNextRow(
       .where(eq(juniorTurnOutbox.id, row.id));
     return { kind: "settled" } as const;
   };
-  const destination = destinationSchema.parse(row.destination);
+  // Core stores the Destination without reading it, so a Source can write one
+  // that this deployment cannot send to.
+  const parsed = destinationSchema.safeParse(row.destination);
+  if (!parsed.success) {
+    logException(parsed.error, "turn.delivery.failed", {
+      "gen_ai.conversation.id": conversationId,
+    });
+    return markFailed("The Destination is not valid");
+  }
+  const destination = parsed.data;
   const [event] = await db
     .select()
     .from(juniorConversationEvents)
@@ -147,19 +169,9 @@ async function sendNextRow(
   if (!text) {
     return markFailed("The event is not a reply");
   }
+  let result: Awaited<ReturnType<Delivery["send"]>>;
   try {
-    const result = await delivery.send({ conversationId, destination, text });
-    const now = new Date();
-    await db
-      .update(juniorTurnOutbox)
-      .set({
-        state: "sent",
-        sentAt: now,
-        updatedAt: now,
-        providerMessageId: result.providerMessageId ?? null,
-      })
-      .where(eq(juniorTurnOutbox.id, row.id));
-    return { kind: "settled" };
+    result = await delivery.send({ conversationId, destination, text });
   } catch (error) {
     const attempts = row.attempts + 1;
     if (
@@ -186,6 +198,37 @@ async function sendNextRow(
       .where(eq(juniorTurnOutbox.id, row.id));
     return { kind: "settled" };
   }
+  // A failed write after the send is not a failed send, so it is not caught.
+  const now = new Date();
+  await db
+    .update(juniorTurnOutbox)
+    .set({
+      state: "sent",
+      sentAt: now,
+      updatedAt: now,
+      providerMessageId: result.providerMessageId ?? null,
+    })
+    .where(eq(juniorTurnOutbox.id, row.id));
+  await compat__writeReplyDelivered(
+    { executor },
+    {
+      conversationId,
+      turnId: row.turnId,
+      reply: {
+        eventSeq: row.eventSeq,
+        text,
+        createdAtMs: now.getTime(),
+        destination,
+        ...(result.providerMessageId
+          ? { providerMessageId: result.providerMessageId }
+          : undefined),
+      },
+      ...(result.providerConversationId
+        ? { providerConversationId: result.providerConversationId }
+        : undefined),
+    },
+  );
+  return { kind: "settled" };
 }
 
 /**

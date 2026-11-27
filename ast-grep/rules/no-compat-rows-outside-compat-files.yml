@@ -1,0 +1,22 @@
+# Core Turns write the visible messages and Turn lifecycle events that main's
+# readers need only from `compat__*.ts` files, so deleting those files deletes
+# every write once the readers read `junior_turns`.
+id: no-compat-rows-outside-compat-files
+language: TypeScript
+severity: error
+message: Rows that only main's readers need are written in compat__*.ts files.
+files:
+  - packages/junior/src/core/**/*.ts
+  - packages/junior/src/turn-steps/**/*.ts
+  - packages/junior/src/delivery/**/*.ts
+ignores:
+  - packages/junior/src/**/compat__*.ts
+rule:
+  any:
+    - all:
+        - kind: string
+        - regex: ^["'](turn_started|turn_completed|turn_failed|message_handled)["']$
+    - pattern: appendConversationMessages($$$)
+    - pattern: commitAcceptedReply($$$)
+    - pattern: claimProviderConversation($$$)
+    - pattern: startLocationThread($$$)

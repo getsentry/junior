@@ -158,14 +158,13 @@ async function resolveWebPageLink(
  */
 export function webPageLinkType(): ObjectLinkType {
   return {
-    // The resolver keeps one card per URL for every viewer.
-    cacheCards: false,
     // Junior fetches the page without credentials, so it is public.
     canView: async () => true,
     // Junior fetches only `https`, so a plain `http` link stays a link.
     filters: [{ scheme: "https" }],
     objectTypes: ["web_page"],
     owner: "junior",
+    // The resolver keeps one card per URL for every viewer.
     resolve: (_viewer, url) => resolveWebPageLink(url),
   };
 }

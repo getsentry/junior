@@ -1,9 +1,10 @@
 import {
   PluginToolInputError,
-  type ObjectAnnotation,
+  type AnnotatedObject,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { emailDomain } from "../config";
+import { GOOGLE_SUBJECT_KINDS } from "../inbox-subjects";
 import {
   googleApiError,
   googleApiRequest,
@@ -135,47 +136,31 @@ export type OwnEvent = z.infer<typeof ownEventSchema>;
  * Shape one event on Junior's calendar for a tool result.
  *
  * Core saves the Calendar event annotation and shows its card with the next
- * reply. The event id is the key, so a change replaces the saved card. The
- * label is the short date for the sidebar; the card shows the full time.
+ * reply. The event id is the key, so a change replaces the saved card.
  */
 export function ownEventResult(
   event: OwnEvent,
   timeZone: string,
   accountEmail: string,
+  action: AnnotatedObject["action"],
 ) {
   const url =
     event.htmlLink && accountChooserLink(event.htmlLink, accountEmail);
-  const startMs = Date.parse(event.start.dateTime);
   const when = formatInterval(
-    startMs,
+    Date.parse(event.start.dateTime),
     Date.parse(event.end.dateTime),
     timeZone,
   );
-  const annotation: ObjectAnnotation = {
+  const annotation: AnnotatedObject = {
+    action,
     kind: "object",
     key: event.id,
-    label: new Intl.DateTimeFormat("en-US", {
-      day: "numeric",
-      month: "short",
-      timeZone,
-    }).format(startMs),
+    subject: { id: event.id, kind: GOOGLE_SUBJECT_KINDS.calendarEvent },
     objectType: "calendar_event",
     // People can edit the event in Calendar. Shorten long values so a
     // completed change never fails on the annotation schema.
     title: (event.summary?.trim() || "Untitled event").slice(0, 512),
     url: url || null,
-    description: event.description?.trim().slice(0, 4000) || undefined,
-    sourceUpdatedAt: event.updated,
-    facts: {
-      type: "calendar_event",
-      when,
-      attendees: (event.attendees ?? [])
-        .filter((attendee) => attendee.resource !== true)
-        .slice(0, 5)
-        .map((attendee) =>
-          (attendee.displayName?.trim() || attendee.email).slice(0, 160),
-        ),
-    },
   };
   return {
     objectAnnotations: [annotation],

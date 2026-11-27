@@ -1,13 +1,12 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
+import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { signedInViewer } from "../../../fixtures/user";
 import { githubPlugin } from "@sentry/junior-github";
-import { encodeObjectImageRef } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { decodeImageId } from "@/chat/images/ids";
 import { conversationDetailReportSchema } from "@/api/schema";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { storeAttachment } from "@/chat/attachments/store";
@@ -40,6 +39,7 @@ describe("conversation detail API", () => {
   });
 
   it("returns newly appended events when refreshed", async () => {
+    await seedDashboardScale();
     const conversationId = "local:test:refreshed-detail";
     await getConversationStore().recordActivity({
       destination: { platform: "local" as const, conversationId },
@@ -55,9 +55,15 @@ describe("conversation detail API", () => {
     });
 
     const app = createJuniorApi();
-    const detailResponse = await expectSqlBudget(
-      () => app.request(`http://localhost/api/conversations/${conversationId}`),
-      { statements: 15, serialRounds: 3 },
+    const detailResponse = await expectPlanCost(
+      () =>
+        expectSqlBudget(
+          () =>
+            app.request(`http://localhost/api/conversations/${conversationId}`),
+          { statements: 15, serialRounds: 3 },
+        ),
+      // About 4,500.
+      7_000,
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),
@@ -322,7 +328,6 @@ describe("conversation detail API", () => {
     }).upsert({
       kind: "resource_link",
       key: "getsentry/junior#1",
-      label: "getsentry/junior #1",
       url: "https://github.com/getsentry/junior/pull/1",
     });
     expect((await poll(childChangedEtag)).status).toBe(200);
@@ -375,108 +380,6 @@ describe("conversation detail API", () => {
     await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
       { displayTitle: "Review failing PR tests" },
     );
-  });
-
-  it("only returns annotations to viewers with private-content access", async () => {
-    const conversationId = "slack:C-private:annotated-detail";
-    await getConversationStore().recordActivity({
-      actor: {
-        email: "Participant@Example.com",
-        platform: "slack",
-        slackUserId: "U-participant",
-        teamId: "TPRIVATE",
-      },
-      conversationId,
-      destination: {
-        channelId: "CPRIVATE",
-        platform: "slack",
-        teamId: "TPRIVATE",
-      },
-      nowMs: 1,
-      source: "slack",
-      title: "Private annotated conversation",
-      visibility: "private",
-    });
-    const annotations = createPluginAnnotations({
-      conversationId,
-      db: getDb(),
-      plugin: "github",
-    });
-    await annotations.upsert({
-      kind: "resource_link",
-      key: "getsentry/junior#1081",
-      label: "getsentry/junior #1081",
-      status: "open",
-      url: "https://github.com/getsentry/junior/pull/1081",
-    });
-    await storeConversationMetadataFixture(getDb(), {
-      conversationId,
-      summary: "The private summary is participant-only.",
-    });
-
-    const hidden = await readConversationDetail(conversationId);
-    expect(hidden).toMatchObject({
-      annotations: [],
-      eventHistory: { status: "redacted" },
-    });
-    expect(hidden).not.toHaveProperty("summary");
-    await expect(
-      readConversationDetail(conversationId, {
-        viewer: await signedInViewer("participant@example.com"),
-      }),
-    ).resolves.toMatchObject({
-      summary: "The private summary is participant-only.",
-      annotations: [
-        {
-          key: "getsentry/junior#1081",
-          kind: "resource_link",
-          label: "getsentry/junior #1081",
-          plugin: "github",
-          status: "open",
-          url: "https://github.com/getsentry/junior/pull/1081",
-        },
-      ],
-      eventHistory: { status: "available" },
-    });
-  });
-
-  it("names the description images of a saved pull request by Junior image paths", async () => {
-    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    const conversationId = "local:test:preview-images";
-    await getConversationStore().recordActivity({
-      destination: { platform: "local" as const, conversationId },
-      conversationId,
-      nowMs: 1,
-      source: "internal",
-      title: "Pull request with screenshots",
-      visibility: "public",
-    });
-    const attachment =
-      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
-    await createPluginAnnotations({
-      conversationId,
-      db: getDb(),
-      plugin: "github",
-    }).upsert({
-      kind: "object",
-      objectType: "code_change",
-      key: "getsentry/secret#7",
-      label: "getsentry/secret#7",
-      title: "Show screenshots on cards",
-      url: "https://github.com/getsentry/secret/pull/7",
-      facts: { type: "code_change", previewImageUrls: [attachment] },
-    });
-
-    const detail = await readConversationDetail(conversationId);
-    const [image] = detail?.annotations?.[0]?.previewImages ?? [];
-    const id = image?.src.match(/^\/api\/images\/([^?]+)\?w=320$/)?.[1];
-    expect(image?.srcSet).toBe(`${image?.src} 1x, /api/images/${id}?w=640 2x`);
-    // The browser gets a signed id, never the address of the image.
-    expect(JSON.stringify(image)).not.toContain("user-attachments");
-    expect(id && decodeImageId(id)).toEqual({
-      ref: encodeObjectImageRef({ key: "getsentry/secret#7", url: attachment }),
-      source: "github",
-    });
   });
 
   it("resolves mentioned Slack users with current names and photos", async () => {

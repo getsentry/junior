@@ -1,5 +1,12 @@
+import type { User } from "@sentry/junior-plugin-api";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { readLiveAnnotations } from "@/api/objects/live-annotations";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
+import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
+import { juniorConversations } from "@/db/schema";
+import { topLevelConversation } from "@/chat/conversations/sql/listed";
+import { conversationAncestorsOrSelf } from "@/chat/conversations/sql/subtree";
 import { listChildMessages } from "@/chat/child-agents/child-message";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { mapBounded } from "@/chat/fan-out";
@@ -107,7 +114,44 @@ async function selectChildResultCards(
   }
 }
 
-/** Select undelivered cards and load their latest saved facts. */
+// The person who started the root Conversation of this one, when Junior
+// knows their User. In a Space that is the Lead's child, not the Lead: a
+// thread moved into a Space keeps the person who started it, and only the
+// Lead's own work reads as the Space's creator. System work, such as an
+// Automation run, has none.
+async function readConversationOwner(
+  conversationId: string,
+): Promise<User | undefined> {
+  const db = getDb();
+  const leads = db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.kind, "lead"));
+  const [row] = await db
+    .select({ identityId: juniorConversations.actorIdentityId })
+    .from(juniorConversations)
+    .where(
+      and(
+        sql<boolean>`${juniorConversations.conversationId} in ${conversationAncestorsOrSelf(sql`${conversationId}`)}`,
+        or(
+          topLevelConversation(),
+          inArray(juniorConversations.parentConversationId, leads),
+        ),
+      ),
+    )
+    .orderBy(sql`coalesce(${juniorConversations.kind} = 'lead', false)`)
+    .limit(1);
+  return row?.identityId
+    ? (await readIdentityByIdFromSql(db, row.identityId))?.user
+    : undefined;
+}
+
+/**
+ * Select undelivered cards and read each object once, with the access of
+ * the person who started the Conversation. The delivered Message keeps
+ * that copy. A card whose object cannot be read that way shows only the
+ * stored title, the label, and the link.
+ */
 export async function loadPendingMessageCards(
   conversationId: string,
 ): Promise<MessageCard[]> {
@@ -115,8 +159,25 @@ export async function loadPendingMessageCards(
   const inputMessageIds = await selectTurnCards(conversationId, selection);
   await selectChildResultCards(conversationId, inputMessageIds, selection);
   if (selection.cards.size === 0) return [];
+  const refs = [...selection.cards.values()].reverse();
+  const selected = new Set(
+    refs.map((ref) => JSON.stringify([ref.plugin, ref.key])),
+  );
+  const annotations = (
+    await listConversationAnnotations(getDb(), conversationId)
+  ).filter(
+    (annotation) =>
+      annotation.kind === "object" &&
+      selected.has(JSON.stringify([annotation.plugin, annotation.key])),
+  );
   return resolveMessageCards(
-    [...selection.cards.values()].reverse(),
-    await listConversationAnnotations(getDb(), conversationId),
+    refs,
+    annotations.length > 0
+      ? await readLiveAnnotations(
+          await readConversationOwner(conversationId),
+          annotations,
+          "title",
+        )
+      : [],
   );
 }

@@ -9,13 +9,12 @@ import type {
   PluginCredentialResult,
   PluginGrant,
   PluginProviderAccount,
-  PluginState,
   PluginStoredTokens,
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { sendConditionalRequest } from "./conditional-requests.js";
+import type { GitHubResponses } from "./installation-http-cache.js";
 import {
   parseInstallationTokenResponse,
   readInstallationPermissions,
@@ -48,8 +47,8 @@ export type GitHubGrant = PluginGrant & {
 interface GitHubRequestParams {
   body?: unknown;
   method?: string;
-  /** Saved GET responses, as in `sendConditionalRequest`. */
-  responses?: PluginState | undefined;
+  /** Saved GET responses, as in `installationResponses`. */
+  responses?: GitHubResponses | undefined;
   token: string;
 }
 
@@ -304,8 +303,7 @@ export async function githubRequest(
 ): Promise<unknown> {
   const method = params.method ?? "GET";
   const url = `${apiBase}${path}`;
-  const responses = method === "GET" ? params.responses : undefined;
-  const response = await sendConditionalRequest(responses, url, (headers) =>
+  const send = (headers: Record<string, string>) =>
     fetch(url, {
       method,
       headers: {
@@ -316,8 +314,11 @@ export async function githubRequest(
         ...(params.body ? { "Content-Type": "application/json" } : undefined),
       },
       ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
-    }),
-  );
+    });
+  const response =
+    method === "GET" && params.responses
+      ? await params.responses(url, send)
+      : await send({});
 
   const text = await response.text();
   let parsed: unknown;

@@ -1,0 +1,11 @@
+id: no-shared-zod-catch-value
+language: TypeScript
+severity: error
+message: "zod `.catch(value)` returns the same object or array on every fallback, so a caller that mutates one parse result changes later results. Use `.catch(() => ...)` to build a fresh value."
+files:
+  - packages/**/*.ts
+  - packages/**/*.tsx
+rule:
+  any:
+    - pattern: $X.catch({$$$})
+    - pattern: $X.catch([$$$])

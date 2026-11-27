@@ -96,6 +96,8 @@ private Space gets "not found" for the Space.
   `canAccessConversation`.
   A Conversation Watch checks again at each delivery and fails closed,
   before any text from the target reaches the watcher.
+- `loadAttachment` and `transcribeAudio` use `canAccessConversation` on the
+  Conversation that owns the attachment.
 - A Lead's `searchConversations` finds roots that are public or at the
   Destination of the requester's root. It finds
   child agents only when asked, and never the requester's own tree. Results

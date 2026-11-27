@@ -20,7 +20,6 @@ import type { WaitingConversation } from "../../inbox/queries";
 import type { Conversation } from "../../types";
 import { useConversationActionToasts } from "../../conversations/conversationActionToasts";
 import { MessageObjectsProvider } from "../../display-text/DisplayText";
-import { useLiveAnnotations } from "../../conversations/liveAnnotations";
 import { conversationCardTags } from "../../conversations/ConversationContextTags";
 import {
   ConversationListStatusIcon,
@@ -223,13 +222,7 @@ function ConversationCard(props: ConversationCardProps) {
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
-  const sidebarAnnotations = useLiveAnnotations(
-    conversation.sidebarAnnotations,
-  );
-  const tags = conversationCardTags(
-    { ...conversation, sidebarAnnotations },
-    title,
-  );
+  const tags = conversationCardTags(conversation, title);
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
   // Only a wait on the viewer gets a badge. A card whose Turn runs shows its

@@ -33,6 +33,8 @@ export function notionPlugin(): PluginRegistration {
           "notion-update-page",
           "notion-move-pages",
         ],
+        // Page link cards and covers read the page as the viewer.
+        viewerTools: ["notion-fetch"],
         guardian: { skipReview: ["notion-search", "notion-fetch"] },
       },
       // Optional shared account. It has no effect until an admin connects

@@ -13,6 +13,7 @@ import { recordGitHubPullRequestRequester } from "../src/pull-request-requesters
 import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
+import { passThroughHttpCache } from "./plugin-harness";
 
 const CONVERSATION_ID = "slack:C123:1712345.0001";
 const PULL_URL = "https://github.com/getsentry/junior/pull/946";
@@ -96,6 +97,7 @@ function route(
     },
   };
   const [webhook] = githubPlugin().hooks!.routes!({
+    httpCache: passThroughHttpCache,
     // The ready webhook refreshes its cached pull request.
     cache: {
       async getOrLoad(_key, load) {
@@ -270,11 +272,15 @@ describe("review request when a draft is ready", () => {
         HttpResponse.json({
           data: {
             repository: {
+              defaultBranchRef: { name: "main" },
               pullRequest: {
                 autoMergeRequest: null,
+                baseRef: null,
+                baseRefName: "main",
                 commits: { nodes: [] },
                 headRefOid: "head-1",
                 isDraft: false,
+                isInMergeQueue: false,
                 mergeStateStatus: "BLOCKED",
                 reviewRequests: { nodes: [] },
                 reviews: {
@@ -294,6 +300,11 @@ describe("review request when a draft is ready", () => {
             },
           },
         }),
+      ),
+      // The base branch requires no checks.
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/rules/branches/main",
+        () => HttpResponse.json([]),
       ),
       http.post(
         "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",

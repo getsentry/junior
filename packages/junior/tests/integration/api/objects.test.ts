@@ -492,9 +492,12 @@ describe("object links API", () => {
       title: "Move this issue",
     };
     let moved = false;
+    // The validators that each read of the moving issue sends.
+    const validators: Array<string | null> = [];
     mswServer.use(
-      http.get(`${GITHUB_API}/issues/14`, () => {
+      http.get(`${GITHUB_API}/issues/14`, ({ request }) => {
         reads.push("issues/14");
+        validators.push(request.headers.get("if-none-match"));
         return moved
           ? new HttpResponse(null, {
               headers: {
@@ -502,7 +505,7 @@ describe("object links API", () => {
               },
               status: 301,
             })
-          : HttpResponse.json(moving);
+          : HttpResponse.json(moving, { headers: { etag: '"issue-14"' } });
       }),
       // The moved issue, in a repository that the viewer can also see.
       http.get("https://api.github.com/repositories/2002/issues/9", () =>
@@ -646,8 +649,10 @@ describe("object links API", () => {
         `${GITHUB_REPO}/pull/78`,
         `${GITHUB_REPO}/pull/90`,
       );
-      // Only the moved issue is read again.
+      // Only the moved issue is read again. Its webhook deleted the card,
+      // and the read asks GitHub with the saved response's ETag.
       expect(reads.slice(readsBefore)).toEqual(["issues/14"]);
+      expect(validators).toEqual([null, '"issue-14"']);
       expect(next.objects.get(`${GITHUB_REPO}/issues/12`)).toMatchObject({
         status: "closed",
       });

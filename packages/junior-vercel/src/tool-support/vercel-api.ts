@@ -6,10 +6,11 @@
 import {
   PluginToolInputError,
   pluginToolOutputSchema,
+  type AnnotatedObject,
   type PluginEgress,
-  type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { VERCEL_SUBJECT_KINDS } from "../inbox-subjects.js";
 
 /** Text with at least one character after trimming. */
 export const nonEmptyText = z.string().trim().min(1);
@@ -64,9 +65,22 @@ export const aliasOutputSchema = pluginToolOutputSchema.extend({
   redirect: nonEmptyText.nullable(),
 });
 
-/** Select the safe fields of a Vercel deployment for a tool result. */
-export function deploymentResult(data: unknown) {
+/**
+ * Select the safe fields of a Vercel deployment for a tool result. A tool
+ * that created the deployment passes `created`, so the result saves its
+ * Annotation. A read adds none.
+ */
+export function deploymentResult(data: unknown, action?: "created") {
   const value = deploymentSchema.parse(data);
+  const annotation: AnnotatedObject | undefined = action && {
+    action,
+    kind: "object",
+    objectType: "deployment",
+    key: value.id,
+    subject: { id: value.id, kind: VERCEL_SUBJECT_KINDS.deployment },
+    title: value.url.slice(0, 512),
+    url: `https://${value.url}`,
+  };
   return {
     target: "deployment" as const,
     deployment_id: value.id,
@@ -76,25 +90,7 @@ export function deploymentResult(data: unknown) {
     project_id: value.projectId ?? null,
     commit_sha: value.gitSource?.sha ?? null,
     ref: value.gitSource?.ref ?? null,
-    objectAnnotations: [
-      {
-        kind: "object",
-        objectType: "deployment",
-        displayType: "Deployment",
-        key: value.id,
-        label: value.id,
-        title: value.url.slice(0, 512),
-        url: `https://${value.url}`,
-        status: value.readyState,
-        facts: {
-          type: "deployment",
-          project: value.projectId?.slice(0, 64),
-          environment: value.target?.slice(0, 64) ?? undefined,
-          revision: value.gitSource?.sha?.slice(0, 64),
-          branch: value.gitSource?.ref?.slice(0, 64),
-        },
-      } satisfies ObjectAnnotation,
-    ],
+    ...(annotation ? { objectAnnotations: [annotation] } : undefined),
   };
 }
 

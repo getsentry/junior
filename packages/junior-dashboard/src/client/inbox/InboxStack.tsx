@@ -14,7 +14,7 @@ import type { Conversation } from "../types";
 import { INBOX_STACK_CLASS } from "./inboxRowStyles";
 import { onLinkOpen, openOnClick, useOpenPath } from "./rowClick";
 import { itemNeedsViewer, type InboxBundle } from "./inboxItemFormat";
-import { RowDismissButton } from "./RowDismissButton";
+import { DismissNote, RowDismissButton } from "./RowDismissButton";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 
@@ -46,6 +46,8 @@ export function InboxStack(props: {
   keys: readonly string[];
   /** How many asks Dismiss closes. */
   dismissCount?: number;
+  /** What else Dismiss changes, such as on GitHub. */
+  dismissNote?: string | undefined;
   /** Dismiss: every open ask of the stack that the viewer can act on. */
   onDismiss?(): void;
   /** Snooze on an Event of the subject that the stack's items share. */
@@ -109,6 +111,7 @@ export function InboxStack(props: {
           <RowDismissButton
             look="quiet"
             name={`Dismiss ${itemCount(props.dismissCount ?? props.keys.length)} in this stack`}
+            note={props.dismissNote}
             onClick={props.onDismiss}
           />
         ) : null}
@@ -127,6 +130,11 @@ export function InboxStack(props: {
           <span className="sr-only"> items</span>
         </span>
       </div>
+      {/* Where tooltips are off, the stack Dismiss's note shows under the
+          header. */}
+      {props.onDismiss && props.dismissNote ? (
+        <DismissNote className="pl-2.5" note={props.dismissNote} />
+      ) : null}
       <ul
         className={cn(
           // An open row stays inside the border.

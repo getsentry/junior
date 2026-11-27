@@ -10,7 +10,7 @@
 // the Turn instead of running the step again. Host code that throws
 // `TurnFailedError` ends the Turn as failed, with no retry. After every
 // change it makes to the Turn, and on a message whose claim misses, it runs
-// `reconcileTurn`, which sends the delivery message and the next step message
+// `reconcileTurn`, which sends the Turn-ended message or the next step message
 // that the stored state calls for.
 import {
   extractGenAiUsageSummary,
@@ -78,6 +78,16 @@ export type AdvanceTurnOptions = {
    * not limit the steps of a Turn.
    */
   maxAttempts: number;
+  /**
+   * Compat: exists only so main's readers keep working; delete it once they
+   * read `junior_turns`. Core calls it before each step with the inputs that
+   * were unread at its claim, before the commit that reads them, so the host
+   * can write their rows first. It must be safe to run again.
+   */
+  compat__inputsRead?: (
+    turn: ClaimedTurn,
+    inputs: UnreadInput[],
+  ) => Promise<void>;
 };
 
 /**
@@ -149,11 +159,12 @@ async function runClaimedStep(
     modelSettings,
     tools,
     maxAttempts,
-  }: Pick<
-    AdvanceTurnOptions,
-    "client" | "prompt" | "modelSettings" | "tools" | "maxAttempts"
-  >,
+    compat__inputsRead,
+  }: AdvanceTurnOptions,
 ): Promise<void> {
+  if (unread.length > 0) {
+    await compat__inputsRead?.(claim, unread);
+  }
   const history = await loadAgentHistory({ executor }, claim.conversationId);
   setActiveSpanAttributes({
     "app.turn.step_seq": claim.stepSeq,
@@ -226,15 +237,17 @@ async function runClaimedStep(
       if (delayMs !== undefined) {
         // A crash between the release and the publish leaves the Turn queued
         // with no message, and the sweep sends it again. A superseded Turn
-        // ends at the release; its delayed message then misses the claim and
-        // sends the next Turn's step.
-        if (await releaseTurn({ executor }, claim, discarded)) {
+        // ends at the release, so it gets no retry.
+        const released = await releaseTurn({ executor }, claim, discarded);
+        if (released === "queued") {
           await publishTurnStep({ queue }, claim.turnId, { delayMs });
           logWarn("agent.turn.provider.retrying", {
             ...modelFailureAttributes(result.failure),
             "app.ai.provider_error.retry_attempt": claim.attempts,
             "app.turn.id": claim.turnId,
           });
+        } else if (released) {
+          await reconcileTurn({ executor, queue }, claim.turnId);
         }
         return;
       }

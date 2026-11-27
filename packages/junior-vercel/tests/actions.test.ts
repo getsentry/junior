@@ -66,15 +66,13 @@ describe("Vercel actions", () => {
       expect(result).toMatchObject({
         objectAnnotations: [
           {
+            action: "created",
             kind: "object",
+            key: deployment.id,
             objectType: "deployment",
-            displayType: "Deployment",
-            facts: {
-              type: "deployment",
-              project: "prj_example",
-              revision: sha,
-              branch: "feature/test",
-            },
+            subject: { id: deployment.id, kind: "deployment" },
+            title: "example.vercel.app",
+            url: "https://example.vercel.app",
           },
         ],
         deployment_id: deployment.id,

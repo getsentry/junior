@@ -5,6 +5,7 @@ import {
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { accountChooserLink } from "../src/calendar/events";
 import { googlePlugin } from "../src/index";
 import { saveGoogleAccount } from "../src/store";
 import {
@@ -628,6 +629,7 @@ describe("Google link cards", () => {
         kind: "object",
         objectType: "calendar_event",
         key: "evt123abc",
+        subject: { id: "evt123abc", kind: "calendar_event" },
         label: "Launch review",
         title: "Launch review",
         url: EVENT_URL,
@@ -746,6 +748,56 @@ describe("Google link cards", () => {
       expect(summary.length).toBeLessThanOrEqual(OBJECT_SUMMARY_MAX_LENGTH);
       expect(summary).toMatch(/^Check rollout Check .*…$/);
       expect(summary).not.toContain("<");
+    });
+
+    it("reads the Workspace link that Calendar tools save", async () => {
+      const url = accountChooserLink(EVENT_URL, ACCOUNT_EMAIL);
+      expect(new URL(url).host).toBe("accounts.google.com");
+      const link = linkType("calendar_event");
+      expect(
+        link.filters.some((filter) =>
+          objectLinkFilterMatches(filter, new URL(url)),
+        ),
+      ).toBe(true);
+      expect(link.label?.(new URL(url))).toBe("Calendar event");
+
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({ event: EVENT }),
+          "calendar_event",
+          url,
+        ),
+      ).resolves.toMatchObject({ key: "evt123abc", url });
+    });
+
+    it("does not read an AccountChooser link to another site", async () => {
+      const google = fakeGoogle({ event: EVENT });
+      const url = new URL("https://accounts.google.com/AccountChooser");
+      url.searchParams.set("continue", DOC_URL);
+
+      // Calendar leaves the link to the type that claims its target.
+      expect(
+        linkType("calendar_event").filters.some((filter) =>
+          objectLinkFilterMatches(filter, url),
+        ),
+      ).toBe(false);
+      expect(linkType("calendar_event").label?.(url)).toBeUndefined();
+      await expect(
+        resolveAs("alice@example.com", google, "calendar_event", url.href),
+      ).resolves.toBeUndefined();
+      expect(google.fetch).not.toHaveBeenCalled();
+    });
+
+    it("shows that a cancelled event is cancelled", async () => {
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({ event: { ...EVENT, status: "cancelled" } }),
+          "calendar_event",
+          EVENT_URL,
+        ),
+      ).resolves.toMatchObject({ key: "evt123abc", status: "cancelled" });
     });
 
     it("does not read events on another calendar", async () => {
