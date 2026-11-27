@@ -1,39 +1,9 @@
 /**
- * Heartbeat backfill of the event search index. Each Turn that ends
- * indexes a bounded slice of its Conversation's events, newest first.
- * History from before the index, the events of a running Turn, and the rest
- * of a long Conversation wait for later Turns. This run stores
- * their lexemes, and their vectors when event embeddings are on, in the
- * Conversations with activity in the last week.
- *
- * A pass walks those Conversations newest first, one page at a time, and
- * keeps its cursor in state, so each run continues where the last one
- * stopped. Each run stops at a time budget and at an event count for each
- * half, so the database time and embedding spend of a run have a ceiling.
- * Every query reads one Conversation, or one page of Conversations from the
- * activity index, under a statement timeout. A pass that stores nothing
- * marks the index done for a while, so later heartbeats make one state
- * request instead of a pass. One run holds the claim until it ends, so runs
- * do not overlap. Runs and the task take the lock of each Conversation and
- * skip stored rows.
- *
- * Attributes on the `event_search.backfill` span:
- * - `app.event_search.backfill.conversation.count`: Conversations that the
- *   run checked.
- * - `app.event_search.backfill.skipped.count`: Conversations that the run
- *   skipped, because the task held their lock or a query hit the statement
- *   timeout.
- * - `app.event_search.backfill.lexeme.count`,
- *   `app.event_search.backfill.vector.count`: rows that the run stored.
- * - `app.event_search.backfill.pass.conversation.count`,
- *   `app.event_search.backfill.pass.event.count`: Conversations checked and
- *   rows stored in the current pass, this run included.
- * - `app.event_search.backfill.outcome`: `completed` when a whole pass
- *   stored and skipped nothing, so nothing remains. `limit_reached` when
- *   the run stopped at its budget with Conversations left in the pass.
- *   `pass_ended` when the pass reached the end but stored or skipped rows,
- *   so the next run starts a new pass.
- * Policy: policies/observability.md.
+ * Heartbeat backfill of the event search index for Conversations active in
+ * the last week. A pass keeps its cursor in state, so each run resumes it. A
+ * time budget and an event limit per half cap a run's database and embedding
+ * spend. A pass that stores nothing marks the index done for a while. One claim
+ * keeps runs apart. Runs and the task lock each Conversation, skip stored rows.
  */
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import { and, desc, eq, gt, gte, lt, notExists, or, sql } from "drizzle-orm";

@@ -1,25 +1,9 @@
 /**
- * Caps how often one Event automation can start a run.
- *
- * The cap applies to each Automation, not to a trigger type. A noisy trigger
- * blocks only the Automation that it fires. Each run costs a full agent Turn,
- * and Event automations do not use the consecutive automated-turn limit.
- * `botConfig.maxEventAutomationRuns` sets the cap, and
- * `botConfig.eventAutomationRunWindowMs` sets the rolling window.
- *
- * Each run appends one entry with its run key to a short list in the state
- * adapter. Then it counts the run keys from the last window up to the first
- * entry with its own key. The append is atomic, so the list order decides
- * which runs fit, even when Events arrive at the same moment. The first runs up to the cap
- * pass, and the rest are refused. A provider retry has the same run key, so it
- * gets the same answer and does not count again. No lock is needed.
- *
- * A run does not append its key when the list already has it. A trigger with
- * no identifier gets one copy of an Event for each scope, such as each
- * project of a metric alert, and all copies have one run key. Repeated
- * entries would fill the list and block the automation, so the limit stays
- * the same however broad the trigger is. Two copies at the same moment can
- * still both append, and they count as one run.
+ * Caps runs per Event automation, so a noisy trigger blocks only its own; Event
+ * runs skip the consecutive automated-turn limit. A run appends its key to a
+ * state list and counts keys in the window up to its first entry. The atomic
+ * append orders runs without a lock, and a retry gets the same answer. A listed
+ * key is not appended again, so per-scope copies of an Event count once.
  */
 import type { StateAdapter } from "chat";
 import * as z from "zod";
@@ -99,7 +83,8 @@ function hasRunKey(entries: readonly RunEntry[], runKey: string): boolean {
  * Count one run of an Event automation, or refuse when its window is full.
  *
  * `runKey` is the dispatch idempotency key, so a provider retry of the same
- * Event does not count again.
+ * Event does not count again. Two same-moment copies can both append, but
+ * they count as one run.
  */
 export async function admitEventAutomationRun(args: {
   automationId: string;
