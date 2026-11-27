@@ -94,13 +94,11 @@ export interface SlotAttendee {
 }
 
 /**
- * Learn a person's hours from their past meetings on weekdays.
- *
- * Google does not expose the working hours people set in Calendar. Instead,
- * when at least three past weekdays had a meeting that started before 09:00
- * or ended after 17:00, the hours grow to include that time. They never
- * shrink, because a free morning does not mean the person is away. Meetings
- * that cross local midnight are ignored.
+ * Learn a person's hours from their past weekday meetings, because Google
+ * does not expose Calendar working hours. When `HISTORY_MIN_DAYS` days had a
+ * meeting outside the default workday, the hours grow to include it. They
+ * never shrink, since a free morning is not absence. Meetings that cross
+ * midnight are ignored.
  */
 export function workingHoursFromMeetings(input: {
   meetings: Interval[];
@@ -279,34 +277,11 @@ function spreadAcrossDays(candidates: Candidate[], max: number): Candidate[] {
 }
 
 /**
- * Find slots when every required attendee is free, inside their working
- * hours in their own time zone, and rank them by how little they disturb
- * those days.
- *
- * Days on which more attendees already have a meeting come first, so days
- * without meetings stay free. A day without meetings is used only when busy
- * days have too few slots. The requester chose this over pure focus time.
- *
- * Then the rules follow Clockwise's public docs, not its code:
- * - Focus time is the free time in blocks of at least 2 hours, or 1 hour on
- *   a day without a 2-hour block. Slots that remove the least focus time,
- *   summed over attendees, come first. Optional attendees count half.
- * - Among equal slots, the one that adds the fewest new runs of meetings
- *   comes first, so a slot next to a meeting beats an isolated one.
- * - A slot must leave each attendee a free gap of `lunchMinutes` inside
- *   their lunch window, if they had one. Set `lunchMinutes` to 0 to allow
- *   lunch meetings.
- * - A slot must not make a run of back-to-back meetings longer than
- *   `maxBackToBackMinutes`. Gaps under 15 minutes count as back to back.
- *
- * Optional attendees who are busy or break these rules do not block a slot.
- * Slots without such conflicts come first. Inside each group of equal
- * conflicts and meeting days, options are spread across the days of
- * `timeZone`. Results come best first. With `weekdays`, only those
- * days of `timeZone` are searched.
- *
- * Busy intervals come from Google free/busy only, so
- * Junior never sees event titles or details.
+ * Find slots when every required attendee is free in their own working
+ * hours. Days with meetings come first, so free days stay free (the requester
+ * chose this over focus time). Then, per Clockwise's public docs: keep focus
+ * time, add few meeting runs, keep lunch gaps, cap back-to-back runs. Optional
+ * attendees never block. Free/busy only, so Junior sees no event details.
  */
 export function findFreeSlots(input: {
   attendees: SlotAttendee[];
@@ -342,7 +317,7 @@ export function findFreeSlots(input: {
       meetingRuns(attendee.busy),
     ]),
   );
-  /** The cost of the slot for one attendee, or undefined if they cannot take it. */
+  /** One attendee's cost for the slot, or undefined if they cannot take it. */
   const assess = (attendee: SlotAttendee, slot: Interval) => {
     const start = partsIn(slot.startMs, attendee.timeZone);
     const end = partsIn(slot.endMs, attendee.timeZone);
