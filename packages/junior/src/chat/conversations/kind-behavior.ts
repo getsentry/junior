@@ -387,6 +387,16 @@ export function remindsNoReplyForChildStatus(
   return kind === "lead";
 }
 
+/**
+ * Return whether a feed row of this kind shows its child Threads. A Lead
+ * shows as its Space, whose page lists them.
+ */
+export function feedRowShowsThreads(
+  kind: ConversationKind | null | undefined,
+): boolean {
+  return kind !== "lead";
+}
+
 /** Return whether a Conversation of this kind stores its Space: a Lead. */
 export function storesSpace(
   kind: ConversationKind | null | undefined,

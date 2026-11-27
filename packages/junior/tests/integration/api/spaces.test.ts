@@ -132,9 +132,12 @@ async function searchedSpaces(app: Hono<JuniorApiEnv>, q: string) {
   expect(response.status).toBe(200);
   return conversationFeedSchema
     .parse(await response.json())
-    .conversations.flatMap((row) =>
-      row.kind === "lead" ? [row.space?.name] : [],
-    );
+    .conversations.flatMap((row) => {
+      if (row.kind !== "lead") return [];
+      // The palette shows only the Space, so its Threads are not read.
+      expect(row.threads).toBeUndefined();
+      return [row.space?.name];
+    });
 }
 
 /** A Slack channel's configuration, kept in memory. */

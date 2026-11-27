@@ -19,6 +19,7 @@ import type { JuniorDatabase } from "@/db/db";
 import { listedConversation } from "@/chat/conversations/sql/listed";
 import { conversationAncestorsOrSelf } from "@/chat/conversations/sql/subtree";
 import { spaceLeadIds } from "@/chat/spaces/tree-space";
+import { feedRowShowsThreads } from "@/chat/conversations/kind-behavior";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
@@ -742,7 +743,11 @@ export async function readConversationFeedFromSql(
     readFeedThreadRecords(
       db,
       conversations
-        .filter((conversation) => conversation.archivedAtMs === undefined)
+        .filter(
+          (conversation) =>
+            conversation.archivedAtMs === undefined &&
+            feedRowShowsThreads(conversation.kind),
+        )
         .map(({ conversationId }) => conversationId),
       options.viewer?.id,
     ),
