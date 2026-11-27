@@ -10,6 +10,7 @@ import {
   type JsonValue,
 } from "vitest-evals";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
+import type { GuardianDestinationFact } from "@/chat/guardian/policy";
 import {
   auditCase,
   selectedAblations,
@@ -35,11 +36,11 @@ export type GuardianOutcome = "allow" | "ask" | "deny" | "unavailable";
  */
 export interface GuardianDesignFacts {
   /**
-   * Lines of the person whose instruction the action serves that reach this
-   * Turn from somewhere else: from the Turn that started the work
-   * (`instruction`), or as a message from the person's linked account. A
-   * Conversation that an agent started or messaged gets none: its brief is
-   * its instruction (`brief-is-instruction`).
+   * Lines of the person whose instruction the action serves: from the
+   * request that started the work (`instruction`), or as a message from the
+   * person's linked account. The request builds them as core does: an event
+   * Turn reads no root Conversation, and a linked-account message is an
+   * Event, so it is context.
    */
   personLines?: Array<{
     text: string;
@@ -66,6 +67,8 @@ export interface GuardianDesignRequest {
   /** One action, or each call of one Code Mode batch, in order. */
   actions: ToolActionProposal[];
   facts?: GuardianDesignFacts;
+  /** Plugin destination facts of the install, when not the installed ones. */
+  destinationFacts?: GuardianDestinationFact[];
   /** The review model cannot answer, as in a provider outage. */
   reviewUnavailable?: boolean;
 }

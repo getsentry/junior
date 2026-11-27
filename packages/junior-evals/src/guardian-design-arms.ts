@@ -11,7 +11,10 @@ import { mapBounded } from "@/chat/fan-out";
 import { createCurrentGuardian } from "@/chat/guardian/current";
 import type { GuardianBatch } from "@/chat/guardian/gate";
 import type { Guardian, Review } from "@/chat/guardian/guardian";
-import { guardianPluginFacts } from "@/chat/guardian/policy";
+import {
+  guardianPluginFacts,
+  type GuardianDestinationFact,
+} from "@/chat/guardian/policy";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { getAppContext } from "@/app/context";
 import { ProviderError } from "@/chat/services/provider-error";
@@ -43,7 +46,11 @@ export function installedPluginFacts() {
 
 /** Make an arm that reviews each request with the Guardian of its model. */
 export function guardianArm(
-  guardian: (modelId: string, batch: GuardianBatch) => Guardian,
+  guardian: (
+    modelId: string,
+    batch: GuardianBatch,
+    destinationFacts: GuardianDestinationFact[],
+  ) => Guardian,
 ): GuardianArm {
   return async (request, { signal }) => {
     // Only the agent Guardian reviews `bash` in production
@@ -64,6 +71,7 @@ export function guardianArm(
         reviews = await guardian(
           armModelId(request.reviewUnavailable),
           batch,
+          request.destinationFacts ?? installedPluginFacts(),
         ).review(await designGuardianRequest(proposals, request.facts), signal);
       } catch (error) {
         // A provider failure that the case did not ask for is a broken eval
@@ -103,25 +111,27 @@ export function guardianArm(
 }
 
 /** The current Guardian. */
-export const currentGuardianArm = guardianArm((modelId, batch) =>
-  createCurrentGuardian(
-    createGuardianActionReviewer({
-      completeObject,
-      destinationFacts: installedPluginFacts(),
-      modelId,
-    }),
-    batch,
-  ),
+export const currentGuardianArm = guardianArm(
+  (modelId, batch, destinationFacts) =>
+    createCurrentGuardian(
+      createGuardianActionReviewer({
+        completeObject,
+        destinationFacts,
+        modelId,
+      }),
+      batch,
+    ),
 );
 
 /** The agent Guardian (`guardian-agent`), reported as the next Guardian. */
-export const agentGuardianArm = guardianArm((modelId, batch) =>
-  createAgentGuardian(
-    {
-      completeObject,
-      destinationFacts: installedPluginFacts(),
-      modelId,
-    },
-    batch,
-  ),
+export const agentGuardianArm = guardianArm(
+  (modelId, batch, destinationFacts) =>
+    createAgentGuardian(
+      {
+        completeObject,
+        destinationFacts,
+        modelId,
+      },
+      batch,
+    ),
 );

@@ -8,7 +8,7 @@ import { mapBounded } from "@/chat/fan-out";
 import type { GuardianBatch } from "@/chat/guardian/gate";
 import type { Message, ReviewRequest } from "@/chat/guardian/guardian";
 import { instructionAuthor } from "@/chat/conversations/kind-behavior";
-import { guardianArm, installedPluginFacts } from "./guardian-design-arms";
+import { guardianArm } from "./guardian-design-arms";
 import type {
   GuardianArm,
   GuardianDesignRequest,
@@ -155,11 +155,11 @@ export function selectedAblations(): string[] {
 
 /** The agent arm with one ablation. */
 function ablatedArm(ablation: Ablation): GuardianArm {
-  return guardianArm((modelId, batch) => {
+  return guardianArm((modelId, batch, destinationFacts) => {
     const guardian = createAgentGuardian(
       {
         completeObject,
-        destinationFacts: ablation.noPluginFacts ? [] : installedPluginFacts(),
+        destinationFacts: ablation.noPluginFacts ? [] : destinationFacts,
         modelId,
       },
       ablation.batch ? ablation.batch(batch) : batch,

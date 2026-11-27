@@ -16,22 +16,42 @@ import type { GuardianDesignFacts } from "./guardian-design-harness";
 import { designGuardianContext } from "./guardian-facts-context";
 import { agentActionFacts, agentHasTool } from "./guardian-tools";
 /**
- * The messages of the work. A line of the person that reaches the Turn
- * from the request that started the work comes before the Conversation, and
- * one from the person's linked account comes after it.
+ * The messages of the work, as core builds them. A line of the person from
+ * the request that started the work is a message of the root Conversation,
+ * which core reads only for a Run of a person: an event Turn gets none. A
+ * line from the person's linked account reaches the Turn as an Event, so it
+ * is context.
  */
 function designMessages(
   proposal: ToolActionProposal,
   facts: GuardianDesignFacts | undefined,
 ): Message[] {
-  const lines = (via: "instruction" | "linked-account"): Message[] =>
-    (facts?.personLines ?? [])
-      .filter((line) => line.via === via)
-      .map((line) => ({ from: "instruction", text: line.text }));
+  const lines = facts?.personLines ?? [];
+  const requested = lines.flatMap((line) =>
+    line.via === "instruction"
+      ? [{ author: "user" as const, text: line.text }]
+      : [],
+  );
+  const root =
+    requested.length > 0 && proposal.context.actor.platform !== "system"
+      ? {
+          messages: [
+            ...requested,
+            ...(proposal.rootConversation?.messages ?? []),
+          ],
+          truncated: proposal.rootConversation?.truncated ?? false,
+        }
+      : proposal.rootConversation;
   return [
-    ...lines("instruction"),
-    ...guardianMessages(proposal),
-    ...lines("linked-account"),
+    ...guardianMessages({
+      ...proposal,
+      ...(root ? { rootConversation: root } : undefined),
+    }),
+    ...lines.flatMap((line) =>
+      line.via === "linked-account"
+        ? [{ from: "context" as const, text: line.text }]
+        : [],
+    ),
   ];
 }
 

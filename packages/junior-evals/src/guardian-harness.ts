@@ -18,6 +18,7 @@ import type {
   ToolActionProposal,
   ToolActionReviewDecision,
 } from "@/chat/guardian/proposal";
+import { caseRecords } from "./guardian-case-records";
 import type { GuardianDesignFacts } from "./guardian-design-harness";
 
 const GUARDIAN_EVAL_TIMEOUT_MS = 60_000;
@@ -88,13 +89,18 @@ type HarnessDecision = Omit<
  */
 async function reviewWithAgentGuardian(
   proposal: ToolActionProposal,
-  facts: GuardianDesignFacts | undefined,
+  facts: GuardianDesignFacts,
+  destinationFacts: GuardianDestinationFact[] | undefined,
   signal: AbortSignal,
 ): Promise<HarnessDecision> {
   // Loaded here: the arms module imports this one.
   const { agentGuardianArm } = await import("./guardian-design-arms");
   const result = await agentGuardianArm(
-    { actions: [proposal], ...(facts ? { facts } : undefined) },
+    {
+      actions: [proposal],
+      facts,
+      ...(destinationFacts ? { destinationFacts } : undefined),
+    },
     { signal },
   );
   const action = result.actions[0]!;
@@ -110,18 +116,25 @@ async function reviewWithAgentGuardian(
   };
 }
 
+/** The destination facts that production gives for the installed plugins. */
+async function installedFacts(): Promise<GuardianDestinationFact[]> {
+  // Loaded here: the arms module imports this one.
+  const { installedPluginFacts } = await import("./guardian-design-arms");
+  return installedPluginFacts();
+}
+
 /**
- * The proposal as production describes it when the case states records: a
+ * The proposal as production describes it with the case's records: a
  * plugin's `guardian` reads them, and its decision reason reaches the
  * current Guardian in `proposalDescription`.
  */
 async function withRecords(
   proposal: ToolActionProposal,
-  facts: GuardianDesignFacts | undefined,
+  facts: GuardianDesignFacts,
 ): Promise<ToolActionProposal> {
   // Loaded here: the tools module imports the plugins.
   const { agentHasTool, agentToolSpec } = await import("./guardian-tools");
-  if (!facts || !(await agentHasTool(proposal.tool))) {
+  if (!(await agentHasTool(proposal.tool))) {
     return proposal;
   }
   const name = proposal.tool.dispatcherName ?? proposal.tool.name;
@@ -142,19 +155,20 @@ export const guardianHarness = createHarness<
     const reviewSignal = signal
       ? AbortSignal.any([signal, timeoutSignal])
       : timeoutSignal;
+    const records = caseRecords(input.proposal, input.facts);
     const decision: HarnessDecision =
       process.env["GUARDIAN_DESIGN_ARM"]?.trim() === "agent"
         ? await reviewWithAgentGuardian(
             input.proposal,
-            input.facts,
+            records,
+            input.destinationFacts,
             reviewSignal,
           )
         : await reviewGuardianProposal(
-            await withRecords(input.proposal, input.facts),
+            await withRecords(input.proposal, records),
             {
-              ...(input.destinationFacts
-                ? { destinationFacts: input.destinationFacts }
-                : undefined),
+              destinationFacts:
+                input.destinationFacts ?? (await installedFacts()),
               signal: reviewSignal,
             },
           );
