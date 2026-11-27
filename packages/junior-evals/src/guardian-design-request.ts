@@ -14,7 +14,7 @@ import { credentialPlaceholders } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
 import type { GuardianDesignFacts } from "./guardian-design-harness";
 import { designGuardianContext } from "./guardian-facts-context";
-import { agentActionFacts } from "./guardian-tools";
+import { agentActionFacts, agentHasTool } from "./guardian-tools";
 /**
  * The messages of the work. A line of the person that reaches the Turn
  * from the request that started the work comes before the Conversation, and
@@ -69,9 +69,11 @@ async function designAction(
       proposal.tool.name === "bash" && typeof input.command === "string"
         ? input.command
         : (described.summary ??
-          // A described call's description is its target, which the
-          // agent already gets. Only a made-up tool keeps its own.
-          (described.target ? undefined : proposal.tool.proposalDescription) ??
+          // Core writes a real tool's description for the current
+          // Guardian. Only a made-up tool keeps its own.
+          ((await agentHasTool(proposal.tool))
+            ? undefined
+            : proposal.tool.proposalDescription) ??
           proposal.tool.name),
   };
 }

@@ -34,6 +34,11 @@ import type {
   ToolActionProposal,
   ToolActionScript,
 } from "@/chat/guardian/proposal";
+import {
+  describedProposal,
+  proposalTool,
+  truncateMiddle,
+} from "@/chat/guardian/proposal-tool";
 import { guardianMessages } from "@/chat/guardian/request";
 import { credentialPlaceholders } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
@@ -305,23 +310,6 @@ function assertAuthoritativeContext(
   }
 }
 
-/**
- * The current Guardian's line for a call that the tool's `guardian`
- * described: its summary, else its target with the reason label.
- */
-export function describedProposal(
-  described: ActionDescription | undefined,
-): string | undefined {
-  if (described?.summary) {
-    return described.summary;
-  }
-  if (!described?.target) {
-    return undefined;
-  }
-  const reason = described.toolDecision?.reason;
-  return reason ? `${described.target.ref} (${reason})` : described.target.ref;
-}
-
 /** Build the bounded wire proposal. Tool metadata is not authority. */
 function buildProposal(
   toolName: string,
@@ -360,21 +348,18 @@ function buildProposal(
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     ...(script ? { script: boundedScript(script) } : undefined),
-    tool: proposalTool(toolName, tool, resolved, describedProposal(described)),
+    tool: proposalTool(
+      toolName,
+      tool,
+      resolved,
+      describedProposal(described, resolved?.name ?? toolName, input),
+    ),
   };
 }
 
 const MAX_SCRIPT_SOURCE_CHARS = 16_000;
 const MAX_SCRIPT_CALLS = 20;
 const MAX_SCRIPT_CALL_INPUT_CHARS = 500;
-
-function truncateMiddle(text: string, maxChars: number): string {
-  if (text.length <= maxChars) {
-    return text;
-  }
-  const half = Math.floor(maxChars / 2);
-  return `${text.slice(0, half)}\n[truncated]\n${text.slice(-half)}`;
-}
 
 /**
  * Bound the script provenance of one action, so a long script or many
@@ -396,37 +381,6 @@ function boundedScript(
     })),
     omittedCalls: script.calls.length - calls.length,
     source: truncateMiddle(script.source, MAX_SCRIPT_SOURCE_CHARS),
-  };
-}
-
-/**
- * Build the `tool` field of a proposal: the tool as Guardian sees it for this
- * input. The resolved metadata of a dispatcher, such as `callMcpTool`, names
- * the real tool. The Guardian evals call this with the agent's own tools, so
- * they send the same shape as production.
- */
-export function proposalTool(
-  toolName: string,
-  tool: AnyToolDefinition,
-  resolved: ToolApprovalResolution | undefined,
-  /** The line from `describedProposal`, when the call has one. */
-  proposalDescription: string | undefined,
-): ToolActionProposal["tool"] {
-  const name = resolved?.name ?? toolName;
-  const catalogSource = resolved?.source ?? tool.source;
-  return {
-    // A dispatcher's own marks say nothing about the real tool.
-    ...(resolved?.serverHints
-      ? { serverHints: resolved.serverHints }
-      : !resolved && tool.annotations
-        ? { annotations: tool.annotations }
-        : undefined),
-    description: resolved?.description ?? tool.description,
-    ...(name !== toolName ? { dispatcherName: toolName } : undefined),
-    ...(tool.identity ? { identity: tool.identity } : undefined),
-    name,
-    ...(proposalDescription ? { proposalDescription } : undefined),
-    ...(catalogSource ? { catalogSource } : undefined),
   };
 }
 

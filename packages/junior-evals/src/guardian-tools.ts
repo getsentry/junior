@@ -18,12 +18,8 @@ import { vercelPlugin } from "@sentry/junior-vercel";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { actionFromGuardian } from "@/chat/guardian/call-facts";
-import {
-  describedProposal,
-  proposalTool,
-  toolActionNeedsReview,
-  undescribedAction,
-} from "@/chat/guardian/gate";
+import { toolActionNeedsReview, undescribedAction } from "@/chat/guardian/gate";
+import { describedProposal, proposalTool } from "@/chat/guardian/proposal-tool";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { createTools } from "@/chat/tool-support/create-tools";
@@ -191,7 +187,20 @@ export async function agentToolSpec(
         designGuardianContext(undefined),
       )
     : await tool.guardian?.(input);
-  return proposalTool(name, tool, resolved, describedProposal(described));
+  return proposalTool(
+    name,
+    tool,
+    resolved,
+    describedProposal(described, resolved?.name ?? name, input),
+  );
+}
+
+/** Whether the agent has the tool, so its description comes from core. */
+export async function agentHasTool(
+  tool: ToolActionProposal["tool"],
+): Promise<boolean> {
+  agentTools ??= buildAgentTools();
+  return (await agentTools)[tool.dispatcherName ?? tool.name] !== undefined;
 }
 
 /**
