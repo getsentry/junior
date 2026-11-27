@@ -9,13 +9,16 @@ import {
   ContextMenuContent,
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
+import {
+  StatusIndicator,
+  spaceIndicatorState,
+} from "../conversations/StatusIndicator";
 import { paneEntryClass } from "../inbox/PaneDestinations";
 import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { useMemberSpacesData } from "./queries";
 import { useSpaceActions } from "./SpaceActions";
 import { spacePath } from "./spaceRoutes";
-import { SpaceStateIcon, spaceDisplayState } from "./SpaceStateIcon";
 import { SpaceTile } from "./SpaceTile";
 
 // The dialog opens only after a click, so it loads with the first open
@@ -57,7 +60,7 @@ function SpaceNavRow(props: {
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
             {space.name}
           </span>
-          <SpaceStateIcon state={spaceDisplayState(space)} />
+          <StatusIndicator state={spaceIndicatorState(space)} />
         </Link>
       </ContextMenuTrigger>
       <ContextMenuContent>{actions.rows}</ContextMenuContent>

@@ -315,12 +315,3 @@ export function conversationShowsThinking(detail: {
     conversationIsResponding(detail.data) || detail.inlineMessages.length > 0
   );
 }
-
-type AgentTreeDetail = Pick<ConversationDetailReport, "agentTree">;
-
-/** True for a child Conversation (a Task or a Thread), which has an agent tree. */
-export function isChildConversation<T extends AgentTreeDetail>(
-  detail: T | undefined,
-): detail is T & Required<AgentTreeDetail> {
-  return Boolean(detail?.agentTree);
-}

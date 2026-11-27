@@ -10,11 +10,11 @@ import { Card } from "../../components/layout/Card";
 import { SectionHeader } from "../../components/layout/SectionHeader";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { ConversationSidebarAnnotations } from "../../conversations/ConversationMeta";
+import { PrivateConversationIcon } from "../../conversations/PrivateConversationIcon";
 import {
-  ConversationListStatusIcon,
-  ConversationStatusText,
-} from "../../conversations/ConversationListStatusIcon";
-import { conversationTurnIsActive } from "../../conversations/turnActivity";
+  StatusIndicator,
+  statusIndicatorState,
+} from "../../conversations/StatusIndicator";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { conversationDisplayTitle, slackLocationLabel } from "../../format";
 import type { Conversation } from "../../types";
@@ -48,12 +48,11 @@ export function RepositorySection(props: {
 }
 
 /**
- * Two-line conversation row built from the sidebar row parts: status icon and
- * title, then plugin annotations or the location.
+ * Two-line conversation row built from the sidebar row parts: status
+ * indicator and title, then plugin annotations or the location.
  */
 export function RecentConversationRow(props: { conversation: Conversation }) {
   const conversation = props.conversation;
-  const status = conversation.status;
   const title = conversationDisplayTitle(conversation);
   const location = slackLocationLabel(conversation, { includeId: false });
   const hasAnnotations = Boolean(conversation.sidebarAnnotations?.length);
@@ -66,19 +65,18 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
       />
       <div className="pointer-events-none relative z-[1] grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2">
         <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
-          <ConversationListStatusIcon
-            turnActive={conversationTurnIsActive(conversation)}
-            waitingOnViewer={false}
+          <StatusIndicator
+            className="size-3"
+            state={statusIndicatorState(conversation)}
           />
         </span>
         <div className="min-w-0 truncate font-display text-sm text-dashboard-text">
           {title}
         </div>
         <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
-          <ConversationStatusText
-            isPrivate={conversation.visibility === "private"}
-            status={status}
-          />
+          {conversation.visibility === "private" ? (
+            <PrivateConversationIcon />
+          ) : null}
           {formatRelativeTime(
             conversation.lastMessageAt ?? conversation.lastSeenAt,
           )}

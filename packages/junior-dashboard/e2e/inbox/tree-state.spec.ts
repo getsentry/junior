@@ -47,7 +47,7 @@ test.describe("new UI", () => {
         .filter({ has: page.getByRole("link", { name: title }) });
     // The root is idle, but a Task under it works, so it is in flight.
     await expect(
-      flightRow(/Package release and self-update/).getByRole("status", {
+      flightRow(/Package release and self-update/).getByRole("img", {
         name: "Working",
       }),
     ).toBeVisible();
@@ -56,12 +56,12 @@ test.describe("new UI", () => {
         name: "Waiting on you",
       }),
     ).toBeVisible();
-    // A done tree that watches for an Event or a Timer shows an eye.
-    const watching = flightRow(/Dashboard QA edge cases/).getByRole("img", {
-      name: "Watching for an event",
-    });
-    await expect(watching).toBeVisible();
-    // A pin shows its pin only while its tree waits on nothing.
+    // A done tree that watches for an Event or a Timer is in flight, and
+    // shows that it is done.
+    await expect(
+      flightRow(/Dashboard QA edge cases/).getByRole("img", { name: "Done" }),
+    ).toBeVisible();
+    // A pinned done tree is in flight too, and shows no pin.
     // The Inbox lists only what needs the viewer, so pin from Conversations.
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = page.getByRole("region", {
@@ -78,7 +78,7 @@ test.describe("new UI", () => {
       .getByRole("button", { name: "Unpin Roll out payments-v42" })
       .blur();
     await expect(
-      flightRow(/Roll out payments-v42/).getByRole("img", { name: "Pinned" }),
+      flightRow(/Roll out payments-v42/).getByRole("img", { name: "Done" }),
     ).toBeVisible();
     // A done tree that is not pinned is not in flight.
     await expect(inFlight.getByRole("listitem")).toHaveCount(5);
@@ -109,7 +109,7 @@ test.describe("new UI", () => {
             name: "Package release and self-update",
           }),
         })
-        .getByRole("status", { name: "Working" }),
+        .getByRole("img", { name: "Working" }),
     ).toBeVisible();
     await screenshot(page, "inbox-tree-state-header", {
       lightTheme: true,

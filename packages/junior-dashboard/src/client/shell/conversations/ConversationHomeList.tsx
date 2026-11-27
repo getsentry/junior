@@ -3,14 +3,12 @@ import {
   ArchiveRestore,
   LockKeyhole,
   MessageSquare,
-  Pin,
 } from "lucide-react";
 import { Link } from "react-router";
 
 import { conversationDisplayTitle } from "../../format";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Skeleton } from "../../components/ui/skeleton";
-import { Spinner } from "../../components/ui/spinner";
 import {
   conversationParticipants,
   ParticipantAvatarStack,
@@ -22,9 +20,9 @@ import { useConversationActionToasts } from "../../conversations/conversationAct
 import { MessageObjectsProvider } from "../../display-text/DisplayText";
 import { conversationCardTags } from "../../conversations/ConversationContextTags";
 import {
-  ConversationListStatusIcon,
-  ConversationStatusText,
-} from "../../conversations/ConversationListStatusIcon";
+  StatusIndicator,
+  statusIndicatorState,
+} from "../../conversations/StatusIndicator";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { useArchiveConversation } from "../../conversations/conversationArchive";
 import { DisplayText } from "../../display-text/DisplayText";
@@ -217,7 +215,6 @@ function ConversationCard(props: ConversationCardProps) {
       if (archived) props.onArchived(conversation);
     },
   });
-  const status = conversation.status;
   const running = conversationTurnIsActive(conversation);
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
@@ -225,9 +222,6 @@ function ConversationCard(props: ConversationCardProps) {
   const tags = conversationCardTags(conversation, title);
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
-  // Only a wait on the viewer gets a badge. A card whose Turn runs shows its
-  // spinner in place of the time.
-  const showStatus = props.waitingOnViewer && !running;
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (
     <article
@@ -248,14 +242,6 @@ function ConversationCard(props: ConversationCardProps) {
           role="img"
           size={15}
         />
-        {showStatus ? (
-          <span className="absolute -bottom-1 -right-1 grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
-            <ConversationListStatusIcon
-              turnActive={running}
-              waitingOnViewer={props.waitingOnViewer}
-            />
-          </span>
-        ) : null}
       </span>
       <div className="grid min-w-0">
         <div className="flex min-w-0 items-center gap-3">
@@ -272,29 +258,17 @@ function ConversationCard(props: ConversationCardProps) {
               <ParticipantAvatarStack participants={participants} size="list" />
             </span>
           ) : null}
-          {conversation.pinnedAt ? (
-            <Pin
-              aria-label="Pinned"
-              className="pointer-events-none relative z-[1] size-3 shrink-0 text-dashboard-text-muted"
-              role="img"
-            />
-          ) : null}
-          {/* The tile already shows the lock. A running row can also
-              need input, so this shows beside the spinner. */}
-          <ConversationStatusText
+          <StatusIndicator
             className="pointer-events-none relative z-[1]"
-            isPrivate={false}
-            status={status}
+            state={statusIndicatorState({
+              ...conversation,
+              waitsOnViewer: props.waitingOnViewer,
+            })}
           />
           {running ? (
             // Like the sidebar row: a running row shows that it runs, not
             // when its last Event came, so the feed token can skip it.
-            <span className="pointer-events-none relative z-[1] flex min-w-14 justify-end">
-              <Spinner
-                aria-label="Running"
-                className="size-3.5 text-dashboard-text-muted"
-              />
-            </span>
+            <span className="min-w-14" />
           ) : (
             <time
               className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"

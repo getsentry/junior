@@ -77,10 +77,8 @@ export function ConversationHeader(props: {
   sidebarToggle?: ReactNode | undefined;
   /** A link to the Conversation's Space, after the title. */
   space?: ReactNode;
-  /** The tree state or pin icon, before the title. */
+  /** The status indicator, before the title. */
   state?: ReactNode;
-  /** Status pill of a child Conversation, after its title. */
-  status?: ReactNode;
   title: string;
   view: TranscriptViewMode;
 }) {
@@ -374,7 +372,6 @@ export function ConversationHeader(props: {
             ) : (
               title
             )}
-            {props.status}
             {childAgentTags}
             {props.space}
             {props.privacy ? (
@@ -432,7 +429,6 @@ export function ConversationHeader(props: {
           <div className="flex min-w-0 items-center justify-between gap-2 px-4 py-2 md:hidden">
             <ConversationBreadcrumb nodes={props.agentTree} />
             <div className="flex shrink-0 items-center gap-1.5">
-              {props.status}
               {childAgentTags}
             </div>
           </div>

@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
-import { conversationDisplayState } from "../conversations/ConversationStateIcon";
+import { statusIndicatorState } from "../conversations/StatusIndicator";
 import {
   attentionOrder,
   newestFirst,
@@ -356,8 +356,12 @@ function useBuildInboxData(input: {
     !conversation.parentConversationId && conversation.kind !== "lead";
   const inFlightPinned = pinned.filter(inFlightRoot);
   const busy = (conversation: Conversation) => {
-    const state = conversationDisplayState(conversation);
-    return state !== undefined && state !== "pinned";
+    const state = statusIndicatorState(conversation);
+    return (
+      state === "needs_you" ||
+      state === "working" ||
+      Boolean(conversation.watching)
+    );
   };
   const busyRows = attentionOrder(
     conversations.filter(

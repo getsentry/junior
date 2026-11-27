@@ -30,7 +30,7 @@ import {
   childAgentStatusLabel,
   useConversationChildAgents,
 } from "./ConversationChildAgents";
-import { conversationDisplayState } from "./ConversationStateIcon";
+import { statusIndicatorState } from "./StatusIndicator";
 import { formatAttachmentBytes } from "./TranscriptAttachment";
 import { mentionName } from "./composerMentionToken";
 import { rankPeople } from "./composerPeopleSearch";
@@ -156,7 +156,7 @@ function useConversationSource(
         kind: "conversation",
         url: conversationUrl(row.conversationId),
         title,
-        state: conversationDisplayState(row),
+        state: statusIndicatorState(row),
       };
       return {
         key: `conversation:${row.conversationId}`,

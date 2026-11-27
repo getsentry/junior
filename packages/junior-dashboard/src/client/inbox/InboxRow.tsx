@@ -14,11 +14,11 @@ import {
   ContextMenu,
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
-import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
+import { PrivateConversationIcon } from "../conversations/PrivateConversationIcon";
 import {
-  ConversationStateIcon,
-  conversationDisplayState,
-} from "../conversations/ConversationStateIcon";
+  StatusIndicator,
+  statusIndicatorState,
+} from "../conversations/StatusIndicator";
 import {
   ConversationCast,
   useConversationDensity,
@@ -511,9 +511,7 @@ function InboxRowBody(
   const controls = props.actionsBelow
     ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
     : regionId;
-  const state = conversation
-    ? conversationDisplayState(conversation)
-    : undefined;
+  const state = conversation ? statusIndicatorState(conversation) : undefined;
   // Comfortable rows show images, linked work, links and files under the
   // head.
   const cards =
@@ -802,13 +800,10 @@ function InboxRowBody(
               </span>
             ) : null}
             <span className="flex items-center gap-1">
-              {conversation ? (
-                <ConversationStatusText
-                  isPrivate={conversation.visibility === "private"}
-                  status={conversation.status}
-                />
+              {conversation?.visibility === "private" ? (
+                <PrivateConversationIcon />
               ) : null}
-              <ConversationStateIcon state={state} />
+              <StatusIndicator state={state} />
               {state === "working" ? null : formatCompactAge(props.time)}
             </span>
           </span>

@@ -9,11 +9,9 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { conversationDisplayTitle } from "../format";
-import { Spinner } from "../components/ui/spinner";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import type { Conversation } from "../types";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
-import { ChildConversationStatusIcon } from "./ChildConversationStatus";
 import { useArchiveConversation } from "./conversationArchive";
 import {
   prefetchConversationDetail,
@@ -29,6 +27,7 @@ import {
   ROW_ACTIONS_FADE_CLASS,
   ROW_ACTIONS_REVEAL_CLASS,
 } from "./sidebarRowActions";
+import { StatusIndicator, statusIndicatorState } from "./StatusIndicator";
 import { formatCompactAge } from "../time";
 import { conversationTurnIsActive } from "./turnActivity";
 
@@ -40,9 +39,9 @@ const ROW_GRID = "grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-3 pr-2";
 const TOGGLE_GRID = "grid-cols-[1rem_minmax(0,1fr)] gap-x-3 pr-2";
 
 /**
- * Render one Thread under its parent in the sidebar. The row shows a status
- * icon, the title, and its age. A running Thread shows only its spinner and
- * no age, so the feed token skips its activity. Participants can archive it
+ * Render one Thread under its parent in the sidebar. The row shows its
+ * status indicator, the title, and its age. A running Thread shows no age,
+ * so the feed token skips its activity. Participants can archive it
  * from the row. A Thread archive applies to everyone, so it asks first.
  * Threads have no pin here, and archived Threads leave the sidebar, so the
  * row has no restore.
@@ -104,7 +103,7 @@ export const ConversationSidebarThreadRow = memo(
           )}
           to={conversationPath(props.conversation.id)}
         >
-          <ChildConversationStatusIcon status={props.conversation.status} />
+          <StatusIndicator state={statusIndicatorState(props.conversation)} />
           <span
             className={cn(
               "min-w-0 truncate font-sans text-sm leading-snug",
@@ -115,16 +114,7 @@ export const ConversationSidebarThreadRow = memo(
           >
             {title}
           </span>
-          {conversationTurnIsActive(props.conversation) ? (
-            // The icon follows `status`. A running Thread that needs input
-            // shows the alert there, so it shows that it runs here.
-            props.conversation.status === "working" ? null : (
-              <Spinner
-                aria-label="Running"
-                className="size-3.5 justify-self-end text-dashboard-text-muted"
-              />
-            )
-          ) : (
+          {conversationTurnIsActive(props.conversation) ? null : (
             <span
               className={cn(
                 "font-sans text-xs tabular-nums text-dashboard-text-faint",

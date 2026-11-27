@@ -4,6 +4,7 @@ import * as z from "zod";
 import { displayTextWebLinks } from "../display-text/plainText";
 import { composerTokenFinder } from "./composerTypeaheadToken";
 import { CONVERSATION_PATH } from "./conversationRoutes";
+import { STATUS_INDICATOR_STATES } from "./StatusIndicator";
 
 /**
  * Something other than a person that a composer chip stands for. Its
@@ -17,7 +18,8 @@ export const composerReferenceSchema = z.discriminatedUnion("kind", [
       // The same-origin link, as it is in the message text.
       url: z.string().min(1),
       title: z.string().min(1),
-      state: z.enum(["needs_you", "working", "watching", "pinned"]).optional(),
+      // A draft saved before the status indicator may hold an old state.
+      state: z.enum(STATUS_INDICATOR_STATES).optional().catch(undefined),
     })
     .strict(),
   z

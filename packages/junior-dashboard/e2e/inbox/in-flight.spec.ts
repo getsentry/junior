@@ -37,7 +37,7 @@ test.describe("new UI", () => {
       .filter({
         has: page.getByRole("link", { name: /Roll out payments-v42/ }),
       })
-      .getByRole("img", { name: "Pinned" });
+      .getByRole("img", { name: "Done" });
     await expect(pinnedState).toBeVisible();
     // The shot keeps the pointer only at its own size.
     await page.setViewportSize(desktop);
