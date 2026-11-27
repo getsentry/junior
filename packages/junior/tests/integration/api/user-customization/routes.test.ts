@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { userCustomizationSchema } from "@/api/schema";
 import { closeDb } from "@/chat/db";
-import { setExperimentalFeatures } from "@/chat/experimental";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { SUITE_EXPERIMENTAL } from "../../../fixtures/experimental-setup";
+import { patchConfig } from "../../../fixtures/config";
 
 function authenticatedApi(email = "person@example.com") {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
@@ -46,9 +46,11 @@ describe("user customization API", () => {
   });
 
   it("saves, reads, and clears only the viewer's own text", async () => {
-    setExperimentalFeatures({
-      ...SUITE_EXPERIMENTAL,
-      "user-customization": true,
+    patchConfig({
+      experimental: {
+        ...SUITE_EXPERIMENTAL,
+        "user-customization": true,
+      },
     });
     const ownerApi = authenticatedApi();
     const otherApi = authenticatedApi("other@example.com");

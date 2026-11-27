@@ -22,7 +22,6 @@ import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { createSlackActor } from "@/chat/actor";
 import { CONVERSATION_METADATA_TASK } from "@/chat/conversations/metadata/task";
 import { webActorFromUser } from "@/chat/conversations/web-input";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
   getConversationEventStore,
@@ -317,20 +316,17 @@ async function completeDashboardTurn(
 
 describe("reply notification task", () => {
   let keys: ReturnType<typeof webPush.generateVAPIDKeys>;
-  let previousLinks: ReturnType<typeof setDashboardConversationLinkOptions>;
   let pushes: Request[];
 
   beforeEach(async () => {
     keys = webPush.generateVAPIDKeys();
     useConfig({
+      dashboard: { baseURL: "https://junior.example.com" },
       webPush: {
         privateKey: keys.privateKey,
         publicKey: keys.publicKey,
         subject: "mailto:junior@example.com",
       },
-    });
-    previousLinks = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
     });
     await getStateAdapter().connect();
     pushes = [];
@@ -348,7 +344,6 @@ describe("reply notification task", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    setDashboardConversationLinkOptions(previousLinks);
     await disconnectStateAdapter();
     await closeDb();
   });
@@ -655,6 +650,7 @@ describe("reply notification task", () => {
 
   it("signs pushes with the Vercel URL when no subject or base URL is set", async () => {
     useConfig({
+      dashboard: { baseURL: "https://junior.example.com" },
       deployment: { vercelProductionUrl: "junior.example.com" },
       webPush: { privateKey: keys.privateKey, publicKey: keys.publicKey },
     });

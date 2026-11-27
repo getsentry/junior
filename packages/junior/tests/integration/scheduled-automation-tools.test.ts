@@ -37,6 +37,7 @@ import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
+import { useConfig } from "../fixtures/config";
 import {
   createSlackSource,
   createWebSource,
@@ -288,7 +289,6 @@ describe("Scheduled automation tools", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    delete process.env["JUNIOR_TIMEZONE"];
     await cleanupSchedulerSqlStore();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
@@ -1703,7 +1703,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("uses JUNIOR_TIMEZONE when the creator has no timezone", async () => {
-    process.env["JUNIOR_TIMEZONE"] = "America/New_York";
+    useConfig({ deployment: { timezone: "America/New_York" } });
     queueSlackTimezone("UNOZONE", "");
 
     const created = await createTask(
@@ -1729,7 +1729,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("rejects invalid default timezones", async () => {
-    process.env["JUNIOR_TIMEZONE"] = "not/a-zone";
+    useConfig({ deployment: { timezone: "not/a-zone" } });
     queueSlackTimezone("UBADDEFAULT", "");
 
     await expect(

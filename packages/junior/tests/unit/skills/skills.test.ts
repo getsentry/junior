@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { useConfig } from "../../fixtures/config";
 import { createPluginAppFixture } from "../../fixtures/plugin-app";
 import {
   discoverSkills,
@@ -44,7 +45,6 @@ describe("skills", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-skills-default-"),
     );
-    const originalSkillDirs = process.env["SKILL_DIRS"];
 
     await writeSkillFile(tempRoot, "brief", [
       "---",
@@ -66,7 +66,7 @@ describe("skills", () => {
     ]);
 
     resetSkillDiscoveryCache();
-    process.env["SKILL_DIRS"] = tempRoot;
+    useConfig({ skills: { dirs: [tempRoot] } });
 
     try {
       const skills = await discoverSkills();
@@ -76,11 +76,6 @@ describe("skills", () => {
       expect(names).toContain("sum");
     } finally {
       resetSkillDiscoveryCache();
-      if (originalSkillDirs === undefined) {
-        delete process.env["SKILL_DIRS"];
-      } else {
-        process.env["SKILL_DIRS"] = originalSkillDirs;
-      }
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
@@ -248,7 +243,6 @@ describe("skills", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-skills-openai-"),
     );
-    const originalSkillDirs = process.env["SKILL_DIRS"];
     const writeOpenAiYaml = async (name: string, lines: string[]) => {
       await fs.mkdir(path.join(tempRoot, name, "agents"), { recursive: true });
       await fs.writeFile(
@@ -290,7 +284,7 @@ describe("skills", () => {
     );
 
     resetSkillDiscoveryCache();
-    process.env["SKILL_DIRS"] = tempRoot;
+    useConfig({ skills: { dirs: [tempRoot] } });
 
     try {
       const discovered = await discoverSkills();
@@ -310,18 +304,12 @@ describe("skills", () => {
       expect(loaded?.disableModelInvocation).toBe(true);
     } finally {
       resetSkillDiscoveryCache();
-      if (originalSkillDirs === undefined) {
-        delete process.env["SKILL_DIRS"];
-      } else {
-        process.env["SKILL_DIRS"] = originalSkillDirs;
-      }
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
 
   it("skips skills with unsupported capability metadata", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-"));
-    const originalSkillDirs = process.env["SKILL_DIRS"];
 
     try {
       await writeSkillFile(tempRoot, "tmp-valid-metadata", [
@@ -343,7 +331,7 @@ describe("skills", () => {
         "",
         "# Body",
       ]);
-      process.env["SKILL_DIRS"] = tempRoot;
+      useConfig({ skills: { dirs: [tempRoot] } });
       resetSkillDiscoveryCache();
 
       const skills = await discoverSkills();
@@ -353,11 +341,6 @@ describe("skills", () => {
       expect(names).not.toContain("tmp-invalid-capability");
     } finally {
       resetSkillDiscoveryCache();
-      if (originalSkillDirs === undefined) {
-        delete process.env["SKILL_DIRS"];
-      } else {
-        process.env["SKILL_DIRS"] = originalSkillDirs;
-      }
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });

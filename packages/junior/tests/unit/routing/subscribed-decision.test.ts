@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { setExperimentalFeatures } from "@/chat/experimental";
+import { describe, expect, it, vi } from "vitest";
 import {
   decideSubscribedThreadReply,
   getSubscribedReplyPreflightDecision,
   SubscribedReplyReason,
   type SubscribedDecisionInput,
 } from "@/chat/services/subscribed-decision";
+import { patchConfig } from "../../fixtures/config";
 
 function makeInput(
   overrides: Partial<SubscribedDecisionInput> = {},
@@ -31,12 +31,8 @@ function routeAnswer(choice: string, probability: number) {
 }
 
 describe("subscribed reply decision", () => {
-  afterEach(() => {
-    setExperimentalFeatures({ "passive-routing": true });
-  });
-
   it("skips non-mention replies when passive-routing is off", async () => {
-    setExperimentalFeatures(undefined);
+    patchConfig({ experimental: {} });
     const completeDecision = vi.fn();
 
     await expect(
@@ -60,7 +56,7 @@ describe("subscribed reply decision", () => {
   });
 
   it("still replies to explicit mentions when passive routing is off", async () => {
-    setExperimentalFeatures(undefined);
+    patchConfig({ experimental: {} });
     const completeDecision = vi.fn();
 
     await expect(

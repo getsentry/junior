@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { getChatConfig, installChatConfig } from "@/chat/config";
 
 type TestSkill = {
   name: string;
@@ -10,8 +11,9 @@ type TestSkill = {
 };
 
 /**
- * Install skills in a temporary `SKILL_DIRS` root. The returned function
- * restores `SKILL_DIRS` and removes the root.
+ * Install skills in a temporary skill root, set as the only configured skill
+ * dir. The returned function restores the previous config and removes the
+ * root.
  */
 export async function installTestSkills(
   skills: TestSkill[],
@@ -36,11 +38,10 @@ export async function installTestSkills(
       ].join("\n"),
     );
   }
-  const previous = process.env["SKILL_DIRS"];
-  process.env["SKILL_DIRS"] = root;
+  const config = getChatConfig();
+  const previous = installChatConfig({ ...config, skills: { dirs: [root] } });
   return async () => {
-    if (previous === undefined) delete process.env["SKILL_DIRS"];
-    else process.env["SKILL_DIRS"] = previous;
+    installChatConfig(previous);
     await fs.rm(root, { recursive: true, force: true });
   };
 }

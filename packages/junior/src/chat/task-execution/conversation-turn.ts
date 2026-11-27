@@ -51,6 +51,7 @@ import {
 } from "@/chat/task-execution/turn-telemetry";
 import type { AgentFeature } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
@@ -654,6 +655,8 @@ export function createConversationTurnWorker(
                 ? { location: conversationLocation }
                 : undefined),
               surface,
+              // Pause before the host kills this request.
+              deadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               ...(stopSignal ? { signal: stopSignal } : undefined),
               ...(signInActor
                 ? {
