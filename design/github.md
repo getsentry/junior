@@ -93,6 +93,8 @@ also wake a Conversation or run an Event automation.
 
 ## Gaps
 
+- `inbox-log`: the plugin keeps the time of the latest Resume and of the
+  latest conflict ask in its own table, not in Inbox events.
 - A pull request that Junior opens ready for review asks for a review at
   once, before the required checks pass. This breaks "asks for a review
   only when the required checks pass".
