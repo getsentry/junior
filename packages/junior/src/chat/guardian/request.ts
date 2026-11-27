@@ -6,6 +6,7 @@
  * root Conversation, never from what the text says.
  */
 import { instructionAuthor } from "@/chat/conversations/kind-behavior";
+import { readTopLevelAgentMessages } from "@/chat/input-tags";
 import type { Message } from "@/chat/guardian/guardian";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 
@@ -64,7 +65,12 @@ export function guardianMessages(proposal: ToolActionProposal): Message[] {
   if (!shown && author !== "automation" && context.userIntent) {
     messages.push({
       from: author === "event" ? "context" : "instruction",
-      text: context.userIntent,
+      // A brief from another top-level agent is the instruction, so its
+      // data notice for the agent does not reach Guardian.
+      text:
+        (author === "brief"
+          ? readTopLevelAgentMessages(context.userIntent)
+          : undefined) ?? context.userIntent,
     });
   }
   return messages;

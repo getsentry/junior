@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+import { guardianMessages } from "@/chat/guardian/request";
+import type { ToolActionProposal } from "@/chat/guardian/proposal";
+import { renderDataTag, TOP_LEVEL_AGENT_WRITER } from "@/chat/input-tags";
+
+const agentMessage = (text: string) =>
+  renderDataTag(
+    "agent-message",
+    { conversation_id: "conv-lead", source: "top_level_agent" },
+    TOP_LEVEL_AGENT_WRITER,
+    text,
+  );
+
+function proposal(userIntent: string): ToolActionProposal {
+  return {
+    context: {
+      actor: { platform: "system", name: "event" },
+      conversationId: "local:guardian-test",
+      destination: {
+        platform: "local",
+        conversationId: "local:guardian-test",
+      },
+      source: {
+        kind: "event",
+        eventKey: "agent-message:conv-lead:1",
+        eventType: "agent.top_level_message",
+        identifier: "conv-lead",
+        namespace: "junior",
+      },
+      userIntent,
+    },
+    input: {},
+    tool: { description: "Close a PR.", name: "closePullRequest" },
+  };
+}
+
+describe("guardianMessages", () => {
+  it("gives another top-level agent's brief as the instruction, without its data notice", () => {
+    const text = "Close #301 & #307 <now>.";
+    expect(guardianMessages(proposal(agentMessage(text)))).toEqual([
+      { from: "instruction", text },
+    ]);
+  });
+
+  it("keeps the whole input when it holds more than agent messages", () => {
+    const input = `${agentMessage("Close #301.")}\nextra`;
+    expect(guardianMessages(proposal(input))).toEqual([
+      { from: "instruction", text: input },
+    ]);
+  });
+});
