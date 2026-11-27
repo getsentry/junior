@@ -84,11 +84,12 @@ untrusted text set up, does not run.
 - `allow-default` Guardian blocks an action only when the action clearly
   matches one named rule from a fixed list. General doubt is not a reason
   to block (`guardian#ordinary-work`).
-- `review-by-default` Every tool call is reviewed, except calls of
-  tools marked read-only and of core tools whose effects stay in the
-  Sandbox or the current Conversation, such as file edits and replies.
-  Only Junior's or a plugin's own code can mark a tool read-only. A remote
-  MCP server's marks are hints to Guardian. A plugin cannot turn review off.
+- `review-by-default` Every tool call is reviewed, except calls of core
+  tools whose effects stay in the Sandbox or the current Conversation,
+  such as file edits and replies, of plugin tools that the plugin's own
+  code marks read-only, and of remote MCP tools that the plugin lists by
+  exact name in its Guardian `skipReview` config. A remote MCP server's
+  marks are hints to Guardian. Nothing else turns review off.
 - `sandbox-boundary` Guardian reviews each command before it runs. An
   effect that stays in the Sandbox matches no rule, such as file edits,
   scratch cleanup, local commits, or stopping its own processes. Risk
@@ -264,8 +265,9 @@ nobody asked for, asks (`unrequested`).
 - `sandbox-boundary`: an action that stays in the Sandbox, such as
   deleting a checkout, can destroy unpushed work that the person asked
   for, and no rule catches it.
-- `review-by-default`: every remote MCP call is reviewed, also a read,
-  because nothing tells reliably which remote MCP calls are safe.
+- `review-by-default`: a remote MCP tool in `skipReview` skips review by
+  its name, so Guardian does not catch a server that changes what a
+  listed tool does.
 - `review-by-default`, `same-outcome`: some core tools with side effects,
   and outbound network, are not reviewed.
 - `placeholders`: Guardian is not told about the placeholders of the
