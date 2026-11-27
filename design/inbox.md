@@ -53,10 +53,11 @@ groups and acts on its rows.
   nothing takes the focus. A typed message still answers it.
 - While a waiting card is not in full view, a "N questions waiting" pill
   shows above the message box and goes to the oldest such card.
-- A question card has one layout in the Inbox and the transcript: the
-  question under its "Question" label, then the last message of the Turn
-  that asked it (about 12 lines, then Show more), then the form. The card
-  has no subject preview: the row head and Related link the subject. In
+- A question card shows each question with its own header, choices, and
+  answer. A card with one question shows it under its "Question" label. In
+  the Inbox, the last message of the Turn that asked it comes first (about
+  12 lines, then Show more). The transcript leaves that message out,
+  because it sits right above the card. The card has no subject preview: the row head and Related link the subject. In
   the transcript, a waiting card spans the transcript width.
 - A click on a choice picks it. Send answers, with the note line. An
   action that takes no words, such as a plugin's Resume, is one click.
@@ -83,9 +84,9 @@ groups and acts on its rows.
   about the same object changes, such as from review to merge, the same
   item shows the new ask.
 - A question belongs to the Conversation where Junior asked it, and holds
-  its title, body, form, related links, and answer. Its related links show
-  on the card, but they never decide the card or add related work to
-  another item.
+  its title, body, form, and answer. Related links that older questions
+  stored still show on the card, but they never decide the card or add
+  related work to another item.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
 - The answer to an item that a plugin added goes to that plugin, which does
