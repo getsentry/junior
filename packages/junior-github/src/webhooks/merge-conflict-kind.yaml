@@ -1,0 +1,47 @@
+# The rules of the `github:merge_conflict` Inbox kind
+# (`design/inbox-kinds.md`). People write its code, in `merge-conflict.ts`
+# and `../merge-conflict-checks/`.
+kind: github:merge_conflict
+source: github.merge_conflict
+feature: github
+hit: first
+inputs:
+  state:
+    values: [open, merged, closed]
+  conflict:
+    values: bool
+    description: GitHub reports a merge conflict.
+  dismissed:
+    values: bool
+    description: The requester dismissed the item after the latest Resume.
+  stuck:
+    values: bool
+    description: The head commit is the same a day after Junior's fix.
+  viewer.requester:
+    values: bool
+rules:
+  - id: conflict-ended
+    serves: [open-while-asked]
+    rows:
+      - when: { state: merged }
+        output: { close: done }
+      - when: { state: closed }
+        output: { close: dismissed }
+  - id: conflict-gone
+    serves: [open-while-asked]
+    rows:
+      - when: { conflict: false }
+        output: { close: done }
+  - id: conflict-dismissed
+    serves: [dismiss-holds]
+    rows:
+      - when: { dismissed: true }
+        output: { close: dismissed }
+  - id: conflict-stuck
+    serves: [plugin-answers, click-picks]
+    rows:
+      - when: { stuck: true, viewer.requester: true }
+        output:
+          ask:
+            label: Resume
+            choices: [{ label: Resume, command: start-fix }]

@@ -60,10 +60,8 @@ and changes an item.
 
 ## Gaps
 
-- `kind-table`: no kind is a table yet, and people write the code of each
-  kind.
+- `kind-table`: Junior generates only the code of `github:pull_request`
+  from its table. People write the code of the other kinds.
 - `open-while-asked`, `state-not-events`, `commands-not-changes`: each
   source adds, changes, and closes its own items, and plugins call `upsert`
   and `close`. Nothing checks a kind against its rules.
-- `table-links`: no check compares the tables with `design/` or with the
-  verification map.

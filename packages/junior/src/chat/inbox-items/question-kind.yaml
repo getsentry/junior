@@ -1,0 +1,37 @@
+# The rules of the `question` Inbox kind (`design/inbox-kinds.md`). People
+# write its code.
+kind: question
+source: question
+feature: inbox
+hit: first
+inputs:
+  state:
+    values: [open, answered, dismissed]
+  assignees:
+    values: [named, everyone, none]
+    description: >-
+      `named` when the item names its assignees, `everyone` when it is for
+      Everyone, and `none` when it has no assignee.
+  viewer.assignee:
+    values: bool
+    description: The item names the viewer as an assignee.
+  viewer.can_see:
+    values: bool
+    description: >-
+      The viewer can see the item: anyone in the workspace for a public
+      Conversation, and its members for a private one.
+rules:
+  - id: question-closed
+    serves: [first-answer-closes]
+    rows:
+      - when: { state: answered }
+        output: { close: done }
+      - when: { state: dismissed }
+        output: { close: dismissed }
+  - id: question-ask
+    serves: [who-answers, no-assignee, everyone-means-owner-audience]
+    rows:
+      - when: { assignees: named, viewer.assignee: true }
+        output: { ask: { content: "the question, with its form" } }
+      - when: { assignees: "everyone, none", viewer.can_see: true }
+        output: { ask: { content: "the question, with its form" } }

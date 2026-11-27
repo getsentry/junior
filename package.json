@@ -19,6 +19,7 @@
     "format:check": "oxfmt --check",
     "baseline-growth:check": "node scripts/check.mjs baseline-growth",
     "file-length:check": "node scripts/check.mjs file-length",
+    "inbox-kinds:check": "node scripts/check.mjs inbox-kinds",
     "migration-metadata:check": "node scripts/check.mjs drizzle-migrations",
     "migration-locks:check": "node scripts/check.mjs migration-locks",
     "money-units:check": "node scripts/check.mjs money-units",
@@ -95,7 +96,8 @@
     "squawk-cli": "2.72.0",
     "tsx": "^4.22.3",
     "typescript": "catalog:",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "zod": "catalog:"
   },
   "engines": {
     "node": "24.x"

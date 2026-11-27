@@ -1,0 +1,35 @@
+# The rules of the `notice` Inbox kind (`design/inbox-kinds.md`). People
+# write its code.
+kind: notice
+source: notice
+feature: inbox
+hit: first
+inputs:
+  dismissed:
+    values: bool
+  assignees:
+    values: [named, everyone, none]
+    description: >-
+      `named` when the item names its assignees, `everyone` when it is for
+      Everyone, and `none` when it has no assignee.
+  viewer.assignee:
+    values: bool
+    description: The item names the viewer as an assignee.
+  viewer.can_see:
+    values: bool
+    description: >-
+      The viewer can see the item: anyone in the workspace for a public
+      Conversation, and its members for a private one.
+rules:
+  - id: notice-closed
+    serves: [first-answer-closes]
+    rows:
+      - when: { dismissed: true }
+        output: { close: dismissed }
+  - id: notice-show
+    serves: [notice-never-asks, no-assignee, everyone-means-owner-audience]
+    rows:
+      - when: { assignees: named, viewer.assignee: true }
+        output: { notice: { step: with its step } }
+      - when: { assignees: "everyone, none", viewer.can_see: true }
+        output: { notice: { step: with its step } }

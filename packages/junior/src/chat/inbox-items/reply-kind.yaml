@@ -1,0 +1,31 @@
+# The rules of the `reply` Inbox kind (`design/inbox-kinds.md`). People write
+# its code, in `reply-notice.ts`.
+kind: reply
+source: reply
+feature: inbox
+hit: first
+inputs:
+  slack_thread:
+    values: bool
+    description: The Conversation has a Slack thread.
+  read:
+    values: bool
+    description: The starter read the latest reply.
+  viewer.starter:
+    values: bool
+rules:
+  - id: reply-slack
+    serves: [reply-notice]
+    rows:
+      - when: { slack_thread: true }
+        output: { close: dismissed }
+  - id: reply-read
+    serves: [reply-notice]
+    rows:
+      - when: { read: true }
+        output: { close: done }
+  - id: reply-notice
+    serves: [reply-notice, notice-never-asks]
+    rows:
+      - when: { viewer.starter: true }
+        output: { notice: { step: with the latest reply } }

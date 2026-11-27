@@ -8,6 +8,11 @@ import type {
   GitHubPullRequestActivity,
   GitHubPullRequestMergeState,
 } from "./installation-requests.js";
+import {
+  decide,
+  type Inputs,
+  type Outcome,
+} from "./pull-request-kind.generated.js";
 
 /** Whether two GitHub logins name the same account. */
 export function sameLogin(a: string, b: string | undefined): boolean {
@@ -97,8 +102,48 @@ export function timeOf(at: Date | undefined): number {
 }
 
 /**
- * Derive the requester's next action. Return undefined when it cannot be
- * known yet, so a later event decides.
+ * GitHub's merge state as the table's input. Every state but `clean` and
+ * `dirty`, such as `blocked`, `behind`, or `unstable`, keeps the merge from
+ * being the requester's next action.
+ */
+function mergeStateInput(
+  mergeableState: string | undefined,
+): Inputs["merge_state"] {
+  if (!mergeableState) return "unknown";
+  if (mergeableState === "clean") return "clean";
+  return mergeableState === "dirty" ? "conflict" : "blocked";
+}
+
+/** GitHub's review outcome as the table's input. */
+const REVIEW_OUTCOMES: Record<
+  NonNullable<GitHubPullRequestMergeState["reviewOutcome"]> | "none",
+  Inputs["review_outcome"]
+> = {
+  approved: "approved",
+  changesRequested: "changes_requested",
+  none: "none",
+};
+
+type Ask = Extract<Outcome, { kind: "ask" }>;
+
+/** The action of an ask that names a step, by its step. */
+const STEP_ACTIONS: Record<
+  NonNullable<Extract<Ask, { step: string }>["step"]>,
+  GitHubPullRequestAction
+> = {
+  "to mark it ready for review": "mark_ready",
+  "to review it, then mark it ready for review": "review_draft",
+};
+
+function askAction(ask: Ask): GitHubPullRequestAction {
+  if ("step" in ask) return STEP_ACTIONS[ask.step];
+  return ask.label === "Ready to merge" ? "merge" : "review";
+}
+
+/**
+ * Derive the requester's next action from the rules in
+ * `pull-request-kind.yaml`. Return undefined when it cannot be known yet,
+ * so a later event decides.
  */
 export function nextAction(
   state: GitHubPullRequestMergeState,
@@ -116,43 +161,31 @@ export function nextAction(
   },
   saved: GitHubPullRequestAction | undefined,
 ): { action?: GitHubPullRequestAction } | undefined {
-  if (state.state !== "open") return {};
-  // With auto-merge on or in the merge queue, GitHub merges it. A pending
-  // review request comes first, even where GitHub requires no review. So
-  // does the requester's feedback, because Junior acts next. A pull request
-  // above an open base merges after that base.
-  const canMerge =
-    requester.mergeAccess &&
-    !state.draft &&
-    !state.autoMerge &&
-    !state.inMergeQueue &&
-    !state.baseOpen &&
-    !state.reviewPending &&
-    !requester.feedback;
-  if (
-    canMerge &&
-    state.mergeableState === "clean" &&
-    state.reviewOutcome !== "changesRequested"
-  ) {
-    return { action: "merge" };
-  }
-  // GitHub has not computed the merge state yet, such as after a push. The
-  // merge can still be the action, so it stays until a later event decides.
-  if (canMerge && !state.mergeableState && saved === "merge") return undefined;
-  const review = state.draft ? "review_draft" : "review";
-  if (requester.askedAgain) return { action: review };
-  // A reply to the requester's feedback ends the review that Junior asked
-  // for, though GitHub still asks for it, because Junior acts next.
-  if (
-    isRequested(state, requester.login) &&
-    (!requester.actedLast || !requester.feedback)
-  ) {
-    return { action: review };
-  }
-  // The requester approved the draft, so the step left is to mark it ready.
-  if (state.draft && state.requesterApproved) return { action: "mark_ready" };
-  if (canMerge && !state.mergeableState) return undefined;
-  return {};
+  // The item serves only the requester, so the requester is the viewer.
+  // `requestedReviewers` is never set without `reviewPending`, and
+  // `requesterFeedback` is false for a draft.
+  const outcome = decide({
+    auto_merge: state.autoMerge,
+    base_open: state.baseOpen,
+    draft: state.draft,
+    in_merge_queue: state.inMergeQueue,
+    merge_state: mergeStateInput(state.mergeableState),
+    review_outcome: REVIEW_OUTCOMES[state.reviewOutcome ?? "none"],
+    review_pending: state.reviewPending,
+    state: state.state,
+    viewer: {
+      approved: state.requesterApproved,
+      asked_again: requester.askedAgain,
+      feedback: requester.feedback,
+      merge_access: requester.mergeAccess,
+      replied: requester.actedLast,
+      requested: isRequested(state, requester.login),
+      requester: true,
+      shown: saved ?? "nothing",
+    },
+  });
+  if (outcome.kind === "keep") return undefined;
+  return outcome.kind === "ask" ? { action: askAction(outcome) } : {};
 }
 
 function isRequested(

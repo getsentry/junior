@@ -1,0 +1,181 @@
+# The rules of the `github:pull_request` Inbox kind (`design/inbox-kinds.md`).
+# `pull-request-next-action.ts` builds the inputs and calls the generated
+# `decide()`. Run `pnpm inbox-kinds:check --update` after a change.
+kind: github:pull_request
+source: github.pull_request
+feature: github
+hit: first
+code: packages/junior-github/src/webhooks/pull-request-kind.generated.ts
+inputs:
+  state:
+    values: [open, merged, closed]
+  draft:
+    values: bool
+  auto_merge:
+    values: bool
+    description: A person turned on auto-merge, so GitHub merges it without them.
+  in_merge_queue:
+    values: bool
+    description: A person added it to the merge queue, so GitHub merges it.
+  base_open:
+    values: bool
+    description: >-
+      The base branch is the head branch of another open pull request, so
+      this one can merge only after that one. GitHub's merge state checks it
+      only against the base branch. A pull request from the default branch,
+      such as a sync into a long-lived branch, does not count.
+  review_pending:
+    values: bool
+    description: GitHub still requests a review from a person or a team.
+  merge_state:
+    values: [clean, conflict, blocked, unknown]
+    description: >-
+      `clean` when GitHub reports that it can merge, `conflict` with a merge
+      conflict, `blocked` when GitHub blocks the merge, and `unknown` while
+      GitHub still computes it.
+  review_outcome:
+    values: [approved, changes_requested, none]
+    description: >-
+      `approved` with at least one approval and no reviewer who still
+      requests changes, `changes_requested` while a reviewer requests
+      changes, and `none` with neither.
+  viewer.requester:
+    values: bool
+  viewer.merge_access:
+    values: bool
+    description: >-
+      GitHub lets the viewer merge on the repository. Without it, a person
+      with write access merges, so the viewer gets no merge ask.
+  viewer.requested:
+    values: bool
+    description: >-
+      GitHub still requests the viewer's review. GitHub requests a review
+      only while it is pending, so `requested` is never true while
+      `review_pending` is false.
+  viewer.asked_again:
+    values: bool
+    description: >-
+      Junior handled every comment of the viewer's change request, the
+      required checks pass, and Junior asks for their review again in this
+      read. The source applies the guards of `pr-review-again`: it asks only
+      while the viewer's latest review still requests changes, and drops the
+      ask once the viewer comments or reviews after it.
+  viewer.feedback:
+    values: bool
+    description: >-
+      The viewer's latest review waits for Junior's answer: it requests
+      changes, or it is a comment-only review, which Junior handles like a
+      change request. After the viewer approves, or after their review is
+      dismissed, only a comment-only review after a later ask counts. The
+      source gives false for a draft, because a draft cannot merge.
+  viewer.approved:
+    values: bool
+    description: >-
+      The viewer's latest review that approves or requests changes approves
+      it. The source reads it for drafts too.
+  viewer.replied:
+    values: bool
+    description: The viewer commented or reviewed after GitHub last asked them.
+  viewer.shown:
+    values: [nothing, merge, review, review_draft, mark_ready]
+    description: The output that the viewer has now.
+rules:
+  - id: pr-ended
+    serves: [ended-silent, open-while-asked]
+    rows:
+      - when: { state: merged }
+        output: { close: done }
+      - when: { state: closed }
+        output: { close: dismissed }
+  - id: pr-merge
+    serves: [ready-to-merge, first-rule-wins, unknown-keeps]
+    rows:
+      - when:
+          state: open
+          draft: false
+          auto_merge: false
+          in_merge_queue: false
+          base_open: false
+          review_pending: false
+          viewer.feedback: false
+          merge_state: clean
+          review_outcome: not(changes_requested)
+          viewer.requester: true
+          viewer.merge_access: true
+        output: { ask: { label: Ready to merge } }
+      - when:
+          state: open
+          draft: false
+          auto_merge: false
+          in_merge_queue: false
+          base_open: false
+          review_pending: false
+          viewer.feedback: false
+          merge_state: unknown
+          viewer.shown: merge
+          viewer.requester: true
+          viewer.merge_access: true
+        output: keep
+      - when:
+          state: open
+          draft: false
+          auto_merge: false
+          in_merge_queue: false
+          base_open: false
+          review_pending: false
+          viewer.feedback: false
+          merge_state: unknown
+          viewer.asked_again: false
+          viewer.requester: true
+          viewer.merge_access: true
+        output: keep
+  - id: pr-merge-reviewer
+    serves: [first-rule-wins]
+    rows:
+      - when:
+          review_outcome: approved
+          merge_state: clean
+          draft: false
+          auto_merge: false
+          in_merge_queue: false
+          base_open: false
+          viewer.requested: true
+          viewer.requester: false
+          viewer.merge_access: true
+        output: { ask: { label: Ready to merge } }
+  - id: pr-review-again
+    serves: [review-again, comment-review, one-way-to-ask]
+    rows:
+      - when:
+          draft: true
+          viewer.asked_again: true
+          viewer.requester: true
+        output:
+          ask:
+            label: Review requested
+            step: to review it, then mark it ready for review
+      - when:
+          viewer.asked_again: true
+          viewer.requester: true
+        output: { ask: { label: Review requested } }
+  - id: pr-review
+    serves: [always-asks, removed-request, one-way-to-ask, commands-not-changes]
+    rows:
+      - when: { viewer.requested: true, draft: true }
+        output:
+          ask:
+            label: Review requested
+            step: to review it, then mark it ready for review
+            dismiss: remove-reviewer
+      - when: { viewer.requested: true, viewer.requester: false }
+        output: { ask: { label: Review requested, dismiss: remove-reviewer } }
+      - when: { viewer.requested: true, viewer.feedback: false }
+        output: { ask: { label: Review requested, dismiss: remove-reviewer } }
+      - when: { viewer.requested: true, viewer.replied: false }
+        output: { ask: { label: Review requested, dismiss: remove-reviewer } }
+  - id: pr-mark-ready
+    serves: [held-draft, one-way-to-ask]
+    rows:
+      - when: { draft: true, viewer.approved: true, viewer.requester: true }
+        output:
+          ask: { label: Review requested, step: to mark it ready for review }

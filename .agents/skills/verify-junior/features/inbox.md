@@ -15,6 +15,20 @@ The Inbox is where work waits for a person. Junior adds an Inbox item: an action
 - `update-by-id` A later Turn changes the open item by its id, and no second item shows.
 - `close-with-reason` Junior closes an item that no longer applies, and the Inbox shows who closed it and why.
 - `waiting` The open question shows as a card in the transcript, and a typed message answers it too. While a waiting card is not in full view, a "N questions waiting" pill goes to it.
+- `question-closed` A question that a person answered or dismissed closes for everyone.
+- `question-ask` Each assignee gets the question, with its form. A question with no assignee or for Everyone shows to each person who can see it.
+- `notice-closed` A notice that a person dismissed closes.
+- `notice-show` Each assignee gets the notice, with its step. A notice with no assignee or for Everyone shows to each person who can see it.
+- `todo-closed` A To-do that is done or dropped, or that no person owns, closes its item.
+- `todo-access` An assignee who can no longer see the Conversation's private content no longer gets its "To do for you" item.
+- `todo-ask` The assignee gets "To do for you". Done marks the To-do done, and Dismiss drops it.
+- `reply-slack` A reply in a Conversation with a Slack thread adds no reply notice.
+- `reply-read` The reply notice closes when the starter reads the latest reply.
+- `reply-notice` The starter of a dashboard Conversation gets a notice with the latest reply.
+- `alert-dismissed` After a person dismisses an Automation alert, no alert of that Automation shows until it recovers. A pause is no recovery.
+- `alert-blocked` A blocked Automation gives its creator a notice to fix the problem and resume it.
+- `alert-trigger` An Automation whose trigger is not available gives its creator a notice that names the problem.
+- `alert-run-failed` A failed or blocked run gives the creator an ask with the steps that fit, such as Run again and Pause.
 
 ## How to get to it (user POV)
 
