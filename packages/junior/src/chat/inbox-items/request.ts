@@ -68,8 +68,28 @@ export const ASK_TOOL_NAMES: ReadonlySet<string> = new Set([
   "addReviewItem",
 ]);
 
+const ASK_SUBJECT_PREFIX = "askUserQuestion:";
+
 /**
- * Subject id prefix of a question that `askUserQuestion` asked. The rest of
- * the id is the id of that tool call, so its answer can name the call.
+ * Return the question id of an `askUserQuestion` call. Model providers do
+ * not promise unique call ids, so the id also names the Conversation that
+ * asked. A retry of the call in that Conversation finds the same question.
  */
-export const ASK_SUBJECT_PREFIX = "askUserQuestion:";
+export function askQuestionId(conversationId: string, toolCallId: string) {
+  return `${ASK_SUBJECT_PREFIX}${conversationId}:${toolCallId}`;
+}
+
+/**
+ * Return the `askUserQuestion` call id of a question that the Conversation
+ * asked, or undefined. An older `ask:` question came from another tool, or
+ * from a migration, so its id names no `askUserQuestion` call.
+ */
+export function askToolCallId(
+  questionId: string,
+  conversationId: string,
+): string | undefined {
+  const prefix = askQuestionId(conversationId, "");
+  return questionId.startsWith(prefix) && questionId.length > prefix.length
+    ? questionId.slice(prefix.length)
+    : undefined;
+}

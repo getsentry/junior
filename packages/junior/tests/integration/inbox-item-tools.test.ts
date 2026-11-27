@@ -153,9 +153,24 @@ describe("inbox item tools", () => {
     // the replay returns the item that the call added.
     const replayed = await execute(first.add, add, "call-1");
     expect(replayed.item.id).toBe(added.item.id);
+    // Another Conversation's call with the same id asks its own question.
+    const elsewhere = await execute(second.add, add, "call-1");
+    expect(elsewhere.item.id).not.toBe(added.item.id);
+    expect(elsewhere.item.subject).toEqual({
+      id: "askUserQuestion:slack:CPUB:1.000002:call-1",
+      kind: "question",
+    });
+    expect((await execute(second.add, add, "call-1")).item.id).toBe(
+      elsewhere.item.id,
+    );
+    await closeInboxItem(getDb(), {
+      id: elsewhere.item.id,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
     // Each add asks a new question, with its own id.
     expect(added.item.subject).toEqual({
-      id: "askUserQuestion:call-1",
+      id: "askUserQuestion:slack:CPUB:1.000001:call-1",
       kind: "question",
     });
     // Each question is its own field, and nothing is asked above them.

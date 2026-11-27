@@ -4,7 +4,7 @@ import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
-import { ASK_SUBJECT_PREFIX } from "@/chat/inbox-items/request";
+import { askQuestionId } from "@/chat/inbox-items/request";
 import {
   questionSubject,
   readInboxItemAgentScope,
@@ -105,7 +105,7 @@ export function createAskUserQuestionTool(
       // Its answer names the call, so a call without an id gets none.
       const subject = questionSubject(
         options.toolCallId
-          ? `${ASK_SUBJECT_PREFIX}${options.toolCallId}`
+          ? askQuestionId(context.conversationId, options.toolCallId)
           : `question:${randomUUID()}`,
       );
       // The item is as private as the Conversation that asks it.

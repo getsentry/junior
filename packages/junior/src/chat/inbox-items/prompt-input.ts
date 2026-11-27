@@ -23,10 +23,7 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 import type { InboxItemChangeRecord } from "./change-record";
 import { personName } from "./messages";
 import { getInboxItem, type InboxItem } from "./store";
-import {
-  ASK_SUBJECT_PREFIX,
-  inboxItemQuestion,
-} from "@/chat/inbox-items/request";
+import { askToolCallId, inboxItemQuestion } from "@/chat/inbox-items/request";
 
 const QUESTION_MAX_LENGTH = 512;
 
@@ -75,13 +72,11 @@ function questionAnswerLines(
   ];
 }
 
-// The `askUserQuestion` call that asked a question, from its subject id.
-// Older questions came from another tool and have no call id.
+// The `askUserQuestion` call that asked a question. A question's owner is
+// the Conversation that asked it.
 function askToolUseId(item: InboxItem): string | undefined {
-  const id = item.subject.id;
-  return id.startsWith(ASK_SUBJECT_PREFIX) &&
-    id.length > ASK_SUBJECT_PREFIX.length
-    ? id.slice(ASK_SUBJECT_PREFIX.length)
+  return item.owner.kind === "conversation"
+    ? askToolCallId(item.subject.id, item.owner.id)
     : undefined;
 }
 
