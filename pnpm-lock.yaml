@@ -14624,6 +14624,7 @@ snapshots:
       parse5: 7.3.0
       pg: 8.21.0
       sharp: 0.35.5(@types/node@24.19.2)
+      shell-quote: 1.12.0
       undici: 7.30.1
       web-push: 3.6.7
       yaml: 2.9.1
@@ -14755,6 +14756,7 @@ snapshots:
       parse5: 7.3.0
       pg: 8.21.0
       sharp: 0.35.5(@types/node@24.19.2)
+      shell-quote: 1.12.0
       undici: 7.30.1
       web-push: 3.6.7
       yaml: 2.9.1
@@ -14885,6 +14887,7 @@ snapshots:
       parse5: 7.3.0
       pg: 8.21.0
       sharp: 0.35.5(@types/node@24.19.2)
+      shell-quote: 1.12.0
       undici: 7.30.1
       web-push: 3.6.7
       yaml: 2.9.1
