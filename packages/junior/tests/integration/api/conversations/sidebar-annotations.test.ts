@@ -8,6 +8,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { juniorConversationParticipants } from "@/db/schema";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
+import { resolveObjectLinks } from "@/api/objects/resolve";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -342,6 +343,16 @@ describe("conversation list sidebar annotations", () => {
       // A reader who cannot see the repository but can read the
       // Conversation sees the stored object too.
       await expect(chips(bob)).resolves.toEqual(stored);
+      // A pull request at its issue URL shows from the pulls cache too.
+      const [atIssueUrl] = await resolveObjectLinks(
+        bob,
+        [`${GITHUB_REPO}/issues/36`],
+        { cacheOnly: true },
+      );
+      expect(atIssueUrl?.object).toMatchObject({
+        status: "merged",
+        title: "Retry flaky uploads",
+      });
       expect(cardReads()).toEqual([]);
       outbound.stop();
     } finally {

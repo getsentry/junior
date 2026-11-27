@@ -309,7 +309,13 @@ async function readObject(
     githubIssueFieldsSchema,
     (value) => ({ ...GITHUB_ISSUE_CACHE, value }),
   );
-  if (!issue) return null;
+  // A cache-only read of a pull request at its issue URL can find only the
+  // pulls entry, such as one that a webhook keeps.
+  if (!issue) {
+    return ctx.cacheOnly
+      ? await readObject(ctx, { ...link, kind: "pull_request" })
+      : null;
+  }
   // GitHub opens a pull request at its issue URL too, such as a linked
   // `owner/repo#12`. Only the pulls API has its draft and merge state.
   return issue.pull_request === undefined
