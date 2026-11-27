@@ -499,11 +499,11 @@ function conversationFeedFilter(options: {
 }
 
 /**
- * Build a bounded dashboard feed of roots that the viewer, or else
- * `actorEmail`, started or takes part in. `codeRepositoryId` replaces that
- * with every root linked to the repository; private roots still show only to
- * members. A row with new activity moves to an earlier page, so clients
- * remove repeats when they join pages.
+ * Build a bounded feed of roots that the viewer, or else `actorEmail`,
+ * started or takes part in. `codeRepositoryId` replaces that with every root
+ * linked to the repository: private roots show only to members, and a
+ * person's archive hides nothing. A row with new activity moves to an
+ * earlier page, so clients remove repeats when they join pages.
  */
 export async function readConversationFeedFromSql(
   options: {
