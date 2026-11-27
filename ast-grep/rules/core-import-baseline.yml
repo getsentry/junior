@@ -1,0 +1,72 @@
+# Main's modules that core still imports, and the core files that import
+# them. `baseline-growth:check` lets each rule's `ignores` only shrink: move
+# the code into core or into a neutral module, then remove the file. See
+# `core-import-boundary.yml` for what core may import.
+id: core-import-baseline-provenance
+language: TypeScript
+severity: error
+message: Core must not import main's message provenance. Give core its own provenance type, or move it to a neutral module.
+files:
+  - packages/junior/src/core/**/*.ts
+ignores:
+  - packages/junior/src/core/history/items.ts
+  - packages/junior/src/core/prompt/assemble.ts
+  - packages/junior/src/core/prompt/layout.ts
+  - packages/junior/src/core/turn/state.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: ^["']@/chat/conversations/provenance["']$
+---
+id: core-import-baseline-history
+language: TypeScript
+severity: error
+message: Core must not import main's Conversation history types, such as its Turn failure codes. Give core its own types.
+files:
+  - packages/junior/src/core/**/*.ts
+ignores:
+  - packages/junior/src/core/model/failure.ts
+  - packages/junior/src/core/turn/state.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: ^["']@/chat/conversations/history["']$
+---
+id: core-import-baseline-conversation-privacy
+language: TypeScript
+severity: error
+message: Core must not import main's Conversation privacy rules. Move what the model span needs to a neutral module.
+files:
+  - packages/junior/src/core/**/*.ts
+ignores:
+  - packages/junior/src/core/model/client.ts
+  - packages/junior/src/core/model/span.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: ^["']@/chat/conversation-privacy["']$
+---
+id: core-import-baseline-reasoning-level
+language: TypeScript
+severity: error
+message: Core must not import main's reasoning level. Give core its own type, or move it to a neutral module.
+files:
+  - packages/junior/src/core/**/*.ts
+ignores:
+  - packages/junior/src/core/model/client.ts
+rule:
+  any:
+    - kind: import_statement
+    - kind: export_statement
+  has:
+    kind: string
+    regex: ^["']@/chat/reasoning-level["']$
