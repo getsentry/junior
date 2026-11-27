@@ -1,4 +1,5 @@
 import type { ConversationAnnotationInput } from "./annotations";
+import type { PluginInboxItemSubject } from "./inbox-items";
 
 /** Most entries in one batch, annotations and Inbox items together. */
 export const MAX_CONVERSATION_CHANGES = 100;
@@ -10,12 +11,12 @@ export interface ConversationAnnotationChange {
 }
 
 /**
- * Close the open Inbox item of this plugin with the key. Do nothing when no
- * item is open, such as after a person dismissed it.
+ * Close the open Inbox item of this plugin with the subject. Do nothing when
+ * no item is open, such as after a person dismissed it.
  */
 export interface ConversationInboxItemChange {
   close: {
-    dedupeKey: string;
+    subject: PluginInboxItemSubject;
     reason: string;
     status: "done" | "dismissed";
   };

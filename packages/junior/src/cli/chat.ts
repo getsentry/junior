@@ -251,8 +251,8 @@ async function prepareLocalChatRun(
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/child-agents/spawn");
   const { bindMessageAgent } = await import("@/chat/child-agents/message");
-  const { createChildConversationWorker } =
-    await import("@/chat/child-agents/result");
+  const { runConversation } =
+    await import("@/chat/task-execution/run-conversation");
   const { createConversationTurnWorker } =
     await import("@/chat/task-execution/conversation-turn");
   const { resumeForPersonInput } =
@@ -266,10 +266,8 @@ async function prepareLocalChatRun(
     if (!agentRunner) {
       throw new Error("Local agent runner is not ready");
     }
-    const childWorker = createChildConversationWorker({
-      runTurn: createConversationTurnWorker(agentRunner, undefined, {
-        queue: localConversationWork.queue,
-      }),
+    const runTurn = createConversationTurnWorker(agentRunner, undefined, {
+      queue: localConversationWork.queue,
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
@@ -279,7 +277,7 @@ async function prepareLocalChatRun(
           context.conversationId,
           context.attempt.messages,
         );
-        return await childWorker(context);
+        return await runConversation(context, { runTurn });
       },
     });
   });

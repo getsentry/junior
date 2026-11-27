@@ -1,11 +1,18 @@
 import type { User } from "@sentry/junior-plugin-api";
 import {
+  inboxItemOwnerConversationId,
+  todoItemOwnerConversationId,
+  inboxItemTenantId,
+  inboxItemTenantProvider,
+  inboxItemVisibility,
+} from "@/chat/inbox-items/owner";
+import {
   and,
   eq,
   exists,
   isNotNull,
   isNull,
-  notLike,
+  ne,
   or,
   sql,
   type AnyColumn,
@@ -17,15 +24,16 @@ import {
   type ProviderTenant,
 } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
-import { UPDATE_TODOS_TOOL_NAME } from "@/chat/todos/types";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
+  juniorAutomationRuns,
   juniorConversationParticipants,
   juniorConversations,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
+  juniorSpaces,
 } from "@/db/schema";
 import {
   automationCreatorUserId,
@@ -33,6 +41,12 @@ import {
   type ResolvedAssignees,
 } from "./assignees";
 import type { InboxItem, InboxItemVisibility } from "./store";
+import {
+  INBOX_SUBJECT_KINDS,
+  subjectKindPlugin,
+  subjectTodo,
+  type InboxItemSubject,
+} from "./subjects";
 
 // Every Inbox item access rule lives in this file. Callers must not copy a
 // rule.
@@ -57,6 +71,12 @@ export interface InboxItemReader {
   /** Provider tenants where the reader can see public items. */
   tenants?: readonly ProviderTenant[];
   userId?: string;
+  /**
+   * A person who sees the items for Everyone whose owner they can see
+   * (`inboxItemForEveryoneOfOwner`). Only SQL checks it: `canReadInboxItem`
+   * cannot, and `canUserReadInboxItem` checks it for one item.
+   */
+  ownerAudienceUserId?: string;
 }
 
 /** Return whether two tenants are the same. Two missing tenants match. */
@@ -86,6 +106,7 @@ export function inboxItemReaderForUser(user: User): InboxItemReader {
         : [],
     ),
     userId: user.id,
+    ownerAudienceUserId: user.id,
   };
 }
 
@@ -96,14 +117,12 @@ export function inboxItemReaderForUser(user: User): InboxItemReader {
 export function inboxItemOwnedByConversation(
   conversationId: SQL | AnyColumn | string,
 ): SQL {
-  return and(
-    eq(juniorInboxItems.ownerKind, "conversation"),
-    eq(juniorInboxItems.ownerId, conversationId),
-  )!;
+  return eq(inboxItemOwnerConversationId(), conversationId);
 }
 
 const todoOwner = alias(juniorConversations, "todo_owner");
 const todoRoot = alias(juniorConversations, "todo_root");
+const ownerSpace = alias(juniorSpaces, "owner_space");
 
 /** SQL: the User is a Participant of this root Conversation. */
 function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
@@ -128,39 +147,74 @@ function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
  * the item. This is the rule of `conversationAccessFromRows`: the User is a
  * Participant of the owner when it has no parent, even with no stored root.
  * Otherwise the owner needs a valid stored root, whose Destination is public
- * or whose Participants include the User.
+ * or whose Participants include the User. With `privateSpaces`, a valid
+ * root in a private Space is open to the Space's members, and only to them.
+ * A To-do's check leaves it out (a Gap in `design/inbox.md`). Pass the
+ * narrowest expression of the owner id that fits the item's subject kind,
+ * since each owner check runs once per Conversation in the version reads.
  */
-function ownerConversationOpenTo(userId: string): SQL {
-  return exists(
-    getDb()
-      .select({ one: sql`1` })
-      .from(todoOwner)
-      .leftJoin(
-        todoRoot,
+function ownerConversationOpenTo(
+  userId: string,
+  ownerConversationId: SQL<string | null>,
+  options: { privateSpaces?: boolean } = {},
+): SQL {
+  const openWithoutSpace = or(
+    and(
+      isNull(todoOwner.parentConversationId),
+      participantOf(userId, todoOwner.conversationId),
+    ),
+    and(
+      isNotNull(todoRoot.conversationId),
+      or(
+        eq(todoRoot.visibility, "public"),
+        participantOf(userId, todoRoot.conversationId),
+      ),
+    ),
+  );
+  const query = getDb()
+    .select({ one: sql`1` })
+    .from(todoOwner)
+    .leftJoin(
+      todoRoot,
+      and(
+        eq(todoRoot.conversationId, todoOwner.rootConversationId),
+        eq(todoRoot.rootConversationId, todoRoot.conversationId),
+        isNull(todoRoot.parentConversationId),
+        or(
+          isNotNull(todoOwner.parentConversationId),
+          eq(todoOwner.rootConversationId, todoOwner.conversationId),
+        ),
+      ),
+    );
+  if (!options.privateSpaces) {
+    return exists(
+      query.where(
         and(
-          eq(todoRoot.conversationId, todoOwner.rootConversationId),
-          eq(todoRoot.rootConversationId, todoRoot.conversationId),
-          isNull(todoRoot.parentConversationId),
-          or(
-            isNotNull(todoOwner.parentConversationId),
-            eq(todoOwner.rootConversationId, todoOwner.conversationId),
-          ),
+          eq(todoOwner.conversationId, ownerConversationId),
+          openWithoutSpace,
+        ),
+      ),
+    );
+  }
+  return exists(
+    query
+      .leftJoin(
+        ownerSpace,
+        and(
+          eq(ownerSpace.id, todoRoot.spaceId),
+          eq(ownerSpace.visibility, "private"),
         ),
       )
       .where(
         and(
-          eq(todoOwner.conversationId, juniorInboxItems.ownerId),
+          eq(todoOwner.conversationId, ownerConversationId),
           or(
+            and(isNull(ownerSpace.id), openWithoutSpace),
+            // A private Space's members are the Participants of its Lead,
+            // the root of every Conversation in it.
             and(
-              isNull(todoOwner.parentConversationId),
-              participantOf(userId, todoOwner.conversationId),
-            ),
-            and(
-              isNotNull(todoRoot.conversationId),
-              or(
-                eq(todoRoot.visibility, "public"),
-                participantOf(userId, todoRoot.conversationId),
-              ),
+              isNotNull(ownerSpace.id),
+              participantOf(userId, todoRoot.conversationId),
             ),
           ),
         ),
@@ -177,8 +231,8 @@ export function inboxItemAssignedTo(userId: string): SQL {
   return and(
     sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
     or(
-      notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
-      ownerConversationOpenTo(userId),
+      ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
+      ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
     ),
   )!;
 }
@@ -218,7 +272,7 @@ export function inboxItemNeedsInput(): SQL {
  * their tree state and Inbox. It does not change that status.
  */
 export function inboxItemSetsConversationStatus(): SQL {
-  return notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`);
+  return ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo);
 }
 
 /**
@@ -234,6 +288,28 @@ export function inboxItemForUser(userId: string): SQL {
   )!;
 }
 
+/**
+ * SQL: the private Inbox item is for Everyone, and the User can see its
+ * owner Conversation. Everyone means the people who can see the item's
+ * owner, so the members of a private Conversation see its items for
+ * Everyone. A public item reaches Everyone through its tenant (`publicIn`),
+ * which keeps it in the owner's workspace. A To-do's item is only for its
+ * assignee.
+ */
+function inboxItemForEveryoneOfOwner(userId: string): SQL {
+  return and(
+    eq(inboxItemVisibility(), "private"),
+    ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
+    or(
+      eq(juniorInboxItems.assignedToEveryone, true),
+      sql`not exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
+    ),
+    ownerConversationOpenTo(userId, inboxItemOwnerConversationId(), {
+      privateSpaces: true,
+    }),
+  )!;
+}
+
 /** SQL: the Inbox item links this Conversation. */
 export function inboxItemLinkedTo(conversationId: string): SQL {
   return sql`exists (select 1 from ${juniorInboxItemConversations} where ${juniorInboxItemConversations.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemConversations.conversationId} = ${conversationId})`;
@@ -242,16 +318,31 @@ export function inboxItemLinkedTo(conversationId: string): SQL {
 function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
   return tenants.map((tenant) =>
     and(
-      eq(juniorInboxItems.visibility, "public"),
-      eq(juniorInboxItems.provider, tenant.provider),
-      eq(juniorInboxItems.providerTenantId, tenant.providerTenantId),
+      eq(inboxItemVisibility(), "public"),
+      eq(inboxItemTenantProvider(), tenant.provider),
+      eq(inboxItemTenantId(), tenant.providerTenantId),
     )!,
   );
 }
 
 /**
+ * SQL: a run of this Automation added the Inbox item, so later runs can
+ * read and change it. The run's Conversation owns the item. A deleted run,
+ * such as when its Automation row goes, no longer counts.
+ */
+export function inboxItemAddedByAutomation(automationId: string): SQL {
+  return sql`exists (select 1 from ${juniorAutomationRuns} where ${juniorAutomationRuns.conversationId} = ${inboxItemOwnerConversationId()} and ${juniorAutomationRuns.automationId} = ${automationId})`;
+}
+
+/** SQL: a run of any Automation added the Inbox item. */
+export function inboxItemAddedByAnyAutomation(): SQL {
+  return sql`exists (select 1 from ${juniorAutomationRuns} where ${juniorAutomationRuns.conversationId} = ${inboxItemOwnerConversationId()})`;
+}
+
+/**
  * SQL form of `canReadInboxItem`, for search. Keep the two the same; the
- * Inbox item access test checks that they agree.
+ * Inbox item access test checks that they agree. Only the SQL form reads
+ * `ownerAudienceUserId`.
  */
 export function inboxItemVisibleTo(reader: InboxItemReader): SQL {
   // `or` of nothing is undefined, so `false` keeps the query closed. Do not
@@ -261,20 +352,23 @@ export function inboxItemVisibleTo(reader: InboxItemReader): SQL {
     or(
       ...publicIn(reader.tenants ?? []),
       ...(reader.userId ? [inboxItemAssignedTo(reader.userId)] : []),
+      ...(reader.ownerAudienceUserId
+        ? [inboxItemForEveryoneOfOwner(reader.ownerAudienceUserId)]
+        : []),
       ...(reader.conversationId
         ? [inboxItemLinkedTo(reader.conversationId)]
         : []),
       ...(reader.publicConversationId
         ? [
             and(
-              eq(juniorInboxItems.visibility, "public"),
+              eq(inboxItemVisibility(), "public"),
               eq(juniorInboxItems.kind, "action"),
               inboxItemLinkedTo(reader.publicConversationId),
             )!,
           ]
         : []),
       ...(reader.automationId
-        ? [eq(juniorInboxItems.automationId, reader.automationId)]
+        ? [inboxItemAddedByAutomation(reader.automationId)]
         : []),
     ) ?? sql`false`
   );
@@ -304,7 +398,7 @@ export function canReadInboxItem(
       isPublicQuestion(item) &&
       item.conversationIds.includes(reader.publicConversationId)) ||
     (reader.automationId !== undefined &&
-      item.automationId === reader.automationId)
+      item.addedByAutomationId === reader.automationId)
   );
 }
 
@@ -321,7 +415,7 @@ export async function canUserReadInboxItem(
   item: InboxItem,
   user: User,
 ): Promise<boolean> {
-  const todo = inboxItemTodo(item);
+  const todo = subjectTodo(item.subject);
   if (todo) {
     // Only its assignee reads a To-do's item, while they can see the
     // Conversation (`inboxItemAssignedTo`).
@@ -336,11 +430,18 @@ export async function canUserReadInboxItem(
     return access.get(todo.conversationId)?.canViewPrivateContent === true;
   }
   if (canReadInboxItem(item, inboxItemReaderForUser(user))) return true;
+  const ownerId =
+    item.visibility === "private" &&
+    item.owner.kind === "conversation" &&
+    isInboxItemForEveryone(item)
+      ? item.owner.id
+      : undefined;
   const access = await readConversationAccessFromSql(
     getDb(),
-    item.conversationIds,
+    [...item.conversationIds, ...(ownerId ? [ownerId] : [])],
     user,
   );
+  if (ownerId && access.get(ownerId)?.canViewPrivateContent) return true;
   return item.conversationIds.some((id) => {
     const conversation = access.get(id);
     return (
@@ -430,95 +531,26 @@ export async function readInboxItemAgentScope(
   };
 }
 
-/**
- * Dedupe keys with this prefix belong to plugins. Only the plugin that added
- * the item, or a person, can change it. An agent cannot use the prefix.
- */
-export const PLUGIN_INBOX_ITEM_KEY_PREFIX = "plugin:";
-
-/**
- * Dedupe keys with this prefix belong to Automation alerts, which core adds
- * and closes. An agent cannot use the prefix.
- */
-export const AUTOMATION_INBOX_ITEM_KEY_PREFIX = "automation:";
-
-/**
- * Dedupe keys with this prefix belong to To-dos for a person, which core
- * adds and closes as the To-do changes (`syncTodoInboxItems`). An agent
- * cannot use the prefix.
- */
-export const TODO_INBOX_ITEM_KEY_PREFIX = "todo:";
-
-/**
- * Return the To-do that an item shows, or undefined for any other item. The
- * key is `todo:<conversationId>:<todoId>`, and a Conversation id can hold
- * colons.
- */
-export function inboxItemTodo(
-  item: Pick<InboxItem, "dedupeKey">,
-): { conversationId: string; id: number } | undefined {
-  if (!item.dedupeKey.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) return undefined;
-  const rest = item.dedupeKey.slice(TODO_INBOX_ITEM_KEY_PREFIX.length);
-  const split = rest.lastIndexOf(":");
-  const id = Number(rest.slice(split + 1));
-  if (split <= 0 || !Number.isSafeInteger(id) || id <= 0) return undefined;
-  return { conversationId: rest.slice(0, split), id };
-}
-
-/**
- * Dedupe keys with this prefix belong to reply notices, which core adds for
- * the starter of a dashboard Conversation and closes when they read the
- * reply. An agent cannot use the prefix or change the item.
- */
-export const REPLY_NOTICE_KEY_PREFIX = "reply:";
-
-const USE_ANOTHER_KEY = "Use a different key.";
-
-/**
- * The dedupe key prefixes that core and plugins own, with their owner and
- * what to do instead. The add tool's input schema rejects a key that starts
- * with one of them.
- */
-export const RESERVED_INBOX_ITEM_KEY_PREFIXES = [
-  {
-    owner: "a plugin",
-    prefix: PLUGIN_INBOX_ITEM_KEY_PREFIX,
-    instead: USE_ANOTHER_KEY,
-  },
-  {
-    owner: "an Automation alert",
-    prefix: AUTOMATION_INBOX_ITEM_KEY_PREFIX,
-    instead: USE_ANOTHER_KEY,
-  },
-  {
-    owner: "a reply notice",
-    prefix: REPLY_NOTICE_KEY_PREFIX,
-    instead: USE_ANOTHER_KEY,
-  },
-  {
-    owner: "a To-do",
-    prefix: TODO_INBOX_ITEM_KEY_PREFIX,
-    instead: `Assign a To-do to the person with ${UPDATE_TODOS_TOOL_NAME} instead.`,
-  },
-] as const;
-
-/** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
-export function inboxItemPlugin(dedupeKey: string): string | undefined {
-  if (!dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return undefined;
-  const plugin = dedupeKey
-    .slice(PLUGIN_INBOX_ITEM_KEY_PREFIX.length)
-    .split(":", 1)[0];
-  return plugin || undefined;
+/** Return the plugin that added an item, or undefined for core. */
+export function inboxItemPlugin(
+  item: Pick<InboxItem, "subject">,
+): string | undefined {
+  return subjectKindPlugin(item.subject.kind);
 }
 
 /** Return whether the item is an Automation alert. Core takes its answer. */
-export function isAutomationAlertItem(item: Pick<InboxItem, "dedupeKey">) {
-  return item.dedupeKey.startsWith(AUTOMATION_INBOX_ITEM_KEY_PREFIX);
+export function isAutomationAlertItem(item: Pick<InboxItem, "subject">) {
+  return item.subject.kind === INBOX_SUBJECT_KINDS.automation;
 }
 
 /** Return whether a plugin added the item. Its answer goes to the plugin. */
-export function isPluginInboxItem(item: Pick<InboxItem, "dedupeKey">) {
-  return inboxItemPlugin(item.dedupeKey) !== undefined;
+export function isPluginInboxItem(item: Pick<InboxItem, "subject">) {
+  return inboxItemPlugin(item) !== undefined;
+}
+
+/** Return the subject of an agent's item: its key, or a new id. */
+export function questionSubject(id: string): InboxItemSubject {
+  return { id, kind: INBOX_SUBJECT_KINDS.question };
 }
 
 /**
@@ -527,22 +559,21 @@ export function isPluginInboxItem(item: Pick<InboxItem, "dedupeKey">) {
  * Conversation, so private content never reaches its readers. A private
  * item changes only from the Conversation or Automation that added it. An
  * agent never changes an item that a plugin added, or an item that another
- * owner kind, such as an Automation, owns, or a reply notice.
+ * owner kind, such as an Automation, owns, or a reply notice: only items
+ * of the `question` kind.
  */
 export function canAgentChangeInboxItem(
   item: InboxItem,
   scope: InboxItemAgentScope,
 ): boolean {
-  if (item.dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return false;
-  if (item.dedupeKey.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) return false;
-  if (item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)) return false;
+  if (item.subject.kind !== INBOX_SUBJECT_KINDS.question) return false;
   if (item.owner.kind !== "conversation") return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;
   return (
     item.owner.id === scope.reader.conversationId ||
     (scope.reader.automationId !== undefined &&
-      item.automationId === scope.reader.automationId)
+      item.addedByAutomationId === scope.reader.automationId)
   );
 }
 
@@ -588,7 +619,10 @@ export async function requireInboxItemLinks(args: {
 }
 
 /**
- * Check who an agent assigns a private item to. It cannot go to Everyone.
+ * Check who an agent assigns a private item to. It cannot go to Everyone
+ * yet: the old visibility check stays for the release before this one
+ * (migration `20261126154025_inbox_item_owners`), and a later release lets
+ * it go to the people who can see its owner (`inboxItemForEveryoneOfOwner`).
  * Each User must be the current Actor, a Participant of one of the given
  * Conversations (the current one and, for an existing item, the one that
  * added it), or the creator of the Automation that added the item. An
@@ -663,7 +697,7 @@ export function canAnswerInboxItem(item: InboxItem, userId: string): boolean {
     item.request !== undefined &&
     item.owner.kind === "conversation" &&
     !isPluginInboxItem(item) &&
-    inboxItemTodo(item) === undefined
+    item.subject.kind !== INBOX_SUBJECT_KINDS.todo
   );
 }
 

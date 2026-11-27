@@ -1,0 +1,45 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "7ac97a3c-2f86-4271-af98-d43ed2f90aec",
+  "prevIds": ["d55c20b0-3bf9-43eb-ac58-50b4141aa5c6"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_github_pull_request_requesters",
+        "pull_request_id"
+      ],
+      "writes": [
+        "s|col|public.junior_github_pull_request_requesters.pull_request_id",
+        "n|col|public.junior_github_pull_request_requesters.pull_request_id",
+        "e|col|public.junior_github_pull_request_requesters.pull_request_id"
+      ],
+      "reads": [
+        "n|tbl|public.junior_github_pull_request_requesters",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_github_pull_request_requesters",
+        "name": "pull_request_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

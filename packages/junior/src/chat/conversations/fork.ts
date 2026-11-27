@@ -8,7 +8,7 @@ import {
 import { loadTurnProjection } from "./projection";
 import { contextProvenance } from "./provenance";
 import { nextDetailVersion } from "./sql/detail-version";
-import { withConversationEventLock } from "./sql/event-lock";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import {
   createConversationId,
   recordWebConversationActivity,
@@ -19,7 +19,7 @@ import {
   getConversationStore,
   getSqlExecutor,
 } from "@/chat/db";
-import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
+import { piMessageFromHistoryItem } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { escapeTagTextAndQuotes, renderTag } from "@sentry/junior-plugin-api";
 import { copyMessageLinks } from "./sql/message-links";

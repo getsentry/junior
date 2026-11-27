@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { markInputsAttempted } from "@/core/turn/inbox";

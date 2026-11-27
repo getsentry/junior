@@ -34,7 +34,7 @@ describe("Asking a Person", () => {
     expect(askedRequests(conversation)).not.toHaveLength(0);
   });
 
-  test("when a question suggests an answer, cite the evidence for it and against it on the question", async ({
+  test("when a question suggests an answer, link the sources for it and against it on the question", async ({
     run,
   }) => {
     const conversation = await run(
@@ -54,7 +54,7 @@ describe("Asking a Person", () => {
           call.input as {
             kind?: string;
             request?: {
-              evidence?: Array<{ url?: string | null }> | null;
+              related?: Array<{ url?: string | null }> | null;
               fields: Array<{ options?: Array<{ recommended?: boolean }> }>;
             };
           },
@@ -68,8 +68,8 @@ describe("Asking a Person", () => {
       ),
     ).toBe(true);
     // Whichever answer it suggests, one source supports it and the other
-    // argues against it, so the question cites both.
-    const urls = (ask!.request?.evidence ?? []).map((entry) => entry.url ?? "");
+    // argues against it, so the question links both.
+    const urls = (ask!.request?.related ?? []).map((entry) => entry.url ?? "");
     expect(urls.some((url) => url.includes("/canary/payments-v42"))).toBe(true);
     expect(urls.some((url) => url.includes("/checkout-p95"))).toBe(true);
   });

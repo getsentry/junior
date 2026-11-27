@@ -1,4 +1,5 @@
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { type Identity, type User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { expect } from "vitest";
@@ -82,7 +83,28 @@ export async function addItem(
     createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
   );
   return (await (tool as any).execute(input, {})) as {
-    item: { assignees: string[]; id: string };
+    item: { assignees: string[]; id: string; subject: { id: string } };
+  };
+}
+
+export async function updateItem(
+  user: User,
+  input: Record<string, unknown>,
+  conversationId = THREAD,
+) {
+  const tool = createUpdateInboxItemTool(
+    {
+      conversationId,
+      resolveActorIdentity: async () => ({
+        identity: { id: `identity:${user.id}` } as Identity,
+        user,
+      }),
+      source: { kind: "slack" } as any,
+    },
+    createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
+  );
+  return (await (tool as any).execute(input, {})) as {
+    item: { assignees: string[]; conversation_ids: string[]; id: string };
   };
 }
 

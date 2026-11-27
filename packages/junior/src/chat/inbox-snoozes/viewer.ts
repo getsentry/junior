@@ -13,8 +13,15 @@ import {
   inboxItemVisibleTo,
 } from "@/chat/inbox-items/access";
 import { getInboxItem, ownerConversationId } from "@/chat/inbox-items/store";
+import { readSubjectLinks, subjectKey } from "@/chat/inbox-items/subject-links";
+import { questionLinks } from "@/chat/inbox-items/subjects";
 import { juniorConversations } from "@/db/schema/conversations";
+import {
+  inboxItemRequest,
+  itemQuestion,
+} from "@/chat/inbox-items/question-content";
 import { juniorInboxItems } from "@/db/schema/inbox-items";
+import { juniorQuestions } from "@/db/schema/questions";
 import {
   inboxItemInRow,
   inboxItemSnoozedBy,
@@ -79,7 +86,11 @@ interface RowItem {
   /** The viewer can close it (`canActOnInboxItem`). */
   canAct: boolean;
   id: string;
-  subjectUrl: string | null;
+  /**
+   * The web link that a snooze waits on by default: the item's subject,
+   * such as a pull request, or for a question, its first related link.
+   */
+  subjectUrl: string | undefined;
 }
 
 /**
@@ -110,11 +121,12 @@ async function visibleRowItems(
       inRow &&
       (await canUserReadInboxItem(item, user))
     ) {
+      const links = await readSubjectLinks(getDb(), [item]);
       return [
         {
           canAct: canActOnInboxItem(item, user.id),
           id: item.id,
-          subjectUrl: item.subject?.url ?? null,
+          subjectUrl: snoozeLink(item, links),
         },
       ];
     }
@@ -122,13 +134,16 @@ async function visibleRowItems(
   }
   if (!root) return [];
   const reader = await inboxItemReaderForUserInConversation(user, root);
-  return getDb()
+  const rows = await getDb()
     .select({
       canAct: sql<boolean>`${inboxItemForUser(user.id)}`,
       id: juniorInboxItems.id,
-      subjectUrl: juniorInboxItems.subjectUrl,
+      request: inboxItemRequest,
+      subjectId: juniorInboxItems.subjectId,
+      subjectKind: juniorInboxItems.subjectKind,
     })
     .from(juniorInboxItems)
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(
       and(
         eq(juniorInboxItems.status, "open"),
@@ -136,6 +151,28 @@ async function visibleRowItems(
         inboxItemInRow(root),
       ),
     );
+  const items = rows.map((row) => ({
+    request: row.request,
+    subject: { id: row.subjectId, kind: row.subjectKind },
+  }));
+  const links = await readSubjectLinks(getDb(), items);
+  return rows.map((row, index) => ({
+    canAct: row.canAct,
+    id: row.id,
+    subjectUrl: snoozeLink(items[index]!, links),
+  }));
+}
+
+/**
+ * Return the link that a snooze of the item waits on by default. A
+ * question's subject has no link, so it waits on what its first related
+ * link names, such as a pull request. That does not decide its card.
+ */
+function snoozeLink(
+  item: Parameters<typeof questionLinks>[0],
+  links: ReadonlyMap<string, string>,
+): string | undefined {
+  return links.get(subjectKey(item.subject)) ?? questionLinks(item)[0];
 }
 
 /**

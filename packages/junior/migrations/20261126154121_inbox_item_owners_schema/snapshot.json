@@ -1,0 +1,311 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "ea88b0f7-81e6-4e85-85bc-834247dd10d9",
+  "prevIds": ["2e96746d-88c7-4345-a9b2-8d8a28e53faa"],
+  "footprints": [
+    {
+      "statementType": "drop_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_owner_check",
+        "n|ck|public.junior_inbox_items.junior_inbox_items_owner_check",
+        "e|ck|public.junior_inbox_items.junior_inbox_items_owner_check",
+        "n|con|public.junior_inbox_items.junior_inbox_items_owner_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "e|col|public.junior_inbox_items.owner_kind",
+        "e|col|public.junior_inbox_items.subject_kind"
+      ]
+    },
+    {
+      "statementType": "drop_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_tenant_check",
+        "n|ck|public.junior_inbox_items.junior_inbox_items_tenant_check",
+        "e|ck|public.junior_inbox_items.junior_inbox_items_tenant_check",
+        "n|con|public.junior_inbox_items.junior_inbox_items_tenant_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "e|col|public.junior_inbox_items.provider",
+        "e|col|public.junior_inbox_items.provider_tenant_id"
+      ]
+    },
+    {
+      "statementType": "drop_check",
+      "statementTarget": ["table", "public", "junior_inbox_items"],
+      "writes": [
+        "s|ck|public.junior_inbox_items.junior_inbox_items_visibility_check",
+        "n|ck|public.junior_inbox_items.junior_inbox_items_visibility_check",
+        "e|ck|public.junior_inbox_items.junior_inbox_items_visibility_check",
+        "n|con|public.junior_inbox_items.junior_inbox_items_visibility_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "e|col|public.junior_inbox_items.visibility",
+        "e|col|public.junior_inbox_items.assigned_to_everyone"
+      ]
+    },
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_owner_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_owner_idx",
+        "n|idx|public.junior_inbox_items_owner_idx",
+        "e|idx|public.junior_inbox_items_owner_idx",
+        "n|rel|public.junior_inbox_items_owner_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "e|col|public.junior_inbox_items.owner_kind",
+        "e|col|public.junior_inbox_items.owner_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_open_action_owner_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_open_action_owner_idx",
+        "n|idx|public.junior_inbox_items_open_action_owner_idx",
+        "e|idx|public.junior_inbox_items_open_action_owner_idx",
+        "n|rel|public.junior_inbox_items_open_action_owner_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "e|col|public.junior_inbox_items.owner_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_answered_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_answered_idx",
+        "n|idx|public.junior_inbox_items_answered_idx",
+        "e|idx|public.junior_inbox_items_answered_idx",
+        "n|rel|public.junior_inbox_items_answered_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "e|col|public.junior_inbox_items.owner_id",
+        "e|col|public.junior_inbox_items.closed_by_user_id",
+        "e|col|public.junior_inbox_items.closed_at"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_open_subject_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_open_subject_uidx",
+        "n|idx|public.junior_inbox_items_open_subject_uidx",
+        "e|idx|public.junior_inbox_items_open_subject_uidx",
+        "n|rel|public.junior_inbox_items_open_subject_uidx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "e|col|public.junior_inbox_items.subject_kind",
+        "e|col|public.junior_inbox_items.subject_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_items",
+        "visibility"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_items.visibility",
+        "n|col|public.junior_inbox_items.visibility",
+        "e|col|public.junior_inbox_items.visibility"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_items",
+        "owner_kind"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_items.owner_kind",
+        "n|col|public.junior_inbox_items.owner_kind",
+        "e|col|public.junior_inbox_items.owner_kind"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_inbox_items", "owner_id"],
+      "writes": [
+        "s|col|public.junior_inbox_items.owner_id",
+        "n|col|public.junior_inbox_items.owner_id",
+        "e|col|public.junior_inbox_items.owner_id"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_inbox_items", "provider"],
+      "writes": [
+        "s|col|public.junior_inbox_items.provider",
+        "n|col|public.junior_inbox_items.provider",
+        "e|col|public.junior_inbox_items.provider"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_items",
+        "provider_tenant_id"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_items.provider_tenant_id",
+        "n|col|public.junior_inbox_items.provider_tenant_id",
+        "e|col|public.junior_inbox_items.provider_tenant_id"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_open_subject_key_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_open_subject_key_uidx",
+        "n|idx|public.junior_inbox_items_open_subject_key_uidx",
+        "e|idx|public.junior_inbox_items_open_subject_key_uidx",
+        "n|rel|public.junior_inbox_items_open_subject_key_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_inbox_items",
+        "n|sch|public",
+        "n|col|public.junior_inbox_items.subject_kind",
+        "n|col|public.junior_inbox_items.subject_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_open_subject_key_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "subject_kind",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "subject_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"status\" = 'open'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_inbox_items\",\"visibility\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_inbox_items\",\"owner_kind\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_inbox_items\",\"owner_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_inbox_items\",\"provider\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_inbox_items\",\"provider_tenant_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_items_owner_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_items_open_action_owner_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_items_answered_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_inbox_items_open_subject_uidx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_owner_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_tenant_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_inbox_items\",\"junior_inbox_items_visibility_check\"]"
+    }
+  ]
+}

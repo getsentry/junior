@@ -32,6 +32,13 @@ it("finds the # reference at the caret", () => {
   // An empty query has a reference, but the menu opens only with a name.
   expect(at("# |heading")).toBeUndefined();
   expect(at("#|")).toEqual({ start: 0, end: 1, query: "" });
+  expect(at("see #link pull|")).toEqual({
+    start: 4,
+    end: 14,
+    query: "link pull",
+  });
+  // The word after a trailing space is not in the reference.
+  expect(at("see #38 |world")).toEqual({ start: 4, end: 8, query: "38 " });
 });
 
 it("skips a # in a word, a URL, an entity, or a heading", () => {
@@ -41,7 +48,7 @@ it("skips a # in a word, a URL, an entity, or a heading", () => {
   expect(at("https://x.com/#top|")).toBeUndefined();
   expect(at("&#39|")).toBeUndefined();
   expect(at("##x|")).toBeUndefined();
-  expect(at("#x |")).toBeUndefined();
+  expect(at("#x  |")).toBeUndefined();
 });
 
 it("splits mentions and references out of message text", () => {
@@ -127,14 +134,17 @@ it("writes each reference as the token that it reads back from", () => {
   expect(referenceText({ kind: "file", name: "chart.png" })).toBe("chart.png");
 });
 
-it("lists the linked work that a message references, once each", () => {
+it("lists the links that a message sends, once each", () => {
   const conversation = `${ORIGIN}/conversations/a`;
   const pull = "https://github.com/getsentry/junior/pull/3842";
-  // A memory is not work.
+  const doc = "https://docs.google.com/document/d/1abc/edit";
+  const page = "https://example.com/notes";
+  // A memory or a person is not work. Any other link goes to the API, which
+  // attaches only a link that names an object.
   expect(
     linkedWorkUrls(
-      `<${conversation}|A> <${pull}|getsentry/junior#3842> <#C1|ops> <${ORIGIN}/memories/m|M> <${conversation}|A again>`,
+      `<${conversation}|A> <${pull}|getsentry/junior#3842> <#C1|ops> <${ORIGIN}/memories/m|M> read ${doc}, then <${page}|the notes>. <${conversation}|A again> ${doc} dev@example.com`,
       ORIGIN,
     ),
-  ).toEqual([conversation, pull]);
+  ).toEqual([conversation, pull, doc, page]);
 });

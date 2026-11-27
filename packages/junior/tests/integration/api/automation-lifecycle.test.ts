@@ -95,22 +95,25 @@ describe("Automation lifecycle API", () => {
           await (await app.request(`${url}/versions`)).json(),
         ).toMatchObject({ versions: [{ version: 1 }] });
         // A run of the Automation asked a person something.
+        const runConversationId = "slack:T123:U123:edit";
+        await recordAutomationExecution(id, {
+          conversationId: runConversationId,
+          executionId: "asked",
+        });
         const item = await insertInboxItem(getDb(), {
-          owner: { id: "slack:T123:U123:edit", kind: "conversation" },
+          owner: { id: runConversationId, kind: "conversation" },
           assignedToEveryone: false,
           assigneeUserIds: [],
-          automationId: id,
           body: "The digest is empty this week.",
           conversationIds: [],
-          dedupeKey: "digest:empty",
           kind: "action",
           nowMs: Date.now(),
+          subject: { id: "digest:empty", kind: "question" },
           request: {
             question: "Post an empty digest?",
             fields: [{ id: "note", kind: "text", label: "Note" }],
           },
           title: "Post an empty digest?",
-          visibility: "public",
         });
         // A public reader can also delete it.
         expect(

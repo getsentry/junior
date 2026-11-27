@@ -1,5 +1,6 @@
 import * as z from "zod";
-import { CHILD_AGENT_STATUSES } from "@/chat/child-agents/statuses";
+import { CHILD_AGENT_RESULTS } from "@/chat/child-agents/results";
+import { AGENT_STATUSES } from "@/chat/conversations/agent-status";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import { conversationTreeStateSchema } from "./conversation-tree-state";
 import {
@@ -11,9 +12,10 @@ import {
  * One direct child agent of a Conversation, from its stored agent config.
  *
  * Viewers who cannot see private content get the status, time, and usage, but
- * not the name, task, title, or error. Usage covers the child Conversation and
- * all its own child agents, like the detail of that child Conversation.
- * Archived children stay in the report.
+ * not the name or title. A visible child always has a title, null when its
+ * spawn gave none. Usage covers the child Conversation and all its own child
+ * agents, like the detail of that child Conversation. Archived children stay
+ * in the report.
  */
 export const conversationChildAgentSchema = z
   .object({
@@ -24,13 +26,13 @@ export const conversationChildAgentSchema = z
     conversationId: z.string().min(1),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
-    error: z.string().min(1).optional(),
     kind: z.enum(["thread", "task"]),
+    /** How its newest finished Turn that was not stopped ended. */
+    lastResult: z.enum(CHILD_AGENT_RESULTS).optional(),
     name: z.string().min(1).optional(),
     redacted: z.literal(true).optional(),
-    status: z.enum(CHILD_AGENT_STATUSES),
-    task: z.string().optional(),
-    title: z.string().min(1).optional(),
+    status: z.enum(AGENT_STATUSES),
+    title: z.string().min(1).nullable().optional(),
     /** What the child and its own children wait on, for the viewer. */
     treeState: conversationTreeStateSchema,
     updatedAt: z.string().datetime(),
@@ -39,17 +41,16 @@ export const conversationChildAgentSchema = z
   })
   .strict()
   .superRefine((data, context) => {
-    if ((data.task === undefined) === (data.redacted !== true)) {
+    if ((data.title === undefined) === (data.redacted !== true)) {
       context.addIssue({
         code: "custom",
-        message: "child agent task must be text or explicitly redacted",
+        message: "child agent title must be set or explicitly redacted",
       });
     }
-    if (data.redacted && (data.name || data.title || data.error)) {
+    if (data.redacted && data.name) {
       context.addIssue({
         code: "custom",
-        message:
-          "redacted child agents must not expose a name, title, or error",
+        message: "redacted child agents must not expose a name",
       });
     }
   });

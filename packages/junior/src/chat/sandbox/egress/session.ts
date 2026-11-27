@@ -16,7 +16,7 @@ import {
   readEncryptedState,
 } from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { readJuniorSecret } from "@/chat/secrets";
+import { getChatConfig } from "@/chat/config";
 
 // Module overview: store the short-lived state that connects a sandbox command
 // to host egress.
@@ -145,7 +145,7 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
 }
 
 function getSandboxEgressSecret(): string {
-  const secret = readJuniorSecret();
+  const secret = getChatConfig().secrets.juniorSecret;
   if (secret) {
     return secret;
   }

@@ -316,12 +316,6 @@ async function acceptPrompt(args: {
       "This ACP session already has an active prompt",
     );
   }
-  if (result.status === "space_closed") {
-    throw acp.RequestError.invalidParams(
-      { field: "sessionId" },
-      "Only members of a Space that is not archived can message its Lead",
-    );
-  }
   return {
     output: {
       afterSeq: result.afterCursor,

@@ -30,7 +30,7 @@ import {
   jsonRequest,
   postWebMessage,
   readConversationSpace,
-  readLeadConversationId,
+  createLeadConversation,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
 import { actOnWebInboxItem } from "./inbox";
@@ -453,7 +453,7 @@ export async function createFixtureAgent(
   ): Promise<ConversationRecord> => {
     if (first.kind === "web_message" && first.lead) {
       return newRecord({
-        conversationId: await readLeadConversationId(api, WEB_VIEWER_EMAIL),
+        conversationId: await createLeadConversation(api, WEB_VIEWER_EMAIL),
         idempotencyKey: fixtureId("web-conversation", 32),
         surface: "web",
       });

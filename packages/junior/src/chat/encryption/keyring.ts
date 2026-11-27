@@ -1,7 +1,7 @@
 import type { EncryptionConfig } from "@/config";
 
 /**
- * Encryption keys for secrets that Junior keeps at rest. `src/config.ts`
+ * Encryption keys for secrets that Junior keeps at rest. `src/config/`
  * reads and checks them from `JUNIOR_ENCRYPTION_KEYS` and
  * `JUNIOR_ENCRYPTION_KEY_ID`.
  */

@@ -37,14 +37,20 @@ import type {
 import { eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import * as z from "zod";
-import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubConflictFix,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
-import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import {
+  listGitHubPullRequestOpeners,
+  recordGitHubPullRequestOpenerId,
+} from "../pull-request-requesters/store.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  pullRequestSubject,
+} from "../inbox-subjects.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import type {
   GitHubMergeConflict,
@@ -228,37 +234,16 @@ function gitHubConflictAction(input: {
   return !approved && nowMs - fixedAtMs < FIX_INTERVAL_MS ? "skip" : "fix";
 }
 
-const ITEM_KEY_PREFIX = "merge-conflict:";
-
-/** The dedupe key of the merge conflict item of one pull request. */
-export function gitHubConflictItemKey(ref: GitHubPullRequestRef): string {
-  return `${ITEM_KEY_PREFIX}${ref.repositoryFullName.toLowerCase()}#${ref.number}`;
-}
-
-/** Read the pull request of a merge conflict item's dedupe key. */
-export function parseGitHubConflictItemKey(
-  dedupeKey: string,
-): GitHubPullRequestRef | undefined {
-  const match = /^([^/#\s]+\/[^/#\s]+)#(\d+)$/.exec(
-    dedupeKey.startsWith(ITEM_KEY_PREFIX)
-      ? dedupeKey.slice(ITEM_KEY_PREFIX.length)
-      : "",
-  );
-  return match
-    ? { number: Number(match[2]), repositoryFullName: match[1]! }
-    : undefined;
-}
-
 /** Ask the requester to resume a fix that did not land. */
 async function addUnlandedItem(args: {
   conflict: GitHubMergeConflict;
   db: GitHubDb;
-  loadTitleParts?: LoadGitHubTitleParts | undefined;
+  /** GitHub's id of the pull request, the id of its item. */
+  pullRequestId: string;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
-  title?: string;
 }): Promise<void> {
-  const { conflict, ref, title } = args;
+  const { conflict, ref } = args;
   const opener = (
     await listGitHubPullRequestOpeners(args.db, {
       numbers: [ref.number],
@@ -267,26 +252,24 @@ async function addUnlandedItem(args: {
   ).get(ref.number);
   // Only a pull request that a person asked for has a Conversation.
   if (!opener?.conversationId) return;
-  const url =
-    conflict.url ??
-    `https://github.com/${ref.repositoryFullName}/pull/${ref.number}`;
-  const titleParts = title
-    ? await args.loadTitleParts?.({
-        repositoryFullName: ref.repositoryFullName,
-        title,
-      })
-    : undefined;
+  if (!opener.pullRequestId) {
+    await recordGitHubPullRequestOpenerId(args.db, {
+      conversationId: opener.conversationId,
+      number: ref.number,
+      pullRequestId: args.pullRequestId,
+      repositoryFullName: ref.repositoryFullName,
+    });
+  }
   await args.inboxItems.forConversation(opener.conversationId).upsert({
+    // The policy asks once per Resume, so each upsert is a new ask.
+    askedIdentityIds: [opener.identityId],
     assigneeIdentityIds: [opener.identityId],
     body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
     choices: [{ label: GITHUB_CONFLICT_RESUME }],
-    dedupeKey: gitHubConflictItemKey(ref),
-    subject: {
-      id: url,
-      title: title ? `${title} (#${ref.number})` : url,
-      ...(titleParts ? { titleParts } : undefined),
-      url,
-    },
+    subject: pullRequestSubject(
+      GITHUB_INBOX_SUBJECTS.mergeConflict,
+      args.pullRequestId,
+    ),
     title: `Merge conflict · #${ref.number}`,
   });
 }
@@ -305,13 +288,10 @@ export async function applyGitHubConflictPolicy(args: {
   events: EventInput[];
   /** Read the pull request's `PULL_REQUEST_CONFLICT_HISTORY` from GitHub. */
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
-  /** Read the title parts of the item subject. */
-  loadTitleParts?: LoadGitHubTitleParts | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   now: Date;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
-  title?: string;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
   const change = await findGitHubPullRequest(args.codeChanges, args.ref);
@@ -352,7 +332,7 @@ export async function applyGitHubConflictPolicy(args: {
     return args.events;
   }
   try {
-    await addUnlandedItem(args);
+    await addUnlandedItem({ ...args, pullRequestId: change.providerId });
     // Save the ask after the item, so a failed item is asked again.
     await args.db
       .update(t)
@@ -377,6 +357,8 @@ export const GITHUB_CONFLICT_GONE_REASON =
  */
 export async function closeGitHubConflictItem(args: {
   db: GitHubDb;
+  /** GitHub's id of the pull request, the id of its item. */
+  pullRequestId: string;
   reason: string;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
@@ -391,7 +373,10 @@ export async function closeGitHubConflictItem(args: {
   ).get(ref.number);
   if (!opener?.conversationId) return;
   await args.inboxItems.forConversation(opener.conversationId).close({
-    dedupeKey: gitHubConflictItemKey(ref),
+    subject: pullRequestSubject(
+      GITHUB_INBOX_SUBJECTS.mergeConflict,
+      args.pullRequestId,
+    ),
     reason: args.reason,
     status: args.status,
   });
@@ -426,17 +411,23 @@ export async function closeGitHubConflictItems(args: {
     changes.map((change) => [change.number, change.providerId]),
   );
   const limit = pLimit(ITEM_CLOSE_CONCURRENCY);
-  const close = async (number: number, conversationId: string) => {
+  const close = async (
+    number: number,
+    conversationId: string,
+    pullRequestId: string,
+  ) => {
     try {
       const closed = await args.inboxItems
         .forConversation(conversationId)
         .close({
-          dedupeKey: gitHubConflictItemKey({ number, repositoryFullName }),
+          subject: pullRequestSubject(
+            GITHUB_INBOX_SUBJECTS.mergeConflict,
+            pullRequestId,
+          ),
           reason: args.reason,
           status: args.status,
         });
-      const pullRequestId = pullRequestIds.get(number);
-      if (closed && pullRequestId) {
+      if (closed) {
         await args.db
           .update(juniorGitHubPullRequests)
           .set({ conflictFixAskedAt: null })
@@ -452,8 +443,11 @@ export async function closeGitHubConflictItems(args: {
     }
   };
   await Promise.all(
-    [...openers].flatMap(([number, { conversationId }]) =>
-      conversationId ? [limit(() => close(number, conversationId))] : [],
-    ),
+    [...openers].flatMap(([number, { conversationId }]) => {
+      const pullRequestId = pullRequestIds.get(number);
+      return conversationId && pullRequestId
+        ? [limit(() => close(number, conversationId, pullRequestId))]
+        : [];
+    }),
   );
 }

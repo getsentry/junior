@@ -400,7 +400,8 @@ describe("remote ACP recovery", () => {
     try {
       process.env = {
         ...originalEnv,
-        JUNIOR_BASE_URL: "https://junior.example.com",
+        // The MCP callback uses the dashboard base URL of the ACP app.
+        JUNIOR_BASE_URL: "http://junior.test",
         JUNIOR_SECRET: "junior-test-secret",
         JUNIOR_STATE_ADAPTER: "memory",
         SLACK_BOT_TOKEN: "xoxb-test-token",

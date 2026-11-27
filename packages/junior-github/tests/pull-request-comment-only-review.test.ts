@@ -3,7 +3,7 @@ import { markGitHubReviewAsked } from "../src/pull-request-review-again";
 import { createGitHubFixture } from "./github-db";
 import { memoryState } from "./plugin-harness";
 import {
-  DEDUPE_KEY,
+  SUBJECT,
   PULL_URL,
   checkSuiteCompleted,
   commented,
@@ -59,7 +59,7 @@ describe("review again after a comment-only review", () => {
     const ended = {
       conversationId: "slack:C123:1712345.0001",
       input: {
-        dedupeKey: DEDUPE_KEY,
+        subject: SUBJECT,
         reason: "The review request ended.",
         status: "done",
       },
@@ -266,6 +266,68 @@ describe("review again after a comment-only review", () => {
         kind: "upsert",
         notice: { title: "Review requested · #946" },
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("asks again after a long discussion of more comment-only reviews than GitHub returns", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const state = memoryState();
+    // 25 thread replies, more than the 20 reviews that the read returns.
+    const ids = Array.from({ length: 25 }, (_, index) => 801 + index);
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: [],
+      reviewRequests: [{ at: "2026-07-02T09:00:00Z", login: "Requester" }],
+      reviews: ids.map((id, index) => ({
+        body: "",
+        comments: [id],
+        id,
+        state: "COMMENTED",
+        submitted_at: new Date(
+          Date.parse("2026-07-02T10:00:00Z") + index * 60_000,
+        ).toISOString(),
+        user: { login: "Requester" },
+      })),
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      route(fixture, calls, [], { close: 0 }, [], state);
+      for (const id of ids) {
+        await markFeedback(state, { id, kind: "review" }, "addressed", fixture);
+      }
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual(["request Requester"]);
+
+      // An approval before the same discussion stands, though the
+      // discussion is longer than the page of comments that GitHub returns.
+      requests.length = 0;
+      github.requestedReviewers = [];
+      github.reviews.unshift({
+        state: "APPROVED",
+        submitted_at: "2026-07-02T09:30:00Z",
+        user: { login: "Requester" },
+      });
+      github.reviewRequests = [
+        { at: "2026-07-02T09:00:00Z", login: "Requester" },
+      ];
+      await markFeedback(
+        state,
+        { id: ids.at(-1) ?? 0, kind: "review" },
+        "addressed",
+        fixture,
+      );
+      expect(
+        requests.filter((request) => request.startsWith("request")),
+      ).toEqual([]);
     } finally {
       await fixture.close();
     }

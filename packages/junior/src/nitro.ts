@@ -54,7 +54,10 @@ export function withSentryConfig(
 ): SentryNitroConfig {
   return withSentryNitroConfig(config, {
     ...options,
-    release: { name: getDeploymentServiceVersion(), ...options.release },
+    release: {
+      name: getDeploymentServiceVersion(process.env),
+      ...options.release,
+    },
   });
 }
 

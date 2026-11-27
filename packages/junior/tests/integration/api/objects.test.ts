@@ -411,6 +411,38 @@ describe("object links API", () => {
     }
   });
 
+  it("keeps a pull request card whose title scope is too long for its title parts", async () => {
+    stubGitHubApp();
+    const title = `fix(${"x".repeat(170)}): Retry declined webhooks`;
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/35`, () =>
+        HttpResponse.json({
+          base: { ref: "main" },
+          head: { ref: "fix/long-scope" },
+          html_url: `${GITHUB_REPO}/pull/35`,
+          merged: false,
+          number: 35,
+          state: "open",
+          title,
+          user: { login: "byk" },
+        }),
+      ),
+    );
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await linkGitHubMember();
+
+    const member = await (
+      await viewerApi("alice@example.com")
+    )(`${GITHUB_REPO}/pull/35`);
+    const card = member.objects.get(`${GITHUB_REPO}/pull/35`);
+    expect(card).toMatchObject({
+      objectType: "code_change",
+      plugin: "github",
+      title,
+    });
+    expect(card?.facts).not.toHaveProperty("titleParts");
+  });
+
   it("shows the GitHub object of a webhook on the next card read, with no GitHub call", async () => {
     stubGitHubApp();
     const reads: string[] = [];

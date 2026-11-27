@@ -6,6 +6,7 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
   PluginConversationAnnotations,
   PluginConversationInboxItems,
+  PluginReviewNotice,
   PluginRoute,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -21,7 +22,8 @@ import { mswServer } from "./msw";
 import { memoryState } from "./plugin-harness";
 
 export const PULL_URL = "https://github.com/getsentry/junior/pull/946";
-export const DEDUPE_KEY = "pull-request-action:getsentry/junior#946";
+/** The subject of the pull request's item: GitHub's id of #946. */
+export const SUBJECT = { id: "1001", kind: "pull_request" } as const;
 const BOT_USER_ID = 264270552;
 
 let delivery = 0;
@@ -154,10 +156,18 @@ export function reviewRequested(
   );
 }
 
-export function pullRequestAction(action: string, merged = false) {
+export function pullRequestAction(
+  action: string,
+  merged = false,
+  /** The reviewer of a `review_requested` event. */
+  requestedReviewer?: string,
+) {
   return signedRequest(
     {
       action,
+      ...(requestedReviewer
+        ? { requested_reviewer: { login: requestedReviewer } }
+        : undefined),
       pull_request: {
         body: "Implemented by Junior",
         closed_at: action === "closed" ? "2026-07-03T12:00:00.000Z" : null,
@@ -217,6 +227,11 @@ export interface GitHubState {
   laggingFeedback?: string[];
   /** GitHub rejects review requests, such as during an outage. */
   rejectReviewRequests?: boolean;
+  /**
+   * Each user's base role on the repository, by login. A user who is not
+   * listed has write access, so they can merge.
+   */
+  permissions?: Record<string, "admin" | "none" | "read" | "write">;
   /** The checks of the head commit. */
   checks?: Array<{ conclusion: string | null; name: string; status: string }>;
   /** The checks that a ruleset of the base branch requires. */
@@ -284,9 +299,23 @@ function botReactionGroups(github: GitHubState, key: string) {
 // whether to ask a reviewer again.
 function reviewAgainPull(github: GitHubState, reviewer: string) {
   const lower = reviewer.toLowerCase();
-  const reviews = github.reviews
-    .filter((item) => item.user.login.toLowerCase() === lower)
-    .slice(-20);
+  const own = github.reviews.filter(
+    (item) => item.user.login.toLowerCase() === lower,
+  );
+  const node = (review: GitHubState["reviews"][number]) => ({
+    body: review.body ?? "Please change this.",
+    databaseId: review.id ?? null,
+    comments: {
+      nodes: (review.comments ?? []).map((id) => ({
+        databaseId: id,
+        reactionGroups: graphqlReactionGroups(github, `comment:${id}`),
+      })),
+      totalCount: review.comments?.length ?? 0,
+    },
+    reactionGroups: graphqlReactionGroups(github, `review:${review.id}`),
+    state: review.state,
+    submittedAt: review.submitted_at ?? null,
+  });
   return {
     baseRef: { refUpdateRule: null },
     baseRefName: "main",
@@ -312,21 +341,20 @@ function reviewAgainPull(github: GitHubState, reviewer: string) {
         requestedReviewer: { __typename: "User", login },
       })),
     },
+    decision: {
+      nodes: own
+        .filter(
+          (review) =>
+            review.state !== "COMMENTED" && review.state !== "PENDING",
+        )
+        .slice(-1)
+        .map(node),
+    },
     reviews: {
-      nodes: reviews.map((review) => ({
-        body: review.body ?? "Please change this.",
-        databaseId: review.id ?? null,
-        comments: {
-          nodes: (review.comments ?? []).map((id) => ({
-            databaseId: id,
-            reactionGroups: graphqlReactionGroups(github, `comment:${id}`),
-          })),
-          totalCount: review.comments?.length ?? 0,
-        },
-        reactionGroups: graphqlReactionGroups(github, `review:${review.id}`),
-        state: review.state,
-        submittedAt: review.submitted_at ?? null,
-      })),
+      nodes: own
+        .filter((review) => review.state === "COMMENTED")
+        .slice(-20)
+        .map(node),
     },
     timelineItems: {
       nodes: (github.reviewRequests ?? []).map((request) => ({
@@ -434,6 +462,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
         const { content } = (await request.json()) as { content: string };
         (github.feedback ??= {})[`comment:${String(params["id"])}`] = content;
         return HttpResponse.json({ content, id: 1 }, { status: 201 });
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/collaborators/:login/permission",
+      ({ params }) => {
+        const login = String(params["login"]);
+        requests.push(`permission ${login}`);
+        const permission = github.permissions?.[login] ?? "write";
+        return HttpResponse.json({ permission, role_name: permission });
       },
     ),
     http.get(
@@ -643,6 +680,8 @@ export async function markFeedback(
 
 /** The requester, who linked the GitHub account `Requester`. */
 export const requesterUsers = {
+  // Nobody else linked a GitHub account.
+  findLinkedIdentityIds: async (): Promise<Map<string, string>> => new Map(),
   readIdentity: async (identityId: string) =>
     identityId === "identity-requester"
       ? {
@@ -681,34 +720,63 @@ export function route(
   otherCloses: string[] = [],
   /** The plugin state, shared with the feedback tool. */
   state: PluginState = memoryState(),
+  /** The Identity of each reviewer who linked their GitHub login. */
+  linkedReviewers: Readonly<Record<string, string>> = {},
 ): PluginRoute {
-  const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
+  const isReady = (subject: { id: string; kind: string }) =>
+    subject.kind === SUBJECT.kind && subject.id === SUBJECT.id;
+  // Like core: a person joins only when asked, an upsert that changes
+  // nothing and asks nobody does nothing, and a close needs an open item.
+  // A new route sees the item that an earlier route left open, as core
+  // does across webhooks.
+  const last = calls.at(-1);
+  let open: PluginReviewNotice | undefined =
+    last?.kind === "upsert" ? (last.notice as PluginReviewNotice) : undefined;
   const inboxItems: PluginConversationInboxItems = {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
-          if (!isReady(notice.dedupeKey)) return;
+          if (!isReady(notice.subject)) return;
+          const on = new Set(open?.assigneeIdentityIds);
+          const assigneeIdentityIds = notice.assigneeIdentityIds.filter(
+            (id) => notice.askedIdentityIds.includes(id) || on.has(id),
+          );
+          if (assigneeIdentityIds.length === 0) return;
+          const shown = { ...notice, assigneeIdentityIds };
+          if (
+            notice.askedIdentityIds.length === 0 &&
+            JSON.stringify({ ...open, askedIdentityIds: [] }) ===
+              JSON.stringify({ ...shown, askedIdentityIds: [] })
+          ) {
+            return;
+          }
+          open = shown;
           calls.push({ conversationId, kind: "upsert", notice });
+          return;
         },
         async close(input) {
-          if (!isReady(input.dedupeKey)) {
-            otherCloses.push(input.dedupeKey);
+          if (!isReady(input.subject)) {
+            otherCloses.push(`${input.subject.kind}:${input.subject.id}`);
             return false;
           }
           if (failures.close > 0) {
             failures.close -= 1;
             throw new Error("Inbox is down");
           }
+          if (!open) return false;
+          open = undefined;
           calls.push({ conversationId, input, kind: "close" });
           return true;
         },
       };
     },
   };
-  // These webhooks use no Conversation dispatch or cache.
+  // These webhooks use no Conversation dispatch.
   const unused = () => {
     throw new Error("The next-action webhooks do not use this");
   };
+  // The requester's repository access stays cached across webhooks.
+  const cached = new Map<string, unknown>();
   const annotations: PluginConversationAnnotations = {
     forConversation() {
       return {
@@ -745,12 +813,28 @@ export function route(
       async update() {},
       delete: unused,
       get: unused,
-      getOrLoad: unused,
+      async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
+        if (!cached.has(key)) cached.set(key, (await load()).value);
+        return cached.get(key) as T;
+      },
     },
     inboxItems,
     state,
     tasks: { start: unused },
-    users: requesterUsers,
+    // The requester linked the GitHub account `Requester`, and each
+    // reviewer in `linkedReviewers` linked theirs.
+    users: {
+      ...requesterUsers,
+      findLinkedIdentityIds: async (logins) =>
+        new Map(
+          logins.flatMap((login) => {
+            const identityId = linkedReviewers[login.toLowerCase()];
+            return identityId
+              ? [[login.toLowerCase(), identityId] as const]
+              : [];
+          }),
+        ),
+    },
   });
   if (!webhook) throw new Error("The GitHub plugin has no webhook route");
   return webhook;

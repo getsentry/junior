@@ -16,7 +16,6 @@ import type {
   PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
@@ -169,12 +168,14 @@ export function createGitHubWebhookRoute(args: {
   loadPullRequestConflictHistory?(
     pullRequest: GitHubPullRequestRef,
   ): Promise<unknown>;
-  /** Read the title parts of a pull request title in its repository. */
-  loadTitleParts?: LoadGitHubTitleParts;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
   loadGitHubLogin?(identityId: string): Promise<string | undefined>;
+  /** The people who linked these GitHub logins, by lower-case login. */
+  findLinkedIdentityIds(
+    logins: readonly string[],
+  ): Promise<ReadonlyMap<string, string>>;
   log?: Pick<PluginLogger, "error" | "warn">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
@@ -445,7 +446,6 @@ export function createGitHubWebhookRoute(args: {
           events,
           hasMatch,
           loadConflictHistory: args.loadPullRequestConflictHistory,
-          loadTitleParts: args.loadTitleParts,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
@@ -474,19 +474,8 @@ export function createGitHubWebhookRoute(args: {
         responses: args.state,
         tokens: args.tokens,
       };
-      await syncGitHubPullRequestActions({
-        botEmail,
-        codeChanges: args.codeChanges,
-        db: args.db,
-        deliveryId,
-        env,
-        loadGitHubLogin: args.loadGitHubLogin,
-        log: args.log,
-        inboxItems: args.inboxItems,
-        state: args.state,
-        targets: pullRequestActionTargets(eventName, body),
-        tasks: args.tasks,
-      });
+      // Ask for the review of a draft that became ready before the next
+      // action reads GitHub, so a pending request comes before the merge.
       await requestGitHubReviewersWhenReady({
         body,
         db: args.db,
@@ -496,6 +485,21 @@ export function createGitHubWebhookRoute(args: {
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         state: args.state,
+      });
+      await syncGitHubPullRequestActions({
+        botEmail,
+        cache: args.cache,
+        codeChanges: args.codeChanges,
+        db: args.db,
+        deliveryId,
+        env,
+        findLinkedIdentityIds: args.findLinkedIdentityIds,
+        loadGitHubLogin: args.loadGitHubLogin,
+        log: args.log,
+        inboxItems: args.inboxItems,
+        state: args.state,
+        targets: pullRequestActionTargets(eventName, body),
+        tasks: args.tasks,
       });
       if (
         !pullRequestOutcome &&
