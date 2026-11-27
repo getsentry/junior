@@ -6,6 +6,7 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
   PluginConversationAnnotations,
   PluginConversationInboxItems,
+  PluginReviewNotice,
   PluginRoute,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -21,7 +22,8 @@ import { mswServer } from "./msw";
 import { memoryState } from "./plugin-harness";
 
 export const PULL_URL = "https://github.com/getsentry/junior/pull/946";
-export const DEDUPE_KEY = "pull-request-action:getsentry/junior#946";
+/** The subject of the pull request's item: GitHub's id of #946. */
+export const SUBJECT = { id: "1001", kind: "pull_request" } as const;
 const BOT_USER_ID = 264270552;
 
 let delivery = 0;
@@ -154,10 +156,21 @@ export function reviewRequested(
   );
 }
 
-export function pullRequestAction(action: string, merged = false) {
+export function pullRequestAction(
+  action: string,
+  merged = false,
+  /** The reviewer of a `review_requested` event. */
+  requestedReviewer?: string,
+  /** The `changes` of an `edited` event. */
+  changes?: Record<string, unknown>,
+) {
   return signedRequest(
     {
       action,
+      ...(changes ? { changes } : undefined),
+      ...(requestedReviewer
+        ? { requested_reviewer: { login: requestedReviewer } }
+        : undefined),
       pull_request: {
         body: "Implemented by Junior",
         closed_at: action === "closed" ? "2026-07-03T12:00:00.000Z" : null,
@@ -179,6 +192,10 @@ export function pullRequestAction(action: string, merged = false) {
 /** GitHub state that the mocked REST and GraphQL APIs return. */
 export interface GitHubState {
   autoMerge?: boolean | undefined;
+  /** The base branch of the pull request. Defaults to `main`. */
+  baseRefName?: string;
+  /** The head branches of the other open pull requests in the repo. */
+  openPullRequestHeads?: string[];
   /** Conversation comments on the pull request, oldest first. */
   comments?: Array<{ at: string; login: string }>;
   draft: boolean;
@@ -186,6 +203,8 @@ export interface GitHubState {
   headSha?: string;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: string;
+  /** A person added the pull request to the merge queue. */
+  inMergeQueue?: boolean;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
   /** When set, the next pull request read waits for it. */
@@ -529,13 +548,23 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
       if (operationName === "PullRequestNextAction") {
         requests.push("pull");
         const mergeableState = await readPull(github);
+        const baseRefName = github.baseRefName ?? "main";
         return HttpResponse.json({
           data: {
             repository: {
+              defaultBranchRef: { name: "main" },
               pullRequest: {
                 autoMergeRequest: github.autoMerge
                   ? { enabledAt: "2026-07-02T00:00:00Z" }
                   : null,
+                baseRef: {
+                  associatedPullRequests: {
+                    totalCount: (github.openPullRequestHeads ?? []).filter(
+                      (head) => head === baseRefName,
+                    ).length,
+                  },
+                },
+                baseRefName,
                 commits: {
                   nodes: github.headCommittedAt
                     ? [{ commit: { committedDate: github.headCommittedAt } }]
@@ -543,6 +572,7 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                 },
                 headRefOid: github.headSha ?? "head-1",
                 isDraft: github.draft,
+                isInMergeQueue: github.inMergeQueue ?? false,
                 mergeStateStatus: (mergeableState ?? "unknown").toUpperCase(),
                 reviewRequests: {
                   nodes: [
@@ -670,6 +700,8 @@ export async function markFeedback(
 
 /** The requester, who linked the GitHub account `Requester`. */
 export const requesterUsers = {
+  // Nobody else linked a GitHub account.
+  findLinkedIdentityIds: async (): Promise<Map<string, string>> => new Map(),
   readIdentity: async (identityId: string) =>
     identityId === "identity-requester"
       ? {
@@ -708,24 +740,51 @@ export function route(
   otherCloses: string[] = [],
   /** The plugin state, shared with the feedback tool. */
   state: PluginState = memoryState(),
+  /** The Identity of each reviewer who linked their GitHub login. */
+  linkedReviewers: Readonly<Record<string, string>> = {},
 ): PluginRoute {
-  const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
+  const isReady = (subject: { id: string; kind: string }) =>
+    subject.kind === SUBJECT.kind && subject.id === SUBJECT.id;
+  // Like core: a person joins only when asked, an upsert that changes
+  // nothing and asks nobody does nothing, and a close needs an open item.
+  // A new route sees the item that an earlier route left open, as core
+  // does across webhooks.
+  const last = calls.at(-1);
+  let open: PluginReviewNotice | undefined =
+    last?.kind === "upsert" ? (last.notice as PluginReviewNotice) : undefined;
   const inboxItems: PluginConversationInboxItems = {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
-          if (!isReady(notice.dedupeKey)) return;
+          if (!isReady(notice.subject)) return;
+          const on = new Set(open?.assigneeIdentityIds);
+          const assigneeIdentityIds = notice.assigneeIdentityIds.filter(
+            (id) => notice.askedIdentityIds.includes(id) || on.has(id),
+          );
+          if (assigneeIdentityIds.length === 0) return;
+          const shown = { ...notice, assigneeIdentityIds };
+          if (
+            notice.askedIdentityIds.length === 0 &&
+            JSON.stringify({ ...open, askedIdentityIds: [] }) ===
+              JSON.stringify({ ...shown, askedIdentityIds: [] })
+          ) {
+            return;
+          }
+          open = shown;
           calls.push({ conversationId, kind: "upsert", notice });
+          return;
         },
         async close(input) {
-          if (!isReady(input.dedupeKey)) {
-            otherCloses.push(input.dedupeKey);
+          if (!isReady(input.subject)) {
+            otherCloses.push(`${input.subject.kind}:${input.subject.id}`);
             return false;
           }
           if (failures.close > 0) {
             failures.close -= 1;
             throw new Error("Inbox is down");
           }
+          if (!open) return false;
+          open = undefined;
           calls.push({ conversationId, input, kind: "close" });
           return true;
         },
@@ -782,7 +841,20 @@ export function route(
     inboxItems,
     state,
     tasks: { start: unused },
-    users: requesterUsers,
+    // The requester linked the GitHub account `Requester`, and each
+    // reviewer in `linkedReviewers` linked theirs.
+    users: {
+      ...requesterUsers,
+      findLinkedIdentityIds: async (logins) =>
+        new Map(
+          logins.flatMap((login) => {
+            const identityId = linkedReviewers[login.toLowerCase()];
+            return identityId
+              ? [[login.toLowerCase(), identityId] as const]
+              : [];
+          }),
+        ),
+    },
   });
   if (!webhook) throw new Error("The GitHub plugin has no webhook route");
   return webhook;

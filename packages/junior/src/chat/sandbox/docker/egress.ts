@@ -24,29 +24,11 @@ import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import { executeSandboxEgressRequest } from "@/chat/sandbox/egress/proxy";
 import type { SandboxNetworkPolicy } from "@/chat/sandbox/workspace";
 
-// Module overview: Docker sandbox egress.
-//
-// Outbound: `applyEgressPolicy` adds iptables rules in the sandbox container.
-// They send all TCP traffic to ports 80 and 443 on public addresses to a proxy
-// in this Junior process. Traffic from the agent's own inner containers takes
-// the same path.
-//
-// Inbound: the proxy knows each sandbox by its IP on the sandbox's own Docker
-// network. It reads the host name from TLS SNI or from the HTTP `Host` header,
-// because the redirect hides the original address. It decrypts only
-// credentialed and trace domains, with a leaf certificate from the egress CA.
-// Credentialed requests go to the shared `executeSandboxEgressRequest`. Trace
-// requests get their headers and go upstream. All other connections pass
-// through unchanged.
-//
-// When the Docker daemon runs in a VM, the proxy cannot see sandbox addresses.
-// Then each sandbox reaches the proxy through its egress relay, and a TLS
-// client certificate names the sandbox. See `relay.ts`.
-//
-// The proxy and its routes live in the process that applied the policy. This
-// is the process that runs the sandbox's commands, and it also owns the
-// auth-required signals that the egress engine writes. Each policy update
-// points the sandbox's rules at this process's proxy.
+// Docker sandbox egress: iptables send sandbox TCP to public ports 80 and 443,
+// inner containers included, to a proxy in this process. The redirect hides
+// the address, so it reads the host from SNI or `Host`. It decrypts only
+// credentialed and trace domains. It lives in the process that runs the
+// sandbox's commands, and each policy update points the rules at it.
 
 const CHAIN = "JUNIOR_EGRESS";
 /** Private destinations never go to the proxy. Provider domains are public. */

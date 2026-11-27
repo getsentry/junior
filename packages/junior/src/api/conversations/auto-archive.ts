@@ -1,31 +1,8 @@
 /**
- * Auto-archive archives a conversation when its work is done.
- *
- * A user turns it on with `autoArchiveDefault` and can override it for one
- * conversation on their participant row. The user also picks the grace
- * period in `autoArchiveGraceHours`. The scheduled sweep archives only for
- * users whose effective choice is on. A conversation is done when:
- *
- * - no plugin reported unfinished work on it or a child conversation
- * - any reported work finished at least the grace period ago, and no human
- *   message arrived after it finished
- * - the root and every child conversation are idle
- * - nothing in the tree needs a person: no conversation in it has
- *   `needs_input` status, and no open To-do in it is assigned to a person
- * - no participant pinned it or turned auto-archive off for it
- * - the root and every child conversation had no activity during the grace
- *   period. A stopped conversation counts from its stop, since the input
- *   that it holds still adds Messages
- *
- * A user can also archive all of their done conversations once, from
- * Settings. That run uses the same checks and grace period, does not need
- * auto-archive on, and skips conversations where the user turned
- * auto-archive off.
- *
- * Archive applies to everyone, so one opted-in user's run archives the root
- * for every participant. A new human message restores it. A manual restore
- * turns auto-archive off for that conversation and that user, which then
- * keeps it from every run.
+ * Auto-archive archives a conversation when its work is done, for users who
+ * turn it on. Archive applies to everyone, so one user's run archives the
+ * root for every participant. A new human message restores it, and a manual
+ * restore turns auto-archive off for that conversation and that user.
  */
 import type { User } from "@sentry/junior-plugin-api";
 import {
@@ -128,13 +105,10 @@ function treeIsQuiet(run: ArchiveRun) {
 }
 
 /**
- * True when nothing in the participant row's tree needs a person. No
- * conversation in it has `needs_input` status: an open action Inbox item
- * that it added, a sign-in wait, or work that waits on its starter, such
- * as an answer that the starter has not read. No open To-do in it is
- * assigned to a person. Archive applies to everyone, so input that waits
- * on anyone keeps the tree. An archived child counts for nothing, as in
- * the tree state.
+ * True when nothing in the participant row's tree needs a person: no
+ * `needs_input` status and no open To-do assigned to a person. Archive
+ * applies to everyone, so input that waits on anyone keeps the tree. An
+ * archived child counts for nothing, as in the tree state.
  */
 function treeNeedsNoOne() {
   const assignedToPerson = getDb()
@@ -229,7 +203,6 @@ function archivableRow(run: ArchiveRun) {
   return and(
     eq(juniorConversationParticipants.userId, run.userId),
     // A person who unsubscribed left the conversation to the others.
-    // Contract: `subscription.ts`.
     isNull(juniorConversationParticipants.unsubscribedAt),
     rootIsArchivable(),
     // A pin keeps the conversation in the feed on purpose.
@@ -456,7 +429,7 @@ export async function archiveViewerDoneConversations(
   return { archived };
 }
 
-/** Turn auto-archive on or off for one conversation and the signed-in viewer. */
+/** Turn auto-archive on or off for one conversation and the viewer. */
 export async function setConversationAutoArchive(
   viewer: User,
   conversationId: string,

@@ -1,21 +1,8 @@
-// A local, in-memory server for the Vercel Queues HTTP API, for development
-// and tests. Point `QueueClient` from `@vercel/queue` at it with
-// `resolveBaseUrl`, and it stores messages, pushes them to consumer callback
-// routes, and redelivers a message when its lease expires without an ack, as
-// Vercel Queues does.
-//
-// It implements only what `QueueClient` uses (https://vercel.com/docs/queues/api):
-// SendMessage, ReceiveMessageById with `multipart/mixed`, AcknowledgeMessage,
-// and ExtendLease. Pushes use the v1beta structured CloudEvent, so each
-// callback claims its message with ReceiveMessageById.
-//
-// Differences from Vercel Queues: any bearer token is accepted,
-// `Vqs-Deployment-Id` is ignored, retention below 60 seconds is accepted so
-// tests can check expiry, and ReceiveMessages and `application/x-ndjson` are
-// not implemented.
-//
-// Keep this file free of path aliases and non-erasable TypeScript, so that
-// Node can run it directly in a dev process.
+// An in-memory Vercel Queues HTTP API for development and tests. Point
+// `QueueClient` at it with `resolveBaseUrl`. It implements only what
+// `QueueClient` uses, accepts any token, ignores `Vqs-Deployment-Id`, and
+// allows retention under 60 s so tests can check expiry. Keep it free of path
+// aliases and non-erasable TypeScript, so Node can run it in a dev process.
 import { randomUUID } from "node:crypto";
 import {
   createServer,
@@ -47,11 +34,11 @@ const extendLeaseBodySchema = z
   })
   .strict();
 
-/** One consumer group of one topic, and the callback route it receives pushes on. */
+/** One consumer group of one topic, and its push callback route. */
 export interface LocalVercelQueueConsumer {
   consumerGroup: string;
   topic: string;
-  /** Callback route URL. The server POSTs a CloudEvent to it for each message. */
+  /** The server POSTs a CloudEvent to this URL for each message. */
   url: string;
 }
 

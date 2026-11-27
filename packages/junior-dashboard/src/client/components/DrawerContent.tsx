@@ -1,7 +1,9 @@
 import { X } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 
+import { useMobileLayoutWhileOpen } from "../layoutMedia";
 import { cn } from "../styles";
+import { BottomSheetContent } from "./BottomSheetContent";
 import { Button } from "./ui/button";
 import {
   Drawer as DrawerRoot,
@@ -10,7 +12,7 @@ import {
 } from "./ui/drawer";
 import { useSheet } from "./ui/useSheet";
 
-/** Props of a side drawer. */
+/** Props of a drawer. */
 export type DrawerProps = {
   actions?: ReactNode;
   children: ReactNode;
@@ -25,8 +27,32 @@ export type DrawerProps = {
   width?: "default" | "wide" | "narrow";
 } & ({ titleId: string; label?: never } | { label: string; titleId?: never });
 
-/** Render the open side drawer. `Drawer` loads this module on demand. */
+/**
+ * Render the open drawer. `Drawer` loads this module on demand. A phone has
+ * no room beside the page, so there it is a tall `BottomSheet`. One opened
+ * from a sheet stacks on it, one step deeper. A resize keeps the form that
+ * it opened in.
+ */
 export function DrawerContent(props: DrawerProps) {
+  const mobile = useMobileLayoutWhileOpen(true);
+  if (!mobile) return <SideDrawer {...props} />;
+  return (
+    <BottomSheetContent
+      actions={props.actions}
+      bodyClassName={props.flush ? undefined : "p-4"}
+      closeLabel={props.closeLabel}
+      label={props.label ?? props.closeLabel}
+      onClose={props.onClose}
+      subheader={props.subheader}
+      title={props.header}
+      titleId={props.titleId}
+    >
+      {props.children}
+    </BottomSheetContent>
+  );
+}
+
+function SideDrawer(props: DrawerProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const sheet = useSheet(props.onClose, closeRef);
   return (
@@ -37,6 +63,8 @@ export function DrawerContent(props: DrawerProps) {
         aria-labelledby={props.titleId}
         data-dashboard-modal=""
         className={cn(
+          // A drawer that opened on a desktop keeps its form when the
+          // window becomes as narrow as a phone. It then fills the width.
           "data-[swipe-axis=x]:[--drawer-content-width:100%] data-[swipe-axis=x]:sm:[--drawer-content-width:100%]",
           "max-md:data-[swipe-direction=right]:rounded-l-none max-md:data-[swipe-direction=right]:border-l-0",
           props.width === "wide"

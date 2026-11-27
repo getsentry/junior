@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import * as Sentry from "@/chat/sentry";
 
 // The fields of undici diagnostics channel messages that this module reads.
-// Node's bundled fetch publishes them; see undici `docs/api/DiagnosticsChannel.md`.
+// Node's bundled fetch publishes them (undici DiagnosticsChannel docs).
 type UndiciRequest = { origin?: unknown; contentLength?: unknown };
 type ConnectParams = { hostname?: unknown; port?: unknown };
 
@@ -160,27 +160,11 @@ function createGatewayRequestTimingHandlers(): Record<
 }
 
 /**
- * Subscribes to undici's diagnostics channels and writes the HTTP phases of
- * AI Gateway model requests onto their `gen_ai.chat` span. Telemetry must not
- * fail a request, so handler errors are dropped. Returns a function that
- * removes the subscriptions.
- *
- * To find where time went before the gateway saw a request, get the gateway
- * latency for `gen_ai.response.id` from the AI Gateway generation API, then
- * compare the phases:
- * - High `queue_ms` on a reused socket, or high
- *   `app.ai.event_loop.utilization`: the process was busy or the pool was
- *   full. With a new socket, `queue_ms` includes the connect time.
- * - High `connect_ms`: DNS, TCP, or TLS was slow. It is absent on a reused
- *   socket. It is best effort: overlapping connects to the same host usually
- *   record none.
- * - High `body_send_ms`: the upload was slow.
- * - `response_wait_ms` much larger than the gateway time to first token,
- *   with small Junior phases: the delay was in the network or at the Vercel
- *   edge. The gateway sends headers with the first token. Give Vercel
- *   `app.ai.gateway.vercel_id`.
- * - The same `service.instance.id` on more than one slow call: they shared
- *   one process.
+ * Writes the undici HTTP phases of AI Gateway requests onto their `gen_ai.chat`
+ * span and returns an unsubscribe function. Handler errors are dropped, so
+ * telemetry never fails a request. On a new socket `queue_ms` holds connect
+ * time, and `connect_ms` is best effort. The gateway sends headers with the
+ * first token, so a long `response_wait_ms` points at the network or edge.
  */
 export function subscribeGatewayRequestTiming(): () => void {
   const handlers = Object.entries(createGatewayRequestTimingHandlers()).map(

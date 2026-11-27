@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // Exception to the strict base: the .d.ts files of drizzle-orm, just-bash, and other packages/junior dependencies
+    // Exception to the strict base: the .d.ts files of drizzle-orm and other packages/junior dependencies
     // fail type checks (for example, drizzle-orm imports optional drivers
     // such as `gel` that are not installed). Remove this line when
     // `tsc --noEmit -p . --skipLibCheck false` passes.

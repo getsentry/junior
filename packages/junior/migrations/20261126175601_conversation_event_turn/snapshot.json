@@ -1,0 +1,103 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "eeefb56c-6363-4ab7-8308-460c2987347c",
+  "prevIds": ["7fa7b36c-167a-4f6b-8b90-a14c8028e3a5"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_events",
+        "turn_id"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_events.turn_id",
+        "n|col|public.junior_conversation_events.turn_id",
+        "e|col|public.junior_conversation_events.turn_id"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_events", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_turns", "started_at"],
+      "writes": [
+        "s|col|public.junior_turns.started_at",
+        "n|col|public.junior_turns.started_at",
+        "e|col|public.junior_turns.started_at"
+      ],
+      "reads": ["n|tbl|public.junior_turns", "n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversation_events"],
+      "writes": [
+        "s|fk|public.junior_conversation_events.junior_conversation_events_turn_id_junior_turns_id_fkey",
+        "n|fk|public.junior_conversation_events.junior_conversation_events_turn_id_junior_turns_id_fkey",
+        "e|fk|public.junior_conversation_events.junior_conversation_events_turn_id_junior_turns_id_fkey",
+        "n|con|public.junior_conversation_events.junior_conversation_events_turn_id_junior_turns_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|tbl|public.junior_turns",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.turn_id",
+        "n|col|public.junior_turns.id",
+        "e|uniqueness|public.junior_turns.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "turn_id",
+        "type": "uuid",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_turns",
+        "name": "started_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_turn_id_junior_turns_id_fkey",
+        "nameExplicit": false,
+        "columns": ["turn_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_turns",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "SET NULL",
+        "entityType": "fks"
+      }
+    }
+  ]
+}

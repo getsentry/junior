@@ -2,7 +2,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { runSnapshotCreate } from "@/cli/snapshot-create";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import {
+  createAppContext,
+  getAppContext,
+  installAppContext,
+} from "@/app/context";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import {
   getCachedSnapshot,
@@ -32,13 +36,17 @@ const MAX_SAVED_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export async function warmSandboxSnapshot(
   pluginPackages: readonly string[] = [],
 ): Promise<void> {
-  const previousCatalogConfig = pluginCatalogRuntime.setConfig(
-    pluginCatalogConfigFromPluginSet(
-      defineJuniorPlugins([
-        ...pluginPackages,
-        ...evalRuntimePlugins(pluginPackages),
-      ]),
-    ),
+  // Only the catalog changes. The app plugins stay as they are.
+  const previousAppContext = installAppContext(
+    createAppContext({
+      plugins: getAppContext().plugins,
+      pluginConfig: pluginCatalogConfigFromPluginSet(
+        defineJuniorPlugins([
+          ...pluginPackages,
+          ...evalRuntimePlugins(pluginPackages),
+        ]),
+      ),
+    }),
   );
   try {
     // Every profile has the global runtime dependencies, so it has a hash.
@@ -62,6 +70,6 @@ export async function warmSandboxSnapshot(
       );
     }
   } finally {
-    pluginCatalogRuntime.setConfig(previousCatalogConfig);
+    installAppContext(previousAppContext);
   }
 }

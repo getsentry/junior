@@ -28,6 +28,8 @@ export type AgentMessage = {
   conversationId?: string | undefined;
   delivery?: AgentMessageDelivery | undefined;
   direction: "received" | "sent";
+  /** Why a refused message did not go, as the tool error stored it. */
+  reason?: string | undefined;
   /** Absent when the viewer cannot read the message. */
   text?: string | undefined;
   /** The `to` of a sent message, such as `parent` or a child agent name. */
@@ -52,6 +54,14 @@ const deliveryByToolResult = {
   started: "delivered",
 } as const satisfies Record<string, AgentMessageDelivery>;
 
+/**
+ * True for a tool that sends a message to another agent. Its call shows as
+ * a message row, never as a child's card.
+ */
+export function isAgentMessageTool(name: string | undefined): boolean {
+  return name === MESSAGE_AGENT_TOOL_NAME;
+}
+
 /** True for a `messageAgent` call whose arguments the viewer can read. */
 export function isSentAgentMessage(part: TranscriptViewToolCallPart): boolean {
   return sentAgentMessage(part) !== undefined;
@@ -65,7 +75,7 @@ export function isSentAgentMessage(part: TranscriptViewToolCallPart): boolean {
 export function sentAgentMessage(
   part: TranscriptViewToolCallPart,
 ): AgentMessage | undefined {
-  if (part.name !== MESSAGE_AGENT_TOOL_NAME) return undefined;
+  if (!isAgentMessageTool(part.name)) return undefined;
   const input = messageAgentInputSchema.safeParse(part.input);
   if (!input.success) return undefined;
   const output =
@@ -79,6 +89,9 @@ export function sentAgentMessage(
           ? "refused"
           : output && deliveryByToolResult[output.delivery],
     direction: "sent",
+    ...(part.status === "error" && typeof part.output === "string"
+      ? { reason: part.output }
+      : undefined),
     text: input.data.text,
     to: input.data.to,
   };
@@ -86,10 +99,10 @@ export function sentAgentMessage(
 
 type ReceivedMessage = Pick<
   TranscriptViewMessage,
-  "eventIdentifier" | "eventType" | "parts" | "role"
+  "eventIdentifier" | "eventType" | "fromParentAgent" | "parts" | "role"
 >;
 
-/** True for an Event message that another agent sent. */
+/** True for a message that another agent sent to this Conversation. */
 export function isReceivedAgentMessage(
   message: TranscriptViewMessage,
 ): boolean {
@@ -97,16 +110,27 @@ export function isReceivedAgentMessage(
 }
 
 /**
- * Read an Event message that another agent sent: a child agent's message to
- * its parent, or a message from another top-level agent. Returns undefined
- * for other messages.
+ * Read a message that another agent sent to this Conversation: a Parent
+ * message, including a child's first task, a child agent's message to its
+ * parent, or a message from another top-level agent. Returns undefined for
+ * other messages.
  */
 export function receivedAgentMessage(
   message: ReceivedMessage,
 ): AgentMessage | undefined {
-  if (message.role !== "user" || !message.eventType) return undefined;
-  if (!isAgentMessageEventType(message.eventType)) return undefined;
+  if (message.role !== "user") return undefined;
   const text = message.parts.find((part) => part.type === "text")?.text;
+  // A Watch Event that reaches a child is not a Parent message.
+  if (message.fromParentAgent && !message.eventType) {
+    return {
+      direction: "received",
+      text,
+      to: PARENT_AGENT_TARGET,
+    };
+  }
+  if (!message.eventType || !isAgentMessageEventType(message.eventType)) {
+    return undefined;
+  }
   return {
     conversationId: message.eventIdentifier,
     direction: "received",
@@ -127,13 +151,14 @@ function agentMessageInputText(text: string): string {
 
 /**
  * Name the other Conversation of a message from what this transcript
- * already holds: the agent tree above it, then the child agents that it
- * started, by id or by the agent name that `to` can use. The viewer can read
- * each of them, so no title leaks. Without one, a neutral label names it.
+ * holds: the agent tree above it, then its child agents, by id or by the
+ * agent name that `to` can use. The viewer can read each, so no title leaks.
+ * A refused message reached none, so its `to` names it. Otherwise a neutral
+ * label does.
  */
 export function agentMessageConversationTitle(
   conversation: Pick<ConversationTranscript, "agentTree" | "events">,
-  message: Pick<AgentMessage, "conversationId" | "to">,
+  message: Pick<AgentMessage, "conversationId" | "delivery" | "to">,
 ): string {
   const ids = [message.conversationId, message.to].filter(Boolean);
   const ancestor = conversation.agentTree?.find((node) =>
@@ -155,6 +180,7 @@ export function agentMessageConversationTitle(
     const title = data.title ?? data.agentName;
     if (title) return title;
   }
+  if (message.delivery === "refused" && message.to) return message.to;
   return "Conversation";
 }
 

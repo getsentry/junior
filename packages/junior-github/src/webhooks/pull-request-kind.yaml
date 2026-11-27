@@ -14,6 +14,16 @@ inputs:
   auto_merge:
     values: bool
     description: A person turned on auto-merge, so GitHub merges it without them.
+  in_merge_queue:
+    values: bool
+    description: A person added it to the merge queue, so GitHub merges it.
+  base_open:
+    values: bool
+    description: >-
+      The base branch is the head branch of another open pull request, so
+      this one can merge only after that one. GitHub's merge state checks it
+      only against the base branch. A pull request from the default branch,
+      such as a sync into a long-lived branch, does not count.
   review_pending:
     values: bool
     description: GitHub still requests a review from a person or a team.
@@ -85,6 +95,8 @@ rules:
           state: open
           draft: false
           auto_merge: false
+          in_merge_queue: false
+          base_open: false
           review_pending: false
           viewer.feedback: false
           merge_state: clean
@@ -96,6 +108,8 @@ rules:
           state: open
           draft: false
           auto_merge: false
+          in_merge_queue: false
+          base_open: false
           review_pending: false
           viewer.feedback: false
           merge_state: unknown
@@ -107,6 +121,8 @@ rules:
           state: open
           draft: false
           auto_merge: false
+          in_merge_queue: false
+          base_open: false
           review_pending: false
           viewer.feedback: false
           merge_state: unknown
@@ -122,6 +138,8 @@ rules:
           merge_state: clean
           draft: false
           auto_merge: false
+          in_merge_queue: false
+          base_open: false
           viewer.requested: true
           viewer.requester: false
           viewer.merge_access: true

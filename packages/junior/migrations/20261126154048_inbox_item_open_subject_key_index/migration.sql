@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "junior_inbox_items_open_subject_key_uidx" ON "junior_inbox_items" USING btree ("subject_kind","subject_id") WHERE "junior_inbox_items"."status" = 'open';

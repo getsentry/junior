@@ -24,3 +24,8 @@ export const usageSchema = z
 
 export type UsageCost = z.output<typeof usageCostSchema>;
 export type Usage = z.output<typeof usageSchema>;
+
+/** The token counts of a usage record, without its cost. */
+export const usageTokensSchema = usageSchema.omit({ cost: true });
+
+export type UsageTokens = z.output<typeof usageTokensSchema>;

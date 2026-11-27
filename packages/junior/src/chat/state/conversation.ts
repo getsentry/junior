@@ -171,15 +171,15 @@ const storedThreadStateSchema = z.object({
           lastCompletedAtMs: optionalNumber,
           pendingAuth: pendingAuthSchema.optional().catch(undefined),
         })
-        .catch({}),
+        .catch(() => ({})),
       vision: z
         .object({
           backfillCompletedAtMs: optionalNumber,
-          byFileId: z.record(z.string(), z.unknown()).catch({}),
+          byFileId: z.record(z.string(), z.unknown()).catch(() => ({})),
         })
-        .catch({ byFileId: {} }),
+        .catch(() => ({ byFileId: {} })),
     })
-    .catch({ processing: {}, vision: { byFileId: {} } }),
+    .catch(() => ({ processing: {}, vision: { byFileId: {} } })),
 });
 
 /** Safely coerce an unknown persisted value into a ThreadConversationState. */

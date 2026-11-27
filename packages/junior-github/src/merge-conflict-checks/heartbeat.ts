@@ -15,7 +15,6 @@ import type {
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import {
   gitHubMergeConflictEvents,
@@ -66,7 +65,6 @@ const searchNodeSchema = z.union([
     mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
     number: z.number().int().positive(),
     state: z.string(),
-    title: z.string(),
     url: z.string().min(1),
   }),
   z.object({}).strict(),
@@ -97,7 +95,6 @@ async function checkConflict(
     conflict: GitHubMergeConflict;
     draft: boolean;
     ref: { number: number; repositoryFullName: string };
-    title: string;
   },
 ): Promise<void> {
   const events = gitHubMergeConflictEvents({
@@ -113,12 +110,10 @@ async function checkConflict(
     draft: input.draft,
     events,
     loadHistory: args.loadHistory,
-    loadTitleParts: args.loadTitleParts,
     log: args.log,
     now: args.now,
     ref: input.ref,
     inboxItems: args.inboxItems,
-    title: input.title,
   })) {
     // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
     await args.events.publish(event);
@@ -166,7 +161,6 @@ async function checkRepository(
         conflict,
         draft: node.isDraft,
         ref,
-        title: node.title,
       });
     }
     // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
@@ -193,7 +187,6 @@ interface CheckArgs {
   db: GitHubDb;
   events: EventPublisher;
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
-  loadTitleParts?: LoadGitHubTitleParts;
   log: Pick<PluginLogger, "error" | "warn">;
   now: Date;
   inboxItems: PluginConversationInboxItems;

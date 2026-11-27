@@ -10,6 +10,17 @@ export interface Inputs {
    */
   auto_merge: boolean;
   /**
+   * A person added it to the merge queue, so GitHub merges it.
+   */
+  in_merge_queue: boolean;
+  /**
+   * The base branch is the head branch of another open pull request, so
+   * this one can merge only after that one. GitHub's merge state checks it
+   * only against the base branch. A pull request from the default branch,
+   * such as a sync into a long-lived branch, does not count.
+   */
+  base_open: boolean;
+  /**
    * GitHub still requests a review from a person or a team.
    */
   review_pending: boolean;
@@ -127,6 +138,8 @@ export function decide(inputs: Inputs): Outcome {
     inputs.state === "open" &&
     !inputs.draft &&
     !inputs.auto_merge &&
+    !inputs.in_merge_queue &&
+    !inputs.base_open &&
     !inputs.review_pending &&
     inputs.merge_state === "clean" &&
     inputs.review_outcome !== "changes_requested" &&
@@ -141,6 +154,8 @@ export function decide(inputs: Inputs): Outcome {
     inputs.state === "open" &&
     !inputs.draft &&
     !inputs.auto_merge &&
+    !inputs.in_merge_queue &&
+    !inputs.base_open &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
     inputs.viewer.requester &&
@@ -155,6 +170,8 @@ export function decide(inputs: Inputs): Outcome {
     inputs.state === "open" &&
     !inputs.draft &&
     !inputs.auto_merge &&
+    !inputs.in_merge_queue &&
+    !inputs.base_open &&
     !inputs.review_pending &&
     inputs.merge_state === "unknown" &&
     inputs.viewer.requester &&
@@ -168,6 +185,8 @@ export function decide(inputs: Inputs): Outcome {
   if (
     !inputs.draft &&
     !inputs.auto_merge &&
+    !inputs.in_merge_queue &&
+    !inputs.base_open &&
     inputs.merge_state === "clean" &&
     inputs.review_outcome === "approved" &&
     !inputs.viewer.requester &&

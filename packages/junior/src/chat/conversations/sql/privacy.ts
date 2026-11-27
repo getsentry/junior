@@ -1,10 +1,9 @@
-import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, isNull, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { nextDetailVersion } from "./detail-version";
-import { conversationSubtree, conversationSubtreeColumns } from "./subtree";
 
 const privacyRoot = alias(juniorConversations, "privacy_root");
 
@@ -92,58 +91,6 @@ export async function resolveRootVisibility(
  */
 export function isPublicConversation(table: { visibility: AnyPgColumn }): SQL {
   return eq(table.visibility, "public");
-}
-
-/**
- * Make a root Conversation and its whole tree public or private
- * (`policies/conversation-access.md`). Every row of the tree stores the
- * value, and one statement changes them all. A Slack channel that changes
- * does not call this. Returns false when no root has the id.
- */
-export async function setConversationVisibility(
-  executor: Pick<JuniorSqlDatabase, "db">,
-  rootConversationId: string,
-  visibility: ConversationPrivacy,
-): Promise<boolean> {
-  const db = executor.db();
-  const [root] = await db
-    .select({ destinationId: juniorConversations.destinationId })
-    .from(juniorConversations)
-    .where(
-      and(
-        eq(juniorConversations.conversationId, rootConversationId),
-        isNull(juniorConversations.parentConversationId),
-      ),
-    );
-  if (!root) return false;
-  await lockRootDestination(executor, root.destinationId, "update");
-  await db
-    .update(juniorConversations)
-    .set({ visibility, detailVersion: nextDetailVersion })
-    .where(eq(juniorConversations.rootConversationId, rootConversationId));
-  return true;
-}
-
-/**
- * Set the visibility of one Conversation and its child agents, when they
- * move into a private Space's tree. The caller moves them in the same
- * transaction, so the whole tree keeps one value.
- */
-export async function setMovedWorkVisibility(
-  executor: Pick<JuniorSqlDatabase, "db">,
-  conversationId: string,
-  visibility: ConversationPrivacy,
-): Promise<void> {
-  await executor
-    .db()
-    .update(juniorConversations)
-    .set({ visibility, detailVersion: nextDetailVersion })
-    .where(
-      inArray(
-        juniorConversations.conversationId,
-        sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`,
-      ),
-    );
 }
 
 /**

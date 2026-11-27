@@ -47,18 +47,18 @@ describe("PeoplePicker", () => {
       <QueryClientProvider client={new QueryClient()}>
         <PeoplePicker
           add={async () => {}}
-          label="Add members"
-          memberLabel="Member"
+          label="Invite people"
+          memberLabel="Participant"
           onCancel={() => {}}
           onDone={() => {}}
           submitLabel="Add"
-          target={{ spaceId: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21" }}
+          target={{ conversationId: "conversation-1" }}
         />
       </QueryClientProvider>,
     );
     const input = html.match(/<input[^>]*>/)?.[0] ?? "";
     expect(input).toContain('role="combobox"');
-    expect(input).toContain('aria-label="Add members"');
+    expect(input).toContain('aria-label="Invite people"');
     expect(input).toContain('aria-expanded="false"');
     expect(input).toContain('aria-autocomplete="list"');
     const controls = input.match(/aria-controls="([^"]+)"/)?.[1];

@@ -32,9 +32,15 @@ test.describe("new UI", () => {
       });
       // The mock's own question, which waits on the viewer.
       await page.goto(`${dashboard.baseURL}/inbox?view=inbox&item=qa-rollout`);
-      const row = page
-        .locator("[data-inbox-row]")
-        .filter({ hasText: "Approve the payments-v42 rollout" });
+      // A phone opens the linked row in a sheet.
+      const row =
+        view === mobile
+          ? page.getByRole("dialog", {
+              name: "Approve the payments-v42 rollout",
+            })
+          : page
+              .locator("[data-inbox-row]")
+              .filter({ hasText: "Approve the payments-v42 rollout" });
       const question = row.getByRole("region", { name: "Question" });
       await expect(question).toContainText(
         "Roll out payments-v42 to every region?",

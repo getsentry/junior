@@ -29,7 +29,7 @@ rules:
       - when: { state: dismissed }
         output: { close: dismissed }
   - id: question-ask
-    serves: [who-answers, no-assignee, private-stays-private]
+    serves: [who-answers, no-assignee, everyone-means-owner-audience]
     rows:
       - when: { assignees: named, viewer.assignee: true }
         output: { ask: { content: "the question, with its form" } }

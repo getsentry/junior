@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  attentionGroups,
   attentionOrder,
+  attentionSort,
   buildTimeSections,
   pinnedFirst,
 } from "../src/client/conversations/conversationSections";
@@ -167,7 +167,7 @@ describe("attention order", () => {
     conversation("done-old", at(4)),
   ];
 
-  it("groups needs you, working, waiting, then done, each newest first", () => {
+  it("sorts needs you, working, waiting, then done, each newest first", () => {
     const rows = [
       { group: "done", id: "done-old", time: 1 },
       { group: "waiting", id: "waiting", time: 2 },
@@ -176,24 +176,14 @@ describe("attention order", () => {
       { group: "done", id: "done-new", time: 5 },
       { group: "needs_you", id: "needs-new", time: 6 },
     ] as const;
-    expect(
-      attentionGroups(rows, (row) => row).map(({ group, rows }) => ({
-        group,
-        ids: rows.map((row) => row.id),
-      })),
-    ).toEqual([
-      { group: "needs_you", ids: ["needs-new", "needs-old"] },
-      { group: "working", ids: ["working"] },
-      { group: "waiting", ids: ["waiting"] },
-      { group: "done", ids: ["done-new", "done-old"] },
+    expect(attentionSort(rows, (row) => row).map((row) => row.id)).toEqual([
+      "needs-new",
+      "needs-old",
+      "working",
+      "waiting",
+      "done-new",
+      "done-old",
     ]);
-    // Groups with no rows are left out.
-    expect(
-      attentionGroups(
-        rows.filter((row) => row.group !== "working"),
-        (row) => row,
-      ).map(({ group }) => group),
-    ).toEqual(["needs_you", "waiting", "done"]);
   });
 
   it("orders feed rows by tree state, then last Message", () => {

@@ -3,7 +3,7 @@ import { markGitHubReviewAsked } from "../src/pull-request-review-again";
 import { createGitHubFixture } from "./github-db";
 import { memoryState } from "./plugin-harness";
 import {
-  DEDUPE_KEY,
+  SUBJECT,
   PULL_URL,
   checkSuiteCompleted,
   commented,
@@ -59,7 +59,7 @@ describe("review again after a comment-only review", () => {
     const ended = {
       conversationId: "slack:C123:1712345.0001",
       input: {
-        dedupeKey: DEDUPE_KEY,
+        subject: SUBJECT,
         reason: "The review request ended.",
         status: "done",
       },

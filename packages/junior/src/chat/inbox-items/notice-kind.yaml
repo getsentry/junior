@@ -27,7 +27,7 @@ rules:
       - when: { dismissed: true }
         output: { close: dismissed }
   - id: notice-show
-    serves: [notice-never-asks, no-assignee, private-stays-private]
+    serves: [notice-never-asks, no-assignee, everyone-means-owner-audience]
     rows:
       - when: { assignees: named, viewer.assignee: true }
         output: { notice: { step: with its step } }

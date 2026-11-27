@@ -1,4 +1,4 @@
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { Source } from "@sentry/junior-plugin-api";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -14,6 +14,12 @@ import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import { juniorTurns } from "./turns";
+
+/**
+ * Where the answer to an input goes, as its Source wrote it. Core stores it
+ * and hands it back, and the host's Delivery reads it.
+ */
+export type TurnDestination = Record<string, unknown>;
 
 /** The trace of the source request that sent an input. */
 export type TurnInputTraceContext = { sentryTrace: string; baggage?: string };
@@ -38,7 +44,7 @@ export const juniorTurnInbox = pgTable(
     groupKey: text("group_key").notNull(),
     // Where the answer to the input goes, set by the code that sent it. Null
     // when the Conversation history is the only answer, as for the dashboard.
-    destination: jsonb("destination").$type<Destination>(),
+    destination: jsonb("destination").$type<TurnDestination>(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     // The same key on every delivery of the input. The Source gives it, for
     // example the Slack message id or the `idempotencyKey` a web client sends.

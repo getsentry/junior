@@ -1,10 +1,11 @@
 import { CornerDownRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import type {
-  InboxItemActionBody,
-  InboxItemPayload,
-  InboxSnoozeWake,
+import {
+  inboxItemQuestion,
+  type InboxItemActionBody,
+  type InboxItemPayload,
+  type InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
 
 import { ClampedDisplayText } from "../display-text/DisplayText";
@@ -60,7 +61,7 @@ export function InboxRowCard(props: {
   // Text that only says the head's state and number shows in Slack, not
   // here.
   const showBody =
-    (item.kind === "notice" || !item.request) &&
+    (item.kind === "notice" || !inboxItemQuestion(item.request)) &&
     !(props.headTitled && textRepeatsHead(item, text));
   const kind = inboxItemKind(item);
   // Next to a main action, Snooze and Dismiss show only their icons on a
@@ -165,7 +166,8 @@ export function InboxRowCard(props: {
         </>
       )}
       <InboxItemObjects conversationId={itemConversationId(item)}>
-        {showBody && item.replyNotice ? (
+        {/* A reply notice's body is a short preview of its Turn's reply. */}
+        {showBody && item.subject.kind === "reply" ? (
           <ReplyNoticeText
             item={item}
             label={inboxItemTitleText(item)}
@@ -181,21 +183,21 @@ export function InboxRowCard(props: {
           />
         ) : null}
         {/* A question's row head and Related already link its subject. */}
-        {item.subject && !item.request ? (
+        {item.subject.url && !inboxItemQuestion(item.request) ? (
           <InboxItemSubjectPreview
             // The Conversation that added the item keeps its subject card.
             conversationId={itemConversationId(item)}
             subject={item.subject}
             // An item row's head, or the card above it, names the subject.
-            titled={!props.headTitled || !item.subject.title}
+            titled={!props.headTitled || !item.subject.object?.title}
           />
         ) : null}
       </InboxItemObjects>
       {item.owner.kind === "automation" ? (
         <AutomationAlertDetails automationId={item.owner.id} />
       ) : null}
-      {item.subject ? <SubjectMergeConflict subject={item.subject} /> : null}
-      {item.request ? null : notices}
+      <SubjectMergeConflict subject={item.subject} />
+      {inboxItemQuestion(item.request) ? null : notices}
       {/* In the Inbox, the card's own Snooze and Dismiss replace the plain
           Dismiss, so they leave with motion. A card on its own, as in a
           Conversation, keeps the plain one. */}
@@ -209,7 +211,7 @@ export function InboxRowCard(props: {
       />
       {/* A question comes right under the row's head, so its notices
           follow its form. */}
-      {item.request ? notices : null}
+      {inboxItemQuestion(item.request) ? notices : null}
     </section>
   );
 }

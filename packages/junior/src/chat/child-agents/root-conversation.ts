@@ -1,22 +1,9 @@
 /**
- * Reads the authority of an action from the Conversation of its Run.
- *
- * When Guardian reviews an action, the runtime reads the messages of the
- * Conversation that the Run belongs to, and never of a Conversation above
- * it. The source is the `message` events: the durable visible transcript.
- * Compaction never rewrites these events, so an early request or a
- * later revocation is still there after the model history changes.
- *
- * A message counts as the user only when its stored author Identity is one
- * of the Identities of the person behind the Run's Actor: every Identity of
- * their User, or only the Actor's own Identity when it has no User. So a
- * Inbox answer from the person's web Identity counts in a Slack thread.
- * A message without a stored author Identity does not count. The local CLI is
- * the one exception, because it has no per-person Identity. A Run that an
- * agent started follows its parent agent, so the tasks and messages that the
- * parent sent with startAgent or messageAgent count as the user there, and no
- * person's message does. Each other message keeps its real author as a label
- * and is only context. Nothing is copied into the Run.
+ * Reads the authority of an action from the `message` events of the Run's
+ * own Conversation, never one above it; compaction never rewrites them. A
+ * message is the user's only when its stored author Identity belongs to the
+ * person behind the Run's Actor or, in a Run that an agent started, when the
+ * parent agent sent it. Others are context (`design/guardian.md`).
  */
 import * as z from "zod";
 import type { Actor } from "@/chat/actor";

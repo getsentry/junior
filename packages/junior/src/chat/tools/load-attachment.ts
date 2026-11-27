@@ -9,7 +9,7 @@ import {
   storeAttachmentOnFirstUse,
 } from "@/chat/attachments/download";
 import type { ReadAttachmentSource } from "@/chat/attachments/source";
-import { readLiveAttachment } from "@/chat/attachments/store";
+import { readAccessibleAttachment } from "@/chat/attachments/access";
 import { attachmentIdParam } from "@/chat/attachments/tool-params";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { ATTACHMENT_DIR } from "@/chat/sandbox/paths";
@@ -118,7 +118,8 @@ async function writeParts(args: {
 }
 
 /**
- * Create a tool that restores one conversation attachment to the sandbox.
+ * Create a tool that restores one attachment to the sandbox: one of this
+ * Conversation's, or one of a Conversation that it can read.
  *
  * The first load of a large Slack file streams it from Slack into storage
  * through the host. The sandbox never gets a Slack URL or token.
@@ -134,8 +135,7 @@ export function createLoadAttachmentTool(args: {
   workspace: SandboxWorkspace;
 }) {
   return zodTool({
-    description:
-      "Load a stored attachment for this conversation into the sandbox.",
+    description: "Load a stored attachment into the sandbox.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -148,14 +148,14 @@ export function createLoadAttachmentTool(args: {
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ attachment_id }) => {
-      const attachment = await readLiveAttachment({
+      const attachment = await readAccessibleAttachment({
         attachmentId: attachment_id,
         conversationId: args.conversationId,
         db: args.db,
       });
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
         throw new ToolInputError(
-          "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+          "Attachment not found. Use an attachment_id from the attachment context, a Slack read result, or a Conversation that this one can read.",
         );
       }
       if (attachment.bytes > MAX_ATTACHMENT_BYTES) {

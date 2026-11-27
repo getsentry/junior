@@ -181,7 +181,7 @@ function CodeMine(props: { range: TimeRangeDays; rangeSelector: ReactNode }) {
  */
 function AskRow(props: { item: InboxBundle; nested?: boolean }) {
   const item = props.item.newest;
-  const subject = props.nested ? undefined : item.subject?.title;
+  const subject = props.nested ? undefined : item.subject?.object?.title;
   return (
     <li aria-label={subject ?? item.title} className="min-w-0 list-none">
       <Link

@@ -2,20 +2,20 @@
 // current History version, after the History replacement that starts it.
 // Every other event type in the Conversation is the host's, and core does not
 // read it. The host gives the model its facts as inputs or prompt fragments.
-import { agentHistoryItemSchema, historyReplacementDataSchema } from "./items";
+// The host also reads the items that one Turn wrote, for its per-Turn checks.
+import {
+  AGENT_HISTORY_ITEM_TYPES,
+  HISTORY_REPLACEMENT_TYPES,
+  isHistoryReplacement,
+  piMessageFromHistoryItem,
+} from "./items";
+import { agentHistoryFromRow } from "./rows";
 import { and, asc, eq, inArray, max } from "drizzle-orm";
-import { eventFromRow } from "@/chat/conversations/sql/history";
-import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { EngineContext } from "@/core/engine-context";
 import { juniorConversationEvents } from "@/db/schema";
 
-// The schemas name the types, so a new item or replacement type is read too.
-const READ_TYPES = [
-  ...agentHistoryItemSchema.options,
-  ...historyReplacementDataSchema.options,
-  // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- `shape` is zod's object API field.
-].map((option) => option.shape.type.value);
+const READ_TYPES = [...AGENT_HISTORY_ITEM_TYPES, ...HISTORY_REPLACEMENT_TYPES];
 
 /** Loads the current History version's agent history, as the model reads it. */
 export async function loadAgentHistory(
@@ -40,14 +40,38 @@ export async function loadAgentHistory(
     )
     .orderBy(asc(juniorConversationEvents.seq));
   return rows.flatMap((row) => {
-    const { data } = eventFromRow(row);
-    const item = agentHistoryItemSchema.safeParse(data);
-    if (item.success) {
-      return [piMessageFromHistoryItem(item.data)];
-    }
+    const data = agentHistoryFromRow(row);
     // A History replacement is the first event of its version.
-    return historyReplacementDataSchema
-      .parse(data)
-      .replacementHistory.map(({ item }) => piMessageFromHistoryItem(item));
+    return isHistoryReplacement(data)
+      ? data.replacementHistory.map(({ item }) =>
+          piMessageFromHistoryItem(item),
+        )
+      : [piMessageFromHistoryItem(data)];
+  });
+}
+
+/**
+ * Loads the agent history items that one Turn wrote, oldest first, as the
+ * model reads them. It reads every History version, so a Turn's items stay
+ * its own after a History replacement.
+ */
+export async function loadTurnAgentHistory(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<PiMessage[]> {
+  const rows = await executor
+    .db()
+    .select()
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.turnId, turnId),
+        inArray(juniorConversationEvents.type, AGENT_HISTORY_ITEM_TYPES),
+      ),
+    )
+    .orderBy(asc(juniorConversationEvents.seq));
+  return rows.flatMap((row) => {
+    const data = agentHistoryFromRow(row);
+    return isHistoryReplacement(data) ? [] : [piMessageFromHistoryItem(data)];
   });
 }

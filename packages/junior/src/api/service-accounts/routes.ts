@@ -7,8 +7,9 @@ import {
   serviceAccountPlugins,
   startServiceAccountSignIn,
 } from "@/chat/credentials/service-account";
+import { getChatConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { escapeHtml } from "@/api/html";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
@@ -26,12 +27,14 @@ import { requireAdmin } from "../viewer";
 /**
  * Public URL of the OAuth callback for one plugin's service account.
  *
- * It uses the request origin unless `JUNIOR_BASE_URL` is set, so the
+ * It uses the request origin unless a base URL is configured, so the
  * provider sends the Admin back to the dashboard session that started it.
+ * The Vercel URL is not used here: it can name another host than the one
+ * the Admin signed in on.
  */
 function callbackUrl(request: Request, provider: string): string {
   const base =
-    process.env["JUNIOR_BASE_URL"]?.trim() || new URL(request.url).origin;
+    getChatConfig().deployment.configuredBaseUrl ?? new URL(request.url).origin;
   return new URL(
     `api/service-accounts/${encodeURIComponent(provider)}/callback`,
     base.endsWith("/") ? base : `${base}/`,
@@ -39,7 +42,7 @@ function callbackUrl(request: Request, provider: string): string {
 }
 
 function requirePlugin(provider: string): PluginDefinition {
-  const plugin = pluginCatalogRuntime.getDefinition(provider);
+  const plugin = getAppContext().catalog.getDefinition(provider);
   if (!plugin?.manifest.accounts?.serviceAccount) {
     throwApiError(404, "Service account not found.");
   }
@@ -66,7 +69,7 @@ export function createServiceAccountRoutes(): Hono<JuniorApiEnv> {
   app.get("/", requireAdmin, async () =>
     jsonResponse(serviceAccountListSchema, {
       serviceAccounts: await mapBounded(
-        serviceAccountPlugins(pluginCatalogRuntime.getProviders()),
+        serviceAccountPlugins(getAppContext().catalog.getProviders()),
         getServiceAccountStatus,
       ),
     }),

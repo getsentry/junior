@@ -3,12 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Drizzle migration check. Each migration is a folder named
- * `YYYYMMDDHHMMSS_name` that holds `migration.sql` and `snapshot.json`. The
- * migrator skips a folder without `migration.sql`, and drizzle-kit needs each
- * snapshot to find conflicts. `drizzle-kit check` then reports migrations of
- * two branches that change the same thing, and a schema that no migration
- * creates.
+ * Drizzle migration check. Each folder, `YYYYMMDDHHMMSS_name`, needs
+ * `migration.sql` (the migrator skips a folder without it) and `snapshot.json`
+ * (drizzle-kit finds conflicts with it). `drizzle-kit check` misses two
+ * branches that change different things, so this also requires one leaf: one
+ * snapshot that no other snapshot lists in `prevIds`.
  */
 
 const MIGRATION_FOLDER = /^\d{14}_[a-z0-9_]+$/;
@@ -37,6 +36,31 @@ export function checkDrizzleMigrationDirectory(directory) {
     }
   }
   return errors;
+}
+
+/**
+ * Report more than one leaf snapshot in a migrations directory. Run this only
+ * after `checkDrizzleMigrationDirectory` passes, so every folder has a
+ * snapshot.
+ */
+export function drizzleLeafErrors(directory) {
+  const snapshots = fs
+    .readdirSync(directory)
+    .sort()
+    .map((folder) => ({
+      folder,
+      ...JSON.parse(
+        fs.readFileSync(path.join(directory, folder, "snapshot.json"), "utf8"),
+      ),
+    }));
+  const parents = new Set(
+    snapshots.flatMap((snapshot) => snapshot.prevIds ?? []),
+  );
+  const leaves = snapshots.filter((snapshot) => !parents.has(snapshot.id));
+  if (leaves.length <= 1) return [];
+  return [
+    `${directory}: ${leaves.length} migrations have no child: ${leaves.map((leaf) => leaf.folder).join(", ")}. In that package, run \`pnpm db:generate --custom --name merge_leaves\` to write one migration that follows all of them, and commit it.`,
+  ];
 }
 
 /**
@@ -82,6 +106,7 @@ export function run({ root }) {
     );
     errors.push(...folderErrors);
     if (folderErrors.length > 0) continue;
+    errors.push(...drizzleLeafErrors(path.join(directory, "migrations")));
     const check = spawnSync(
       path.join(directory, "node_modules", ".bin", "drizzle-kit"),
       ["check", "--config", "drizzle.config.ts", "--output", "json"],

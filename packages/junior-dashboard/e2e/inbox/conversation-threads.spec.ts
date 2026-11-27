@@ -10,6 +10,7 @@ test.describe("new UI", () => {
   const THREAD_ID = "junior:internal:dashboard-qa:thread";
   const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
   const TASK_ID = "junior:internal:dashboard-qa:advisor-plan";
+  const BLOCKED_TASK_ID = "junior:internal:dashboard-qa:advisor-review";
   const ARCHIVED_THREAD_ID = "junior:internal:dashboard-qa:archived-thread";
 
   /** The Conversations bundle, which nests each Thread under its parent. */
@@ -67,11 +68,7 @@ test.describe("new UI", () => {
     );
 
     const threads = details.getByRole("region", { name: "Threads" });
-    // Its one Thread is done, so Done starts collapsed.
-    await expect(
-      threads.getByRole("button", { name: "Done · 1" }),
-    ).toHaveAttribute("aria-expanded", "false");
-    // Archived Threads sit under Done, so showing them opens it.
+    await expect(threads.getByRole("listitem")).toHaveCount(1);
     await threads.getByRole("button", { name: "Show archived (1)" }).click();
     await expect(
       threads.getByRole("link", { name: /^archived Compare sidebar badges/ }),
@@ -363,7 +360,8 @@ test.describe("new UI", () => {
       `/conversations/${encodeURIComponent(THREAD_ID)}`,
     );
     await expect(threadCard).toContainText("Done");
-    // The feed leaves out an archived Thread, so its card has no status.
+    // The feed leaves out an archived Thread, so its card shows the status
+    // that the parent recorded.
     const archivedCard = transcript.getByRole("link", {
       name: /Compare sidebar badges/,
     });
@@ -371,7 +369,7 @@ test.describe("new UI", () => {
       "href",
       `/conversations/${encodeURIComponent(ARCHIVED_THREAD_ID)}`,
     );
-    await expect(archivedCard).not.toContainText(/Done|Working|Needs input/);
+    await expect(archivedCard).toContainText("Done");
 
     // Each Task is a chip under the reply. A chip opens the drawer.
     await screenshot(page, "conversation-task-line");
@@ -380,10 +378,18 @@ test.describe("new UI", () => {
         name: /^Open Review the dashboard plan transcript/,
       })
       .click();
-    await expect(
-      page.getByRole("dialog", { name: "Review the dashboard plan" }),
-    ).toBeVisible();
-    await page.keyboard.press("Escape");
+    const drawer = page.getByRole("dialog", {
+      name: "Review the dashboard plan",
+    });
+    await expect(drawer).toBeVisible();
+    // A held Esc closes the drawer. Its repeats do not leave the page.
+    await page.keyboard.down("Escape");
+    await expect(drawer).toBeHidden();
+    await page.keyboard.down("Escape");
+    await page.keyboard.up("Escape");
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
+    );
 
     // A message to a child agent and the child's message back show as a
     // pair of rows that link the child.
@@ -404,10 +410,18 @@ test.describe("new UI", () => {
     await expect(
       transcript.getByRole("group", { name: "Message to reviewer" }),
     ).toContainText("Delivered");
-    // No agent got a refused message, so it names no Conversation.
+    // No agent got a refused message, so it names the target it used and
+    // says why.
+    const refused = transcript.getByRole("group", {
+      name: "Message to designer",
+    });
+    await expect(refused).toContainText("Refused");
+    await expect(refused).toContainText('"designer" is not "parent"');
+    // The viewer started this private Conversation and is no longer a
+    // Participant, so the dock says how to get back in.
     await expect(
-      transcript.getByRole("group", { name: "Message to Conversation" }),
-    ).toContainText("Refused");
+      page.getByText("You left. A participant can invite you back."),
+    ).toBeVisible();
     await sent.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-agent-messages", { lightTheme: true });
 
@@ -450,7 +464,11 @@ test.describe("new UI", () => {
 
     // The parent agent started the first Turn; a person started the next.
     const transcript = page.getByLabel("Conversation transcript");
-    await expect(transcript.getByText("Parent agent")).toBeVisible();
+    await expect(
+      transcript.getByRole("group", {
+        name: "Message from Dashboard QA edge cases",
+      }),
+    ).toBeVisible();
     await expect(transcript.getByText("Taylor Chen")).toBeVisible();
     // A Watch Event of the Thread shows as an Event, not as parent input.
     await expect(
@@ -494,6 +512,18 @@ test.describe("new UI", () => {
       header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
     await screenshot(page, "conversation-task-page");
+
+    // A blocked Task is done with its work. Its parent's report says how
+    // its last Turn ended.
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(BLOCKED_TASK_ID)}`,
+    );
+    await expect(
+      breadcrumb.getByRole("heading", { name: "reviewer" }),
+    ).toBeVisible();
+    await expect(
+      header.getByText("Blocked").filter({ visible: true }),
+    ).toBeVisible();
   });
 
   test("a running row that needs input shows both", async ({

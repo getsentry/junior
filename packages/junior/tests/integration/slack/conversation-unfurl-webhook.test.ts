@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore } from "@/chat/db";
 import { createAndEnqueueConversation } from "@/chat/conversations/web-input";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -26,6 +25,7 @@ import {
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 import { chatPostMessageOk } from "../../fixtures/slack/factories/api";
+import { patchConfig } from "../../fixtures/config";
 
 const ORIGINAL_ENV = { ...process.env };
 const DASHBOARD = "https://junior.example.com";
@@ -163,18 +163,17 @@ function continueHereValue(url: string): string | undefined {
 }
 
 describe("Slack webhook: dashboard conversation links", () => {
-  let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
-
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV, SLACK_BOT_TOKEN: "xoxb-test-token" };
     resetSlackApiMockState();
-    previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: DASHBOARD,
+    patchConfig({
+      dashboard: {
+        baseURL: DASHBOARD,
+      },
     });
   });
 
   afterEach(async () => {
-    setDashboardConversationLinkOptions(previousDashboard);
     process.env = { ...ORIGINAL_ENV };
     resetSlackApiMockState();
     await disconnectStateAdapter();

@@ -1,26 +1,9 @@
 /**
- * Prompt assembly.
- *
- * This module owns Junior's static system prompt and volatile per-turn runtime
- * context. The header of `system-prompt-rules.ts` holds the block order.
- *
- * The system prompt is the same for every Turn of one deployment, platform,
- * and Prompt mode, so it holds no request, actor, time, or Conversation data.
- * Facts for one request go in the context message: a user-role message before
- * the current instruction, with `<runtime-turn-context>`, `AGENTS.md` at Turn
- * start, and `<thread-context>`, each in its own content part. The current
- * instruction is a separate user-role message with only a person's words and
- * attachments. Tool results, files, and fetched pages are tool result
- * messages.
- *
- * A Turn adds `AGENTS.md` only when it differs from the latest copy in
- * history. An `AGENTS.md` that the Turn finds or changes later is a new
- * user-role message at the end of history, because earlier messages do not
- * change. Only context compaction rewrites them.
- *
- * Runtime context is session-scoped bootstrap data; it must stay separate
- * from durable conversation history so compaction does not retain runtime
- * instructions as user text.
+ * Builds the static system prompt, with no request, actor, time, or
+ * Conversation data, and the per-Turn context message before the instruction:
+ * `<runtime-turn-context>`, `AGENTS.md`, and `<thread-context>`, a part each.
+ * Runtime context stays out of durable history. A Turn adds `AGENTS.md` only
+ * when it differs from history, and a later change as a new message at the end.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -646,16 +629,10 @@ function buildContextSection(params: {
 
 /**
  * Capability sections: the skills, MCP catalogs, tool guidance, Workspaces,
- * and Code Mode script tools that the model can use now, each with its tags,
- * or null when it is empty. A Turn sends the ones that changed as named
- * system prompt sections, so the Turn context and history stay the same.
- *
- * At Turn start, one system message sets each section that differs from the
- * section state of history, or removes an empty one. System messages before
- * the first assistant message fold into the system prompt. Pi sends a later
- * one before the next assistant message, or folds it into the system prompt
- * for a model without mid-conversation system messages. Context compaction
- * folds the section state into one system message.
+ * and script tools the model can use now, or null when empty. At Turn start,
+ * one system message sets or removes each section that differs from history,
+ * so the Turn context and history stay the same. Compaction folds the section
+ * state into one system message.
  */
 export function buildCapabilitySections(params: {
   availableSkills: SkillMetadata[];
@@ -914,7 +891,7 @@ export function buildCoreSystemPromptSections(
   ];
 }
 
-/** Build volatile runtime context that belongs in the user turn, not the system prompt. */
+/** Build the per-Turn runtime context, which stays out of the system prompt. */
 export function buildTurnContextPrompt(
   params: TurnContextPromptInput,
 ): string | null {

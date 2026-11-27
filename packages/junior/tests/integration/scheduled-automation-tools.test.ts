@@ -24,7 +24,6 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -37,6 +36,7 @@ import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
+import { useConfig } from "../fixtures/config";
 import {
   createSlackSource,
   createWebSource,
@@ -52,6 +52,7 @@ import {
   conversationsInfoOk,
   usersInfoOk,
 } from "../fixtures/slack/factories/api";
+import { useAppContext } from "../fixtures/app-context";
 
 const rootTurnTools = turnBehavior({
   kind: "thread",
@@ -288,7 +289,6 @@ describe("Scheduled automation tools", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    delete process.env["JUNIOR_TIMEZONE"];
     await cleanupSchedulerSqlStore();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
@@ -1703,7 +1703,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("uses JUNIOR_TIMEZONE when the creator has no timezone", async () => {
-    process.env["JUNIOR_TIMEZONE"] = "America/New_York";
+    useConfig({ deployment: { timezone: "America/New_York" } });
     queueSlackTimezone("UNOZONE", "");
 
     const created = await createTask(
@@ -1729,7 +1729,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("rejects invalid default timezones", async () => {
-    process.env["JUNIOR_TIMEZONE"] = "not/a-zone";
+    useConfig({ deployment: { timezone: "not/a-zone" } });
     queueSlackTimezone("UBADDEFAULT", "");
 
     await expect(
@@ -2266,7 +2266,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
   it("scheduler tools bind to the runtime-owned source", async () => {
     // Verifies that real getPluginTools wiring passes Source through to
     // the scheduler, which stores it as the task destination.
-    const previous = setPlugins([]);
+    useAppContext();
     const fixture = await useSchedulerSqlPlugin();
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
@@ -2353,7 +2353,6 @@ describe("Scheduled automation tool wiring via createTools", () => {
     } finally {
       await fixture.close();
       vi.restoreAllMocks();
-      setPlugins(previous);
     }
   });
 

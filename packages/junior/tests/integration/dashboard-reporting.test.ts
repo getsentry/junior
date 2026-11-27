@@ -5,7 +5,7 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {
@@ -341,19 +341,8 @@ describe("dashboard canonical event reporting", () => {
     expect((await requireDetail(publicChild)).eventHistory).toEqual({
       status: "available",
     });
-    const { getConversationStore, getDb, getSqlExecutor } =
-      await import("@/chat/db");
-    const { setConversationVisibility } =
-      await import("@/chat/conversations/sql/privacy");
+    const { getConversationStore, getDb } = await import("@/chat/db");
     const { resolveViewerUser } = await import("@/chat/plugins/viewer");
-    await setConversationVisibility(getSqlExecutor(), publicRoot, "private");
-    expect((await requireDetail(publicChild)).eventHistory.status).toBe(
-      "redacted",
-    );
-    await setConversationVisibility(getSqlExecutor(), publicRoot, "public");
-    expect((await requireDetail(publicChild)).eventHistory.status).toBe(
-      "available",
-    );
 
     const privateRoot = "slack:C-reporting:private-root";
     const privateChild = "child:reporting-private";

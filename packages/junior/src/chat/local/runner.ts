@@ -51,7 +51,6 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
-import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -327,13 +326,6 @@ async function runLocalAgentTurnInContext(
         runId: currentRunId,
         instruction: {
           text,
-          context: await buildTurnThreadContext({
-            conversation,
-            conversationId: input.conversationId,
-            excludeMessageIds: [userMessageId],
-            hasHistory: Boolean(history?.messages.length),
-            turnId,
-          }),
         },
         history,
         actor: localActor,

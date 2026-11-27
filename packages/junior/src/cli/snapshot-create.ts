@@ -1,5 +1,5 @@
 import { getChatConfig } from "@/chat/config";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import {
   resolve as resolveSnapshot,
   type ProgressPhase,
@@ -34,7 +34,7 @@ function logSnapshotProfile(
   runtime: string,
   log: (line: string) => void,
 ): void {
-  const providers = pluginCatalogRuntime.getProviders();
+  const providers = getAppContext().catalog.getProviders();
   const currentProfile = profile.create(runtime);
   const pluginNames = providers.map((plugin) => plugin.manifest.name).sort();
   const snapshotPluginNames = providers

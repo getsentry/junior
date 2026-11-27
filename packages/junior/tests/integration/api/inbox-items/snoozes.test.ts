@@ -265,7 +265,7 @@ describe("snoozes", () => {
     await conversation(other, "public");
     await addItem(ROOT, [ana], "Review acme entry");
     // Another Conversation adds an item linked to the root: its own row.
-    await addItem(ROOT, [ana], "Review beta entry", "public", other);
+    await addItem(ROOT, [ana], "Review beta entry", other);
     const asAna = api(fixture, ana);
     await asAna.snooze({ conversationId: ROOT }, NOW_MS + 3 * HOUR_MS);
 
@@ -601,7 +601,12 @@ describe("snoozes", () => {
       ).status,
     ).toBe(400);
     // Ana can see Bob's item, but only Bob can dismiss it.
-    const bobs = await addPullRequestItem(ROOT, [bob], "Review initech entry");
+    const bobs = await addPullRequestItem(
+      ROOT,
+      [bob],
+      "Review initech entry",
+      OTHER_PULL_REQUEST.url,
+    );
     const resolve = {
       eventType: "pull_request.merged",
       outcome: "resolve" as const,
@@ -652,7 +657,7 @@ describe("snoozes", () => {
     // at once still replace in turn.
     const other = "slack:CSNOOZE:1.000002";
     await conversation(other, "public");
-    await addItem(other, [ana], "Review shared entry", "public", other, [ROOT]);
+    await addItem(other, [ana], "Review shared entry", other, [ROOT]);
     const snoozeIn = (conversationId: string, wakeAtMs: number) =>
       asAna.snooze({ conversationId }, wakeAtMs);
     const fromBothRows = await Promise.all([
@@ -669,12 +674,7 @@ describe("snoozes", () => {
   it("shows nothing in Snoozed once the viewer loses access to the row", async () => {
     const ana = await user("ana@example.com");
     await conversation(PRIVATE_ROOT, "private");
-    const itemId = await addItem(
-      PRIVATE_ROOT,
-      [ana],
-      "Review private entry",
-      "private",
-    );
+    const itemId = await addItem(PRIVATE_ROOT, [ana], "Review private entry");
     const asAna = api(fixture, ana);
     const subject = { conversationId: PRIVATE_ROOT, inboxItemId: itemId };
     expect((await asAna.snooze(subject, NOW_MS + HOUR_MS)).status).toBe(201);
@@ -717,12 +717,7 @@ describe("snoozes", () => {
     const ana = await user("ana@example.com");
     const bob = await user("bob@example.com");
     await conversation(PRIVATE_ROOT, "private");
-    const itemId = await addItem(
-      PRIVATE_ROOT,
-      [ana],
-      "Review private entry",
-      "private",
-    );
+    const itemId = await addItem(PRIVATE_ROOT, [ana], "Review private entry");
     const asBob = api(fixture, bob);
 
     for (const subject of [

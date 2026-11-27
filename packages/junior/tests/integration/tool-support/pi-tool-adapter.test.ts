@@ -8,7 +8,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
 import * as z from "zod";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
@@ -19,6 +18,7 @@ import {
   tool,
   type AnyToolDefinition,
 } from "@/chat/tool-support/definition";
+import { useAppContext } from "../../fixtures/app-context";
 
 const customerResultSchema = pluginToolOutputSchema.extend({
   customer_id: z.string(),
@@ -74,148 +74,142 @@ describe("Pi tool adapter integration", () => {
                 decision: {
                   decision: "allow",
                   reason: "Read-only lookup requested by the user.",
-                  riskLevel: "low",
-                  userAuthorization: "high",
                 },
               },
             ]),
           ),
       ),
     };
-    const previousPlugins = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          tools() {
-            return {
-              lookupCustomer: zodTool({
-                annotations: {
-                  destructiveHint: false,
-                  idempotentHint: true,
-                  openWorldHint: true,
-                  readOnlyHint: true,
-                },
-                description: "Lookup customer health for account review.",
-                inputSchema: z.object({
-                  customerId: z
-                    .string()
-                    .min(1)
-                    .describe("Customer identifier to inspect."),
-                  note: z
-                    .string()
-                    .optional()
-                    .describe("Optional account note."),
-                }),
-                outputSchema: customerResultSchema,
-                prepareArguments: (args) => {
-                  const input = args as Record<string, unknown>;
-                  return typeof input["customer_id"] === "string"
-                    ? { customerId: input["customer_id"] }
-                    : (input as { customerId: string });
-                },
-                execute: async ({ customerId }) =>
-                  ({
-                    customer_id: customerId,
-                    status_text: "healthy",
-                  }) as const,
-              }),
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-
-    try {
-      const registry = createTools([], {}, runtimeContext());
-      const tools = createPiAgentTools(registry, new SkillSandbox([], []), {
-        spanContext: {},
-        searchToolsCost: { owner: "none" },
-        onToolCall,
-        conversationPrivacy: "private",
-        actionReview,
-      });
-
-      expect(registry["agentDemo_lookupCustomer"]?.exposure).toBe("deferred");
-      expect(registry["agentDemo_lookupCustomer"]?.source).toEqual({
-        id: "agent-demo",
-        description: "Agent demo",
-      });
-      expect(tools.map((candidate) => candidate.name)).toEqual(
-        expect.arrayContaining(["searchTools", "executeTool"]),
-      );
-      expect(
-        tools.some(
-          (candidate) => candidate.name === "agentDemo_lookupCustomer",
-        ),
-      ).toBe(false);
-
-      const searchResult = await agentTool(tools, "searchTools").execute(
-        "tool-search",
-        { query: "lookupCustomer", source: "agent-demo" },
-      );
-      expect(searchResult.details).toMatchObject({
-        returned_tools: 1,
-        source: "agent-demo",
-        tools: [
-          {
-            tool_name: "agentDemo_lookupCustomer",
-            // source is omitted on tools when the search already selected one.
-            input_schema: {
-              properties: {
-                customerId: {
-                  description: "Customer identifier to inspect.",
-                  minLength: 1,
-                  type: "string",
-                },
-                note: {
-                  description: "Optional account note.",
-                  type: "string",
-                },
-              },
-              required: ["customerId"],
-              type: "object",
+          hooks: {
+            tools() {
+              return {
+                lookupCustomer: zodTool({
+                  annotations: {
+                    destructiveHint: false,
+                    idempotentHint: true,
+                    openWorldHint: true,
+                    readOnlyHint: true,
+                  },
+                  description: "Lookup customer health for account review.",
+                  inputSchema: z.object({
+                    customerId: z
+                      .string()
+                      .min(1)
+                      .describe("Customer identifier to inspect."),
+                    note: z
+                      .string()
+                      .optional()
+                      .describe("Optional account note."),
+                  }),
+                  outputSchema: customerResultSchema,
+                  prepareArguments: (args) => {
+                    const input = args as Record<string, unknown>;
+                    return typeof input["customer_id"] === "string"
+                      ? { customerId: input["customer_id"] }
+                      : (input as { customerId: string });
+                  },
+                  execute: async ({ customerId }) =>
+                    ({
+                      customer_id: customerId,
+                      status_text: "healthy",
+                    }) as const,
+                }),
+              };
             },
           },
-        ],
-      });
+        }),
+      ],
+    });
 
-      const executeResult = await agentTool(tools, "executeTool").execute(
-        "tool-execute",
+    const registry = createTools([], {}, runtimeContext());
+    const tools = createPiAgentTools(registry, new SkillSandbox([], []), {
+      spanContext: {},
+      searchToolsCost: { owner: "none" },
+      onToolCall,
+      conversationPrivacy: "private",
+      actionReview,
+    });
+
+    expect(registry["agentDemo_lookupCustomer"]?.exposure).toBe("deferred");
+    expect(registry["agentDemo_lookupCustomer"]?.source).toEqual({
+      id: "agent-demo",
+      description: "Agent demo",
+    });
+    expect(tools.map((candidate) => candidate.name)).toEqual(
+      expect.arrayContaining(["searchTools", "executeTool"]),
+    );
+    expect(
+      tools.some((candidate) => candidate.name === "agentDemo_lookupCustomer"),
+    ).toBe(false);
+
+    const searchResult = await agentTool(tools, "searchTools").execute(
+      "tool-search",
+      { query: "lookupCustomer", source: "agent-demo" },
+    );
+    expect(searchResult.details).toMatchObject({
+      returned_tools: 1,
+      source: "agent-demo",
+      tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
-          arguments: { customer_id: "C123" },
-        },
-      );
-
-      expect(executeResult.details).toMatchObject({
-        customer_id: "C123",
-        status_text: "healthy",
-      });
-      expect(onToolCall).toHaveBeenCalledWith(
-        "tool-execute",
-        "agentDemo_lookupCustomer",
-        {
-          customerId: "C123",
-        },
-      );
-      expect(actionReview.review).toHaveBeenCalledWith(
-        [
-          {
-            toolCallId: "tool-execute",
-            toolName: "agentDemo_lookupCustomer",
-            tool: registry["agentDemo_lookupCustomer"],
-            input: { customerId: "C123" },
+          // source is omitted on tools when the search already selected one.
+          input_schema: {
+            properties: {
+              customerId: {
+                description: "Customer identifier to inspect.",
+                minLength: 1,
+                type: "string",
+              },
+              note: {
+                description: "Optional account note.",
+                type: "string",
+              },
+            },
+            required: ["customerId"],
+            type: "object",
           },
-        ],
-        undefined,
-      );
-    } finally {
-      setPlugins(previousPlugins);
-    }
+        },
+      ],
+    });
+
+    const executeResult = await agentTool(tools, "executeTool").execute(
+      "tool-execute",
+      {
+        tool_name: "agentDemo_lookupCustomer",
+        arguments: { customer_id: "C123" },
+      },
+    );
+
+    expect(executeResult.details).toMatchObject({
+      customer_id: "C123",
+      status_text: "healthy",
+    });
+    expect(onToolCall).toHaveBeenCalledWith(
+      "tool-execute",
+      "agentDemo_lookupCustomer",
+      {
+        customerId: "C123",
+      },
+    );
+    expect(actionReview.review).toHaveBeenCalledWith(
+      [
+        {
+          toolCallId: "tool-execute",
+          toolName: "agentDemo_lookupCustomer",
+          tool: registry["agentDemo_lookupCustomer"],
+          input: { customerId: "C123" },
+        },
+      ],
+      undefined,
+    );
   });
 
   it("lists and runs each tool only for its exposure", async () => {

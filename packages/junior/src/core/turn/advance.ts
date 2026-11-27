@@ -7,11 +7,17 @@
 // A model request that fails in a way that can work later queues the Turn
 // again too, with a step message after a backoff. Both count toward
 // `maxAttempts`: the queue retries without a limit, so a claim past it fails
-// the Turn instead of running the step again. After every change it makes to
-// the Turn, and on a message whose claim misses, it runs `reconcileTurn`, which
-// sends the delivery message and the next step message that the stored
-// state calls for.
-import { logException, logWarn } from "@/chat/logging";
+// the Turn instead of running the step again. Host code that throws
+// `TurnFailedError` ends the Turn as failed, with no retry. After every
+// change it makes to the Turn, and on a message whose claim misses, it runs
+// `reconcileTurn`, which sends the Turn-ended message or the next step message
+// that the stored state calls for.
+import {
+  extractGenAiUsageSummary,
+  logException,
+  logWarn,
+} from "@/chat/logging";
+import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
 import type { EngineContext } from "@/core/engine-context";
 import { loadAgentHistory } from "@/core/history/read";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
@@ -24,6 +30,7 @@ import { assemblePrompt } from "@/core/prompt/assemble";
 import type { PromptLayout } from "@/core/prompt/layout";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import type { StepTools } from "@/core/tool";
+import { TurnFailedError } from "@/core/turn/failure";
 import {
   findTurnInputs,
   findUnreadInputs,
@@ -152,36 +159,43 @@ async function runClaimedStep(
     "app.turn.step_seq": claim.stepSeq,
     "gen_ai.conversation.id": claim.conversationId,
   });
-  const stepTools = await tools(
+  const step = await endTurnOnTurnFailedError(
+    { executor, queue },
     claim,
-    await findTurnInputs({ executor }, claim.turnId),
+    async () => {
+      const stepTools = await tools(
+        claim,
+        await findTurnInputs({ executor }, claim.turnId),
+      );
+      return whileLeased({ executor }, claim, (signal) =>
+        runStep({
+          history,
+          // Only a model request picks and builds the prompt and reads the
+          // model settings. A tool batch must follow its tool calls, so the
+          // inputs wait for the model request after the batch.
+          request: async () => ({
+            ...(await assemblePrompt(
+              await prompt(claim),
+              { turn: claim, history, inputs: unread },
+              { signal },
+            )),
+            model: await modelSettings(claim),
+          }),
+          tools: stepTools.definitions,
+          hooks: stepTools.hooks,
+          client,
+          session: claim.conversationId,
+          // A later claim of the same step means an earlier attempt did not
+          // commit.
+          replay: claim.attempts > 1,
+          // Tool calls pending at a Turn's first step belong to an earlier
+          // Turn.
+          skipDanglingToolCalls: claim.stepSeq === 0,
+          signal,
+        }),
+      ).finally(() => stepTools.close());
+    },
   );
-  const step = await whileLeased({ executor }, claim, (signal) =>
-    runStep({
-      history,
-      // Only a model request picks and builds the prompt and reads the model
-      // settings. A tool batch must follow its tool calls, so the inputs wait
-      // for the model request after the batch.
-      request: async () => ({
-        ...(await assemblePrompt(
-          await prompt(claim),
-          { turn: claim, history, inputs: unread },
-          { signal },
-        )),
-        model: await modelSettings(claim),
-      }),
-      tools: stepTools.definitions,
-      hooks: stepTools.hooks,
-      client,
-      session: claim.conversationId,
-      // A later claim of the same step means an earlier attempt did not
-      // commit.
-      replay: claim.attempts > 1,
-      // Tool calls pending at a Turn's first step belong to an earlier Turn.
-      skipDanglingToolCalls: claim.stepSeq === 0,
-      signal,
-    }),
-  ).finally(() => stepTools.close());
   if (!step) {
     return;
   }
@@ -195,6 +209,15 @@ async function runClaimedStep(
       return;
     }
     case "failed": {
+      // The failed reply is dropped, but the provider may have billed it,
+      // such as a stream that failed after its input tokens were counted.
+      // An error response has a usage of zeros, and it adds nothing.
+      const usage = extractGenAiUsageSummary(result.reply);
+      const discarded =
+        (agentTurnTotalTokens(usage) ?? 0) > 0 ||
+        (agentTurnCostUsd(usage) ?? 0) > 0
+          ? usage
+          : undefined;
       const delayMs = modelRetryDelayMs(
         result.failure,
         claim.attempts,
@@ -203,15 +226,17 @@ async function runClaimedStep(
       if (delayMs !== undefined) {
         // A crash between the release and the publish leaves the Turn queued
         // with no message, and the sweep sends it again. A superseded Turn
-        // ends at the release; its delayed message then misses the claim and
-        // sends the next Turn's step.
-        if (await releaseTurn({ executor }, claim)) {
+        // ends at the release, so it gets no retry.
+        const released = await releaseTurn({ executor }, claim, discarded);
+        if (released === "queued") {
           await publishTurnStep({ queue }, claim.turnId, { delayMs });
           logWarn("agent.turn.provider.retrying", {
             ...modelFailureAttributes(result.failure),
             "app.ai.provider_error.retry_attempt": claim.attempts,
             "app.turn.id": claim.turnId,
           });
+        } else if (released) {
+          await reconcileTurn({ executor, queue }, claim.turnId);
         }
         return;
       }
@@ -224,6 +249,7 @@ async function runClaimedStep(
           claim,
           result.failure.message,
           failure,
+          discarded,
         )
       ) {
         await reconcileTurn({ executor, queue }, claim.turnId);
@@ -235,6 +261,46 @@ async function runClaimedStep(
       throw new Error(`Unhandled step result: ${JSON.stringify(unhandled)}`);
     }
   }
+}
+
+/**
+ * Runs `run`, the step and the host code it calls. A `TurnFailedError` from
+ * the host ends the Turn as failed with its failure, and gives undefined.
+ * Other errors reach `advanceTurn`, which releases the lease for a retry.
+ */
+async function endTurnOnTurnFailedError<T>(
+  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
+  claim: ClaimedTurn,
+  run: () => Promise<T | undefined>,
+): Promise<T | undefined> {
+  try {
+    return await run();
+  } catch (error) {
+    const failed = findTurnFailedError(error);
+    if (!failed) {
+      throw error;
+    }
+    if (
+      await endFailedTurn({ executor }, claim, failed.message, failed.failure)
+    ) {
+      await reconcileTurn({ executor, queue }, claim.turnId);
+    }
+    return undefined;
+  }
+}
+
+/**
+ * The `TurnFailedError` that `error` is or wraps. `assemblePrompt` wraps a
+ * fragment's or a required loader's error, with the original as `cause`, so
+ * that the error names the fragment or loader.
+ */
+function findTurnFailedError(error: unknown): TurnFailedError | undefined {
+  for (let cause = error; cause instanceof Error; cause = cause.cause) {
+    if (cause instanceof TurnFailedError) {
+      return cause;
+    }
+  }
+  return undefined;
 }
 
 // Main's provider backoff: 2 s, 4 s, 8 s, before jitter. With jitter, the

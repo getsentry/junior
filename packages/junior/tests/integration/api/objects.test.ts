@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
   getConversationStore,
@@ -37,6 +36,7 @@ import { createPluginTaskQueueTestAdapter } from "../../fixtures/plugin-task-que
 import { linkSlackUser } from "../../fixtures/slack-user";
 import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
+import { patchConfig } from "../../fixtures/config";
 
 const DASHBOARD = "https://junior.example.com";
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
@@ -66,16 +66,15 @@ async function recordPrivateConversation() {
 }
 
 describe("object links API", () => {
-  let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
-
   beforeEach(() => {
-    previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: DASHBOARD,
+    patchConfig({
+      dashboard: {
+        baseURL: DASHBOARD,
+      },
     });
   });
 
   afterEach(async () => {
-    setDashboardConversationLinkOptions(previousDashboard);
     vi.useRealTimers();
     await closeDb();
   });
@@ -183,7 +182,7 @@ describe("object links API", () => {
   it("resolves GitHub profile links to known people and GitHub accounts", async () => {
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     // App setup reads the dashboard URL from the environment.
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     const alice = await linkSlackUser("alice@example.com", "UALICE");
     await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
       handle: "alice_acme",
@@ -306,7 +305,7 @@ describe("object links API", () => {
     );
     try {
       await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      patchConfig({ dashboard: { baseURL: DASHBOARD } });
       await linkGitHubMember();
       const bob = await linkSlackUser("bob@example.com", "UBOB");
       await upsertLinkedIdentity(getSqlExecutor(), bob.id, {
@@ -411,6 +410,38 @@ describe("object links API", () => {
     }
   });
 
+  it("keeps a pull request card whose title scope is too long for its title parts", async () => {
+    stubGitHubApp();
+    const title = `fix(${"x".repeat(170)}): Retry declined webhooks`;
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/35`, () =>
+        HttpResponse.json({
+          base: { ref: "main" },
+          head: { ref: "fix/long-scope" },
+          html_url: `${GITHUB_REPO}/pull/35`,
+          merged: false,
+          number: 35,
+          state: "open",
+          title,
+          user: { login: "byk" },
+        }),
+      ),
+    );
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await linkGitHubMember();
+
+    const member = await (
+      await viewerApi("alice@example.com")
+    )(`${GITHUB_REPO}/pull/35`);
+    const card = member.objects.get(`${GITHUB_REPO}/pull/35`);
+    expect(card).toMatchObject({
+      objectType: "code_change",
+      plugin: "github",
+      title,
+    });
+    expect(card?.facts).not.toHaveProperty("titleParts");
+  });
+
   it("shows the GitHub object of a webhook on the next card read, with no GitHub call", async () => {
     stubGitHubApp();
     const reads: string[] = [];
@@ -511,7 +542,7 @@ describe("object links API", () => {
     try {
       const tasks = createPluginTaskQueueTestAdapter();
       const app = await createGitHubApp(tasks);
-      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      patchConfig({ dashboard: { baseURL: DASHBOARD } });
       await linkGitHubMember();
       const read = await viewerApi("alice@example.com");
       vi.useFakeTimers({ toFake: ["Date"] });

@@ -4,10 +4,12 @@ import type {
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
+import { isAgentMessageTool } from "./agentMessage";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
+  TranscriptViewSubagentPart,
 } from "../types";
 
 /** A mailbox row, or a local send that can still carry its own files. */
@@ -46,13 +48,23 @@ function eventMessage(
   };
 }
 
-function specialToolIds(events: ConversationReportEvent[]): Set<string> {
+/**
+ * The tool calls that a child's card replaces: each loaded call that a
+ * subagent marker names, unless it sends an agent message. A message to a
+ * child stays a message row.
+ */
+function childCardToolIds(events: ConversationReportEvent[]): Set<string> {
+  const names = new Map<string, string>();
+  for (const event of events) {
+    if (event.data.type !== "tool_calls") continue;
+    for (const call of event.data.calls) names.set(call.toolCallId, call.name);
+  }
   const ids = new Set<string>();
   for (const event of events) {
     const data = event.data;
-    if (data.type === "subagent" && data.parentToolCallId) {
-      ids.add(data.parentToolCallId);
-    }
+    if (data.type !== "subagent" || !data.parentToolCallId) continue;
+    const name = names.get(data.parentToolCallId);
+    if (name && !isAgentMessageTool(name)) ids.add(data.parentToolCallId);
   }
   return ids;
 }
@@ -149,16 +161,14 @@ export function transcriptMessagesFromEvents(
   annotations: ConversationTranscript["annotations"],
   pendingMessages?: readonly PendingTranscriptInput[],
 ): TranscriptViewMessage[] {
-  const replacedToolIds = specialToolIds(events);
+  const replacedToolIds = childCardToolIds(events);
   const tools = new Map<
     string,
     Extract<TranscriptViewPart, { type: "tool_call" }>
   >();
   const standaloneToolMessages = new Map<string, TranscriptViewMessage>();
-  const subagents = new Map<
-    string,
-    Extract<TranscriptViewPart, { type: "subagent" }>
-  >();
+  // One card per child, keyed by its id. Every marker updates its status.
+  const cards = new Map<string, TranscriptViewSubagentPart>();
   const messages: TranscriptViewMessage[] = [];
   const messagesById = new Map<string, TranscriptViewMessage>();
   const latestUserMessageByTurn = new Map<string, TranscriptViewMessage>();
@@ -367,20 +377,27 @@ export function transcriptMessagesFromEvents(
     }
 
     if (data.type === "subagent") {
-      const subagentId = `${data.childConversationId}:${data.startedSeq}`;
-      const existing = subagents.get(subagentId);
+      const childId = data.childConversationId;
       const finishedTimestamp =
         data.status === "running" ? undefined : eventTimestamp(event);
+      const existing = cards.get(childId);
       if (existing) {
         existing.status = data.status;
         if (finishedTimestamp === undefined) delete existing.finishedTimestamp;
         else existing.finishedTimestamp = finishedTimestamp;
         continue;
       }
+      // Only the call that started the child places its card.
+      if (
+        data.parentToolCallId &&
+        !replacedToolIds.has(data.parentToolCallId)
+      ) {
+        continue;
+      }
       const part = {
         type: "subagent" as const,
-        id: subagentId,
-        childConversationId: data.childConversationId,
+        id: childId,
+        childConversationId: childId,
         childKind: data.childKind,
         subagentKind: data.subagentKind,
         status: data.status,
@@ -391,7 +408,7 @@ export function transcriptMessagesFromEvents(
         ...(data.task ? { task: data.task } : undefined),
         ...(data.title ? { title: data.title } : undefined),
       };
-      subagents.set(subagentId, part);
+      cards.set(childId, part);
       messages.push({
         ...eventMessage(event, "tool", [part]),
         sourceSeq: data.startedSeq,

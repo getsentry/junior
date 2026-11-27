@@ -1,7 +1,11 @@
 import type { User } from "@sentry/junior-plugin-api";
+import { getProductionSlackAdapter } from "@/chat/app/production";
 import { canMoveToSpace } from "@/chat/conversations/kind-behavior";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getSpaceLead } from "@/chat/lead/conversation";
+import { runBestEffort } from "@/chat/logging";
+import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
+import { postSlackMovedNotice } from "@/chat/slack/detach-notice";
 import { setConversationSpace } from "@/chat/spaces/conversations";
 import { readSpace, type Space } from "@/chat/spaces/store";
 import { throwApiError } from "../http";
@@ -31,11 +35,11 @@ export async function requireSpaceForWork(
 }
 
 /**
- * Put one tree root in a Space, as a child of the Space's Lead, or make it a
- * one-off root with null. Only a participant moves it. They must be a member
- * of the Space that it leaves and of the Space that it joins. Only a public
- * Conversation joins a Space. One in a private Space stays there, so its
- * data stays with the members.
+ * Put one Conversation in a Space, as a child of the Space's Lead, or make it
+ * a one-off root with null. Only a participant moves it. They must be a
+ * member of the Space that it leaves and of the Space that it joins. Only
+ * public work moves, and only into a public Space. A move drops a Slack
+ * Location, so the Slack thread hears about it once, as on a detach.
  */
 export async function setConversationSpaceForViewer(
   viewer: User,
@@ -71,12 +75,7 @@ export async function setConversationSpaceForViewer(
       throwApiError(403, "Join the Space that it is in to move it.");
     }
   }
-  if (target && access.visibility !== "public") {
-    throwApiError(409, "Only a public conversation can join a Space.");
-  }
-  const lead = target
-    ? await getSpaceLead({ member: viewer, space: target })
-    : undefined;
+  const lead = target ? await getSpaceLead(target.id) : undefined;
   const refusal = await setConversationSpace(
     conversationId,
     target && lead
@@ -88,14 +87,26 @@ export async function setConversationSpaceForViewer(
   if (refusal === "moved") {
     throwApiError(409, "It moved to another Space. Reload and try again.");
   }
-  if (refusal === "leaves_private") {
-    throwApiError(409, "A conversation in a private Space stays in it.");
+  if (refusal === "private") {
+    throwApiError(409, "Only a public conversation can move.");
   }
-  if (refusal === "private_into_public") {
-    throwApiError(409, "Only a public conversation can join a Space.");
+  if (refusal === "private_space") {
+    throwApiError(409, "A conversation can't move into a private Space.");
   }
-  if (refusal === "shared_location") {
-    throwApiError(409, "A Slack conversation can't join a private Space.");
+  const location = conversation.location;
+  if (location?.provider === "slack") {
+    // Best-effort: the move is saved and dropped the Location, so a retry
+    // would not post again.
+    await runBestEffort(
+      () =>
+        runWithSlackInstallation({
+          adapter: getProductionSlackAdapter(),
+          installation: { teamId: location.teamId },
+          task: () => postSlackMovedNotice({ conversationId, location }),
+        }),
+      "conversation.moved_notice.failed",
+      { "app.conversation.id": conversationId },
+    );
   }
   return response;
 }

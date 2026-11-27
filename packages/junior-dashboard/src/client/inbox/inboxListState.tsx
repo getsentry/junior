@@ -158,10 +158,14 @@ function useInboxListContext(): InboxListValue {
   return value;
 }
 
-/** The list path without the one-time `item` link, which names no place. */
+/**
+ * The list path without the one-time `item` and `snooze` links, which name
+ * no place.
+ */
 function listPathOf(pathname: string, search: string): string {
   const params = new URLSearchParams(search);
   params.delete("item");
+  params.delete("snooze");
   const rest = params.toString();
   return rest ? `${pathname}?${rest}` : pathname;
 }

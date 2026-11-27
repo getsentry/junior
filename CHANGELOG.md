@@ -1,5 +1,226 @@
 # Changelog
 
+## 0.318.0
+
+Users get steadier mobile sheets and clearer migration checks, while Guardian review temporarily changes for two core tools and hierarchy moves require attention.
+
+### New Features ✨
+
+Phones gain consistent stacked bottom sheets; failed streams count toward Turn costs, and migration checks reject split leaves.
+
+#### Dashboard
+
+- Show phone menus, popovers, and dialogs as bottom sheets by @dcramer with @sentry-junior in [#4529](https://github.com/getsentry/junior/pull/4529)
+- Move phone drawers and menus onto one bottom sheet by @dcramer with @sentry-junior in [#4520](https://github.com/getsentry/junior/pull/4520)
+- Open Inbox items in a bottom sheet on phones by @dcramer with @sentry-junior in [#4514](https://github.com/getsentry/junior/pull/4514)
+- List only non-Lead roots under In flight by @dcramer with @sentry-junior in [#4528](https://github.com/getsentry/junior/pull/4528)
+
+#### Other
+
+- (core) Count the usage of model replies that a Turn drops by @thomasjiangcy with @sentry-junior in [#4532](https://github.com/getsentry/junior/pull/4532)
+- (db) Fail the migration check when a package has two migration leaves by @thomasjiangcy with @sentry-junior in [#4547](https://github.com/getsentry/junior/pull/4547)
+
+### Bug Fixes 🐛
+
+messageAgent skips review until new Guardian; restore approvalMode: "auto" then. Bash skips review until sandbox evals support routine work; restore it then.
+
+#### Dashboard
+
+- Show every agent-to-agent message as a message row by @dcramer with @sentry-junior in [#4552](https://github.com/getsentry/junior/pull/4552)
+- Keep a done Conversation's drawer status neutral by @dcramer with @sentry-junior in [#4536](https://github.com/getsentry/junior/pull/4536)
+- Move the pointer off before the agent messages shot by @dcramer with @sentry-junior in [#4530](https://github.com/getsentry/junior/pull/4530)
+
+#### Guardian
+
+- Stop reviewing messageAgent calls by @dcramer with @sentry-junior in [#4551](https://github.com/getsentry/junior/pull/4551)
+- Stop reviewing bash commands by @dcramer with @sentry-junior in [#4550](https://github.com/getsentry/junior/pull/4550)
+
+#### Other
+
+- (agents) Pause Conversation loop Turns at the host request deadline by @sentry-junior in [#4054](https://github.com/getsentry/junior/pull/4054)
+- (config) Trim entries in comma-separated env lists by @sentry-junior in [#4541](https://github.com/getsentry/junior/pull/4541)
+- (conversations) Let only Participants post and Invite, with a web Join by @dcramer with @sentry-junior in [#4555](https://github.com/getsentry/junior/pull/4555)
+- (db) Merge the migration leaves from #4522 and #4523 by @BYK with @sentry-junior in [#4531](https://github.com/getsentry/junior/pull/4531)
+- (slack) Build thread context in the Slack provider and mark cut Messages by @dcramer with @sentry-junior in [#4515](https://github.com/getsentry/junior/pull/4515)
+- (spaces) Fix the archive, restore and rename gaps from the Lead root change by @dcramer with @sentry-junior in [#4535](https://github.com/getsentry/junior/pull/4535)
+
+### Documentation 📚
+
+- (design) Consolidate Guardian facts, rules, asking, and audience by @dcramer with @sentry-junior in [#4525](https://github.com/getsentry/junior/pull/4525)
+
+### Internal Changes 🔧
+
+Lead children become plain children; public moves change, with no data migration; explicit limits.maxAgentDepth allows one fewer level below a Lead.
+
+#### Config
+
+- Resolve createApp settings in config instead of setters by @thomasjiangcy with @sentry-junior in [#4527](https://github.com/getsentry/junior/pull/4527)
+- Remove dead DATABASE_URL guards on stat writes by @thomasjiangcy with @sentry-junior in [#4502](https://github.com/getsentry/junior/pull/4502)
+- Resolve misc env settings in config by @thomasjiangcy with @sentry-junior in [#4500](https://github.com/getsentry/junior/pull/4500)
+
+#### Other
+
+- (agents) Batch child input drop checks and trim one-hop helpers by @dcramer with @sentry-junior in [#4450](https://github.com/getsentry/junior/pull/4450)
+- (dashboard) Move the pointer off the page before every screenshot by @dcramer with @sentry-junior in [#4549](https://github.com/getsentry/junior/pull/4549)
+- (evals) Serve the review reads that pull request review evals make by @dcramer with @sentry-junior in [#4518](https://github.com/getsentry/junior/pull/4518)
+- (guardian) Put the current Guardian behind a Guardian interface by @dcramer with @sentry-junior in [#4538](https://github.com/getsentry/junior/pull/4538)
+- (lint) Lint only changed files on pre-push by @dcramer with @sentry-junior in [#4526](https://github.com/getsentry/junior/pull/4526)
+- (postgres) Keep each worker's test database for the worker's life by @thomasjiangcy with @sentry-junior in [#4553](https://github.com/getsentry/junior/pull/4553)
+- (spaces) Make a Lead's children plain children by @dcramer with @sentry-junior in [#4556](https://github.com/getsentry/junior/pull/4556)
+- Check only lint, format, and types on merge queue runs by @BYK with @sentry-junior in [#4533](https://github.com/getsentry/junior/pull/4533)
+
+## 0.317.0
+
+Junior expands execution, collaboration, observability, and guidance while correcting workflows and consolidating foundations; plugin and Space integrations require targeted updates.
+
+### Breaking Changes 🛠
+
+- (plugins) Split agent-hooks into a hooks module by @dcramer with @sentry-junior in [#4438](https://github.com/getsentry/junior/pull/4438)
+
+### New Features ✨
+
+Core controls Turn execution, dashboards clarify work, Spaces unify Leads, and telemetry captures longer sessions and provider limits.
+
+#### Core
+
+- Apply main's per-Turn tool-call and cost limits to core Turns by @thomasjiangcy with @sentry-junior in [#4507](https://github.com/getsentry/junior/pull/4507)
+- Let host code end a Turn as failed by @thomasjiangcy with @sentry-junior in [#4506](https://github.com/getsentry/junior/pull/4506)
+- Record the Turn that writes each event, and when a Turn starts by @thomasjiangcy with @sentry-junior in [#4504](https://github.com/getsentry/junior/pull/4504)
+- Read only agent history for the model by @thomasjiangcy with @sentry-junior in [#4464](https://github.com/getsentry/junior/pull/4464)
+- Block host tools that need review in core Turns by @thomasjiangcy with @sentry-junior in [#4443](https://github.com/getsentry/junior/pull/4443)
+- Run host hooks at fixed points in a tool batch by @thomasjiangcy with @sentry-junior in [#4338](https://github.com/getsentry/junior/pull/4338)
+
+#### Dashboard
+
+- Hold the System page layout while stats load by @BYK with @sentry-junior in [#4491](https://github.com/getsentry/junior/pull/4491)
+- List Threads in attention order with no group headings by @dcramer with @sentry-junior in [#4463](https://github.com/getsentry/junior/pull/4463)
+- Auto-attach sent links to linked work and remove the Attach button by @dcramer and @BYK with @sentry-junior in [#4475](https://github.com/getsentry/junior/pull/4475)
+- Add a percent view and overhead share to Spend by Actor by @BYK with @sentry-junior in [#4473](https://github.com/getsentry/junior/pull/4473)
+- Show sent agent messages as message rows by @dcramer with @sentry-junior in [#4427](https://github.com/getsentry/junior/pull/4427)
+- Widen the details panel by default on wide screens by @dcramer with @sentry-junior in [#4434](https://github.com/getsentry/junior/pull/4434)
+
+#### Spaces
+
+- Render a Lead like any root Conversation by @dcramer with @sentry-junior in [#4467](https://github.com/getsentry/junior/pull/4467)
+- Show a Lead's Conversation details instead of a Space panel by @dcramer with @sentry-junior in [#4444](https://github.com/getsentry/junior/pull/4444)
+- Make Space Conversations children of the Lead by @dcramer with @sentry-junior in [#4413](https://github.com/getsentry/junior/pull/4413)
+- Add a listSpaces tool that finds the Spaces a person can see by @dcramer with @sentry-junior in [#4414](https://github.com/getsentry/junior/pull/4414)
+- Group a Space's Threads by what they need by @dcramer with @sentry-junior in [#4416](https://github.com/getsentry/junior/pull/4416)
+- Let a Space's Lead move Conversations when a person asks by @dcramer with @sentry-junior in [#4411](https://github.com/getsentry/junior/pull/4411)
+
+#### Other
+
+- (dev) Capture pnpm dev telemetry into a Sentry Local session by @MathurAditya724 with @sentry-junior in [#4348](https://github.com/getsentry/junior/pull/4348)
+- (telemetry) Record provider rate limit headers on fetch spans by @BYK with @sentry-junior in [#4321](https://github.com/getsentry/junior/pull/4321)
+
+### Bug Fixes 🐛
+
+Conversation states, searches, migrations, GitHub reviews, agent results, notifications, plugins, archival, and media handling now behave correctly.
+
+#### Conversations
+
+- Roll a child's wait on its starter up the tree by @BYK with @sentry-junior in [#4484](https://github.com/getsentry/junior/pull/4484)
+- Read person activity from the transcript only by @thomasjiangcy with @sentry-junior in [#4483](https://github.com/getsentry/junior/pull/4483)
+
+#### Dashboard
+
+- Keep composer typeahead open across spaces in a query by @BYK with @sentry-junior in [#4402](https://github.com/getsentry/junior/pull/4402)
+- Return focus to the details trigger only when details took it by @BYK with @sentry-junior in [#4303](https://github.com/getsentry/junior/pull/4303)
+- Bump Recharts to 3.11.1 so chart tooltips close by @dcramer with @sentry-junior in [#4435](https://github.com/getsentry/junior/pull/4435)
+- Float people picker results over the form by @dcramer with @sentry-junior in [#4442](https://github.com/getsentry/junior/pull/4442)
+- Keep focus in place when a resize closes details by @dcramer with @sentry-junior in [#4401](https://github.com/getsentry/junior/pull/4401)
+
+#### DB
+
+- Merge the migration leaves from #4164 and #4504 by @BYK with @sentry-junior in [#4523](https://github.com/getsentry/junior/pull/4523)
+- Drop the junior_agent_invocations table by @dcramer with @sentry-junior in [#4412](https://github.com/getsentry/junior/pull/4412)
+
+#### GitHub
+
+- Ask for a ready draft's review before reading its next action by @BYK with @sentry-junior in [#4329](https://github.com/getsentry/junior/pull/4329)
+- Resolve a bare reference to the repository that qualifies its number by @mwarkentin with @sentry-junior in [#4498](https://github.com/getsentry/junior/pull/4498)
+- Run the next-action backfill again for the merge access rule by @sentry-junior in [#4476](https://github.com/getsentry/junior/pull/4476)
+- Ask to merge only a requester with write access by @BYK with @sentry-junior in [#4472](https://github.com/getsentry/junior/pull/4472)
+- Ask again after a long comment-only discussion by @BYK with @sentry-junior in [#4405](https://github.com/getsentry/junior/pull/4405)
+- Mark agreement that waits on the reviewer as addressed, not declined by @sentry-junior in [#4437](https://github.com/getsentry/junior/pull/4437)
+
+#### Other
+
+- (agents) List a child's last result from its newest finished Turn by @dcramer with @sentry-junior in [#4173](https://github.com/getsentry/junior/pull/4173)
+- (notifications) Skip reply notices that repeat an Inbox ask by @BYK with @sentry-junior in [#4478](https://github.com/getsentry/junior/pull/4478)
+- (plugins) Say when a plugin's Turn context does not fit the budget by @dcramer with @sentry-junior in [#4415](https://github.com/getsentry/junior/pull/4415)
+- (prompt) Say that watched events arrive in a later Turn by @thomasjiangcy with @sentry-junior in [#4458](https://github.com/getsentry/junior/pull/4458)
+- (spaces) Wait on the person who started Space work, not the Lead's actor by @BYK with @sentry-junior in [#4477](https://github.com/getsentry/junior/pull/4477)
+- (todos) Close a child's To-dos when it is archived, not on its result by @dcramer with @sentry-junior in [#4418](https://github.com/getsentry/junior/pull/4418)
+- (vimeo) Stop declaring a package that ships no plugin content by @dcramer with @sentry-junior in [#4410](https://github.com/getsentry/junior/pull/4410)
+
+### Documentation 📚
+
+Documentation clarifies Lead-rooted Spaces, child-agent lifecycles, hand-offs, To-dos, and faster query-based performance practices.
+
+#### Design
+
+- Define a Space as its Lead by @dcramer with @sentry-junior in [#4462](https://github.com/getsentry/junior/pull/4462)
+- Make a Space metadata on its Lead's tree, and add the Lead design by @dcramer with @sentry-junior in [#4428](https://github.com/getsentry/junior/pull/4428)
+- Merge child agents into agent teams, and define when a child is done by @dcramer with @sentry-junior in [#4423](https://github.com/getsentry/junior/pull/4423)
+- Check Guardian hand-offs once and treat the allowed brief as the instruction by @dcramer with @sentry-junior in [#4430](https://github.com/getsentry/junior/pull/4430)
+- Add the To-dos design doc by @sentry-junior in [#4431](https://github.com/getsentry/junior/pull/4431)
+
+#### Other
+
+- (policies) Ban rollup tables for read performance by @BYK with @sentry-junior in [#4501](https://github.com/getsentry/junior/pull/4501)
+
+### Internal Changes 🔧
+
+Agents, configuration, history, Space roots, access, invitations, To-dos, event storage, caching, and CI gain unified internal foundations.
+
+#### Agents
+
+- Find conversations with listAgents only by @dcramer with @sentry-junior in [#4505](https://github.com/getsentry/junior/pull/4505)
+- Use one status list for every agent by @dcramer with @sentry-junior in [#4440](https://github.com/getsentry/junior/pull/4440)
+- Run every Conversation on one worker path by @dcramer with @sentry-junior in [#4451](https://github.com/getsentry/junior/pull/4451)
+- Rename Agent invocation leftovers to child agent terms by @dcramer with @sentry-junior in [#4439](https://github.com/getsentry/junior/pull/4439)
+
+#### Config
+
+- Resolve sandbox settings in config by @thomasjiangcy with @sentry-junior in [#4488](https://github.com/getsentry/junior/pull/4488)
+- Resolve secrets, sign-in, and web push settings in config by @thomasjiangcy with @sentry-junior in [#4485](https://github.com/getsentry/junior/pull/4485)
+- Resolve deployment settings and the base URL in config by @thomasjiangcy with @sentry-junior in [#4481](https://github.com/getsentry/junior/pull/4481)
+- Lint process.env reads and add a config test fixture by @thomasjiangcy with @sentry-junior in [#4474](https://github.com/getsentry/junior/pull/4474)
+- Install the config that createApp resolves by @thomasjiangcy with @sentry-junior in [#4471](https://github.com/getsentry/junior/pull/4471)
+- Call loadConfig directly in chat config tests by @thomasjiangcy with @sentry-junior in [#4466](https://github.com/getsentry/junior/pull/4466)
+- Add loadConfig with a zod config schema by @thomasjiangcy with @sentry-junior in [#4448](https://github.com/getsentry/junior/pull/4448)
+
+#### Core
+
+- Store agent history with core's own encoding by @thomasjiangcy with @sentry-junior in [#4486](https://github.com/getsentry/junior/pull/4486)
+- Move agent history item schemas and the event lock into core by @thomasjiangcy with @sentry-junior in [#4470](https://github.com/getsentry/junior/pull/4470)
+
+#### Dashboard
+
+- Render a Space's Lead like any root by @dcramer with @sentry-junior in [#4510](https://github.com/getsentry/junior/pull/4510)
+- Make four flaky Frameshift shots deterministic by @dcramer with @sentry-junior in [#4424](https://github.com/getsentry/junior/pull/4424)
+
+#### Spaces
+
+- Make a Space its Lead root by @dcramer with @sentry-junior in [#4522](https://github.com/getsentry/junior/pull/4522)
+- Use core membership and access for a Space's Lead by @dcramer with @sentry-junior in [#4512](https://github.com/getsentry/junior/pull/4512)
+
+#### Todos
+
+- Move the To-do rules into the updateTodos tool by @dcramer with @sentry-junior in [#4449](https://github.com/getsentry/junior/pull/4449)
+- Make To-dos a core registration on plugin hooks by @dcramer with @sentry-junior in [#4396](https://github.com/getsentry/junior/pull/4396)
+
+#### Other
+
+- (conversation-events) Share event storage between core and the host by @thomasjiangcy with @sentry-junior in [#4479](https://github.com/getsentry/junior/pull/4479)
+- (evals) Check the moved Conversation's Space in the Lead move case by @dcramer with @sentry-junior in [#4422](https://github.com/getsentry/junior/pull/4422)
+- (inbox) Name each Inbox item by its subject kind and id by @BYK with @sentry-junior in [#4164](https://github.com/getsentry/junior/pull/4164)
+- (lint) Run lint steps in parallel and cut slow check startup by @dcramer with @sentry-junior in [#4465](https://github.com/getsentry/junior/pull/4465)
+- (stats) Keep the System stats report for 7 days by @BYK with @sentry-junior in [#4487](https://github.com/getsentry/junior/pull/4487)
+- (task-execution) Split final-attempt Turn failure out of conversation-turn by @dcramer with @sentry-junior in [#4432](https://github.com/getsentry/junior/pull/4432)
+- Run CI on merge queue runs by @BYK with @sentry-junior in [#4469](https://github.com/getsentry/junior/pull/4469)
+
 ## 0.316.0
 
 Junior expands everyday capabilities, improves reliability and guidance, clarifies documentation, and tightens testing and configuration controls for more predictable operation.

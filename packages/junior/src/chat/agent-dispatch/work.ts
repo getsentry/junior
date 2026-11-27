@@ -7,6 +7,7 @@
  */
 import type { StateAdapter } from "chat";
 import * as z from "zod";
+import { linkAutomationRunConversation } from "@/chat/automations/execution-stats";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -180,6 +181,19 @@ export async function enqueueAgentDispatch(
     sessionSource: claimedDispatch.source,
     ...(claimedDispatch.title ? { title: claimedDispatch.title } : undefined),
   });
+  // The run's row exists before its dispatch. Link it now, before the turn
+  // is enqueued, so everything the run does belongs to its Automation.
+  const source = claimedDispatch.source;
+  if (
+    (source.kind === "scheduled_automation" ||
+      source.kind === "event_automation") &&
+    source.automationRunId
+  ) {
+    await linkAutomationRunConversation({
+      conversationId,
+      runId: source.automationRunId,
+    });
+  }
   // A run that starts in a thread owns it, so a person's reply there joins
   // the run before its first reply. A thread that another Conversation
   // started in stays with that Conversation.

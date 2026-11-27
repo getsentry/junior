@@ -1,12 +1,14 @@
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
-import type {
-  ConversationAnnotationChange,
-  User,
+import {
+  defineJuniorPlugin,
+  type ConversationAnnotationChange,
+  type PluginRegistration,
+  type User,
 } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import {
   createPluginAnnotations,
   listConversationAnnotations,
@@ -14,22 +16,26 @@ import {
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import {
-  countInboxItemsNeedingUserBySubject,
-  getOpenInboxItemByDedupeKey,
+  getOpenInboxItemBySubject,
   getInboxItem,
 } from "@/chat/inbox-items/store";
-import { listWaitingConversations } from "@/chat/inbox-items/waiting";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import {
+  countInboxItemsNeedingUserBySubject,
+  listWaitingConversations,
+} from "@/chat/inbox-items/waiting";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
   juniorConversationParticipants,
   juniorConversations,
   juniorIdentities,
+  juniorInboxSnoozes,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
-
-const TENANT = { provider: "slack", providerTenantId: "T123" };
+import {
+  ownedPluginInboxItems,
+  TEST_PLUGIN_INBOX_OWNER,
+} from "../fixtures/plugin-inbox-owners";
 
 const services = createSlackInboxItemToolServices(
   createConversationWorkQueueTestAdapter,
@@ -92,16 +98,37 @@ async function participant(
 
 const NOTICE = {
   body: "**Fix the thing** is approved, and GitHub says that it can merge. Merge it, or say why not.",
-  dedupeKey: "pull-request-ready:getsentry/junior#946",
   subject: {
     id: "https://github.com/getsentry/junior/pull/946",
-    title: "getsentry/junior#946",
-    url: "https://github.com/getsentry/junior/pull/946",
+    kind: "ready",
   },
   title: "Ready to merge · #946",
 };
 
+/** A plugin that registers the `ready` subject kind. */
+function readyPlugin(name: string): PluginRegistration {
+  return defineJuniorPlugin({
+    inboxSubjects: [
+      {
+        kind: "ready",
+        label: "Ready to merge",
+        owner: TEST_PLUGIN_INBOX_OWNER,
+      },
+    ],
+    manifest: { description: `${name} test plugin`, displayName: name, name },
+  });
+}
+
 describe("plugin inbox items", () => {
+  beforeEach(async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([
+        readyPlugin("github"),
+        readyPlugin("linear"),
+      ]),
+    });
+  });
+
   afterEach(async () => {
     shown = [];
     await closeDb();
@@ -111,27 +138,31 @@ describe("plugin inbox items", () => {
     await conversation("slack:C1:1.000001", "public");
     const ana = await person("ana@example.com");
     await participant("slack:C1:1.000001", ana.user);
-    const items = createPluginInboxItems({
+    const items = ownedPluginInboxItems({
       conversationId: "slack:C1:1.000001",
       plugin: "github",
       show,
     });
 
     // A notice is for information: it does not wait on Ana.
-    await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [ana.identityId],
+      assigneeIdentityIds: [ana.identityId],
+    });
     expect(await listWaitingConversations(getDb(), ana.user.id)).toEqual([]);
 
     await items.upsert({
       ...NOTICE,
+      askedIdentityIds: [ana.identityId],
       assigneeIdentityIds: [ana.identityId],
       waitsOnAssignees: true,
     });
     expect(
-      await getOpenInboxItemByDedupeKey(
-        getDb(),
-        `plugin:github:${NOTICE.dedupeKey}`,
-        TENANT,
-      ),
+      await getOpenInboxItemBySubject(getDb(), {
+        id: NOTICE.subject.id,
+        kind: "github:ready",
+      }),
     ).toMatchObject({ kind: "action", status: "open" });
     // The dashboard shows the plugin's mark next to the title.
     expect(await listWaitingConversations(getDb(), ana.user.id)).toEqual([
@@ -165,25 +196,28 @@ describe("plugin inbox items", () => {
     await conversation("slack:C1:1.000001", "public");
     const ana = await person("ana@example.com");
     await participant("slack:C1:1.000001", ana.user);
-    const items = createPluginInboxItems({
+    const items = ownedPluginInboxItems({
       conversationId: "slack:C1:1.000001",
       plugin: "github",
       show,
     });
 
-    await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
-    const added = await getOpenInboxItemByDedupeKey(
-      getDb(),
-      `plugin:github:${NOTICE.dedupeKey}`,
-      TENANT,
-    );
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [ana.identityId],
+      assigneeIdentityIds: [ana.identityId],
+    });
+    const added = await getOpenInboxItemBySubject(getDb(), {
+      id: NOTICE.subject.id,
+      kind: "github:ready",
+    });
     expect(added).toMatchObject({
       owner: { id: "slack:C1:1.000001", kind: "conversation" },
       assignees: [{ email: "ana@example.com", userId: ana.user.id }],
       conversationIds: ["slack:C1:1.000001"],
       kind: "notice",
       status: "open",
-      subject: NOTICE.subject,
+      subject: { id: NOTICE.subject.id, kind: "github:ready" },
       title: NOTICE.title,
       visibility: "public",
     });
@@ -191,19 +225,19 @@ describe("plugin inbox items", () => {
     // A repeat updates the open item.
     await items.upsert({
       ...NOTICE,
+      askedIdentityIds: [ana.identityId],
       assigneeIdentityIds: [ana.identityId],
       title: "Still ready to merge",
     });
     expect(
-      await getOpenInboxItemByDedupeKey(
-        getDb(),
-        `plugin:github:${NOTICE.dedupeKey}`,
-        TENANT,
-      ),
+      await getOpenInboxItemBySubject(getDb(), {
+        id: NOTICE.subject.id,
+        kind: "github:ready",
+      }),
     ).toMatchObject({ id: added!.id, title: "Still ready to merge" });
 
-    // An agent in another public Conversation of the tenant cannot take over
-    // the plugin key, or change the plugin notice.
+    // An agent in another public Conversation of the tenant cannot change
+    // the plugin notice. Its own dedupe keys are in another namespace.
     await conversation("slack:C1:1.000002", "public");
     const agent = {
       conversationId: "slack:C1:1.000002",
@@ -213,14 +247,6 @@ describe("plugin inbox items", () => {
       }),
       source: { kind: "slack" } as any,
     };
-    expect(() =>
-      createAddInboxItemTool(agent, services).prepareArguments!({
-        body: "Taken over.",
-        dedupe_key: `plugin:github:${NOTICE.dedupeKey}`,
-        kind: "notice",
-        title: "Taken over",
-      }),
-    ).toThrow("belongs to a plugin");
     await expect(
       createUpdateInboxItemTool(agent, services).execute!(
         { id: added!.id, reason: "Not needed.", status: "dismissed" } as any,
@@ -230,7 +256,7 @@ describe("plugin inbox items", () => {
 
     await expect(
       items.close({
-        dedupeKey: NOTICE.dedupeKey,
+        subject: NOTICE.subject,
         reason: "The pull request merged.",
         status: "done",
       }),
@@ -242,7 +268,7 @@ describe("plugin inbox items", () => {
     // A close with no open item does nothing.
     await expect(
       items.close({
-        dedupeKey: NOTICE.dedupeKey,
+        subject: NOTICE.subject,
         reason: "Again.",
         status: "dismissed",
       }),
@@ -255,29 +281,131 @@ describe("plugin inbox items", () => {
     expect(shown).toEqual([added!.id, added!.id, added!.id]);
 
     // The key is scoped to the plugin, so another plugin has its own item.
-    await createPluginInboxItems({
+    await ownedPluginInboxItems({
       conversationId: "slack:C1:1.000001",
       plugin: "linear",
       show,
-    }).upsert({ ...NOTICE, assigneeIdentityIds: [] });
+    }).upsert({ ...NOTICE, askedIdentityIds: [], assigneeIdentityIds: [] });
     expect(
-      await getOpenInboxItemByDedupeKey(
-        getDb(),
-        `plugin:linear:${NOTICE.dedupeKey}`,
-        TENANT,
-      ),
+      await getOpenInboxItemBySubject(getDb(), {
+        id: NOTICE.subject.id,
+        kind: "linear:ready",
+      }),
     ).toMatchObject({ assignees: [], status: "open" });
+  });
+
+  it("keeps one item for the asks of several people, and closes it when nobody is left", async () => {
+    await conversation("slack:C1:1.000001", "public");
+    const ana = await person("ana@example.com");
+    const bo = await person("bo@example.com");
+    // Cy is not in the Conversation, so Junior cannot assign him.
+    const cy = await person("cy@example.com");
+    await participant("slack:C1:1.000001", ana.user);
+    await participant("slack:C1:1.000001", bo.user);
+    const items = ownedPluginInboxItems({
+      conversationId: "slack:C1:1.000001",
+      plugin: "github",
+      show,
+    });
+    const both = [ana.identityId, bo.identityId];
+    const open = async () =>
+      await getOpenInboxItemBySubject(getDb(), {
+        id: NOTICE.subject.id,
+        kind: "github:ready",
+      });
+    const assignees = async () =>
+      (await open())?.assignees.map((assignee) => assignee.userId) ?? [];
+
+    // Only the person whom an event asks joins the item.
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [ana.identityId],
+      assigneeIdentityIds: both,
+    });
+    expect(await assignees()).toEqual([ana.user.id]);
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [bo.identityId],
+      assigneeIdentityIds: both,
+    });
+    expect((await assignees()).sort()).toEqual(
+      [ana.user.id, bo.user.id].sort(),
+    );
+    const item = await open();
+    await getDb().insert(juniorInboxSnoozes).values({
+      createdAt: new Date(),
+      id: "snooze-bo",
+      inboxItemId: item!.id,
+      state: "snoozed",
+      userId: bo.user.id,
+    });
+
+    // Bo's ask ends, so he leaves the item, and his snooze ends. Ana keeps it.
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [],
+      assigneeIdentityIds: [ana.identityId],
+    });
+    expect(await assignees()).toEqual([ana.user.id]);
+    expect(
+      await getDb()
+        .select({ state: juniorInboxSnoozes.state })
+        .from(juniorInboxSnoozes),
+    ).toEqual([{ state: "cancelled" }]);
+
+    // Bo has an ask again, but no event gave it, so he does not come back.
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [],
+      assigneeIdentityIds: both,
+      title: "Still ready to merge",
+    });
+    expect(await assignees()).toEqual([ana.user.id]);
+
+    // Ana's ask ends too. The only ask now is Cy's, and Junior cannot
+    // assign him, so nobody is left and the item closes.
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [cy.identityId],
+      assigneeIdentityIds: [cy.identityId],
+    });
+    expect(await open()).toBeUndefined();
+    expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
+      closeReason: "Nobody on the item has an ask now.",
+      status: "done",
+    });
+
+    // Events that add the item at once all keep their asks.
+    const dee = await person("dee@example.com");
+    await participant("slack:C1:1.000001", dee.user);
+    const all = [ana.identityId, bo.identityId, dee.identityId];
+    await Promise.all(
+      [ana, bo, dee].map((asked) =>
+        items.upsert({
+          ...NOTICE,
+          askedIdentityIds: [asked.identityId],
+          assigneeIdentityIds: all,
+        }),
+      ),
+    );
+    expect((await assignees()).sort()).toEqual(
+      [ana.user.id, bo.user.id, dee.user.id].sort(),
+    );
   });
 
   it("saves a chip and an item close together or not at all", async () => {
     const conversationId = "slack:C1:1.000001";
     await conversation(conversationId, "public");
-    const items = createPluginInboxItems({
+    const items = ownedPluginInboxItems({
       conversationId,
       plugin: "github",
       show,
     });
-    await items.upsert({ ...NOTICE, assigneeIdentityIds: [] });
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [],
+      assigneeIdentityIds: [],
+    });
     const chip = {
       key: "getsentry/junior#946",
       kind: "resource_link",
@@ -290,11 +418,10 @@ describe("plugin inbox items", () => {
       db: getDb(),
       plugin: "github",
     }).upsert(chip);
-    const item = await getOpenInboxItemByDedupeKey(
-      getDb(),
-      `plugin:github:${NOTICE.dedupeKey}`,
-      TENANT,
-    );
+    const item = await getOpenInboxItemBySubject(getDb(), {
+      id: NOTICE.subject.id,
+      kind: "github:ready",
+    });
     const changes = createPluginConversationChanges({ plugin: "github", show });
     const detailVersion = async () =>
       (
@@ -305,7 +432,7 @@ describe("plugin inbox items", () => {
       )[0]?.version;
     const before = await detailVersion();
     const close = {
-      dedupeKey: NOTICE.dedupeKey,
+      subject: NOTICE.subject,
       reason: "The pull request merged.",
       status: "done",
     } as const;
@@ -318,17 +445,17 @@ describe("plugin inbox items", () => {
       inboxItems: [{ close, conversationId }],
     };
 
-    // The close of an item in a missing Conversation fails, so the chip
-    // stays open too, and no reader sees a change.
+    // The close of the item from a Conversation that does not own it
+    // fails, so the chip stays open too, and no reader sees a change.
     await expect(
       changes.apply({
         ...merged,
         inboxItems: [
-          ...merged.inboxItems,
           { close, conversationId: "slack:C1:9.000009" },
+          ...merged.inboxItems,
         ],
       }),
-    ).rejects.toThrow("Conversation slack:C1:9.000009 is not found");
+    ).rejects.toThrow("belongs to another Conversation than slack:C1:9.000009");
     expect(await listConversationAnnotations(getDb(), conversationId)).toEqual([
       expect.objectContaining({ status: "open" }),
     ]);
@@ -363,7 +490,7 @@ describe("plugin inbox items", () => {
       const ana = await person("ana@example.com");
       const ben = await person("ben@example.com");
       await participant("slack:D1:1.000001", ana.user);
-      const items = createPluginInboxItems({
+      const items = ownedPluginInboxItems({
         conversationId: "slack:D1:1.000001",
         plugin: "github",
         show,
@@ -372,14 +499,14 @@ describe("plugin inbox items", () => {
       // Ben is not in the Conversation, so the notice leaves him out.
       await items.upsert({
         ...NOTICE,
+        askedIdentityIds: [ben.identityId, ana.identityId],
         assigneeIdentityIds: [ben.identityId, ana.identityId],
       });
       expect(
-        await getOpenInboxItemByDedupeKey(
-          getDb(),
-          `plugin:github:${NOTICE.dedupeKey}`,
-          TENANT,
-        ),
+        await getOpenInboxItemBySubject(getDb(), {
+          id: NOTICE.subject.id,
+          kind: "github:ready",
+        }),
       ).toMatchObject({
         assignees: [{ userId: ana.user.id }],
         visibility,

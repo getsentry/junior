@@ -15,7 +15,7 @@ import {
 } from "@/chat/mcp/auth-store";
 import { PluginMcpClient } from "@/chat/mcp/client";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { defineJuniorPlugins } from "@/plugins";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
@@ -395,7 +395,7 @@ describe("Notion page link cards", () => {
     const notion = fakeNotionMcp({ alice: [LAUNCH_ID, RETRO_ID] });
     const alice = testViewer("alice@example.com");
     await notion.connect(alice, "alice", true);
-    const plugin = pluginCatalogRuntime.getDefinition("notion");
+    const plugin = getAppContext().catalog.getDefinition("notion");
     if (!plugin) throw new Error("Expected the Notion plugin");
     const turnClient = new PluginMcpClient(plugin, {
       authProvider: await createMcpOAuthClientProvider({

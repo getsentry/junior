@@ -122,6 +122,21 @@ export default {
         dependencyTypes: ["dynamic-import"],
       },
     },
+    {
+      name: "config-is-a-leaf",
+      comment:
+        "Config loads before the rest of the app and runs at import time, so src/config/ may reach only other config files and these small leaf modules. A wider import can load the build or create an import cycle.",
+      severity: "error",
+      from: {
+        path: "^src/config/",
+      },
+      to: {
+        path: "^src/",
+        pathNot:
+          "^src/(config/|chat/(optional-string|reasoning-level|slack/emoji|pi/gateway-models|pi/sdk)\\.ts$)",
+        reachable: true,
+      },
+    },
   ],
   options: {
     doNotFollow: {
@@ -129,6 +144,10 @@ export default {
     },
     includeOnly: "^src/",
     moduleSystems: ["es6"],
+    // Read imports from the TypeScript AST. The default transpiles each file
+    // to JavaScript first, which takes about two thirds of the run. The AST
+    // also has `import type` edges, so the rules check those too.
+    parser: "tsc",
     tsConfig: {
       fileName: "./tsconfig.json",
     },

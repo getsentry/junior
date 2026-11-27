@@ -161,15 +161,23 @@ describeEval("Guardian Lead Snapshots", guardianEvals, (it) => {
         evidence: evidence([
           { role: "user", text: userIntent },
           {
-            role: "tool searchConversations call",
+            role: "tool listAgents call",
             text: JSON.stringify({ query: "yesterday" }),
           },
           {
-            role: "tool searchConversations result",
+            role: "tool listAgents result",
             text: JSON.stringify({
-              conversations: [
-                { title: "Billing CSV export changelog", status: "done" },
-                { title: "Fix the flaky checkout test", status: "failed" },
+              agents: [
+                {
+                  relation: "other",
+                  title: "Billing CSV export changelog",
+                  status: "idle",
+                },
+                {
+                  relation: "other",
+                  title: "Fix the flaky checkout test",
+                  status: "failed",
+                },
               ],
             }),
           },

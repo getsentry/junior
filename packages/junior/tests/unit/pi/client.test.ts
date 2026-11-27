@@ -96,7 +96,7 @@ describe("resolveGatewayModel", () => {
   ] as const)(
     "loads %s before pi-ai publishes it",
     async (modelId, contextWindow) => {
-      const { resolveGatewayModel } = await import("@/chat/pi/client");
+      const { resolveGatewayModel } = await import("@/chat/pi/gateway-models");
 
       expect(resolveGatewayModel(modelId)).toEqual(
         expect.objectContaining({

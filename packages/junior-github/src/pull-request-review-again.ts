@@ -484,17 +484,24 @@ export async function dropHeldGitHubReviewAsk(
 export type GitHubReviewAskReason = "checks" | "handled" | "question";
 
 // The tool asks on GitHub, and GitHub's review request webhook shows the
-// item. The mark only needs to outlive that delivery.
+// item. Until then, the mark only needs to outlive that delivery.
 const ASKED_TTL_MS = 60 * 60 * 1000;
+
+// Each sync writes the whole item again, so a shown mark stays and keeps
+// the item's text until the requester acts. A review ask seldom stays open
+// longer. After that, the item shows the general text.
+const SHOWN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const askedSchema = z.object({
   at: z.iso.datetime(),
   // Unset means `handled`.
   reason: z.enum(["handled", "question"]).optional(),
   reviewer: z.string().min(1),
+  /** The item shows the ask, so a later sync does not push it again. */
+  shown: z.boolean().optional(),
 });
 
-/** A review that a Junior tool asked for, until the item shows it. */
+/** A review that a Junior tool asked for, until the requester acts. */
 export type GitHubReviewAsked = z.output<typeof askedSchema>;
 
 function askedKey(target: {
@@ -510,7 +517,11 @@ export async function markGitHubReviewAsked(
   target: { number: number; repositoryFullName: string },
   asked: GitHubReviewAsked,
 ): Promise<void> {
-  await state.set(askedKey(target), askedSchema.parse(asked), ASKED_TTL_MS);
+  await state.set(
+    askedKey(target),
+    askedSchema.parse(asked),
+    asked.shown ? SHOWN_TTL_MS : ASKED_TTL_MS,
+  );
 }
 
 /** Return the review that a Junior tool asked for on one pull request. */
@@ -520,12 +531,4 @@ export async function readGitHubReviewAsked(
 ): Promise<GitHubReviewAsked | undefined> {
   const saved = askedSchema.safeParse(await state.get(askedKey(target)));
   return saved.success ? saved.data : undefined;
-}
-
-/** Drop the record of a review that a Junior tool asked for. */
-export async function dropGitHubReviewAsked(
-  state: PluginState,
-  target: { number: number; repositoryFullName: string },
-): Promise<void> {
-  await state.delete(askedKey(target));
 }

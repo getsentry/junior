@@ -1,5 +1,5 @@
 import { botConfig } from "@/chat/config";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 
 const COMPACTION_TRIGGER_RATIO = 0.9;
 const CONTEXT_INPUT_LIMIT_RATIO = 0.95;

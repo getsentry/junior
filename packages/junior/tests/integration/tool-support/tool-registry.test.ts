@@ -162,7 +162,7 @@ async function sentTurn(
     {
       ...fullContext("slack", behavior.promptMode),
       // No Turn here is a Lead's child.
-      ...bindTurnTools(run, behavior, false),
+      ...bindTurnTools(run, behavior),
     },
   );
   return {
@@ -422,7 +422,6 @@ describe("static tool registry", () => {
         "noReply",
         "readConversationEvent",
         "searchConversationEvents",
-        "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
         "setConfiguration",
@@ -457,7 +456,6 @@ describe("static tool registry", () => {
         "messageAgent",
         "readConversationEvent",
         "searchConversationEvents",
-        "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
         "startAgent",

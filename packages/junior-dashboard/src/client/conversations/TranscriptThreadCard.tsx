@@ -4,7 +4,10 @@ import { Link } from "react-router";
 
 import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
-import { ChildConversationStatusPill } from "./ChildConversationStatus";
+import {
+  ChildConversationStatusPill,
+  subagentChildStatus,
+} from "./ChildConversationStatus";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
 import { FeedThreads } from "./feedThreads";
@@ -14,8 +17,8 @@ import { formatCompactAge } from "../time";
 /**
  * Link a Thread that the parent started to its page: title, status, and age.
  * A Thread in the feed shows its own title and the status of its sidebar
- * row. A Thread the feed leaves out, such as an archived one, shows what the
- * parent recorded and no status.
+ * row. A Thread the feed leaves out, such as an archived one, shows the
+ * result that the parent recorded.
  */
 export function TranscriptThreadCard(props: {
   part: TranscriptViewSubagentPart;
@@ -26,6 +29,7 @@ export function TranscriptThreadCard(props: {
   const prefetch = usePrefetchConversation(id);
   const title =
     thread?.displayTitle ?? props.part.title ?? props.part.task ?? "Thread";
+  const status = thread?.status ?? subagentChildStatus(props.part.status);
   const activityAt =
     thread?.lastSeenAt ??
     (typeof props.timestamp === "number"
@@ -43,7 +47,7 @@ export function TranscriptThreadCard(props: {
       <span className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-dashboard-text">
         <HighlightText text={title} />
       </span>
-      {thread ? <ChildConversationStatusPill status={thread.status} /> : null}
+      {status ? <ChildConversationStatusPill status={status} /> : null}
       {activityAt ? (
         <span className="shrink-0 font-sans text-xs tabular-nums text-dashboard-text-faint">
           {formatCompactAge(activityAt)}

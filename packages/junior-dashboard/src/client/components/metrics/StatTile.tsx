@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
+
 /** Show one period total inside a chart card, above its chart. */
 export function StatTile(props: {
-  label: string;
-  value: string;
+  label: ReactNode;
+  value: ReactNode;
   valueClassName?: string;
 }) {
   return (
