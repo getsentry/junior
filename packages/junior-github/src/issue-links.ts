@@ -200,12 +200,12 @@ async function readReleaseConfig(
       ttlMs: RELEASE_CONFIG_TTL_MS,
     };
   };
-  return await ctx.cache.getOrLoad<string>(
-    releaseConfigKey(link),
-    ctx.cacheOnly || ctx.prefetchOutcome === "out_of_time"
-      ? () => Promise.reject(OUT_OF_TIME)
-      : load,
-  );
+  if (ctx.cacheOnly || ctx.prefetchOutcome === "out_of_time") {
+    const cached = await ctx.cache.get<string>(releaseConfigKey(link));
+    if (cached === undefined) throw OUT_OF_TIME;
+    return cached;
+  }
+  return await ctx.cache.getOrLoad<string>(releaseConfigKey(link), load);
 }
 
 /**
@@ -271,12 +271,7 @@ async function readFields<T>(
     ctx.cacheOnly ||
     (collection === "pulls" && ctx.prefetchOutcome === "out_of_time")
   ) {
-    const stale = await ctx.cache
-      .getOrLoad(key, () => Promise.reject(OUT_OF_TIME))
-      .catch((error: unknown) => {
-        if (error === OUT_OF_TIME) return undefined;
-        throw error;
-      });
+    const stale = await ctx.cache.get(key, { stale: true });
     return schema.nullable().safeParse(stale).data ?? null;
   }
   const cached = schema

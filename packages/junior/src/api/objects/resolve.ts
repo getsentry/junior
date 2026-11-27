@@ -69,9 +69,6 @@ const noProviderCall = () =>
 const NO_PROVIDER_EGRESS: PluginEgress = { fetch: noProviderCall };
 const NO_PROVIDER_MCP: PluginViewerMcp = { callTool: noProviderCall };
 
-// The load of a card that a cache-only read did not find in the cache.
-const NOT_CACHED = new Error("The card is not cached");
-
 function coreLinkTypes(): ObjectLinkType[] {
   // Slack runtime is in core until Slack is a plugin.
   const slack: ObjectLinkType = {
@@ -138,7 +135,7 @@ function cardReadCache(
   servedStale: () => boolean,
 ): PluginCache {
   return {
-    get: async (key) => await cache.get(key),
+    get: async (key, options) => await cache.get(key, options),
     async getOrLoad<T>(
       key: string,
       load: () => Promise<CacheEntry<T>>,
@@ -439,8 +436,16 @@ export async function resolveObjectLinks(
         )
       )?.object ?? null;
     try {
+      if (!reads) {
+        // Only a fresh card, which a live read kept after its access check.
+        const kept = linkType.cacheCards
+          ? await createCache(getStateAdapter(), "object-links").get<
+              ResolvedObjectLink["object"] | null
+            >(key)
+          : undefined;
+        return kept ? [{ object: kept, url }] : [];
+      }
       if (!linkType.cacheCards) {
-        if (!reads) return [];
         const object = await resolve();
         return object ? [{ object, url }] : [];
       }
@@ -450,23 +455,17 @@ export async function resolveObjectLinks(
           fetchedAt = new Date(storedAtMs).toISOString();
         },
       });
-      const object = await cache.getOrLoad(
-        key,
-        reads
-          ? async () => ({
-              // A failed read shows the last good card.
-              staleIfError: true,
-              value: await resolve(),
-              ttlMs: OBJECT_LINK_TTL_MS,
-            })
-          : () => Promise.reject(NOT_CACHED),
-      );
+      const object = await cache.getOrLoad(key, async () => ({
+        // A failed read shows the last good card.
+        staleIfError: true,
+        value: await resolve(),
+        ttlMs: OBJECT_LINK_TTL_MS,
+      }));
       if (!object) return [];
       // A stale read inside the card is older than the card's entry.
       const age = object.fetchedAt ?? fetchedAt;
       return [{ object: age ? { ...object, fetchedAt: age } : object, url }];
     } catch (error) {
-      if (error === NOT_CACHED) return [];
       // One failed provider read must not hide the other cards.
       logException(error, "object_link.resolve.failed", {
         "app.plugin.name": linkType.owner,
