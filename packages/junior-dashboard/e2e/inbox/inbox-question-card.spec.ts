@@ -19,7 +19,7 @@ async function precedes(first: Locator, second: Locator) {
 
 test.describe("new UI", () => {
   for (const view of [desktop, mobile]) {
-    test(`an Inbox question shows its question, then Junior's message, then the form (${view.name})`, async ({
+    test(`an Inbox question shows Junior's message, then its question, then the form (${view.name})`, async ({
       dashboard,
       page,
     }) => {
@@ -41,9 +41,9 @@ test.describe("new UI", () => {
       );
       const message = row.getByRole("region", { name: "Junior's message" });
       await expect(message).toContainText(ASK);
-      expect(await precedes(question, message)).toBe(true);
+      expect(await precedes(message, question)).toBe(true);
       const hold = row.getByRole("button", { name: "Hold", exact: true });
-      expect(await precedes(message, hold)).toBe(true);
+      expect(await precedes(question, hold)).toBe(true);
       // The row's head and Related link the subject, so no preview card
       // repeats it.
       await expect(row.locator("[data-subject-card]")).toHaveCount(0);

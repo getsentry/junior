@@ -87,7 +87,7 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
  * again in the form.
  */
 export function InboxItemActions(props: {
-  /** What Junior said around the question, after the question. */
+  /** What Junior said around the question, before the question. */
   context?: ReactNode;
   dismiss?: boolean;
   /** More actions after Take and Dismiss, such as an Inbox card's Snooze. */
@@ -210,9 +210,10 @@ export function InboxItemActions(props: {
       {item.kind === "notice" ? <InboxItemRelated item={item} /> : null}
       {item.kind === "action" && question ? (
         <div className="grid gap-3 text-sm">
-          {/* The question comes first and in full, then what Junior said
-              around it. Questions that each have their own choices show
-              in the form instead. */}
+          {/* What Junior said around the question comes first, then the
+              question in full. Questions that each have their own choices
+              show in the form instead. */}
+          {props.context}
           {questionText ? (
             <section aria-label="Question" className="grid gap-1">
               <span className="text-xs text-dashboard-text-muted">
@@ -223,7 +224,6 @@ export function InboxItemActions(props: {
               </div>
             </section>
           ) : null}
-          {props.context}
           <InboxItemRelated item={item} />
           <UserInputForm
             draft={draft}
