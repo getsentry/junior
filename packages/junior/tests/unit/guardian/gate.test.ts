@@ -644,7 +644,7 @@ describe("tool action review", () => {
     });
   });
 
-  it("reviews a shell command by the checkouts that it can reach", async () => {
+  it("reviews a shell command from its text, with the placeholders", async () => {
     const requests: ReviewRequest[] = [];
     const actionReview = createToolActionReview({
       context: {
@@ -653,16 +653,7 @@ describe("tool action review", () => {
         destination: LOCAL_DESTINATION,
         source: LOCAL_SOURCE,
         userIntent: () => "Push the fix.",
-        sandboxRepos: async () => [
-          {
-            path: "/vercel/sandbox/repos/demo",
-            remotes: [
-              "https://example.com/demo.git",
-              "https://example.com/upstream.git",
-            ],
-          },
-        ],
-        sandboxUnpushed: async () => "commit abc123 fix: Page the export",
+        reviewsShell: true,
       },
       guardian: () => ({
         review: async (request) => {
@@ -692,22 +683,7 @@ describe("tool action review", () => {
     expect(requests[0]!.actions[0]!).toMatchObject({
       tool: "bash",
     });
-    expect(requests[0]!.sandbox).toEqual({
-      // No plugin knows the remote, so the world can read it.
-      repos: [
-        {
-          path: "/vercel/sandbox/repos/demo",
-          remotes: [
-            { ref: "https://example.com/demo.git", audience: "world" },
-            { ref: "https://example.com/upstream.git", audience: "world" },
-          ],
-          // A push that can reach the world shows what it may publish.
-          unpushed: "commit abc123 fix: Page the export",
-        },
-      ],
-      urls: [{ ref: "https://example.com/mirror.git", audience: "world" }],
-      placeholders: [],
-    });
+    expect(requests[0]!.sandbox).toEqual({ placeholders: [] });
   });
 
   it("fails only the action that cannot be reviewed in a batch", async () => {

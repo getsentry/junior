@@ -53,9 +53,11 @@ import type {
 
 /** Input for a pure Markdown rewrite before destination delivery formatting. */
 /** A call that a plugin's `guardian` hook describes. */
-export type PluginGuardianCall =
-  | { kind: "mcp"; tool: string; input: Record<string, unknown> }
-  | { kind: "workspaceCheckout"; repo: string };
+export type PluginGuardianCall = {
+  kind: "mcp";
+  tool: string;
+  input: Record<string, unknown>;
+};
 
 export interface FormatMarkdownHookContext {
   /**
@@ -197,9 +199,8 @@ export interface PluginHooks {
     | { objectAnnotations: ObjectAnnotation[] }
     | void;
   /**
-   * What a call of this plugin's MCP tools touches, or the clone URL and
-   * audience of a Workspace checkout of its repository. Without an answer,
-   * an MCP call gets the manifest's `mcp.audience`, else `world`.
+   * What a call of this plugin's MCP tools touches. Without an answer, an
+   * MCP call gets the manifest's `mcp.audience`, else `world`.
    */
   guardian?(
     call: PluginGuardianCall,

@@ -61,29 +61,6 @@ export function ownPullRequests(...refs: string[]): GuardianDesignFacts {
   return { ownPullRequests: refs };
 }
 
-/**
- * A Sandbox with this GitHub repository checked out under `repos/`, and
- * what `git log -p --all --not --remotes` prints there.
- */
-export function checkoutOf(
-  repo: string,
-  unpushed?: string,
-  /** More remote repositories (`owner/name`), such as an `upstream`. */
-  otherRemotes: readonly string[] = [],
-): GuardianDesignFacts {
-  return {
-    checkouts: [
-      {
-        path: `/vercel/sandbox/repos/${repo.split("/")[1]}`,
-        remotes: [repo, ...otherRemotes].map(
-          (name) => `https://github.com/${name}.git`,
-        ),
-        ...(unpushed ? { unpushed } : undefined),
-      },
-    ],
-  };
-}
-
 const EVENT_ACTOR = { platform: "system", name: "event" } as const;
 
 /** Context of a Turn that a Watch Event started, as core runs it today. */

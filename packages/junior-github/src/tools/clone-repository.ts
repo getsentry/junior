@@ -9,7 +9,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { isReservedSandboxDirectory } from "../sandbox-paths.js";
-import { checkoutCall } from "../tool-support/guardian-call.js";
 
 const inputSchema = z
   .object({
@@ -151,10 +150,8 @@ export const gitHubCloneRepositoryTool = definePluginTool({
   },
   description:
     "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or opt in to an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
-  // The clone stays in the Sandbox. Core records its clone URL for the push
-  // check.
+  // The clone stays in the Sandbox.
   executionMode: "sequential",
-  guardian: (input, ctx) => checkoutCall(input.repo, ctx),
   inputSchema,
   outputSchema,
   async execute(

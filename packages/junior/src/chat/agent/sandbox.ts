@@ -60,8 +60,6 @@ export interface AgentSandbox {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
-  /** The Workspace whose checkouts this Sandbox holds, if any. */
-  activeWorkspace(): Workspace | undefined;
   switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   close(): void;
   writeGeneratedFiles(files: FileUpload[]): Promise<GeneratedFileRef[]>;
@@ -190,7 +188,6 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     captureRepositoryInstructions: sandbox.captureRepositoryInstructions,
     workspace: sandbox.workspace,
     sandboxRef: sandbox.sandboxRef,
-    activeWorkspace: sandbox.activeWorkspace,
     switchWorkspace: sandbox.switchWorkspace,
     close: sandbox.close,
     tools: {

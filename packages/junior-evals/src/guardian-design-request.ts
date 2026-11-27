@@ -3,30 +3,14 @@
  * stored records that the case gives (`facts-from-junior` in
  * `design/guardian.md`).
  */
-import { posix } from "node:path";
 import type { GuardianContext } from "@sentry/junior-plugin-api";
 import { mapBounded } from "@/chat/fan-out";
-import { actionFromGuardian } from "@/chat/guardian/call-facts";
-import { repositoryUrlKey } from "@/chat/guardian/checkout-records";
-import type {
-  Action,
-  Message,
-  ReviewRequest,
-  Target,
-} from "@/chat/guardian/guardian";
+import type { Action, Message, ReviewRequest } from "@/chat/guardian/guardian";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import { guardianMessages } from "@/chat/guardian/request";
-import {
-  credentialPlaceholders,
-  gitCommandFacts,
-  sandboxFacts,
-} from "@/chat/guardian/sandbox-facts";
+import { credentialPlaceholders } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-import type {
-  GuardianDesignCheckout,
-  GuardianDesignFacts,
-} from "./guardian-design-harness";
+import type { GuardianDesignFacts } from "./guardian-design-harness";
 import { agentActionFacts } from "./guardian-tools";
 /**
  * The messages of the work. A line of the person that reaches the Turn
@@ -136,77 +120,16 @@ async function designAction(
   };
 }
 
-/**
- * What the Sandbox can reach, for a batch with a shell command, as the gate
- * reads it: the case's checkouts, and their unpushed commits for a push.
- */
-async function designSandbox(
+/** What core adds for a batch with a shell command: the placeholders. */
+function designSandbox(
   proposals: readonly ToolActionProposal[],
-  facts: GuardianDesignFacts | undefined,
-  ctx: GuardianContext,
-): Promise<ReviewRequest["sandbox"]> {
-  const commands = proposals.filter(({ tool }) => tool.name === "bash");
-  if (commands.length === 0) return undefined;
-  const checkouts = facts?.checkouts ?? [];
-  const git = commands.map(({ input }) => gitCommandFacts(input));
-  // Core lists the checkouts under the root, and those that hold a
-  // directory that a command runs in.
-  const dirs = git.flatMap((facts) =>
-    facts.dirs.map((dir) => posix.resolve(SANDBOX_WORKSPACE_ROOT, dir)),
-  );
-  const listed = checkouts.filter(
-    ({ path }) =>
-      [SANDBOX_WORKSPACE_ROOT, `${SANDBOX_WORKSPACE_ROOT}/repos`].includes(
-        posix.dirname(path),
-      ) || dirs.some((dir) => dir === path || dir.startsWith(`${path}/`)),
-  );
-  return await sandboxFacts({
-    repos: listed.map(({ path, remotes }) => ({ path, remotes })),
-    urls: git.flatMap((facts) => facts.urls),
+): ReviewRequest["sandbox"] {
+  if (!proposals.some(({ tool }) => tool.name === "bash")) return undefined;
+  return {
     placeholders: credentialPlaceholders(
       getPlugins().map((plugin) => plugin.manifest),
     ),
-    ...(git.some((facts) => facts.pushes)
-      ? {
-          unpushed: async (path: string) =>
-            checkouts.find((checkout) => checkout.path === path)?.unpushed ??
-            "",
-        }
-      : undefined),
-    targets: await workspaceTargets(checkouts, ctx),
-  });
-}
-
-/**
- * The clone records of the case's Sandbox. Each checkout is the Workspace
- * checkout of its first remote, which the GitHub plugin describes, as core
- * reads it at push time. Other remotes have no record.
- */
-async function workspaceTargets(
-  checkouts: readonly GuardianDesignCheckout[],
-  ctx: GuardianContext,
-): Promise<Map<string, Target>> {
-  const github = getPlugins().find(
-    (plugin) => plugin.manifest.name === "github",
-  );
-  const described = await mapBounded(checkouts, async ({ remotes }) => {
-    const repo = /^https:\/\/github\.com\/([^/]+\/[^/]+?)\.git$/.exec(
-      remotes[0] ?? "",
-    )?.[1];
-    const result = repo
-      ? await github?.hooks?.guardian?.(
-          { kind: "workspaceCheckout", repo },
-          ctx,
-        )
-      : undefined;
-    return result ? actionFromGuardian(result).target : undefined;
-  });
-  const targets = new Map<string, Target>();
-  for (const target of described) {
-    const key = target && repositoryUrlKey(target.ref);
-    if (target && key) targets.set(key, target);
-  }
-  return targets;
+  };
 }
 
 /** The Guardian request for the reviewed actions of one case, in order. */
@@ -215,7 +138,7 @@ export async function designGuardianRequest(
   facts: GuardianDesignFacts | undefined,
 ): Promise<ReviewRequest> {
   const ctx = designGuardianContext(facts);
-  const sandbox = await designSandbox(proposals, facts, ctx);
+  const sandbox = designSandbox(proposals);
   return {
     messages: designMessages(proposals[0]!, facts),
     actions: await mapBounded(proposals, async (proposal) =>

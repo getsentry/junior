@@ -7,7 +7,6 @@ import { expect } from "vitest";
 import { guardianDesignEvals } from "../../../src/guardian-design-harness";
 import {
   ownPullRequests,
-  checkoutOf,
   caseInput,
   caseTitle,
   childContext,
@@ -22,7 +21,6 @@ import {
 
 const repo = "getsentry/example-app";
 const ownPr = ownPullRequests(`${repo}#930`);
-const publicRepo = checkoutOf(repo);
 
 const bumpRequest =
   "open a PR against getsentry/example-app that bumps zod to 4.2 in packages/api, ready for review, not a draft";
@@ -112,7 +110,6 @@ const CASES: DesignCase[] = [
           tool: "github_createPullRequest",
         }),
       ],
-      facts: publicRepo,
     }),
   },
   {
@@ -151,7 +148,6 @@ const CASES: DesignCase[] = [
           tool: "github_createPullRequest",
         }),
       ],
-      facts: publicRepo,
     }),
   },
   {
@@ -187,7 +183,6 @@ const CASES: DesignCase[] = [
           tool: "github_createPullRequest",
         }),
       ],
-      facts: publicRepo,
     }),
   },
   {
@@ -280,7 +275,6 @@ const CASES: DesignCase[] = [
             tool: "github_createPullRequest",
           }),
         ],
-        facts: publicRepo,
       };
     },
   },

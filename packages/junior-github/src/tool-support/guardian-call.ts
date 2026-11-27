@@ -73,18 +73,3 @@ async function isOwnPullRequest(
   });
   return changes.length > 0;
 }
-
-/**
- * The clone URL of a repository that the Sandbox checks out, for the push
- * check. Workspace checkouts and `github_cloneRepository` both clone it.
- */
-export async function checkoutCall(
-  repoInput: string,
-  ctx: GuardianContext,
-): Promise<GuardianResult> {
-  const repo = parseRepo(repoInput);
-  return {
-    target: `https://github.com/${repo.owner}/${repo.name}.git`,
-    audience: await repositoryAudience(ctx, repo),
-  };
-}

@@ -25,7 +25,6 @@ import type {
   Guardian,
   Review,
   ReviewRequest,
-  Target,
 } from "@/chat/guardian/guardian";
 import type {
   RootConversation,
@@ -36,12 +35,7 @@ import type {
   ToolActionScript,
 } from "@/chat/guardian/proposal";
 import { guardianMessages } from "@/chat/guardian/request";
-import {
-  credentialPlaceholders,
-  gitCommandFacts,
-  sandboxFacts,
-  type SandboxRepo,
-} from "@/chat/guardian/sandbox-facts";
+import { credentialPlaceholders } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { getDb } from "@/chat/db";
@@ -63,16 +57,8 @@ export interface ToolActionReviewContext {
   evidence?: () => ToolActionEvidence;
   /** Read the Run's own Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
-  /**
-   * Read the Git checkouts of the Sandbox, also those that hold the
-   * directories that the commands run in. Set only when Guardian reviews
-   * shell commands, which only the agent Guardian does.
-   */
-  sandboxRepos?: (dirs: readonly string[]) => Promise<SandboxRepo[]>;
-  /** Read the commits of one checkout that no remote has yet. */
-  sandboxUnpushed?: (path: string) => Promise<string>;
-  /** Read the recorded target of each clone URL of the Sandbox. */
-  sandboxTargets?: () => Promise<ReadonlyMap<string, Target>>;
+  /** Guardian reviews shell commands, which only the agent Guardian does. */
+  reviewsShell?: boolean;
 }
 
 /** One exact tool call that the agent asked to run. */
@@ -537,7 +523,7 @@ function mayReviewCall(
   // Bash has no approval mode, so the current Guardian skips it
   // (getsentry/junior#4550). The agent Guardian reviews each command.
   return action.toolName === "bash"
-    ? context.sandboxRepos !== undefined
+    ? context.reviewsShell === true
     : mayNeedReview(action.tool);
 }
 
@@ -700,23 +686,14 @@ export function createToolActionReview(options: {
         actions: batch.map((review) => review.action),
         messages: guardianMessages(batch[0]!.proposal),
       };
-      const { sandboxRepos, sandboxTargets, sandboxUnpushed } = options.context;
-      const commands = request.actions.filter((a) => a.tool === "bash");
-      // A shell command is reviewed by what the Sandbox can reach.
-      if (sandboxRepos && commands.length > 0) {
-        const git = commands.map((a) => gitCommandFacts(a.input));
-        const pushes = git.some((facts) => facts.pushes);
-        request.sandbox = await sandboxFacts({
-          repos: await sandboxRepos(git.flatMap((facts) => facts.dirs)),
-          urls: git.flatMap((facts) => facts.urls),
+      // A shell command is judged from its text (`sandbox-boundary`), with
+      // the credential placeholders of the Sandbox (`placeholders`).
+      if (request.actions.some((action) => action.tool === "bash")) {
+        request.sandbox = {
           placeholders: credentialPlaceholders(
             getPlugins().map((plugin) => plugin.manifest),
           ),
-          ...(pushes && sandboxUnpushed
-            ? { unpushed: sandboxUnpushed }
-            : undefined),
-          targets: (await sandboxTargets?.()) ?? new Map(),
-        });
+        };
       }
       const decisions = await options
         .guardian({ proposals: batch.map((review) => review.proposal) })

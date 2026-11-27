@@ -51,20 +51,8 @@ export interface ReviewRequest {
   actions: Action[];
   /** Oldest first. Every instruction line is kept. */
   messages: Message[];
-  /** What the Sandbox can reach, set when the batch has a shell command. */
+  /** What Guardian knows about the Sandbox, set for a shell command. */
   sandbox?: {
-    repos: {
-      path: string;
-      /** The target of each fetch and push URL of the checkout. */
-      remotes: Target[];
-      /**
-       * Local commits that no remote has, with patches, cut to a
-       * bound. Untrusted data. Set when the batch pushes and can reach `world`.
-       */
-      unpushed?: string;
-    }[];
-    /** Repository URLs that the shell commands name, such as a push URL. */
-    urls?: Target[];
     /** Credential placeholders and the domains each one is sent to. */
     placeholders: { env: string; domains: string[] }[];
   };

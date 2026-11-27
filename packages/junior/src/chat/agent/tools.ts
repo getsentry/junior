@@ -95,14 +95,7 @@ import { createCurrentGuardian } from "@/chat/guardian/current";
 import type { GuardianBatch } from "@/chat/guardian/gate";
 import type { Guardian } from "@/chat/guardian/guardian";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import {
-  readSandboxRepos,
-  readUnpushedCommits,
-} from "@/chat/guardian/sandbox-facts";
-import { readCheckoutTargets } from "@/chat/guardian/checkout-records";
-import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { createToolActionReview } from "@/chat/guardian/gate";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
 import { guardianPluginFacts } from "@/chat/guardian/policy";
@@ -576,31 +569,9 @@ export async function wireAgentTools(
               }),
           }
         : undefined),
-      // Only the agent Guardian reviews shell commands. Only a running
-      // Sandbox has checkouts, so review never starts one.
+      // Only the agent Guardian reviews shell commands.
       ...(isExperimentalFeatureEnabled("guardian-agent")
-        ? {
-            sandboxRepos: async (dirs) =>
-              agentSandbox.sandboxRef()
-                ? await readSandboxRepos(
-                    agentSandbox.workspace,
-                    SANDBOX_WORKSPACE_ROOT,
-                    dirs,
-                  )
-                : [],
-            sandboxUnpushed: async (path: string) =>
-              await readUnpushedCommits(agentSandbox.workspace, path),
-            sandboxTargets: async () =>
-              await readCheckoutTargets({
-                conversationId: args.run.conversationId,
-                conversationIds: async () =>
-                  await readAncestorAndDescendantIds(
-                    getDb(),
-                    args.run.conversationId,
-                  ),
-                workspaceRepos: agentSandbox.activeWorkspace()?.repos ?? [],
-              }),
-          }
+        ? { reviewsShell: true }
         : undefined),
     },
     onDecision: ({ toolCallId, toolName, decision }) =>

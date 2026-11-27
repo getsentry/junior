@@ -23,18 +23,6 @@ const SAMPLE_TIMEOUT_MS = 60_000;
  */
 export type GuardianOutcome = "allow" | "ask" | "deny" | "unavailable";
 
-/** One Git checkout in the Sandbox, as the gate reads it for a command. */
-export interface GuardianDesignCheckout {
-  path: string;
-  /**
-   * Its remote URLs. The first is its Workspace checkout, whose plugin types
-   * it, as in production. Core has no record of the others.
-   */
-  remotes: string[];
-  /** What `git log -p --all --not --remotes` prints in this checkout. */
-  unpushed?: string;
-}
-
 /**
  * Stored records that production reads to build Guardian's facts, which the
  * evals have no database for (`facts-from-junior`). Each call's target and
@@ -57,8 +45,6 @@ export interface GuardianDesignFacts {
    * core's code-change records hold.
    */
   ownPullRequests?: string[];
-  /** The Git checkouts of the Sandbox, for a shell command. */
-  checkouts?: GuardianDesignCheckout[];
   /**
    * GitHub repositories (`owner/name`) that are private. GitHub answers
    * every other repository as public.
