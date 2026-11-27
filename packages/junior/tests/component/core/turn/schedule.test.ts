@@ -370,7 +370,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     });
   });
 
-  it("ends a superseded Turn at once when it waits between steps", async () => {
+  it("ends a superseded Turn at once when it waits between steps, and says it ended", async () => {
     const alice = await schedule("event-1");
     await commitStep(engineCtx, await claim(alice.turnId), CONTINUE, []);
     publishes = [];
@@ -381,6 +381,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       state: "cancelled",
       endReason: "superseded",
     });
+    expect(ended).toEqual([alice.turnId]);
     expect(publishes).toEqual([{ turnId: bob.turnId, committed: true }]);
     await expect(claimTurn(engineCtx, bob.turnId)).resolves.toMatchObject({
       turnId: bob.turnId,

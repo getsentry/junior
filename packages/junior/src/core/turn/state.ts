@@ -326,25 +326,28 @@ async function isSuperseded(
  * Makes way for a Turn that supersedes this one. Call it under the
  * Conversation lock. A queued Turn has no step in flight, so it ends now and
  * moves `lease_epoch`. A running Turn moves behind the new Turn, and
- * `commitStep` or `releaseTurn` ends it, so the step's work is kept.
+ * `commitStep` or `releaseTurn` ends it, so the step's work is kept. True
+ * when the Turn ended now.
  */
 export async function supersedeTurn(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
-): Promise<void> {
+): Promise<boolean> {
   const db = executor.db();
-  await db
+  const ended = await db
     .update(juniorTurns)
     .set({
       ...SUPERSEDED_END,
       leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")));
+    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")))
+    .returning({ id: juniorTurns.id });
   await db
     .update(juniorTurns)
     .set({ priority: TURN_PRIORITY.normal, updatedAt: sql`now()` })
     .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "running")));
+  return ended.length > 0;
 }
 
 /**

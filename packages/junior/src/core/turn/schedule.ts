@@ -40,7 +40,11 @@ import { juniorTurnInbox } from "@/db/schema";
 /** The Turn that an input went to, and whether the input created it. */
 type ScheduleResult = { turnId: string; created: boolean };
 
-type Placement = ScheduleResult & { publish: boolean };
+type Placement = ScheduleResult & {
+  publish: boolean;
+  /** A queued Turn that the input superseded, which ended now. */
+  ended?: string;
+};
 
 // Not exported: scheduleInput is the only writer, so every input row is
 // written under the Conversation lock.
@@ -111,9 +115,11 @@ async function placeInput(
     await addInput({ executor }, { ...input, turnId });
     return { turnId, created: false, publish: false };
   }
-  if (choice.supersede) {
-    await supersedeTurn({ executor }, choice.supersede.turnId);
-  }
+  const ended =
+    choice.supersede &&
+    (await supersedeTurn({ executor }, choice.supersede.turnId))
+      ? choice.supersede.turnId
+      : undefined;
   const turn = await createTurn(
     { executor },
     {
@@ -129,15 +135,15 @@ async function placeInput(
     turnId: turn.turnId,
     created: true,
     publish: openTurns.length === 0 || choice.supersede !== undefined,
+    ended,
   };
 }
 
 /**
- * Puts an input into the Turn that `assignTurn` picks, and publishes a Turn
- * that the input created when no other Turn is open or when it supersedes
- * one. An input with a known idempotency key writes nothing. Call it outside
- * a transaction: it publishes after its own commit, and a publish error
- * reaches the caller with the input already stored.
+ * Puts an input into the Turn that `assignTurn` picks, then publishes what
+ * the placement calls for, such as the end of a Turn it superseded. A known
+ * idempotency key writes nothing. Call it outside a transaction: it publishes
+ * after its own commit, so a publish error leaves the input stored.
  */
 export async function scheduleInput(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
@@ -148,6 +154,12 @@ export async function scheduleInput(
     input.conversationId,
     () => placeInput({ executor }, input),
   );
+  if (placement.ended) {
+    await publishTurnEnded(
+      { queue },
+      { conversationId: input.conversationId, turnId: placement.ended },
+    );
+  }
   if (placement.publish) {
     await publishTurnStep({ queue }, placement.turnId);
   }
