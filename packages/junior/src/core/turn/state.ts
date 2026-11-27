@@ -128,8 +128,9 @@ export type TurnRecord = Turn & {
   failureCode: ConversationTurnFailureCode | null;
   failureReason: ConversationTurnFailureReason | null;
   failureEventId: string | null;
-  /** When an attempt first claimed the Turn. Null when it never ran. */
+  /** When the Turn started running. Null if it never ran. */
   startedAt: Date | null;
+  /** When the Turn ended. Null while it's queued or running. */
   endedAt: Date | null;
 };
 
