@@ -1,0 +1,53 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "5dddf30d-1fa5-4f06-a90e-acd6a2f366d3",
+  "prevIds": ["8a318893-4b46-4fb3-9e04-6361efea0a02"],
+  "footprints": [
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_spaces", "name"],
+      "writes": [
+        "s|col|public.junior_spaces.name",
+        "n|col|public.junior_spaces.name",
+        "e|col|public.junior_spaces.name"
+      ],
+      "reads": ["n|tbl|public.junior_spaces", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_spaces", "archived_at"],
+      "writes": [
+        "s|col|public.junior_spaces.archived_at",
+        "n|col|public.junior_spaces.archived_at",
+        "e|col|public.junior_spaces.archived_at"
+      ],
+      "reads": ["n|tbl|public.junior_spaces", "n|sch|public"]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_spaces", "visibility"],
+      "writes": [
+        "s|col|public.junior_spaces.visibility",
+        "n|col|public.junior_spaces.visibility",
+        "e|col|public.junior_spaces.visibility"
+      ],
+      "reads": ["n|tbl|public.junior_spaces", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_spaces\",\"name\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_spaces\",\"archived_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_spaces\",\"visibility\"]"
+    }
+  ]
+}
