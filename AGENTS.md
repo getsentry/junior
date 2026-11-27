@@ -22,7 +22,7 @@ the check first. A rule that only review enforces is a judgment call.
 | No mutable runtime globals. No test-only singleton mutation APIs. | `test-architecture:check` for tests, review elsewhere |
 | Query tables with the Drizzle query builder. Use `sql` only for expressions inside a builder query, or for statements without a table. | oxlint `junior/no-raw-sql-queries` |
 | Store money in Postgres as whole micro-USD: a `bigint` column or an integer metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`. | `money-units:check` |
-| Never call a third-party API, such as GitHub, to render UI. Render from data that Junior stores and that webhooks and tools keep current. Call third parties as little as possible. | Review |
+| Never call a third-party API, such as GitHub, to render UI, even through a cache. Render from data that Junior stores, such as the Annotation, which webhooks and tools write. Call a third party rarely, almost always from a tool or a webhook. | Review |
 | Use the Postgres planner defaults. Do not change planner settings, such as `jit_above_cost` or `enable_seqscan`, or shape a query or a test around the plan. When the defaults are too slow, the schema is wrong: fix it. | Review |
 | Isolate each feature, such as To-dos or the Inbox, in its own module. It reaches the core agent loop only through plugin hooks, like `packages/junior/src/chat/todos/registration.ts`, and core does not call it. Extend a hook before you add one. Feature code in core needs a comment that says why it cannot be split out. | Review |
 | A construct in reply content, such as a table or a card, must render on every surface that shows replies: natively, or with a fallback that keeps its content. | `reply-rendering:check` |
