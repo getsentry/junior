@@ -94,7 +94,9 @@ export async function stopChildAgentsOf(
     state,
   });
   await dropUnreadLoopReplies(conversationIds, stoppedIds, state);
-  await dropOwnUnreadLoopReplies(conversationId, state);
+  // This Conversation's own unread replies are not dropped here. A person's
+  // stop of it already dropped them, and a stop of a Conversation above it
+  // holds them in the parent.
 }
 
 /**
