@@ -35,8 +35,8 @@ and changes an item.
   Inbox events, never from one webhook. A lost or late webhook only delays
   the correct output until the next read.
 - `inbox-log` What a person did on an item, such as a dismiss or a Resume,
-  comes only from its Inbox events. Each event records the rule that gave
-  the person's output. A kind keeps no other record of what people did.
+  comes only from its Inbox events. A kind keeps no other record of what
+  people did.
 - `dismiss-holds` A dismiss holds while the person's output comes from the
   same rule. When a different rule gives them an output, they get it. A
   kind can state a longer hold as a rule.
