@@ -8,31 +8,15 @@ import type {
 } from "@/chat/tool-support/definition";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 
-const MAX_PROPOSAL_DESCRIPTION_CHARS = 300;
-
 /**
  * The current Guardian's line for one call: the summary of the tool's
- * `guardian`, else its target with the reason label, else the tool name and
- * a short rendering of the input.
+ * `guardian`, as main's `describeProposal` gave it. Other calls get no line,
+ * as on main.
  */
 export function describedProposal(
   described: ActionDescription | undefined,
-  toolName: string,
-  input: Record<string, unknown>,
-): string {
-  if (described?.summary) {
-    return described.summary;
-  }
-  if (described?.target) {
-    const reason = described.toolDecision?.reason;
-    return reason
-      ? `${described.target.ref} (${reason})`
-      : described.target.ref;
-  }
-  return truncateMiddle(
-    `${toolName} ${JSON.stringify(input)}`,
-    MAX_PROPOSAL_DESCRIPTION_CHARS,
-  );
+): string | undefined {
+  return described?.summary;
 }
 
 /** Cut the middle of `text` so it fits in `maxChars`. */
@@ -58,14 +42,11 @@ export function proposalTool(
   proposalDescription: string | undefined,
 ): ToolActionProposal["tool"] {
   const name = resolved?.name ?? toolName;
+  const annotations = resolved?.serverHints ?? tool.annotations;
   const catalogSource = resolved?.source ?? tool.source;
   return {
-    // A dispatcher's own marks say nothing about the real tool.
-    ...(resolved?.serverHints
-      ? { serverHints: resolved.serverHints }
-      : !resolved && tool.annotations
-        ? { annotations: tool.annotations }
-        : undefined),
+    // The current Guardian reads a remote server's marks as `annotations`.
+    ...(annotations ? { annotations } : undefined),
     description: resolved?.description ?? tool.description,
     ...(name !== toolName ? { dispatcherName: toolName } : undefined),
     ...(tool.identity ? { identity: tool.identity } : undefined),

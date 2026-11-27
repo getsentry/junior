@@ -354,12 +354,7 @@ function buildProposal(
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     ...(script ? { script: boundedScript(script) } : undefined),
-    tool: proposalTool(
-      toolName,
-      tool,
-      resolved,
-      describedProposal(described, resolved?.name ?? toolName, input),
-    ),
+    tool: proposalTool(toolName, tool, resolved, describedProposal(described)),
   };
 }
 

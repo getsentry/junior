@@ -125,8 +125,8 @@ async function installedFacts(): Promise<GuardianDestinationFact[]> {
 
 /**
  * The proposal as production describes it with the case's records: a
- * plugin's `guardian` reads them, and its decision reason reaches the
- * current Guardian in `proposalDescription`.
+ * plugin's `guardian` reads them, and its target reaches the current
+ * Guardian in `proposalDescription`.
  */
 async function withRecords(
   proposal: ToolActionProposal,

@@ -79,6 +79,12 @@ export interface LinearPluginOptions {
    * these teams as one the world can read. Other team keys are internal.
    */
   publicTeams?: readonly string[];
+  /**
+   * Facts for action review about where Linear writes go. For example, say
+   * which teams sync issues to public GitHub repositories. Only Guardian reads
+   * it.
+   */
+  reviewContext?: string;
 }
 
 const TEAM_KEY = /^[A-Z][A-Z0-9]*$/;
@@ -185,12 +191,8 @@ export function linearPlugin(
         guardian: { skipReview: [...LINEAR_READ_TOOLS] },
       },
       name: "linear",
-      // The current Guardian reads this fact. The agent Guardian reads the
-      // audience that `guardian` gives each write.
-      ...(publicTeams.size > 0
-        ? {
-            reviewContext: `Issues in the Linear teams ${[...publicTeams].join(", ")} sync to public GitHub repositories, so people outside the organization can read their title and description. Other teams are internal.`,
-          }
+      ...(options.reviewContext
+        ? { reviewContext: options.reviewContext }
         : undefined),
     },
     inboxSubjects: linearInboxSubjectKinds,

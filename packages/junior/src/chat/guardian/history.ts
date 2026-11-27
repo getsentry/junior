@@ -17,7 +17,6 @@ const priorRejectionSchema = z
     tool: z
       .object({
         annotations: z.record(z.string(), z.unknown()).optional(),
-        serverHints: z.record(z.string(), z.unknown()).optional(),
         description: z.string(),
         dispatcherName: z.string().optional(),
         identity: z

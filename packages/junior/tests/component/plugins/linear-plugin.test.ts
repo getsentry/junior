@@ -24,7 +24,10 @@ describe("Linear plugin package", () => {
   });
 
   it("gives each team write the audience of its team", async () => {
-    const registration = linearPlugin({ publicTeams: ["PY"] });
+    const registration = linearPlugin({
+      publicTeams: ["PY"],
+      reviewContext: "Issues in the Linear team PY are public.",
+    });
     const tools = registration.hooks!.guardian!.tools!;
     const guardian = (tool: string, input: Record<string, unknown>) =>
       tools[tool]!(input, {} as never);
@@ -36,7 +39,10 @@ describe("Linear plugin package", () => {
       "/plugins/linear",
     );
 
-    expect(manifest.reviewContext).toContain("Linear teams PY sync");
+    // The host's own text reaches the current Guardian unchanged.
+    expect(manifest.reviewContext).toBe(
+      "Issues in the Linear team PY are public.",
+    );
     await expect(
       guardian("save_issue", { team: "PY", title: "x" }),
     ).resolves.toEqual({ target: "Linear team PY", audience: "world" });

@@ -9,7 +9,6 @@ import {
 function transcript(
   marker: Record<string, unknown>,
   error: string,
-  tool: Record<string, unknown> = {},
 ): PiMessage[] {
   const decision = marker["decision"] === "ask" ? "ask" : "deny";
   const reason =
@@ -46,7 +45,6 @@ function transcript(
             tool: {
               description: "Delete a workspace.",
               name: "deleteWorkspace",
-              ...tool,
             },
           },
         },
@@ -125,28 +123,6 @@ describe("action review history", () => {
         decision: "deny",
         input: { workspaceId: "production" },
         tool: expect.objectContaining({ name: "deleteWorkspace" }),
-      }),
-    ]);
-  });
-
-  it("restores a rejection of a remote MCP tool with its server hints", () => {
-    const rejections = restoreToolActionRejections(
-      transcript(
-        {
-          decision: "ask",
-          reason: "The server says read-only, but the call writes.",
-          version: 1,
-        },
-        "Action needs confirmation.",
-        { serverHints: { readOnlyHint: true } },
-      ),
-    );
-
-    expect(rejections).toEqual([
-      expect.objectContaining({
-        tool: expect.objectContaining({
-          serverHints: { readOnlyHint: true },
-        }),
       }),
     ]);
   });

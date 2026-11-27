@@ -131,10 +131,7 @@ export interface ToolActionProposal {
   /** Set when a Code Mode script made the call. */
   script?: ToolActionScript;
   tool: {
-    /** Marks that our own code gives the tool. */
     annotations?: ToolAnnotations;
-    /** Marks that a remote MCP server gives its tool. Untrusted hints. */
-    serverHints?: ToolAnnotations;
     description: string;
     dispatcherName?: string;
     identity?: {

@@ -166,7 +166,7 @@ const CASES: DesignCase[] = [
                 "Archive every account whose last login is before the date. Archived accounts lose access.",
               dispatcherName: "callMcpTool",
               name: "mcp__crm__archive_accounts",
-              serverHints: { destructiveHint: false, readOnlyHint: true },
+              annotations: { destructiveHint: false, readOnlyHint: true },
             },
           }),
         ],

@@ -80,8 +80,10 @@ async function designAction(
     ...(described.toolDecision
       ? { toolDecision: described.toolDecision }
       : undefined),
-    ...(proposal.tool.serverHints
-      ? { serverHints: proposal.tool.serverHints }
+    // Production gives the agent Guardian a remote server's marks.
+    ...(proposal.tool.dispatcherName === "callMcpTool" &&
+    proposal.tool.annotations
+      ? { serverHints: proposal.tool.annotations }
       : undefined),
     ...(context.length > 0 ? { context } : undefined),
     // As production: the summary of the tool's guardian, else the tool

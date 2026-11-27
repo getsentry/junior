@@ -211,11 +211,11 @@ describe("which tool actions Guardian reviews", () => {
     );
 
     expect(review).toHaveBeenCalledTimes(1);
+    // The current Guardian reads the server's marks as `annotations`.
     expect(review.mock.calls[0]![0].tool).toMatchObject({
+      annotations: { destructiveHint: false, readOnlyHint: true },
       name: "mcp__linear__search_issues",
-      serverHints: { destructiveHint: false, readOnlyHint: true },
     });
-    expect(review.mock.calls[0]![0].tool.annotations).toBeUndefined();
   });
 
   it("skips review of MCP actions that the plugin lists", async () => {
