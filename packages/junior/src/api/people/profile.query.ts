@@ -10,6 +10,7 @@ import { microUsdSql, microUsdToUsd } from "@/db/micro-usd";
 import {
   juniorConversationMetrics,
   juniorConversations,
+  juniorDestinations,
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
@@ -103,15 +104,20 @@ function surfaceExpression(table: typeof turnRoot) {
       THEN ${table.source}
     -- Dashboard Conversations share the product api surface label.
     WHEN ${table.source} = 'web' THEN 'api'
-    WHEN ${table.conversationId} LIKE 'slack:%' THEN 'slack'
-    WHEN ${table.conversationId} LIKE 'scheduler:%' THEN 'scheduler'
-    WHEN ${table.conversationId} LIKE 'api:%' THEN 'api'
     ELSE 'internal'
   END`;
 }
 
+/** The channel of a root that started in a Slack thread, or ''. */
 function channelExpression(table: typeof turnRoot) {
-  return sql<string>`SPLIT_PART(${table.conversationId}, ':', 2)`;
+  return sql<string>`CASE
+    WHEN ${table.source} = 'slack' THEN coalesce(
+      ${table.location}->>'channelId',
+      ${juniorDestinations.providerDestinationId},
+      ''
+    )
+    ELSE ''
+  END`;
 }
 
 function locationLabel(row: {
@@ -283,6 +289,10 @@ export async function readPeopleProfileFromSql(
         })
         .from(roots)
         .innerJoin(turnRoot, personRootJoin(roots))
+        .leftJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, turnRoot.destinationId),
+        )
         .groupBy(channel, turnRoot.channelName, turnRoot.visibility, surface),
       getDb()
         .select({ surface, ...aggregate })

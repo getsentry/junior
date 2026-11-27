@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { ConversationAccess } from "@/api/conversations/access";
 import type { Conversation } from "@/chat/conversations/store";
+import { startedOnDashboard } from "@/chat/conversations/kind-behavior";
 import {
   claimProviderConversation,
   getConversationIdByProviderConversation,
@@ -65,11 +66,11 @@ export type ContinueInSlackResult =
 export function isMovableToSlack(
   conversation: Pick<
     Conversation,
-    "conversationId" | "location" | "parentConversationId"
+    "location" | "parentConversationId" | "source"
   >,
 ): boolean {
   return (
-    conversation.conversationId.startsWith("local:web:") &&
+    startedOnDashboard(conversation) &&
     !conversation.location &&
     !conversation.parentConversationId
   );
@@ -79,7 +80,7 @@ export function isMovableToSlack(
 export function canContinueInSlack(
   conversation: Pick<
     Conversation,
-    "conversationId" | "location" | "parentConversationId"
+    "location" | "parentConversationId" | "source"
   >,
   access: Pick<ConversationAccess, "isParticipant" | "visibility"> | undefined,
 ): boolean {

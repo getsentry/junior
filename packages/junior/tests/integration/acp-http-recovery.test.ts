@@ -6,6 +6,7 @@ import { completeAcpAuthorization } from "@/api/acp/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
 import { createAcpConversations } from "@/api/acp/conversations";
+import { requireWebMessageConversation } from "@/api/conversations/create";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
@@ -28,12 +29,12 @@ import {
 } from "../fixtures/acp-http";
 import { deferred, streamReplies } from "../fixtures/conversation-work";
 import { createModelStream } from "../fixtures/model-stream";
+import { signedInViewer } from "../fixtures/user";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
 import { readProxyProperty } from "../fixtures/proxy-property";
-import { signedInViewer } from "../fixtures/user";
 import { resetTestEnv } from "../fixtures/stub-env";
 
 mockAcpDashboardConfig();
@@ -385,6 +386,15 @@ describe("remote ACP recovery", () => {
     });
 
     expect(secondPromptError).toMatchObject({ code: -32602 });
+    // An ACP session is not a dashboard Conversation, so it takes no
+    // dashboard Message either.
+    await expect(
+      requireWebMessageConversation(
+        await signedInViewer(harness.actor.email),
+        sessionId,
+        "dashboard-message",
+      ),
+    ).rejects.toMatchObject({ status: 409 });
     expect(harness.agentRuns).toHaveLength(1);
     releaseModel.resolve();
     await draining;

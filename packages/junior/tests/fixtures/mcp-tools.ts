@@ -30,6 +30,7 @@ export async function seedMcpConversation(args: {
     conversationId: args.conversationId,
     destination: DESTINATION,
     nowMs: Date.now(),
+    source: "slack",
     title: args.title,
     visibility: args.visibility ?? "public",
   });

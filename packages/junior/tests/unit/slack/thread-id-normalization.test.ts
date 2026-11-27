@@ -44,7 +44,7 @@ describe("normalizeIncomingSlackThreadId", () => {
     ).toBe("slack:D123:1700000000.500");
   });
 
-  it("returns non-slack thread ids as-is", () => {
+  it("keeps a thread id when the message has no raw Slack event", () => {
     expect(normalizeIncomingSlackThreadId("thread-123", {})).toBe("thread-123");
   });
 

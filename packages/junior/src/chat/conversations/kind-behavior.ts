@@ -451,6 +451,26 @@ export function watcherStartedConversation(
   return target.parentConversationId === watcherConversationId;
 }
 
+/**
+ * Return whether a person started this Conversation on the dashboard. An API
+ * client's Conversation, such as an ACP session, is not one.
+ */
+export function startedOnDashboard(
+  conversation: Pick<Conversation, "source">,
+): boolean {
+  return conversation.source === "web";
+}
+
+/**
+ * Return whether this Conversation started in a Slack thread. One that only
+ * posts to Slack, such as an Automation run, did not.
+ */
+export function startedInSlack(
+  conversation: Pick<Conversation, "source">,
+): boolean {
+  return conversation.source === "slack";
+}
+
 /** Return whether a person sent input from this Source. */
 export function isPersonInput(source: string | undefined): boolean {
   return source === "web" || source === "slack";

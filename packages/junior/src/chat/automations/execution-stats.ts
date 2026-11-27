@@ -193,6 +193,8 @@ export async function recordAutomationExecution(
   automationId: string,
   options: {
     conversationId?: string;
+    /** The run's dispatch, kept when the row already has one. */
+    dispatchId?: string;
     errorMessage?: string | undefined;
     executionId: string;
     nowMs?: number;
@@ -219,6 +221,7 @@ export async function recordAutomationExecution(
           costMicroUsd: options.conversationId
             ? conversationCostOf(options.conversationId)
             : null,
+          dispatchId: options.dispatchId ?? null,
           ...outcome,
         })
         .onConflictDoUpdate({
@@ -226,6 +229,7 @@ export async function recordAutomationExecution(
           set: {
             ...outcome,
             conversationId: sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
+            dispatchId: sql`coalesce(${juniorAutomationRuns.dispatchId}, excluded.dispatch_id)`,
             costMicroUsd: conversationCostOf(
               sql`coalesce(${juniorAutomationRuns.conversationId}, excluded.conversation_id)`,
             ),
@@ -401,13 +405,19 @@ function positiveDuration(value: number | null): number | undefined {
 export async function readAutomationExecutionByConversationId(args: {
   conversationId: string;
 }): Promise<
-  | { kind: AutomationExecutionType; automationId: string; runId: string }
+  | {
+      kind: AutomationExecutionType;
+      automationId: string;
+      dispatchId: string | null;
+      runId: string;
+    }
   | undefined
 > {
   const [row] = await getDb()
     .select({
       kind: juniorAutomations.kind,
       automationId: juniorAutomationRuns.automationId,
+      dispatchId: juniorAutomationRuns.dispatchId,
       runId: juniorAutomationRuns.id,
     })
     .from(juniorAutomationRuns)

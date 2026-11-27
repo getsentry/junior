@@ -1,5 +1,4 @@
 import type { BlockedReport } from "@/chat/child-agents/blocked-report";
-import { getDispatchIdForConversation } from "@/chat/agent-dispatch/store";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import { readConversationAutomationRun } from "@/chat/automations/conversation-run";
 import { getDb } from "@/chat/db";
@@ -16,7 +15,6 @@ export async function blockRunAutomation(
   conversationId: string,
   blocked: BlockedReport,
 ): Promise<void> {
-  const dispatchId = getDispatchIdForConversation(conversationId);
   const automation = await readConversationAutomationRun(conversationId);
   if (!automation) {
     logWarn("automation.block.unresolved", {
@@ -24,7 +22,7 @@ export async function blockRunAutomation(
     });
     return;
   }
-  const { automationId, kind } = automation;
+  const { automationId, dispatchId, kind } = automation;
   const stored =
     kind === "scheduled"
       ? await blockScheduledAutomation(getDb(), automationId, blocked.missing)

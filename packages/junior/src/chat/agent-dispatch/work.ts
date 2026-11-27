@@ -610,7 +610,7 @@ export function createAgentDispatchConversationWorker(
 export async function failStoppedDispatch(
   conversationId: string,
 ): Promise<void> {
-  const dispatchId = getDispatchIdForConversation(conversationId);
+  const dispatchId = await getDispatchIdForConversation(conversationId);
   if (dispatchId) {
     await markDispatchFailed(
       dispatchId,

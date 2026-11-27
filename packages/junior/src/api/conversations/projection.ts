@@ -1,11 +1,11 @@
 import {
   formatSlackConversationRedactedLabel,
-  resolveSlackConversationContextFromThreadId,
+  resolveStoredSlackConversationContext,
   type SlackConversationVisibility,
 } from "@/chat/slack/conversation-context";
-import { parseSlackThreadId } from "@/chat/slack/context";
 import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
+import { startedInSlack } from "@/chat/conversations/kind-behavior";
 import { executionIsActive } from "@/chat/conversations/sql/status";
 import type {
   Conversation as StoredConversation,
@@ -48,9 +48,7 @@ type ConversationProjectionSource = Pick<
 };
 
 function privateConversationLabel(
-  slackConversation: ReturnType<
-    typeof resolveSlackConversationContextFromThreadId
-  >,
+  slackConversation: ReturnType<typeof resolveStoredSlackConversationContext>,
 ): string {
   if (!slackConversation) {
     return PRIVATE_CONVERSATION_LABEL;
@@ -61,19 +59,8 @@ function privateConversationLabel(
     : PRIVATE_CONVERSATION_LABEL;
 }
 
-function surfaceFromConversationId(
-  conversationId: string,
-): ConversationSurface {
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
-  if (parseSlackThreadId(conversationId)) return "slack";
-  if (conversationId.startsWith("scheduler:")) return "scheduler";
-  if (conversationId.startsWith("api:")) return "api";
-  return "internal";
-}
-
 function surfaceFromSource(
   source: ConversationSource | undefined,
-  conversationId: string,
 ): ConversationSurface {
   if (
     source === "slack" ||
@@ -84,7 +71,17 @@ function surfaceFromSource(
     // Dashboard Conversations share the product api surface label.
     return source === "web" ? "api" : source;
   }
-  return surfaceFromConversationId(conversationId);
+  return "internal";
+}
+
+/** The channel of a Conversation that started in a Slack thread. */
+function slackThreadChannelId(
+  conversation: Pick<ConversationProjectionSource, "location" | "source">,
+): string | undefined {
+  return startedInSlack(conversation) &&
+    conversation.location?.provider === "slack"
+    ? conversation.location.channelId
+    : undefined;
 }
 
 function locationUrlFromConversation(args: {
@@ -136,11 +133,10 @@ function titleFromConversation(args: {
   surface: ConversationSurface;
   visibility?: SlackConversationVisibility | undefined;
 }): string {
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
-  const slackThread = parseSlackThreadId(args.conversation.conversationId);
+  const slackChannelId = slackThreadChannelId(args.conversation);
   const effectiveChannelName = args.conversation.channelName;
-  const slackConversation = resolveSlackConversationContextFromThreadId({
-    threadId: args.conversation.conversationId,
+  const slackConversation = resolveStoredSlackConversationContext({
+    channelId: slackChannelId,
     channelName: effectiveChannelName,
     ...(args.visibility ? { visibility: args.visibility } : undefined),
   });
@@ -153,7 +149,7 @@ function titleFromConversation(args: {
     // Read-time fallback while a run's own title is unset. Nothing is stored.
     args.automationTitle ??
     slackStatsLocationLabel({
-      channel: slackThread?.channelId,
+      channel: slackChannelId,
       channelName: effectiveChannelName,
     }) ??
     // Dispatched runs, such as automation runs, are not internal machinery.
@@ -173,13 +169,12 @@ function channelNameFromConversation(
   visibility?: SlackConversationVisibility,
 ): string | undefined {
   const effectiveChannelName = conversation.channelName;
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
-  const slackThread = parseSlackThreadId(conversation.conversationId);
-  if (!effectiveChannelName && !slackThread) {
+  const slackChannelId = slackThreadChannelId(conversation);
+  if (!effectiveChannelName && !slackChannelId) {
     return undefined;
   }
-  const slackConversation = resolveSlackConversationContextFromThreadId({
-    threadId: conversation.conversationId,
+  const slackConversation = resolveStoredSlackConversationContext({
+    channelId: slackChannelId,
     channelName: effectiveChannelName,
     ...(visibility ? { visibility } : undefined),
   });
@@ -193,10 +188,7 @@ function channelNameRedactedFromConversation(
   conversation: ConversationProjectionSource,
   canViewPrivateContent: boolean,
 ): boolean {
-  const effectiveChannelName = conversation.channelName;
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
-  const slackThread = parseSlackThreadId(conversation.conversationId);
-  if (!effectiveChannelName && !slackThread) {
+  if (!conversation.channelName && !slackThreadChannelId(conversation)) {
     return false;
   }
   return !canViewPrivateContent;
@@ -246,10 +238,7 @@ export function conversationSummaryFromStoredConversation(args: {
     accessVisibility === "public" || accessVisibility === "private"
       ? accessVisibility
       : undefined;
-  const surface = surfaceFromSource(
-    conversation.source,
-    conversation.conversationId,
-  );
+  const surface = surfaceFromSource(conversation.source);
   const actorIdentity = actorIdentityReport(conversation.actor);
   const locationUrl = locationUrlFromConversation({
     canViewPrivateContent,
@@ -258,8 +247,7 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { teamDomainByTeamId: args.teamDomainByTeamId }
       : undefined),
   });
-  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
-  const slackThread = parseSlackThreadId(conversation.conversationId);
+  const slackChannelId = slackThreadChannelId(conversation);
   const channelName = channelNameFromConversation(
     conversation,
     canViewPrivateContent,
@@ -320,7 +308,7 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(args.pinPosition === undefined
       ? undefined
       : { pinPosition: args.pinPosition }),
-    ...(slackThread ? { channel: slackThread.channelId } : undefined),
+    ...(slackChannelId ? { channel: slackChannelId } : undefined),
     ...(channelName ? { channelName } : undefined),
     ...(channelNameRedacted ? { channelNameRedacted: true } : undefined),
     ...(args.locationId && !channelNameRedacted

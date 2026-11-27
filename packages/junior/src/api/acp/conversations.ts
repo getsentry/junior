@@ -172,6 +172,7 @@ export function createAcpConversations(
         conversationId,
         conversationStore: options.conversationStore,
         nowMs: Date.now(),
+        rootSource: "api",
         rootVisibility: "private",
       });
     },

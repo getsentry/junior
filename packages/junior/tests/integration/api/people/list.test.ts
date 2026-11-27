@@ -299,6 +299,7 @@ describe("people list API", () => {
           execution: { runId: turnId, status, updatedAtMs: Date.parse(at) },
           lastActivityAtMs: Date.parse(at),
           metrics: { durationMs: 0 },
+          source: "slack",
           updatedAtMs: Date.parse(at),
         });
       }

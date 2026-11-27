@@ -44,10 +44,11 @@ export const juniorAutomationRuns = pgTable(
       .references(() => juniorConversations.conversationId),
     status: text("status").$type<AutomationRunStatus>().notNull(),
     automationVersion: integer("automation_version"),
-    // Only Scheduled automation runs set these four columns.
+    // Only Scheduled automation runs set these three columns.
     scheduledForMs: bigint("scheduled_for_ms", { mode: "number" }),
     attempt: integer("attempt"),
     claimedAtMs: bigint("claimed_at_ms", { mode: "number" }),
+    // Null before a Scheduled automation run dispatches.
     dispatchId: text("dispatch_id"),
     startedAtMs: bigint("started_at_ms", { mode: "number" }),
     completedAtMs: bigint("completed_at_ms", { mode: "number" }),
