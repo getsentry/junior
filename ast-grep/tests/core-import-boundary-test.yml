@@ -1,0 +1,23 @@
+id: core-import-boundary
+valid:
+  - 'import { scheduleInput } from "@/core/turn/schedule";'
+  - 'import { juniorTurns } from "@/db/schema";'
+  - 'import { withConversationEventLock } from "@/conversation-events/lock";'
+  - 'import { logWarn } from "@/chat/logging";'
+  - 'import type { PiMessage } from "@/chat/pi/messages";'
+  - 'import { agentHistoryFromRow } from "./rows";'
+  - 'import { eq } from "drizzle-orm";'
+  - 'import type { Source } from "@sentry/junior-plugin-api";'
+invalid:
+  - 'import { turnStepConsumer } from "@/turn-steps/consumer";'
+  - 'import { deliverTurn } from "@/delivery/deliver";'
+  - 'import type { Delivery } from "@/delivery/deliver";'
+  - 'export { deliverTurn } from "@/delivery/deliver";'
+  - 'const { deliverTurn } = await import("@/delivery/deliver");'
+  - 'import { sendSlackReply } from "@/chat/slack/reply";'
+  - 'import { getQueueProvider } from "@/chat/queue/vercel";'
+  - 'import { thing } from "../../chat/slack/reply";'
+  - 'import { sendSlackReply } from "@/core/../chat/slack/reply";'
+  - 'import { deliverTurn } from "@/db/../delivery/deliver";'
+  - 'import { thing } from "./turn/../../chat/slack/reply";'
+  - 'const { deliverTurn } = await import("@/conversation-events/../delivery/deliver");'
