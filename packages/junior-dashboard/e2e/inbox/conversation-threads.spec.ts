@@ -67,13 +67,13 @@ test.describe("new UI", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
     );
 
-    // An archived Thread is finished, so it waits behind "Show finished".
+    // An archived Thread is finished, so it waits behind "Show more".
     const work = details.getByRole("region", { exact: true, name: "Agents" });
     const archived = work.getByRole("link", { name: /Compare sidebar badges/ });
     await expect(archived).toHaveCount(0);
-    await work.getByRole("button", { name: "Show finished" }).click();
+    await work.getByRole("button", { name: "Show more" }).click();
     await expect(archived.getByRole("img", { name: "Done" })).toBeVisible();
-    await work.getByRole("button", { name: "Hide finished" }).click();
+    await work.getByRole("button", { name: "Show less" }).click();
     await expect(archived).toHaveCount(0);
   });
 

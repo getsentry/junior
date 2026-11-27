@@ -27,7 +27,6 @@ import {
 import { ConversationParticipants } from "../../conversations/ConversationParticipants";
 import { ConversationAgents } from "../../conversations/ConversationAgents";
 import { ConversationTodoList } from "../../conversations/ConversationTodos";
-import { ConversationWaitingOn } from "../../conversations/ConversationWatches";
 import {
   ConversationDrawer,
   type ConversationDrawerTarget,
@@ -196,7 +195,7 @@ export function ConversationDetails(props: {
           conversationId={props.conversationId}
           highlight={props.highlightReview}
         />
-        {/* A key per Conversation resets "Show finished". */}
+        {/* A key per Conversation resets "Show more". */}
         <ConversationAgents
           canEdit={canEdit}
           conversationId={props.conversationId}
@@ -209,10 +208,6 @@ export function ConversationDetails(props: {
             if (!panel) props.onClose();
             props.onOpenSubagent(target);
           }}
-        />
-        <ConversationWaitingOn
-          canEdit={canEdit}
-          conversationId={props.conversationId}
         />
         {/* To-dos only inform, so they come after what blocks work. */}
         <ConversationTodoList

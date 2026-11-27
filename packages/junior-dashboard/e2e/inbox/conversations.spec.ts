@@ -681,7 +681,7 @@ test.describe("new UI", () => {
     await expect(
       work.getByRole("button", { name: /^Blocked reviewer/ }),
     ).toContainText("The reviewer needs access to the dashboard repository.");
-    await work.getByRole("button", { name: "Show finished" }).click();
+    await work.getByRole("button", { name: "Show more" }).click();
     await expect(
       work.getByRole("button", { name: /^Done Review the dashboard plan/ }),
     ).toBeVisible();

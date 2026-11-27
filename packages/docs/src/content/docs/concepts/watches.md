@@ -43,7 +43,7 @@ Some watch events need nobody's attention, such as a routine CI fix that worked 
 
 ## See and Cancel Watches
 
-The details panel of a conversation lists its active watches and timers. Each row shows what Junior will do and when the watch fires or expires. Hover over the time to see the exact time. A participant can cancel a watch there. Junior gets no message about the cancel. The watch does not wake it again.
+The details panel of a conversation does not list its watches and timers, because they need nobody's attention. To cancel one, ask Junior to stop it. A participant can also cancel a child agent's watch from that child's menu under Agents. Junior gets no message about that cancel. The watch does not wake it again.
 
 ## Limits
 

@@ -80,7 +80,7 @@ test("a Space's Threads list in Agents by state, finished ones last", async ({
 
   // A wait on the viewer and a failure first, then running, then waiting.
   // Each state keeps the loaded order, newest first, and finished Threads
-  // wait behind "Show finished".
+  // wait behind "Show more".
   await expect(work.getByRole("link")).toHaveText([
     /Approve the cutover window/,
     /Reconcile Stripe balances/,
@@ -92,7 +92,7 @@ test("a Space's Threads list in Agents by state, finished ones last", async ({
     lightTheme: true,
     view: "desktop",
   });
-  await work.getByRole("button", { name: "Show finished" }).click();
+  await work.getByRole("button", { name: "Show more" }).click();
   await expect(work.getByRole("link")).toHaveText([
     /Approve the cutover window/,
     /Reconcile Stripe balances/,

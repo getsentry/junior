@@ -91,14 +91,14 @@ test.describe("new UI", () => {
     await expect(costTooltip).toBeHidden();
     await expect(details).toBeVisible();
 
-    // Merged work waits behind "Show finished". The ref drops the repo that
+    // Merged work waits behind "Show more". The ref drops the repo that
     // the conversation works in.
     const linkedWork = details.getByRole("region", { name: "Linked work" });
     const merged = linkedWork.getByRole("link", {
       name: /#77 Cache tax rates/,
     });
     await expect(merged).toHaveCount(0);
-    await linkedWork.getByRole("button", { name: "Show finished" }).click();
+    await linkedWork.getByRole("button", { name: "Show more" }).click();
     await expect(merged).toHaveAttribute(
       "href",
       "https://github.com/getsentry/payments/pull/77",
@@ -163,7 +163,7 @@ test.describe("new UI", () => {
     const sheet = page.getByRole("dialog", { name: "Conversation details" });
     await expect(sheet).toBeVisible();
     const sheetLinks = sheet.getByRole("region", { name: "Linked work" });
-    await sheetLinks.getByRole("button", { name: "Show finished" }).click();
+    await sheetLinks.getByRole("button", { name: "Show more" }).click();
     await expect(sheetLinks.getByRole("link", { name: /#77 / })).toBeVisible();
     await page.setViewportSize({ width: 1600, height: 900 });
     await expect(sheet).toBeHidden();
@@ -278,7 +278,7 @@ test.describe("new UI", () => {
     await expect(join).toHaveCount(0);
   });
 
-  test("lists Watches in Waiting on and linked work once", async ({
+  test("lists only what can need the viewer, not the Watches", async ({
     page,
     dashboard,
   }) => {
@@ -290,30 +290,21 @@ test.describe("new UI", () => {
       name: "Conversation details",
       exact: true,
     });
-    // The watched pull request is linked work, so it shows once, and its
-    // Watch waits with its expiry and a separate link out.
+    // The watched pull request is open, so it leads Linked work once. Its
+    // Watch only informs, so details do not list it.
     await expect(
       details
         .getByRole("region", { name: "Linked work" })
         .getByRole("link", { name: /#21572/ }),
     ).toHaveCount(1);
-    const watch = details
-      .getByRole("region", { exact: true, name: "Waiting on" })
-      .getByRole("listitem")
-      .filter({
-        hasText:
-          "Fix failing checks and address requested changes on the dashboard PR.",
-      });
-    await expect(watch).toContainText(/Expires /);
     await expect(
-      watch.getByRole("link", {
-        name: "Open Fix failing checks and address requested changes on the dashboard PR.",
-      }),
-    ).toHaveAttribute("href", /\/pull\/21572/);
+      details.getByText(
+        "Fix failing checks and address requested changes on the dashboard PR.",
+      ),
+    ).toHaveCount(0);
     // What blocks work leads. To-dos only inform, so they come last.
     await expect(details.getByRole("heading", { level: 3 })).toHaveText([
       "Agents",
-      "Waiting on",
       "To-dos",
       "Linked work",
     ]);
@@ -374,9 +365,9 @@ test.describe("new UI", () => {
     );
     await page.getByRole("menuitem", { name: "Mark done" }).click();
     expect((await save).postDataJSON()).toEqual({ status: "done" });
-    // A finished To-do waits behind "Show finished".
+    // A finished To-do waits behind "Show more".
     await expect(rollback).toHaveCount(0);
-    await work.getByRole("button", { name: "Show finished" }).click();
+    await work.getByRole("button", { name: "Show more" }).click();
     await expect(rollback.getByRole("img", { name: "Done" })).toBeVisible();
 
     await change.click();
@@ -419,8 +410,8 @@ test.describe("new UI", () => {
     const menu = child.getByRole("button", {
       name: "Change Recheck pin order in Safari",
     });
-    // The child's run is done, so it waits behind "Show finished".
-    await agents.getByRole("button", { name: "Show finished" }).click();
+    // The child's run is done, so it waits behind "Show more".
+    await agents.getByRole("button", { name: "Show more" }).click();
     await expect(child.getByRole("img", { name: "Done" })).toBeVisible();
 
     // Only the child cancels its own Watch, so the cancel goes to its route.

@@ -71,7 +71,7 @@ export function todoOwner(todo: ConversationTodo): string {
  * List the To-dos of one Conversation, each with its owner and notes. A
  * To-do for a child agent stays out: Agents shows that child. So does a
  * viewer's open To-do that Needs you shows. Done and dropped To-dos hide
- * behind "Show finished". Participants change a To-do's status from its
+ * behind "Show more". Participants change a To-do's status from its
  * menu.
  */
 export function ConversationTodoList(props: {
@@ -96,7 +96,7 @@ export function ConversationTodoList(props: {
     todo.status === "done" || todo.status === "dropped";
   return (
     <DetailsSection
-      finished={todos.filter(closed).map(row)}
+      more={todos.filter(closed).map(row)}
       rows={todos
         .filter((todo) => !closed(todo) && !props.needsYouTodoIds.has(todo.id))
         .map(row)}

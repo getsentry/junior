@@ -73,7 +73,7 @@ export function childState(child: ConversationChildAgent): ChildState {
   return status === "stopped" ? "stopped" : "done";
 }
 
-/** Finished children hide behind "Show finished". */
+/** Finished children hide behind "Show more". */
 const FINISHED_STATES: ReadonlySet<ChildState> = new Set(["done", "stopped"]);
 
 /**
@@ -171,7 +171,7 @@ function ChildStateIcon(props: { state: ChildState }) {
 /**
  * List the child Conversations of one Conversation, Threads and Tasks, by
  * their own state. A blocked or failed child names why. Finished and
- * archived children hide behind "Show finished".
+ * archived children hide behind "Show more".
  */
 export function ConversationAgents(props: {
   canEdit: boolean;
@@ -220,7 +220,7 @@ export function ConversationAgents(props: {
     .sort((left, right) => rank(left.state) - rank(right.state));
   return (
     <DetailsSection
-      finished={rows
+      more={rows
         .filter((item) => FINISHED_STATES.has(item.state))
         .map((item) => item.row)}
       rows={open.map((item) => item.row)}
