@@ -43,13 +43,14 @@ vi.mock("@/chat/config", async (importOriginal) => {
   };
 });
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getDefinition: getDefinitionMock,
     getOAuthConfig: getOAuthConfigMock,
     getProviders: getProvidersMock,
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/capabilities/factory", () => ({
   createUserTokenStore: () => ({ kind: "user-token-store" }),

@@ -45,8 +45,8 @@ const {
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getDisplayName: (provider: string) => {
       if (provider === "sentry") {
         return "Sentry";
@@ -80,8 +80,9 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
     createBroker: () => {
       throw new Error("not implemented in test");
     },
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/config", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/chat/config")>();

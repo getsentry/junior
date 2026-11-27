@@ -22,7 +22,7 @@ import { logWarn, runBestEffort } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
@@ -212,7 +212,7 @@ export async function GET(
   if (localRelay) {
     return localRelay;
   }
-  const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
+  const providerConfig = getAppContext().catalog.getOAuthConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse(
       "Unknown provider",

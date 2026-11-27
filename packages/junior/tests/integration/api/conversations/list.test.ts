@@ -13,7 +13,6 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   juniorConversationEvents,
@@ -24,6 +23,7 @@ import {
 } from "@/db/schema";
 import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+import { useAppContext } from "../../../fixtures/app-context";
 
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
@@ -292,44 +292,46 @@ describe("conversation list API", () => {
         state: "open",
         updatedAt: new Date(nowMs - 300_000),
       });
-      setPlugins([
-        defineJuniorPlugin({
-          manifest: {
-            name: "work",
-            displayName: "Work",
-            description: "Unfinished work test plugin",
-          },
-          hooks: {
-            // The plugin reads its code changes from Junior's code index.
-            async unfinishedWork(ctx) {
-              seenConversationIds.push([...ctx.conversationIds]);
-              const changes = await ctx.codeChanges.list({
-                conversationIds: ctx.conversationIds,
-              });
-              const finishedAt = (change: (typeof changes)[number]) =>
-                (change.mergedAt ?? change.closedAt)!.toISOString();
-              return {
-                assignedConversationIds: changes.flatMap(
-                  (change) => change.conversationIds,
-                ),
-                conversationIds: changes
-                  .filter((change) => change.state === "open")
-                  .flatMap((change) => change.conversationIds),
-                finishedWorkAtByConversationId: Object.fromEntries(
-                  changes
-                    .filter((change) => change.state !== "open")
-                    .flatMap((change) =>
-                      change.conversationIds.map((id) => [
-                        id,
-                        finishedAt(change),
-                      ]),
-                    ),
-                ),
-              };
+      useAppContext({
+        plugins: [
+          defineJuniorPlugin({
+            manifest: {
+              name: "work",
+              displayName: "Work",
+              description: "Unfinished work test plugin",
             },
-          },
-        }),
-      ]);
+            hooks: {
+              // The plugin reads its code changes from Junior's code index.
+              async unfinishedWork(ctx) {
+                seenConversationIds.push([...ctx.conversationIds]);
+                const changes = await ctx.codeChanges.list({
+                  conversationIds: ctx.conversationIds,
+                });
+                const finishedAt = (change: (typeof changes)[number]) =>
+                  (change.mergedAt ?? change.closedAt)!.toISOString();
+                return {
+                  assignedConversationIds: changes.flatMap(
+                    (change) => change.conversationIds,
+                  ),
+                  conversationIds: changes
+                    .filter((change) => change.state === "open")
+                    .flatMap((change) => change.conversationIds),
+                  finishedWorkAtByConversationId: Object.fromEntries(
+                    changes
+                      .filter((change) => change.state !== "open")
+                      .flatMap((change) =>
+                        change.conversationIds.map((id) => [
+                          id,
+                          finishedAt(change),
+                        ]),
+                      ),
+                  ),
+                };
+              },
+            },
+          }),
+        ],
+      });
 
       await expect(readConversationFeedFromSql()).resolves.toMatchObject({
         conversations: [
@@ -357,7 +359,6 @@ describe("conversation list API", () => {
         [finishedUpdatedId, unfinishedId, finishedId],
       ]);
     } finally {
-      setPlugins([]);
       await fixture.close();
     }
   });

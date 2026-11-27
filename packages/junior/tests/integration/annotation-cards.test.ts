@@ -8,7 +8,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, expect, it } from "vitest";
 import * as z from "zod";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   createPluginAnnotations,
   listConversationAnnotations,
@@ -23,6 +22,7 @@ import {
 import { createModelStream } from "../fixtures/model-stream";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { patchConfig } from "../fixtures/config";
+import { useAppContext } from "../fixtures/app-context";
 
 const annotation: ObjectAnnotation = {
   kind: "object",
@@ -59,458 +59,448 @@ afterEach(closeConversationFixture);
 
 it("saves plugin object results once per reply, rejects them from reads, leaves background updates silent, and stores only Message card references", async () => {
   const saveInputs: unknown[] = [];
-  const previous = setPlugins([
-    defineJuniorPlugin({
-      manifest: {
-        name: "objects",
-        displayName: "Objects",
-        description: "Object test tools",
-      },
-      hooks: {
-        tools: () => ({
-          save: definePluginTool({
-            approvalMode: "approve",
-            exposure: "direct",
-            annotations: {
-              destructiveHint: false,
-              idempotentHint: true,
-              openWorldHint: false,
-              readOnlyHint: false,
-            },
-            description: "Return a verified object for this test.",
-            inputSchema: z.object({
-              fail: z.boolean().optional(),
-              timed_out: z.boolean().optional(),
-              status: z.string().optional(),
+  useAppContext({
+    plugins: [
+      defineJuniorPlugin({
+        manifest: {
+          name: "objects",
+          displayName: "Objects",
+          description: "Object test tools",
+        },
+        hooks: {
+          tools: () => ({
+            save: definePluginTool({
+              approvalMode: "approve",
+              exposure: "direct",
+              annotations: {
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+                readOnlyHint: false,
+              },
+              description: "Return a verified object for this test.",
+              inputSchema: z.object({
+                fail: z.boolean().optional(),
+                timed_out: z.boolean().optional(),
+                status: z.string().optional(),
+              }),
+              outputSchema: pluginToolOutputSchema,
+              execute: (input) => {
+                saveInputs.push(input);
+                const { fail, timed_out, status } = input;
+                if (fail) throw new Error("Object update failed");
+                return {
+                  timed_out,
+                  objectAnnotations: [
+                    { ...annotation, status: status ?? "open" },
+                  ],
+                };
+              },
             }),
-            outputSchema: pluginToolOutputSchema,
-            execute: (input) => {
-              saveInputs.push(input);
-              const { fail, timed_out, status } = input;
-              if (fail) throw new Error("Object update failed");
-              return {
-                timed_out,
-                objectAnnotations: [
-                  { ...annotation, status: status ?? "open" },
-                ],
-              };
-            },
+            read: definePluginTool({
+              approvalMode: "approve",
+              exposure: "direct",
+              annotations: {
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+                readOnlyHint: true,
+              },
+              description: "Read an object for this test.",
+              inputSchema: z.object({}),
+              outputSchema: pluginToolOutputSchema,
+              execute: readResult,
+            }),
           }),
-          read: definePluginTool({
-            approvalMode: "approve",
-            exposure: "direct",
-            annotations: {
-              destructiveHint: false,
-              idempotentHint: true,
-              openWorldHint: false,
-              readOnlyHint: true,
-            },
-            description: "Read an object for this test.",
-            inputSchema: z.object({}),
-            outputSchema: pluginToolOutputSchema,
-            execute: readResult,
-          }),
-        }),
-      },
-    }),
-  ]);
+        },
+      }),
+    ],
+  });
   patchConfig({
     dashboard: {
       baseURL: "https://junior.example.com",
       basePath: "/ops",
     },
   });
-  try {
-    const harness = await createConversationWebHarness(
-      createModelStream([
-        {
-          type: "toolCall",
-          name: "executeTool",
-          // callMcpTool takes a top-level intent too, so models send it here.
-          arguments: {
-            tool_name: "objects_save",
-            arguments: { status: "open" },
-            intent: "show the object",
+  const harness = await createConversationWebHarness(
+    createModelStream([
+      {
+        type: "toolCall",
+        name: "executeTool",
+        // callMcpTool takes a top-level intent too, so models send it here.
+        arguments: {
+          tool_name: "objects_save",
+          arguments: { status: "open" },
+          intent: "show the object",
+        },
+      },
+      // A read must not save an Annotation, so core rejects its result.
+      { type: "toolCall", name: "objects_read", arguments: {} },
+      {
+        type: "toolCall",
+        // PR creation is a direct plugin tool, not a catalog call.
+        name: "objects_save",
+        arguments: { status: "draft" },
+      },
+      {
+        type: "toolCall",
+        name: "executeTool",
+        arguments: {
+          tool_name: "objects_save",
+          arguments: { status: "closed", timed_out: true },
+        },
+      },
+      {
+        type: "toolCall",
+        name: "executeTool",
+        arguments: { tool_name: "objects_save", arguments: { fail: true } },
+      },
+      { type: "text", text: "The object is ready; the later update failed." },
+    ]),
+  );
+  const { conversationId } = await harness.start({
+    idempotencyKey: "objects-1",
+    message: "Show the object.",
+  });
+  await harness.drain();
+  expect(saveInputs[0]).toEqual({ status: "open" });
+  const history = await getConversationEventStore().loadHistory(conversationId);
+  const message = history.find(
+    (event) => event.data.type === "message" && event.data.role === "assistant",
+  );
+  const cards = [{ ...annotation, plugin: "objects", status: "draft" }];
+  const refs = [{ kind: "object", plugin: "objects", key: annotation.key }];
+  if (!message || message.data.type !== "message")
+    throw new Error("Expected an assistant Message");
+  expect(message.data.meta?.["objectCards"]).toEqual(refs);
+  expect(message.data.meta).not.toHaveProperty("cards");
+  const toolResults = history
+    .map((event) => event.data)
+    .filter((data) => data.type === "tool_result");
+  for (const result of toolResults) {
+    expect(result["details"]).not.toHaveProperty("cards");
+  }
+  const selectedResults = toolResults.filter(
+    (result) =>
+      result["details"] &&
+      typeof result["details"] === "object" &&
+      "objectCards" in result["details"],
+  );
+  expect(selectedResults).toHaveLength(2);
+  expect(JSON.stringify(toolResults)).toContain(
+    "Read-only objects tool returned objectAnnotations",
+  );
+  for (const result of selectedResults) {
+    expect(result["details"]).not.toHaveProperty("objectAnnotations");
+  }
+
+  await expect(
+    listConversationAnnotations(getDb(), conversationId),
+  ).resolves.toMatchObject(cards);
+  await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([]);
+  await sendSlackReply({
+    channelId: "C123",
+    conversationId,
+    text: "The object is ready.",
+    cards,
+  });
+  expect(
+    getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params["metadata"],
+  ).toEqual({
+    entities: [
+      {
+        entity_type: "slack#/entities/item",
+        external_ref: {
+          id: expect.stringMatching(/^[A-Za-z0-9_-]{1,128}$/),
+          type: "annotation",
+        },
+        url: annotation.url,
+        entity_payload: {
+          attributes: {
+            title: { text: "Fix the parser" },
+            display_id: "repo#1",
+            display_type: "Code change",
+            product_icon: {
+              url: "https://junior.example.com/_junior/dashboard/object-icons/v1/git-pull-request-draft.png",
+              alt_text: "Code change",
+            },
+            product_name: "objects",
           },
+          display_order: ["description"],
+          custom_fields: [
+            {
+              key: "description",
+              label: "Description",
+              type: "string",
+              value: `${annotation.description!.slice(0, 499).trimEnd()}…`,
+              long: true,
+              format: "markdown",
+            },
+          ],
         },
-        // A read must not save an Annotation, so core rejects its result.
-        { type: "toolCall", name: "objects_read", arguments: {} },
-        {
-          type: "toolCall",
-          // PR creation is a direct plugin tool, not a catalog call.
-          name: "objects_save",
-          arguments: { status: "draft" },
-        },
-        {
-          type: "toolCall",
-          name: "executeTool",
-          arguments: {
-            tool_name: "objects_save",
-            arguments: { status: "closed", timed_out: true },
+      },
+    ],
+  });
+
+  const mixedCards = [
+    {
+      ...annotation,
+      plugin: "objects",
+      status: "closed",
+      facts: undefined,
+      description: "One\nTwo\nThree\nFour\nFive\nSix\nSeven",
+    },
+    {
+      ...annotation,
+      plugin: "objects",
+      key: "issue-1",
+      description: undefined,
+      objectType: "task" as const,
+      status: "closed",
+      facts: { type: "task" as const, assignees: ["Sam"], priority: "High" },
+    },
+    {
+      ...annotation,
+      plugin: "objects",
+      key: "deploy-1",
+      description: "  ",
+      // Saved deployments used Item before Deployment became a native type.
+      objectType: "item" as const,
+      status: "ERROR",
+      warning: "Deployment failed",
+      facts: {
+        type: "deployment" as const,
+        environment: "production",
+        project: "app",
+        revision: "abc123",
+        branch: "main",
+      },
+    },
+    {
+      ...annotation,
+      plugin: "objects",
+      key: "event-1",
+      label: "Oct 12",
+      description: "Agenda stays in the detail panel.",
+      objectType: "calendar_event" as const,
+      status: "cancelled",
+      facts: {
+        type: "calendar_event" as const,
+        when: "Mon, Oct 12, 10:00 – 10:30 PDT",
+        attendees: ["Sam", "Alex"],
+      },
+    },
+    {
+      ...annotation,
+      plugin: "junior",
+      key: "daily",
+      objectType: "automation" as const,
+      trigger: "Every day",
+      status: "blocked",
+      warning: "Reconnect provider",
+      facts: undefined,
+    },
+  ];
+  await sendSlackReply({
+    channelId: "C123",
+    conversationId,
+    text: "Linked work",
+    cards: mixedCards,
+  });
+  const mixedPost = getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
+  expect(mixedPost?.["metadata"]).toMatchObject({
+    entities: [
+      {
+        entity_type: "slack#/entities/item",
+        entity_payload: {
+          attributes: {
+            display_type: "Code change",
+            product_icon: {
+              url: "https://junior.example.com/_junior/dashboard/object-icons/v1/git-pull-request-closed.png",
+            },
           },
+          custom_fields: [
+            {
+              key: "description",
+              value: "One\nTwo\nThree\nFour\nFive\nSix…",
+            },
+          ],
         },
-        {
-          type: "toolCall",
-          name: "executeTool",
-          arguments: { tool_name: "objects_save", arguments: { fail: true } },
+      },
+      {
+        entity_type: "slack#/entities/task",
+        entity_payload: {
+          attributes: {
+            display_type: "Ticket",
+            product_icon: {
+              url: "https://junior.example.com/_junior/dashboard/object-icons/v1/issue-closed.png",
+            },
+          },
+          custom_fields: [],
         },
-        { type: "text", text: "The object is ready; the later update failed." },
-      ]),
-    );
-    const { conversationId } = await harness.start({
-      idempotencyKey: "objects-1",
-      message: "Show the object.",
-    });
-    await harness.drain();
-    expect(saveInputs[0]).toEqual({ status: "open" });
-    const history =
-      await getConversationEventStore().loadHistory(conversationId);
-    const message = history.find(
+      },
+      {
+        entity_type: "slack#/entities/item",
+        entity_payload: {
+          attributes: {
+            display_type: "Deployment",
+            product_icon: {
+              url: "https://junior.example.com/_junior/dashboard/object-icons/v1/rocket.png",
+            },
+          },
+          custom_fields: [
+            { key: "status", value: "ERROR" },
+            { key: "environment", value: "production" },
+            { key: "warning", value: "Deployment failed" },
+          ],
+        },
+      },
+      {
+        entity_type: "slack#/entities/item",
+        entity_payload: {
+          attributes: {
+            display_id: "Oct 12",
+            display_type: "Calendar event",
+            product_icon: {
+              url: "https://junior.example.com/_junior/dashboard/object-icons/v1/calendar.png",
+            },
+          },
+          custom_fields: [
+            { key: "status", value: "cancelled" },
+            { key: "when", value: "Mon, Oct 12, 10:00 – 10:30 PDT" },
+            { key: "attendees", value: "Sam, Alex" },
+          ],
+        },
+      },
+      {
+        entity_type: "slack#/entities/item",
+        entity_payload: {
+          attributes: {
+            display_type: "Automation",
+            product_icon: {
+              url: "https://junior.example.com/_junior/dashboard/object-icons/v1/workflow.png",
+            },
+          },
+          custom_fields: [
+            { key: "trigger", value: "Every day" },
+            { key: "warning", value: "Reconnect provider" },
+          ],
+        },
+      },
+    ],
+  });
+  expect(JSON.stringify(mixedPost)).not.toContain('"fields"');
+  for (const hidden of [
+    "Assignees:",
+    "Priority:",
+    "Revision:",
+    "Branch:",
+    "blocked",
+    "Agenda",
+  ])
+    expect(mixedPost?.["text"]).not.toContain(hidden);
+  for (const type of [
+    "Code change",
+    "Ticket",
+    "Deployment",
+    "Calendar event",
+    "Automation",
+  ])
+    expect(mixedPost?.["text"]).toContain(type);
+  patchConfig({ dashboard: undefined });
+  await sendSlackReply({
+    channelId: "C123",
+    conversationId,
+    text: "Linked work",
+    cards: [mixedCards[0]!, { ...mixedCards[1]!, url: null }],
+  });
+  const headless = getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
+  expect(headless?.["metadata"]).toMatchObject({
+    entities: [
+      { entity_payload: { attributes: { display_type: "Code change" } } },
+    ],
+  });
+  expect(JSON.stringify(headless?.["metadata"])).not.toContain("product_icon");
+  expect(headless?.["text"]).toContain("Ticket");
+  patchConfig({
+    dashboard: {
+      baseURL: "https://junior.example.com",
+      basePath: "/ops",
+    },
+  });
+
+  await createPluginAnnotations({
+    conversationId,
+    plugin: "objects",
+    db: getDb(),
+  }).upsert({ ...annotation, status: "merged" });
+  await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([]);
+  const saved = await getConversationEventStore().loadHistory(conversationId);
+  expect(saved.find((event) => event.seq === message?.seq)?.data).toMatchObject(
+    { meta: { objectCards: refs } },
+  );
+
+  expect(saved.filter((event) => event.data.type === "tool_result")).toEqual(
+    history.filter((event) => event.data.type === "tool_result"),
+  );
+  const detail = await readConversationDetail(conversationId, {
+    viewer: testViewer(harness.actor.email),
+  });
+  expect(detail?.annotations).toMatchObject([
+    { plugin: "objects", key: annotation.key, status: "merged" },
+  ]);
+  const reported = detail?.events.find((event) => event.seq === message.seq);
+  if (reported?.data.type !== "message")
+    throw new Error("Expected a reported Message");
+  expect(reported.data.cards).toEqual(refs);
+
+  harness.setModelStream(
+    createModelStream([{ type: "text", text: "The object has merged." }]),
+  );
+  await harness.continue({
+    conversationId,
+    idempotencyKey: "objects-2",
+    message: "Any news?",
+  });
+  await harness.drain();
+  const later = (await getConversationEventStore().loadHistory(conversationId))
+    .filter(
       (event) =>
         event.data.type === "message" && event.data.role === "assistant",
-    );
-    const cards = [{ ...annotation, plugin: "objects", status: "draft" }];
-    const refs = [{ kind: "object", plugin: "objects", key: annotation.key }];
-    if (!message || message.data.type !== "message")
-      throw new Error("Expected an assistant Message");
-    expect(message.data.meta?.["objectCards"]).toEqual(refs);
-    expect(message.data.meta).not.toHaveProperty("cards");
-    const toolResults = history
-      .map((event) => event.data)
-      .filter((data) => data.type === "tool_result");
-    for (const result of toolResults) {
-      expect(result["details"]).not.toHaveProperty("cards");
-    }
-    const selectedResults = toolResults.filter(
-      (result) =>
-        result["details"] &&
-        typeof result["details"] === "object" &&
-        "objectCards" in result["details"],
-    );
-    expect(selectedResults).toHaveLength(2);
-    expect(JSON.stringify(toolResults)).toContain(
-      "Read-only objects tool returned objectAnnotations",
-    );
-    for (const result of selectedResults) {
-      expect(result["details"]).not.toHaveProperty("objectAnnotations");
-    }
-
-    await expect(
-      listConversationAnnotations(getDb(), conversationId),
-    ).resolves.toMatchObject(cards);
-    await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([]);
-    await sendSlackReply({
-      channelId: "C123",
-      conversationId,
-      text: "The object is ready.",
-      cards,
-    });
-    expect(
-      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params["metadata"],
-    ).toEqual({
-      entities: [
-        {
-          entity_type: "slack#/entities/item",
-          external_ref: {
-            id: expect.stringMatching(/^[A-Za-z0-9_-]{1,128}$/),
-            type: "annotation",
-          },
-          url: annotation.url,
-          entity_payload: {
-            attributes: {
-              title: { text: "Fix the parser" },
-              display_id: "repo#1",
-              display_type: "Code change",
-              product_icon: {
-                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/git-pull-request-draft.png",
-                alt_text: "Code change",
-              },
-              product_name: "objects",
-            },
-            display_order: ["description"],
-            custom_fields: [
-              {
-                key: "description",
-                label: "Description",
-                type: "string",
-                value: `${annotation.description!.slice(0, 499).trimEnd()}…`,
-                long: true,
-                format: "markdown",
-              },
-            ],
-          },
-        },
-      ],
-    });
-
-    const mixedCards = [
-      {
-        ...annotation,
-        plugin: "objects",
-        status: "closed",
-        facts: undefined,
-        description: "One\nTwo\nThree\nFour\nFive\nSix\nSeven",
-      },
-      {
-        ...annotation,
-        plugin: "objects",
-        key: "issue-1",
-        description: undefined,
-        objectType: "task" as const,
-        status: "closed",
-        facts: { type: "task" as const, assignees: ["Sam"], priority: "High" },
-      },
-      {
-        ...annotation,
-        plugin: "objects",
-        key: "deploy-1",
-        description: "  ",
-        // Saved deployments used Item before Deployment became a native type.
-        objectType: "item" as const,
-        status: "ERROR",
-        warning: "Deployment failed",
-        facts: {
-          type: "deployment" as const,
-          environment: "production",
-          project: "app",
-          revision: "abc123",
-          branch: "main",
-        },
-      },
-      {
-        ...annotation,
-        plugin: "objects",
-        key: "event-1",
-        label: "Oct 12",
-        description: "Agenda stays in the detail panel.",
-        objectType: "calendar_event" as const,
-        status: "cancelled",
-        facts: {
-          type: "calendar_event" as const,
-          when: "Mon, Oct 12, 10:00 – 10:30 PDT",
-          attendees: ["Sam", "Alex"],
-        },
-      },
-      {
-        ...annotation,
-        plugin: "junior",
-        key: "daily",
-        objectType: "automation" as const,
-        trigger: "Every day",
-        status: "blocked",
-        warning: "Reconnect provider",
-        facts: undefined,
-      },
-    ];
-    await sendSlackReply({
-      channelId: "C123",
-      conversationId,
-      text: "Linked work",
-      cards: mixedCards,
-    });
-    const mixedPost =
-      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
-    expect(mixedPost?.["metadata"]).toMatchObject({
-      entities: [
-        {
-          entity_type: "slack#/entities/item",
-          entity_payload: {
-            attributes: {
-              display_type: "Code change",
-              product_icon: {
-                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/git-pull-request-closed.png",
-              },
-            },
-            custom_fields: [
-              {
-                key: "description",
-                value: "One\nTwo\nThree\nFour\nFive\nSix…",
-              },
-            ],
-          },
-        },
-        {
-          entity_type: "slack#/entities/task",
-          entity_payload: {
-            attributes: {
-              display_type: "Ticket",
-              product_icon: {
-                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/issue-closed.png",
-              },
-            },
-            custom_fields: [],
-          },
-        },
-        {
-          entity_type: "slack#/entities/item",
-          entity_payload: {
-            attributes: {
-              display_type: "Deployment",
-              product_icon: {
-                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/rocket.png",
-              },
-            },
-            custom_fields: [
-              { key: "status", value: "ERROR" },
-              { key: "environment", value: "production" },
-              { key: "warning", value: "Deployment failed" },
-            ],
-          },
-        },
-        {
-          entity_type: "slack#/entities/item",
-          entity_payload: {
-            attributes: {
-              display_id: "Oct 12",
-              display_type: "Calendar event",
-              product_icon: {
-                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/calendar.png",
-              },
-            },
-            custom_fields: [
-              { key: "status", value: "cancelled" },
-              { key: "when", value: "Mon, Oct 12, 10:00 – 10:30 PDT" },
-              { key: "attendees", value: "Sam, Alex" },
-            ],
-          },
-        },
-        {
-          entity_type: "slack#/entities/item",
-          entity_payload: {
-            attributes: {
-              display_type: "Automation",
-              product_icon: {
-                url: "https://junior.example.com/_junior/dashboard/object-icons/v1/workflow.png",
-              },
-            },
-            custom_fields: [
-              { key: "trigger", value: "Every day" },
-              { key: "warning", value: "Reconnect provider" },
-            ],
-          },
-        },
-      ],
-    });
-    expect(JSON.stringify(mixedPost)).not.toContain('"fields"');
-    for (const hidden of [
-      "Assignees:",
-      "Priority:",
-      "Revision:",
-      "Branch:",
-      "blocked",
-      "Agenda",
-    ])
-      expect(mixedPost?.["text"]).not.toContain(hidden);
-    for (const type of [
-      "Code change",
-      "Ticket",
-      "Deployment",
-      "Calendar event",
-      "Automation",
-    ])
-      expect(mixedPost?.["text"]).toContain(type);
-    patchConfig({ dashboard: undefined });
-    await sendSlackReply({
-      channelId: "C123",
-      conversationId,
-      text: "Linked work",
-      cards: [mixedCards[0]!, { ...mixedCards[1]!, url: null }],
-    });
-    const headless =
-      getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
-    expect(headless?.["metadata"]).toMatchObject({
-      entities: [
-        { entity_payload: { attributes: { display_type: "Code change" } } },
-      ],
-    });
-    expect(JSON.stringify(headless?.["metadata"])).not.toContain(
-      "product_icon",
-    );
-    expect(headless?.["text"]).toContain("Ticket");
-    patchConfig({
-      dashboard: {
-        baseURL: "https://junior.example.com",
-        basePath: "/ops",
-      },
-    });
-
-    await createPluginAnnotations({
-      conversationId,
-      plugin: "objects",
-      db: getDb(),
-    }).upsert({ ...annotation, status: "merged" });
-    await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([]);
-    const saved = await getConversationEventStore().loadHistory(conversationId);
-    expect(
-      saved.find((event) => event.seq === message?.seq)?.data,
-    ).toMatchObject({ meta: { objectCards: refs } });
-
-    expect(saved.filter((event) => event.data.type === "tool_result")).toEqual(
-      history.filter((event) => event.data.type === "tool_result"),
-    );
-    const detail = await readConversationDetail(conversationId, {
-      viewer: testViewer(harness.actor.email),
-    });
-    expect(detail?.annotations).toMatchObject([
-      { plugin: "objects", key: annotation.key, status: "merged" },
-    ]);
-    const reported = detail?.events.find((event) => event.seq === message.seq);
-    if (reported?.data.type !== "message")
-      throw new Error("Expected a reported Message");
-    expect(reported.data.cards).toEqual(refs);
-
-    harness.setModelStream(
-      createModelStream([{ type: "text", text: "The object has merged." }]),
-    );
-    await harness.continue({
-      conversationId,
-      idempotencyKey: "objects-2",
-      message: "Any news?",
-    });
-    await harness.drain();
-    const later = (
-      await getConversationEventStore().loadHistory(conversationId)
     )
-      .filter(
-        (event) =>
-          event.data.type === "message" && event.data.role === "assistant",
-      )
-      .at(-1);
-    expect(later?.data).not.toHaveProperty("meta.objectCards");
+    .at(-1);
+  expect(later?.data).not.toHaveProperty("meta.objectCards");
 
-    harness.setModelStream(
-      createModelStream([
-        {
-          type: "toolCall",
-          name: "executeTool",
-          arguments: { tool_name: "objects_save", arguments: {} },
-        },
-        { type: "toolCall", name: "noReply", arguments: {} },
-      ]),
-    );
-    await harness.continue({
-      conversationId,
-      idempotencyKey: "objects-3",
-      message: "Keep this turn silent.",
-    });
-    await harness.drain();
-    harness.setModelStream(
-      createModelStream([{ type: "text", text: "Nothing new." }]),
-    );
-    await harness.continue({
-      conversationId,
-      idempotencyKey: "objects-4",
-      message: "Any news?",
-    });
-    await harness.drain();
-    const last = (await getConversationEventStore().loadHistory(conversationId))
-      .filter(
-        (event) =>
-          event.data.type === "message" && event.data.role === "assistant",
-      )
-      .at(-1);
-    expect(last?.data).not.toHaveProperty("meta.objectCards");
-  } finally {
-    setPlugins(previous);
-  }
+  harness.setModelStream(
+    createModelStream([
+      {
+        type: "toolCall",
+        name: "executeTool",
+        arguments: { tool_name: "objects_save", arguments: {} },
+      },
+      { type: "toolCall", name: "noReply", arguments: {} },
+    ]),
+  );
+  await harness.continue({
+    conversationId,
+    idempotencyKey: "objects-3",
+    message: "Keep this turn silent.",
+  });
+  await harness.drain();
+  harness.setModelStream(
+    createModelStream([{ type: "text", text: "Nothing new." }]),
+  );
+  await harness.continue({
+    conversationId,
+    idempotencyKey: "objects-4",
+    message: "Any news?",
+  });
+  await harness.drain();
+  const last = (await getConversationEventStore().loadHistory(conversationId))
+    .filter(
+      (event) =>
+        event.data.type === "message" && event.data.role === "assistant",
+    )
+    .at(-1);
+  expect(last?.data).not.toHaveProperty("meta.objectCards");
 });

@@ -15,6 +15,7 @@ import {
   type ConversationEvent,
   type ConversationEventData,
 } from "@/chat/conversations/history";
+import { useAppContext } from "../../fixtures/app-context";
 
 function event(
   seq: number,
@@ -60,17 +61,18 @@ describe("conversation report event projection", () => {
         };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "notes",
-          displayName: "Notes",
-          description: "Notes test plugin",
-        },
-        conversationEvents: [captured],
-      }),
-    ]);
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "notes",
+            displayName: "Notes",
+            description: "Notes test plugin",
+          },
+          conversationEvents: [captured],
+        }),
+      ],
+    });
     const pluginEvent = event(1, {
       type: "structured_event",
       namespace: "notes",
@@ -79,39 +81,35 @@ describe("conversation report event projection", () => {
       turnId: "turn-1",
       content: { count: 2 },
     });
-    try {
-      expect(
-        projectConversationReportEventPage({
-          canExposePayload: true,
-          events: [pluginEvent],
-        }),
-      ).toEqual([
-        {
-          seq: 1,
-          createdAt: new Date(1_000).toISOString(),
-          data: {
-            type: "structured_event",
-            namespace: "notes",
-            name: "memories_captured",
-            version: 1,
-            turnId: "turn-1",
-            presentation: {
-              icon: "brain",
-              title: "2 memories captured",
-            },
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [pluginEvent],
+      }),
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: new Date(1_000).toISOString(),
+        data: {
+          type: "structured_event",
+          namespace: "notes",
+          name: "memories_captured",
+          version: 1,
+          turnId: "turn-1",
+          presentation: {
+            icon: "brain",
+            title: "2 memories captured",
           },
         },
-      ]);
-      setPlugins([]);
-      expect(
-        projectConversationReportEventPage({
-          canExposePayload: true,
-          events: [pluginEvent],
-        }),
-      ).toEqual([]);
-    } finally {
-      setPlugins(previous);
-    }
+      },
+    ]);
+    useAppContext();
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [pluginEvent],
+      }),
+    ).toEqual([]);
   });
 
   it("omits registered plugin events without a presentation", async () => {
@@ -123,35 +121,32 @@ describe("conversation report event projection", () => {
         return value.count === 0 ? undefined : { title: "Background work" };
       },
     });
-    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "background",
-          displayName: "Background",
-          description: "Background event test plugin",
-        },
-        conversationEvents: [background],
-      }),
-    ]);
-    try {
-      expect(
-        projectConversationReportEventPage({
-          canExposePayload: true,
-          events: [
-            event(1, {
-              type: "structured_event",
-              namespace: "background",
-              name: "background_completed",
-              version: 1,
-              content: { count: 0 },
-            }),
-          ],
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "background",
+            displayName: "Background",
+            description: "Background event test plugin",
+          },
+          conversationEvents: [background],
         }),
-      ).toEqual([]);
-    } finally {
-      setPlugins(previous);
-    }
+      ],
+    });
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [
+          event(1, {
+            type: "structured_event",
+            namespace: "background",
+            name: "background_completed",
+            version: 1,
+            content: { count: 0 },
+          }),
+        ],
+      }),
+    ).toEqual([]);
   });
 
   it("ignores unsupported stored events", () => {

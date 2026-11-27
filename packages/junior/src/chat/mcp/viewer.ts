@@ -13,7 +13,7 @@ import type {
   PluginViewerMcp,
 } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { getMcpStoredOAuthCredentials } from "./auth-store";
 import { McpAuthorizationRequiredError, PluginMcpClient } from "./client";
@@ -101,7 +101,7 @@ export function createViewerMcp(
 ): PluginViewerMcp {
   return {
     async callTool(input) {
-      const plugin = pluginCatalogRuntime.getDefinition(provider);
+      const plugin = getAppContext().catalog.getDefinition(provider);
       if (!plugin?.manifest.mcp) {
         throw new Error(`Plugin "${provider}" does not support MCP`);
       }

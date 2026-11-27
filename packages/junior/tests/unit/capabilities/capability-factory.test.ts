@@ -12,12 +12,13 @@ vi.mock("@/chat/capabilities/catalog", () => ({
   logCapabilityCatalogLoadedOnce: vi.fn(),
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     createBroker: createBrokerMock,
     getProviders: () => getProvidersMock(),
-  } satisfies Pick<PluginCatalogRuntime, "createBroker" | "getProviders">,
-}));
+  } satisfies Pick<PluginCatalogRuntime, "createBroker" | "getProviders">;
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/state/adapter", () => ({
   getStateAdapter: () => ({

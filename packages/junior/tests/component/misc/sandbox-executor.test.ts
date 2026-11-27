@@ -70,8 +70,8 @@ vi.mock("@vercel/sandbox", () => ({
   },
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getProviders: () => [
       {
         manifest: {
@@ -91,8 +91,9 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
         },
       },
     ],
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 const {
   resolveMock,

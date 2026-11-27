@@ -16,7 +16,7 @@ import {
   serviceAccountPlugins,
   startServiceAccountSignIn,
 } from "@/chat/credentials/service-account";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CLI_USAGE } from "./run";
@@ -81,12 +81,12 @@ async function listenForCallback(): Promise<LoopbackCallback> {
 function requireServiceAccountPlugin(
   name: string,
 ): PluginDefinition | undefined {
-  const plugin = pluginCatalogRuntime.getDefinition(name);
+  const plugin = getAppContext().catalog.getDefinition(name);
   if (plugin?.manifest.accounts?.serviceAccount) {
     return plugin;
   }
   const supported = serviceAccountPlugins(
-    pluginCatalogRuntime.getProviders(),
+    getAppContext().catalog.getProviders(),
   ).map((candidate) => candidate.manifest.name);
   console.error(
     `Plugin "${name}" does not support a service account.` +

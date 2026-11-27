@@ -1,6 +1,6 @@
 import { Bash, defineCommand } from "just-bash";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { readConversationSpaceConfiguration } from "@/chat/spaces/configuration";
 
 type JrRpcDeps = {
@@ -167,8 +167,8 @@ async function handlePluginsCommand(
     });
   }
 
-  const plugins = pluginCatalogRuntime
-    .getProviders()
+  const plugins = getAppContext()
+    .catalog.getProviders()
     .map((plugin) => ({
       name: plugin.manifest.name,
       displayName: plugin.manifest.displayName,

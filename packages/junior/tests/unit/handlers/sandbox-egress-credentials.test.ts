@@ -28,14 +28,15 @@ const {
   getStateAdapter: vi.fn(),
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     // No plugin in these cases uses workload identity credentials.
     getDefinition: () => undefined,
     getOAuthConfig: getOAuthConfigMock,
     getProviders: getProvidersMock,
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 vi.mock("@/chat/plugins/credential-hooks", () => ({
   hasEgressCredentialHooks,
   selectPluginGrant: vi.fn(),
