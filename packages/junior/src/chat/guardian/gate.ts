@@ -305,6 +305,23 @@ function assertAuthoritativeContext(
   }
 }
 
+/**
+ * The current Guardian's line for a call that the tool's `guardian`
+ * described: its summary, else its target with the reason label.
+ */
+export function describedProposal(
+  described: ActionDescription | undefined,
+): string | undefined {
+  if (described?.summary) {
+    return described.summary;
+  }
+  if (!described?.target) {
+    return undefined;
+  }
+  const reason = described.toolDecision?.reason;
+  return reason ? `${described.target.ref} (${reason})` : described.target.ref;
+}
+
 /** Build the bounded wire proposal. Tool metadata is not authority. */
 function buildProposal(
   toolName: string,
@@ -343,7 +360,7 @@ function buildProposal(
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     ...(script ? { script: boundedScript(script) } : undefined),
-    tool: proposalTool(toolName, tool, resolved, described?.summary),
+    tool: proposalTool(toolName, tool, resolved, describedProposal(described)),
   };
 }
 
@@ -392,7 +409,7 @@ export function proposalTool(
   toolName: string,
   tool: AnyToolDefinition,
   resolved: ToolApprovalResolution | undefined,
-  /** The summary of the tool's own `guardian`, when it has one. */
+  /** The line from `describedProposal`, when the call has one. */
   proposalDescription: string | undefined,
 ): ToolActionProposal["tool"] {
   const name = resolved?.name ?? toolName;
@@ -600,10 +617,7 @@ async function prepareToolActionReview(
           input,
           context.conversationId,
         ))),
-      summary:
-        described?.summary ??
-        proposal.tool.proposalDescription ??
-        proposal.tool.name,
+      summary: described?.summary ?? proposal.tool.name,
       ...(resolved?.serverHints
         ? { serverHints: resolved.serverHints }
         : undefined),

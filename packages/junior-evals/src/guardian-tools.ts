@@ -19,6 +19,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { actionFromGuardian } from "@/chat/guardian/call-facts";
 import {
+  describedProposal,
   proposalTool,
   toolActionNeedsReview,
   undescribedAction,
@@ -28,6 +29,7 @@ import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+import { designGuardianContext } from "./guardian-facts-context";
 import type {
   ActionDescription,
   AnyToolDefinition,
@@ -179,17 +181,17 @@ export async function agentToolSpec(
   if (!tool) {
     throw new Error(`The agent has no tool named ${name}.`);
   }
-  // Only a core tool writes a summary. A plugin tool's `guardian` reads
-  // provider state, which `agentActionFacts` gives it.
-  const summary = tool.identity
-    ? undefined
-    : (await tool.guardian?.(input))?.summary;
-  return proposalTool(
-    name,
-    tool,
-    await tool.resolveApprovalMetadata?.(input),
-    summary,
-  );
+  const resolved = await tool.resolveApprovalMetadata?.(input);
+  // A plugin tool's `guardian` reads provider state. These cases state no
+  // facts, so it gets an empty stand-in.
+  const described = tool.identity
+    ? await agentActionFacts(
+        proposalTool(name, tool, resolved, undefined),
+        input,
+        designGuardianContext(undefined),
+      )
+    : await tool.guardian?.(input);
+  return proposalTool(name, tool, resolved, describedProposal(described));
 }
 
 /**
