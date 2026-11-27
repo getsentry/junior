@@ -384,6 +384,12 @@ function reportEventData(args: {
       const actorIdentity = args.canExposePayload
         ? reportMessageActorIdentity(data)
         : undefined;
+      const parentInput = reportParentAgentInput({
+        agentInvocationId: data.meta?.["agentInvocationId"],
+        authorUserId: reportingMessageAuthorSchema.safeParse(
+          data.meta?.["author"],
+        ).data?.userId,
+      });
       return {
         type: "message",
         messageId: data.messageId,
@@ -398,12 +404,7 @@ function reportEventData(args: {
         data.authorIdentityId !== SYSTEM_IDENTITY_ID
           ? { actorIdentityId: data.authorIdentityId }
           : undefined),
-        ...reportParentAgentInput({
-          agentInvocationId: data.meta?.["agentInvocationId"],
-          authorUserId: reportingMessageAuthorSchema.safeParse(
-            data.meta?.["author"],
-          ).data?.userId,
-        }),
+        ...parentInput,
         ...(args.canExposePayload
           ? reportInboxItemChanges(data.meta)
           : undefined),
@@ -443,7 +444,12 @@ function reportEventData(args: {
           : undefined),
         ...(args.canExposePayload
           ? {
-              text: data.text,
+              // A Parent message is stored as the child model's input. The
+              // Turn keeps the parent's own words as its request text.
+              text:
+                parentInput && typeof data.meta?.["requestText"] === "string"
+                  ? data.meta["requestText"]
+                  : data.text,
               ...(data.meta?.["attachments"]
                 ? {
                     attachments: readMessageAttachments(
