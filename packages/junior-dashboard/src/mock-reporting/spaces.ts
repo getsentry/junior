@@ -274,8 +274,9 @@ function leadParticipation(
     })),
   ];
   return {
-    // Match the API: only a Participant may Invite.
-    ...(space.viewerParticipant ? { canInvite: true as const } : undefined),
+    // Match the API: only a Participant may Invite. Set the key either way,
+    // so it replaces the Lead fixture's own canInvite.
+    canInvite: space.viewerParticipant ? true : undefined,
     isParticipant: space.viewerParticipant,
     participants,
     subscribed: member,
