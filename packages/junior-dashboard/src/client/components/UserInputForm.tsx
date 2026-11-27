@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import {
@@ -62,14 +61,6 @@ function SuggestedLabel(props: { className?: string }) {
   );
 }
 
-// Enter adds a line, as in every text box that takes more than one line.
-// Cmd or Ctrl with Enter sends the form.
-function sendOnModEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
-  if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
-  event.preventDefault();
-  event.currentTarget.form?.requestSubmit();
-}
-
 // Text that the agent wrote for a question, with its mentions resolved.
 function QuestionText(props: {
   mentions: readonly ActorIdentity[] | undefined;
@@ -92,7 +83,6 @@ function OtherInput(props: {
       className="min-h-9 py-1.5"
       disabled={props.disabled}
       onChange={(event) => props.onChange(event.target.value)}
-      onKeyDown={sendOnModEnter}
       placeholder={USER_INPUT_OTHER_LABEL}
       rows={1}
       value={props.value}
@@ -243,7 +233,6 @@ function TextField(props: {
         disabled={props.disabled}
         id={id}
         onChange={(event) => props.onChange(event.target.value)}
-        onKeyDown={sendOnModEnter}
         value={props.value}
       />
     </Field>
