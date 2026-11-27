@@ -64,6 +64,7 @@ function reviewContext(
       }),
       ...overrides,
     },
+    onFatal: () => undefined,
     onDecision: vi.fn(async () => undefined),
     guardian: (batch) => createCurrentGuardian(reviewer, batch),
   });
@@ -484,8 +485,9 @@ describe("tool action review", () => {
     );
   });
 
-  it("fails only the action when its review cannot run", async () => {
+  it("escalates a review that cannot run to the run boundary", async () => {
     const failure = new Error("provider unavailable");
+    const onFatal = vi.fn();
     const guardian: Guardian = {
       review: async () => {
         throw failure;
@@ -500,6 +502,7 @@ describe("tool action review", () => {
         userIntent: () => "Generate the report.",
       },
       guardian: () => guardian,
+      onFatal,
       onDecision: vi.fn(async () => undefined),
     });
 
@@ -513,9 +516,10 @@ describe("tool action review", () => {
       ),
     ).rejects.toMatchObject({
       cause: failure,
-      message: expect.stringContaining("This is not a risk decision."),
       name: "ToolActionReviewUnavailableError",
     });
+    // The current gate ends the Run when review cannot run.
+    expect(onFatal).toHaveBeenCalledOnce();
   });
 
   it("sends the ordered messages of the work and one action for each call", async () => {
@@ -546,6 +550,7 @@ describe("tool action review", () => {
           }));
         },
       }),
+      onFatal: () => undefined,
       onDecision: vi.fn(async () => undefined),
     });
 
@@ -642,6 +647,7 @@ describe("tool action review", () => {
         source: LOCAL_SOURCE,
         userIntent: () => "Generate the report.",
       },
+      onFatal: () => undefined,
       onDecision: async () => {
         throw failure;
       },
@@ -726,6 +732,7 @@ describe("tool action review", () => {
         source: LOCAL_SOURCE,
         userIntent: () => "Clean up the preview workspaces.",
       },
+      onFatal: () => undefined,
       onDecision,
       guardian: (batch) => createCurrentGuardian({ review }, batch),
     });

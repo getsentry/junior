@@ -232,6 +232,7 @@ interface ToolWiringArgs {
   /** Manual-only skills that `loadSkill` loaded earlier in the Conversation. */
   conversationSkillNames: readonly string[];
   onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
+  onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
   resume: ResumeState;
@@ -590,6 +591,7 @@ export async function wireAgentTools(
         decision: decision.decision,
         rule: decision.rule,
       }),
+    onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     guardian: selectedGuardian(),
   });

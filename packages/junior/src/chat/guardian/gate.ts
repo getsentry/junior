@@ -185,22 +185,11 @@ export class ToolActionRejectedError extends Error {
   }
 }
 
-const ACTION_REVIEW_UNAVAILABLE_INSTRUCTIONS = [
-  "The action did not run because its review could not run. This is not a risk decision.",
-  "You may retry the same action once. If it fails again, tell the person what you could not do.",
-  "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
-].join("\n");
-
-/**
- * Required review could not run, so the action was not executed. With
- * `retry`, only this action failed and the agent may retry it once.
- */
+/** Required review could not run, so the action was not executed. */
 export class ToolActionReviewUnavailableError extends Error {
-  constructor(options?: { cause?: unknown; retry?: boolean }) {
+  constructor(options?: { cause?: unknown }) {
     super(
-      options?.retry
-        ? ACTION_REVIEW_UNAVAILABLE_INSTRUCTIONS
-        : "Required action review is unavailable; the action was not executed.",
+      "Required action review is unavailable; the action was not executed.",
       {
         cause: options?.cause,
       },
@@ -578,6 +567,8 @@ export function createToolActionReview(options: {
     toolName: string;
     decision: ReviewedDecision;
   }): Promise<void>;
+  /** Escalate unavailable review to the owning agent-run boundary. */
+  onFatal(error: ToolActionReviewUnavailableError): void;
   priorRejections?: ToolActionPriorRejection[];
 }): ToolActionReview {
   const priorRejections = [...(options.priorRejections ?? [])];
@@ -760,16 +751,9 @@ export function createToolActionReview(options: {
     if (step.kind === "skipped") {
       return { allowed: true };
     }
-    // Only this action fails, and the agent may retry it once
-    // (`bounded-failure`).
     if (step.kind === "unavailable") {
-      return {
-        allowed: false,
-        error: new ToolActionReviewUnavailableError({
-          cause: step.error.cause,
-          retry: true,
-        }),
-      };
+      options.onFatal(step.error);
+      return { allowed: false, error: step.error };
     }
     const { decision, proposal } = step;
     if (decision.decision === "allow") {

@@ -101,6 +101,7 @@ describe("codemode tool", () => {
             source: SOURCE,
             userIntent: () => "What time is it, and what am I watching?",
           },
+          onFatal: () => undefined,
           onDecision: async () => undefined,
           guardian: (batch) =>
             createCurrentGuardian({ review: denyPosts }, batch),

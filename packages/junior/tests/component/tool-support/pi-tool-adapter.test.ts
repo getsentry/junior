@@ -37,6 +37,7 @@ const githubSkill: Skill = {
 function actionReview(
   reviewer: ToolActionReviewer,
   userIntent: string,
+  onFatal = vi.fn(),
 ): ToolActionReview {
   return createToolActionReview({
     context: {
@@ -54,6 +55,7 @@ function actionReview(
       userIntent: () => userIntent,
     },
     onDecision: vi.fn(async () => undefined),
+    onFatal,
     guardian: (batch) => createCurrentGuardian(reviewer, batch),
   });
 }
@@ -617,8 +619,9 @@ describe("Pi tool adapter", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("fails only the action when Guardian review cannot run", async () => {
+  it("escalates unavailable Guardian review to the run boundary", async () => {
     const sandbox = new SkillSandbox([], []);
+    const onFatal = vi.fn();
     const reviewState = actionReview(
       {
         review: async () => {
@@ -626,6 +629,7 @@ describe("Pi tool adapter", () => {
         },
       },
       "Create the report.",
+      onFatal,
     );
     const [demoTool] = createPiAgentTools(
       {
@@ -648,8 +652,9 @@ describe("Pi tool adapter", () => {
     await expect(
       demoTool!.execute("tool-demo", { reportId: "weekly" }),
     ).rejects.toThrow(
-      "The action did not run because its review could not run. This is not a risk decision.",
+      "Required action review is unavailable; the action was not executed.",
     );
+    expect(onFatal).toHaveBeenCalledOnce();
   });
 
   it("reports thrown tool errors to observers", async () => {

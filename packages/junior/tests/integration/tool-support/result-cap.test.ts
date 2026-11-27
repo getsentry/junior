@@ -50,6 +50,7 @@ const allowAll = createToolActionReview({
     source: createLocalSource(CONVERSATION_ID),
     userIntent: () => "Read the docs page.",
   },
+  onFatal: () => undefined,
   onDecision: async () => undefined,
   guardian: (batch) =>
     createCurrentGuardian(
