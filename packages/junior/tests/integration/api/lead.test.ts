@@ -183,8 +183,8 @@ describe("Lead API", () => {
         .conversations.map((conversation) => conversation.conversationId);
     expect(await feedIds("")).toEqual([work.conversationId]);
     expect(await feedIds(`?spaceId=${spaceId}`)).toEqual([]);
-    // The Lead's title is the Space's name, so a search for it would match.
-    expect(await feedIds("?q=Release")).toEqual([]);
+    // A search finds the Space by its Lead, whose title is the Space's name.
+    expect(await feedIds("?q=Release")).toEqual([leadId]);
 
     const profile = actorProfileReportSchema.parse(
       await (
