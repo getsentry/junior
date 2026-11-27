@@ -553,7 +553,8 @@ describe("child agent identity and concurrency", () => {
       });
 
       // A message from the parent starts the child again and resets its
-      // automated-turn count, and its new watches work.
+      // automated-turn count. The mailbox then delivers the held timers as
+      // one Event Turn, which counts, and its new watches work.
       await harness.message({
         childConversationId: child.childConversationId,
         idempotencyKey: "message-1",
@@ -564,7 +565,10 @@ describe("child agent identity and concurrency", () => {
         getAutomatedTurnLimitState({
           conversationId: child.childConversationId,
         }),
-      ).resolves.toMatchObject({ consecutiveAutomatedTurns: 0 });
+      ).resolves.toMatchObject({ consecutiveAutomatedTurns: 1 });
+      expect(JSON.stringify(harness.requests().at(-1)?.instruction)).toContain(
+        "Check much later.",
+      );
       await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "idle" }],
       });
@@ -581,6 +585,7 @@ describe("child agent identity and concurrency", () => {
         "parent_message",
         "event",
         "parent_message",
+        "event",
         "event",
       ]);
     } finally {

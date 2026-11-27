@@ -1,7 +1,6 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { STOPPED_CONVERSATION_SKIP_REASON } from "@/chat/conversations/held-input";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
@@ -14,7 +13,12 @@ import {
 import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import {
+  holdInboundMessages,
+  releaseHeldInput,
+} from "@/chat/task-execution/held-input";
+import {
   appendAndEnqueueInboundMessage,
+  ensureConversationWake,
   stopConversationWork,
   takePendingEventMessages,
   type AppendAndEnqueueInboundMessageResult,
@@ -31,6 +35,9 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
+
+/** Skip reason on the Message that saves input a stopped Conversation holds. */
+const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
 export async function getConversationStoppedAtMs(
@@ -78,9 +85,11 @@ export async function enqueueAutomatedInput(
       }
       // Save before the mailbox records the id, so a retry after a failed
       // save holds the input again.
-      await saveHeldInput(args.message.conversationId, [
-        { ...args.message, input: { ...args.message.input, text } },
-      ]);
+      await saveHeldInput(
+        args.message.conversationId,
+        [{ ...args.message, input: { ...args.message.input, text } }],
+        args.state,
+      );
       held = true;
       return undefined;
     },
@@ -188,7 +197,7 @@ export async function stopConversationTree(
       state: options.state,
     });
     if (pending.length > 0) {
-      await saveHeldInput(conversationId, pending);
+      await saveHeldInput(conversationId, pending, options.state);
     }
     await cancelSignInWait(conversationId);
     if (conversationId === options.finishedRunOf) {
@@ -210,14 +219,17 @@ export async function stopConversationTree(
  * work sent at `sentAtMs`: a person's input, or new work from its parent.
  * Nothing changes for work sent at or before the stop, so the input that a
  * stop drops does not undo it. Only Conversations that stopped no later than
- * this Conversation change, so a later stop of one child agent stays.
+ * this Conversation change, so a later stop of one child agent stays. Each
+ * Conversation that resumes gets its held input back as pending input, and
+ * the normal mailbox batch delivers it.
  */
 export async function resumeConversationTree(
   conversationId: string,
   sentAtMs: number,
+  options: ResumeOptions = {},
 ): Promise<void> {
   const subtree = sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`;
-  await getSqlExecutor().transaction(async () => {
+  const resumed = await getSqlExecutor().transaction(async () => {
     // The executor's transaction nests as a savepoint inside a caller's
     // lock. A Drizzle transaction would commit the caller's.
     const tx = getDb();
@@ -234,7 +246,7 @@ export async function resumeConversationTree(
       (row) => row.conversationId === conversationId,
     )?.stoppedAt;
     if (!stoppedAt || sentAtMs <= stoppedAt.getTime()) {
-      return;
+      return [];
     }
     await tx
       .update(juniorConversations)
@@ -245,7 +257,30 @@ export async function resumeConversationTree(
           lte(juniorConversations.stoppedAt, stoppedAt),
         ),
       );
+    return rows.flatMap((row) =>
+      row.stoppedAt && row.stoppedAt <= stoppedAt ? [row.conversationId] : [],
+    );
   });
+  await mapBounded(resumed, async (resumedId) => {
+    const released = await releaseHeldInput({
+      conversationId: resumedId,
+      state: options.state,
+    });
+    if (released > 0) {
+      await ensureConversationWake({
+        conversationId: resumedId,
+        idempotencyKey: `held-input:${resumedId}:${sentAtMs}`,
+        queue: options.queue ?? getVercelConversationWorkQueue(),
+        state: options.state,
+      });
+    }
+  });
+}
+
+/** Where a resume wakes the Conversations that get held input back. */
+export interface ResumeOptions {
+  queue?: ConversationWorkQueue | undefined;
+  state?: StateAdapter | undefined;
 }
 
 /**
@@ -256,6 +291,7 @@ export async function resumeConversationTree(
 export async function resumeForPersonInput(
   conversationId: string,
   messages: readonly InboundMessage[],
+  options: ResumeOptions = {},
 ): Promise<void> {
   const personInput = messages.filter((message) =>
     isPersonInput(message.source),
@@ -268,20 +304,23 @@ export async function resumeForPersonInput(
   await resumeConversationTree(
     conversationId,
     Math.max(...personInput.map((message) => message.createdAtMs)),
+    options,
   );
 }
 
 /**
- * Save held input as one skipped Message, the Message that a Turn would save
- * for it. The next Turn gets it as Turn input (`withHeldInput`). The append
- * is idempotent by Message id, and the Message takes the id of the first
- * input.
+ * Hold input until the Conversation resumes, and save it as one skipped
+ * Message so the transcript shows it. The Message takes the id of the first
+ * input, so the Turn that runs the input on resume updates it. The append is
+ * idempotent by Message id.
  */
 export async function saveHeldInput(
   conversationId: string,
   messages: readonly InboundMessage[],
+  state?: StateAdapter,
 ): Promise<void> {
   const first = messages[0]!;
+  await holdInboundMessages(conversationId, messages, state);
   const { text } = instructionForInputs(
     renderEventBatchInputs(messages, await eventInboxItemInputs(messages)),
   );

@@ -235,8 +235,8 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   expect(saved).toContain("Check after the stop.");
   await expect(fixture.status(conversationId)).resolves.toBe("done");
 
-  // A person's message ends the stop. Its Turn reads the held Events, and
-  // the next timer starts a Turn.
+  // A person's message ends the stop. Its Turn runs first, then the mailbox
+  // delivers the held Events, with their Event metadata, as Event Turns.
   await fixture.continue({
     conversationId,
     idempotencyKey: "after-stop",
@@ -244,19 +244,22 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   });
   await expect(fixture.status(conversationId)).resolves.toBe("working");
   await drain();
-  expect(agentRuns).toHaveLength(1);
-  // The held Events are Turn input, before the person's message.
-  const { context: threadContext, inputs } = agentRuns[0]!.instruction;
-  expect(threadContext).toBeUndefined();
-  expect(inputs?.map((input) => input.kind)).toEqual([
-    "runtime",
-    "runtime",
-    "runtime",
-    "person",
-  ]);
-  const instruction = JSON.stringify(inputs);
-  expect(instruction).toContain("Check much later.");
-  expect(instruction).toContain("Keep watching.");
+  const [personRun, ...heldRuns] = agentRuns;
+  expect(personRun!.instruction.context).toBeUndefined();
+  expect(JSON.stringify(personRun!.instruction.inputs)).toContain(
+    "Keep watching.",
+  );
+  expect(JSON.stringify(personRun!.instruction.inputs)).not.toContain(
+    "Check much later.",
+  );
+  expect(heldRuns.length).toBeGreaterThan(0);
+  for (const run of heldRuns) {
+    expect(run.source).toMatchObject({ kind: "event" });
+  }
+  const held = JSON.stringify(heldRuns.map((run) => run.instruction.inputs));
+  expect(held).toContain("Check the deployment.");
+  expect(held).toContain("Check much later.");
+  expect(held).toContain("Check after the stop.");
   // The starter has not read the reply yet.
   await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   await expect(
@@ -266,8 +269,8 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   await runTimerWatchHeartbeat({ nowMs: clock(), queue });
   clock.mockReturnValue(clock() + 120_000);
   await drain();
-  expect(agentRuns).toHaveLength(2);
-  expect(agentRuns[1]!.source).toMatchObject({ kind: "event" });
+  expect(agentRuns).toHaveLength(heldRuns.length + 2);
+  expect(agentRuns.at(-1)!.source).toMatchObject({ kind: "event" });
 });
 
 it("keeps a root stopped when the stop drops queued input", async () => {
@@ -402,8 +405,8 @@ it("saves a stopped child's timers until a person writes to its root", async () 
     await stoppedConversationMessageTexts(child.childConversationId),
   ).toEqual([expect.stringContaining("Check soon.")]);
 
-  // A person's message to the root ends the stop of the child too, so its
-  // next timer starts the child.
+  // A person's message to the root ends the stop of the child too. The
+  // mailbox delivers its held timer, and its next timer starts it again.
   clock.mockReturnValue(clock() + 1_000);
   await fixture.continue({
     conversationId,
@@ -414,15 +417,16 @@ it("saves a stopped child's timers until a person writes to its root", async () 
   await expect(
     getConversationStoppedAtMs(child.childConversationId),
   ).resolves.toBeUndefined();
+  const childRuns = () =>
+    agentRuns.filter((run) => run.conversationId === child.childConversationId);
+  expect(
+    childRuns().map((run) => JSON.stringify(run.instruction.inputs)),
+  ).toEqual([expect.stringContaining("Check soon.")]);
   clock.mockReturnValue(clock() + 600_000);
   await runTimerWatchHeartbeat({ nowMs: clock(), queue });
   clock.mockReturnValue(clock() + 120_000);
   await drain();
-  expect(
-    agentRuns
-      .filter((run) => run.conversationId === child.childConversationId)
-      .map((run) => run.source.kind),
-  ).toEqual(["event"]);
+  expect(childRuns().map((run) => run.source.kind)).toEqual(["event", "event"]);
 
   // A person's stop of only the child stays in effect when a person writes
   // to the root, because the root itself was not stopped.
@@ -442,15 +446,11 @@ it("saves a stopped child's timers until a person writes to its root", async () 
   await runTimerWatchHeartbeat({ nowMs: clock(), queue });
   clock.mockReturnValue(clock() + 120_000);
   await drain();
-  expect(
-    agentRuns.filter((run) => run.conversationId === child.childConversationId),
-  ).toHaveLength(1);
+  expect(childRuns()).toHaveLength(2);
+  // The delivered timer's Turn replaced its skipped Message.
   expect(
     await stoppedConversationMessageTexts(child.childConversationId),
-  ).toEqual([
-    expect.stringContaining("Check soon."),
-    expect.stringContaining("Check much later."),
-  ]);
+  ).toEqual([expect.stringContaining("Check much later.")]);
 
   // New work from its parent ends the stop of the child, so its next timer
   // starts it.
@@ -481,11 +481,14 @@ it("saves a stopped child's timers until a person writes to its root", async () 
   clock.mockReturnValue(clock() + 120_000);
   await drain();
   expect(
-    agentRuns
-      .filter((run) => run.conversationId === child.childConversationId)
-      .slice(1)
+    childRuns()
+      .slice(2)
       .map((run) => run.source.kind),
-  ).toEqual(["parent_message", "event"]);
+  ).toEqual(["parent_message", "event", "event"]);
+  // The parent's message runs first, then the held timer.
+  expect(JSON.stringify(childRuns()[3]!.instruction.inputs)).toContain(
+    "Check much later.",
+  );
 });
 
 it("runs a timer on a root whose last Turn failed", async () => {

@@ -583,7 +583,7 @@ async function processConversationWorkInContext(
           state: options.state,
         });
         if (claim.status === "held") {
-          await saveHeldInput(conversationId, claim.messages);
+          await saveHeldInput(conversationId, claim.messages, options.state);
           if (claim.pendingCount === 0 && !resumePending) {
             break;
           }

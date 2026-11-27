@@ -166,6 +166,7 @@ export function createConversationWork(
     await resumeForPersonInput(
       context.conversationId,
       context.attempt.messages,
+      { queue: options.queue, state: options.state },
     );
     const conversation = await options.conversationStore.get({
       conversationId: context.conversationId,

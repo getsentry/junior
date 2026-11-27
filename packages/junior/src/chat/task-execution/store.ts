@@ -7,6 +7,7 @@ import {
   CONVERSATION_QUEUE_SCHEMA_VERSION,
   type ConversationWorkQueue,
 } from "./queue";
+import { takePendingEventMessages as takeHeldPendingEvents } from "./held-input";
 import * as workState from "./state";
 
 export type { BeforeWorkStops, RenderInboundText } from "./state";
@@ -595,7 +596,7 @@ export async function takePendingEventMessages(args: {
   nowMs?: number;
   state?: StateAdapter | undefined;
 }): Promise<InboundMessage[]> {
-  const taken = await workState.takePendingEventMessages(args);
+  const taken = await takeHeldPendingEvents(args);
   if (taken.length > 0) {
     await recordExecutionMetadata(args);
   }

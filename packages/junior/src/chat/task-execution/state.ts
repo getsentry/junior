@@ -32,7 +32,7 @@ import {
   type InboundMessageSenders,
 } from "./message-sender";
 
-const CONVERSATION_PREFIX = "junior:conversation:v2";
+export const CONVERSATION_PREFIX = "junior:conversation:v2";
 const CONVERSATION_SCHEMA_VERSION = 2;
 const CONVERSATION_ACTIVITY_INDEX_MAX_LENGTH = 10_000;
 const CONVERSATION_INDEX_LOCK_TTL_MS = 10_000;
@@ -331,7 +331,11 @@ function now(): number {
   return Date.now();
 }
 
-function compareMessages(left: InboundMessage, right: InboundMessage): number {
+/** Order mailbox input by send time, then receive time, then id. */
+export function compareMessages(
+  left: InboundMessage,
+  right: InboundMessage,
+): number {
   return (
     left.createdAtMs - right.createdAtMs ||
     left.receivedAtMs - right.receivedAtMs ||
@@ -392,7 +396,8 @@ function compareIndexAscending(
   );
 }
 
-function uniqueStrings(values: string[]): string[] {
+/** Return the values without repeats, in first-seen order. */
+export function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
 
@@ -657,7 +662,11 @@ function emptyConversation(args: {
   };
 }
 
-function isLeaseActive(lease: Lease | undefined, nowMs: number): boolean {
+/** Return whether a lease is held and not yet expired. */
+export function isLeaseActive(
+  lease: Lease | undefined,
+  nowMs: number,
+): boolean {
   return Boolean(lease && lease.expiresAtMs > nowMs);
 }
 
@@ -721,7 +730,8 @@ function executionWithPendingMessages(
   };
 }
 
-function withExecutionUpdate(
+/** Return the Conversation with a new execution, stamped at `nowMs`. */
+export function withExecutionUpdate(
   conversation: ConversationExecutionState,
   execution: ConversationExecution,
   nowMs: number,
@@ -736,7 +746,8 @@ function withExecutionUpdate(
   };
 }
 
-async function getConnectedState(
+/** Return the state adapter, connected. */
+export async function getConnectedState(
   stateAdapter?: StateAdapter,
 ): Promise<StateAdapter> {
   const state = stateAdapter ?? getStateAdapter();
@@ -1052,7 +1063,8 @@ async function acquireMutationLock(
   }
 }
 
-async function withConversationMutation<T>(
+/** Run `callback` under the mailbox mutation lock of one Conversation. */
+export async function withConversationMutation<T>(
   args: {
     conversationId: string;
     state?: StateAdapter | undefined;
@@ -1068,7 +1080,8 @@ async function withConversationMutation<T>(
   }
 }
 
-async function readConversation(
+/** Read the mailbox record of a Conversation, or undefined when none. */
+export async function readConversation(
   state: StateAdapter,
   conversationId: string,
 ): Promise<ConversationExecutionState | undefined> {
@@ -1100,7 +1113,7 @@ function conversationFromValue(
  * a stalled mutator that lost its lock must fail loudly instead of clobbering
  * a newer record with a stale copy.
  */
-async function writeConversation(
+export async function writeConversation(
   state: StateAdapter,
   lock: Lock,
   conversation: ConversationExecutionState,
@@ -2336,71 +2349,6 @@ export async function claimConversationAttempt(args: {
       ),
     );
     return { status: "claimed" };
-  });
-}
-
-/**
- * Remove the pending Event input of a Conversation and return it, so a stop
- * can hold input that reached the mailbox before it. The input of a running
- * attempt stays and is marked held: that Turn saves it, or the next claim
- * holds it.
- */
-export async function takePendingEventMessages(args: {
-  conversationId: string;
-  nowMs?: number;
-  state?: StateAdapter | undefined;
-}): Promise<InboundMessage[]> {
-  const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state, lock) => {
-    const current = await readConversation(state, args.conversationId);
-    if (!current) {
-      return [];
-    }
-    const lease = current.execution.lease;
-    const runningIds = new Set(
-      isLeaseActive(lease, nowMs) ? lease?.attemptInboundMessageIds : [],
-    );
-    const events = current.execution.pendingMessages.filter(
-      (message) => message.source === "event",
-    );
-    const removed = events.filter(
-      (message) => !runningIds.has(message.inboundMessageId),
-    );
-    const held = events
-      .filter((message) => runningIds.has(message.inboundMessageId))
-      .map((message) => message.inboundMessageId);
-    if (removed.length === 0 && held.length === 0) {
-      return [];
-    }
-    const pendingMessages = current.execution.pendingMessages.filter(
-      (message) => !removed.includes(message),
-    );
-    const becomesIdle =
-      current.execution.status === "pending" && pendingMessages.length === 0;
-    await writeConversation(
-      state,
-      lock,
-      withExecutionUpdate(
-        current,
-        {
-          ...current.execution,
-          heldInboundMessageIds: uniqueStrings([
-            ...(current.execution.heldInboundMessageIds ?? []),
-            ...held,
-          ]),
-          lastEnqueuedAtMs:
-            pendingMessages.length === 0
-              ? undefined
-              : current.execution.lastEnqueuedAtMs,
-          pendingMessages,
-          retryCount: becomesIdle ? 0 : current.execution.retryCount,
-          runId: becomesIdle ? undefined : current.execution.runId,
-          status: becomesIdle ? "idle" : current.execution.status,
-        },
-        nowMs,
-      ),
-    );
-    return removed;
   });
 }
 

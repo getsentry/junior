@@ -4,9 +4,11 @@ import { and, desc, eq, like, sql } from "drizzle-orm";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   getConversationStoppedAtMs,
   resumeConversationTree,
+  type ResumeOptions,
 } from "@/chat/conversations/session-stop";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
@@ -109,6 +111,7 @@ export async function appendParentMessage(
   delivery: ParentMessageDelivery,
   options: {
     conversationStore?: ConversationStore | undefined;
+    queue?: ConversationWorkQueue | undefined;
     state?: StateAdapter | undefined;
   },
 ): Promise<void> {
@@ -132,7 +135,7 @@ export async function appendParentMessage(
     if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
       return;
     }
-    await endStopForParentMessage(message);
+    await endStopForParentMessage(message, options);
   }
   const { status } = await appendInboundMessage({
     message,
@@ -152,10 +155,17 @@ export async function appendParentMessage(
   }
 }
 
-async function endStopForParentMessage(message: InboundMessage): Promise<void> {
+async function endStopForParentMessage(
+  message: InboundMessage,
+  options: ResumeOptions,
+): Promise<void> {
   const stoppedAtMs = await getConversationStoppedAtMs(message.conversationId);
   if (stoppedAtMs !== undefined && message.createdAtMs > stoppedAtMs) {
-    await resumeConversationTree(message.conversationId, message.createdAtMs);
+    await resumeConversationTree(
+      message.conversationId,
+      message.createdAtMs,
+      options,
+    );
   }
 }
 

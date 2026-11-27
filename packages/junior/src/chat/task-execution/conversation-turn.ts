@@ -40,7 +40,6 @@ import {
 } from "@/chat/conversations/turn-lifecycle";
 import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { buildTurnThreadContext } from "@/chat/slack/thread-context";
-import { withHeldInput } from "@/chat/conversations/held-input";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -629,14 +628,7 @@ export function createConversationTurnWorker(
               turnId,
               runId: currentRunId,
               instruction: {
-                ...(await withHeldInput(
-                  {
-                    conversation,
-                    conversationId: context.conversationId,
-                    turnId,
-                  },
-                  instructionInputs,
-                )),
+                ...instructionInputs,
                 ...(instructionActor ? { actor: instructionActor } : undefined),
                 ...childTurn.instruction,
                 storedAttachments: attachments,

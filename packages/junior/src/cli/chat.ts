@@ -286,6 +286,7 @@ async function prepareLocalChatRun(
         await resumeForPersonInput(
           context.conversationId,
           context.attempt.messages,
+          { queue: localConversationWork.queue },
         );
         return await runConversation(context, { runTurn });
       },
