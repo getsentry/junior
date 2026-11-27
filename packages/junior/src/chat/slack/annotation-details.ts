@@ -3,6 +3,7 @@ import { annotationCard } from "@/chat/conversations/cards";
 import * as z from "zod";
 import { eq } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
+import { readLiveAnnotations } from "@/api/objects/live-annotations";
 import { getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
@@ -26,7 +27,10 @@ const eventSchema = z.object({
   >
 >;
 
-/** Show saved annotation facts only to a viewer who can read their Conversation. */
+/**
+ * Show an annotation's object, as the viewer can read it now, only to a
+ * viewer who can read its Conversation.
+ */
 export async function presentSlackAnnotationDetails(
   event: Record<string, unknown>,
   teamId: string | undefined,
@@ -84,18 +88,19 @@ export async function presentSlackAnnotationDetails(
     await missing();
     return;
   }
-  const annotation = (
-    await listConversationAnnotations(db, conversationId)
-  ).find((item) => annotationKeyDigest(item.plugin, item.key) === keyDigest);
-  if (!annotation) {
+  const saved = (await listConversationAnnotations(db, conversationId)).find(
+    (item) => annotationKeyDigest(item.plugin, item.key) === keyDigest,
+  );
+  if (!saved) {
     await missing();
     return;
   }
-  const entity = renderSlackObjectCard(
-    annotationCard(annotation),
-    conversationId,
-    "details",
-  ).entity;
+  // The posted card keeps its facts. Its details read the object live.
+  const [annotation] = await readLiveAnnotations(identity.user, [saved]);
+  const entity =
+    annotation &&
+    renderSlackObjectCard(annotationCard(annotation), conversationId, "details")
+      .entity;
   if (!entity) {
     await missing();
     return;

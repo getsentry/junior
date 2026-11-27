@@ -286,6 +286,7 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
+    "viewer-tools": nonEmptyStringArraySchema("viewer-tools").optional(),
   })
   .passthrough();
 
@@ -431,6 +432,7 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
+      setDefined(mcp, "viewer-tools", config.mcp.viewerTools);
       result["mcp"] = mcp;
     }
   }
@@ -1133,6 +1135,18 @@ function normalizeMcp(
         { reservedKeys: RESERVED_AUTHORIZE_PARAM_KEYS },
       )
     : undefined;
+  const unloadedViewerTools = unloadedMcpTools(
+    {
+      allowedTools: result.data["allowed-tools"],
+      wrappedTools: result.data["wrapped-tools"],
+    },
+    result.data["viewer-tools"] ?? [],
+  );
+  if (unloadedViewerTools.length > 0) {
+    throw new Error(
+      `Plugin ${name} mcp.viewer-tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unloadedViewerTools.join(", ")}`,
+    );
+  }
 
   return {
     transport: "http",
@@ -1164,6 +1178,9 @@ function normalizeMcp(
       : undefined),
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
+      : undefined),
+    ...(result.data["viewer-tools"]
+      ? { viewerTools: result.data["viewer-tools"] }
       : undefined),
   } satisfies PluginMcpConfig;
 }

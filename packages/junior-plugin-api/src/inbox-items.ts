@@ -1,3 +1,4 @@
+import type { PluginAnnotations } from "./annotations";
 import type { PluginCodeChanges } from "./code";
 import type { PluginContext } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
@@ -30,14 +31,20 @@ export interface PluginInboxSubjectKind {
    */
   codeChange?: boolean;
   /**
-   * Where the owner Conversation of an item is. Each item belongs to one
-   * Conversation, which decides who can see it. Junior finds it in the row
-   * of `table` whose `subjectId` column holds the item's subject id, and
-   * reads the `conversationId` column of that row. Name a table of this
-   * plugin and its columns in snake_case. At most one row can have the
-   * subject id and a set Conversation: add a unique index for it.
+   * Where the owner Conversation of an item is, which decides who can see
+   * it. A table maps the subject id to a `conversationId`, with a unique
+   * index (columns in snake_case). `annotation` names the Conversation that
+   * first saved an Annotation of the subject, so register each kind that an
+   * object Annotation uses.
    */
-  owner: PluginInboxSubjectOwner;
+  owner: PluginInboxSubjectOwner | "annotation";
+  /**
+   * Each assignee holds a role on the object, such as a GitHub assignee, so
+   * they are on the item without the owner Conversation. Nobody can take it.
+   * A dismiss first calls `inboxItemDismissed` to remove the person's role,
+   * and fails when the hook fails. With nobody left, the item closes.
+   */
+  assigneeRoles?: boolean;
 }
 
 /** The table and columns that map a subject id to its owner Conversation. */
@@ -133,9 +140,41 @@ export interface PluginInboxItems {
   }): Promise<boolean>;
 }
 
+/**
+ * A plugin changed an open item through a Conversation that does not own it.
+ * A plugin that picks the owner from provider data, such as a GitHub issue
+ * footer, can catch it when that data is stale.
+ */
+export class PluginInboxItemOwnerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PluginInboxItemOwnerError";
+  }
+}
+
 /** Inbox items of a plugin, for the Conversation that each item belongs to. */
 export interface PluginConversationInboxItems {
   forConversation(conversationId: string): PluginInboxItems;
+}
+
+/**
+ * A person dismissed an item of a subject kind with `assigneeRoles`. The
+ * plugin removes them from the object on the provider, such as from a
+ * GitHub issue's assignees.
+ */
+export interface InboxItemDismissedHookContext extends PluginContext {
+  /** Annotations of the Conversation that the item belongs to. */
+  annotations: PluginAnnotations;
+  /** The Conversation that the item belongs to. */
+  conversationId: string;
+  /**
+   * The person's account of the plugin's provider, such as a GitHub login.
+   * Unset when they linked none.
+   */
+  handle?: string;
+  nowMs: number;
+  /** The subject of the item, with the plugin's own kind. */
+  subject: PluginInboxItemSubject;
 }
 
 /** A person picked one of the `choices` of an item that this plugin added. */

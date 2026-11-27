@@ -29,10 +29,12 @@ import {
   embedConversationQuery,
 } from "@/chat/conversations/embedding";
 import { conversationSearchVector } from "@/chat/conversations/metadata/store";
+import { loadAnnotationLabeler } from "@/chat/conversations/annotation-labels";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import {
-  hasAnnotationKey,
-  treeHasAnnotationKey,
+  hasMatchingAnnotation,
+  treeHasMatchingAnnotation,
+  type AnnotationFilter,
 } from "@/chat/conversations/sql/annotation-filter";
 import type {
   ConversationKind,
@@ -57,7 +59,6 @@ const MIN_VECTOR_SIMILARITY = 0.4;
 /** One linked resource of a search result. */
 export interface ConversationSearchLink {
   label: string;
-  status?: string;
   url: string;
 }
 
@@ -107,11 +108,11 @@ export interface ConversationSearchChannelPort {
 export interface ConversationSearch {
   /** Only Conversations with activity at or after this time. */
   afterMs?: number;
-  /** Annotation key, such as a pull request key. Nested keys continue with `#`. */
-  annotation?: string;
+  /** Only Conversations with an Annotation of these objects. */
+  annotation?: AnnotationFilter;
   /**
    * Match `annotation` only on the Conversation itself. Without it, a root
-   * also matches when one of its child agents has the key.
+   * also matches when one of its child agents has the Annotation.
    */
   annotationOnSelf?: boolean;
   /** Only Conversations with activity before this time. */
@@ -222,14 +223,18 @@ export async function searchConversations(
     ),
     search.annotation
       ? or(
-          // A root matches when any Conversation in its tree has the key.
+          // A root matches when any Conversation in its tree has the
+          // Annotation.
           search.annotationOnSelf
             ? undefined
-            : treeHasAnnotationKey(
+            : treeHasMatchingAnnotation(
                 conversations.conversationId,
                 search.annotation,
               ),
-          hasAnnotationKey(conversations.conversationId, search.annotation),
+          hasMatchingAnnotation(
+            conversations.conversationId,
+            search.annotation,
+          ),
         )
       : undefined,
     search.statuses
@@ -331,20 +336,11 @@ export async function searchConversations(
     db,
     rows.map((row) => row.conversationId),
   );
+  const label = await loadAnnotationLabeler();
   return rows.map((row) => {
     const links = (annotations.get(row.conversationId) ?? [])
-      .flatMap((annotation) =>
-        annotation.url
-          ? [
-              {
-                label: annotation.label,
-                ...(annotation.status
-                  ? { status: annotation.status }
-                  : undefined),
-                url: annotation.url,
-              },
-            ]
-          : [],
+      .flatMap(({ url, ...annotation }) =>
+        url ? [{ label: label({ ...annotation, url }), url }] : [],
       )
       .slice(0, MAX_LINKS);
     return {

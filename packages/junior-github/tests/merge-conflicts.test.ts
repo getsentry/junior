@@ -167,33 +167,6 @@ describe("merge conflict check on webhook events", () => {
     ]);
   });
 
-  it("reads an unchanged pull request again with its ETag", async () => {
-    const etag = 'W/"pull-946"';
-    const answers: number[] = [];
-    mswServer.use(
-      http.get(
-        "https://api.github.com/repos/getsentry/junior/pulls/946",
-        ({ request }) => {
-          if (request.headers.get("if-none-match") === etag) {
-            answers.push(304);
-            return new HttpResponse(null, { status: 304 });
-          }
-          answers.push(200);
-          return HttpResponse.json(pullRequest, { headers: { etag } });
-        },
-      ),
-    );
-    await deliver("delivery-1");
-    await deliver("delivery-2");
-    expect(answers).toEqual([200, 304]);
-    // The saved pull request still shows the conflict.
-    expect(conflicts().map((event) => event.eventKey)).toEqual(
-      Array.from({ length: 4 }, () =>
-        expect.stringContaining(":1111111111111111111111111111111111111111"),
-      ),
-    );
-  });
-
   it("publishes no conflict while GitHub calculates mergeability", async () => {
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",

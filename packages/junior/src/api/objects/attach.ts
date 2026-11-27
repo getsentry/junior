@@ -3,8 +3,10 @@ import { addConversationNote } from "@/chat/conversations/notes";
 import { acceptsWebMessages } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import {
-  createPluginAnnotations,
+  ANNOTATION_SUBJECT_KINDS,
+  annotationSubject,
   listConversationAnnotations,
+  upsertPluginAnnotation,
 } from "@/chat/plugins/annotations";
 import { readConversationAccessFromSql } from "../conversations/access";
 import { throwApiError } from "../http";
@@ -86,18 +88,21 @@ export async function attachObjectLink(
       .filter(Boolean)
       .join(" "),
   });
-  await createPluginAnnotations({
+  await upsertPluginAnnotation(db, {
+    annotation: {
+      kind: "resource_link",
+      key: object.key,
+      // No title: it would show to readers who cannot open the object.
+      objectType: object.objectType,
+      url: link,
+    },
     conversationId,
-    db,
     plugin: linkType.owner,
-  }).upsert({
-    kind: "resource_link",
-    key: object.key,
-    // The bare link is the label. The title would show to readers who
-    // cannot open the object.
-    label: link.slice(0, 256),
-    objectType: object.objectType,
-    url: link,
+    // The card names its object when its plugin knows the provider id.
+    subject: annotationSubject(linkType.owner, object) ?? {
+      id: link,
+      kind: ANNOTATION_SUBJECT_KINDS.link,
+    },
   });
   return { status: "attached" };
 }

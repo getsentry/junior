@@ -115,7 +115,16 @@ describe("updateIssue", () => {
       state: "open",
       target: "updateIssue",
       title: "Updated title",
-      objectAnnotations: [{ description: "Updated body" }],
+      // The Annotation stores the title and the link. Its card reads the
+      // rest live.
+      objectAnnotations: [
+        {
+          action: "changed",
+          key: "getsentry/junior#691",
+          title: "Updated title",
+          url: "https://github.com/getsentry/junior/issues/691",
+        },
+      ],
       subscribable: {
         identifier: "getsentry/junior#691",
         suggested_events: expect.not.arrayContaining(["issue.comment.created"]),

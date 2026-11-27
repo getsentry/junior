@@ -445,11 +445,7 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const known = useKnownObject(objectUrl);
   if (objectUrl && resolvableUrl(objectUrl)) {
     return (
-      <ResolvedParagraph
-        linkOnly={known.linkOnly}
-        objectUrl={objectUrl}
-        saved={known.card}
-      >
+      <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
         {props.children}
       </ResolvedParagraph>
     );
@@ -461,23 +457,14 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
 // A saved link has no facts, so it shows only until the live card resolves.
 function ResolvedParagraph(props: {
   children: ReactNode;
-  linkOnly: boolean;
   objectUrl: string;
   saved?: OwnedObjectAnnotation | undefined;
 }) {
   const resolved = useResolvedObject(props.objectUrl);
   useRequestWhenSaved(props.saved, resolved.request);
   const card = sameTypeCard(resolved.card, props.saved?.objectType);
-  // A saved object is already part of the Conversation, so its row has no
-  // Attach slot. A link that an Attach saved still says it is attached.
   if (card) {
-    return (
-      <StandaloneObject
-        card={card}
-        href={props.objectUrl}
-        live={!props.saved || props.linkOnly}
-      />
-    );
+    return <StandaloneObject card={card} href={props.objectUrl} />;
   }
   if (props.saved) {
     return <StandaloneObject card={props.saved} href={props.objectUrl} />;
@@ -490,13 +477,12 @@ function ResolvedParagraph(props: {
 function StandaloneObject(props: {
   card: OwnedObjectAnnotation;
   href: string;
-  live?: boolean;
 }) {
   const thumbnail = mediaThumbnail(props.card);
   if (thumbnail) {
     return <ObjectThumbnailLink {...props} src={thumbnail} />;
   }
-  return <ObjectRow card={props.card} live={props.live} />;
+  return <ObjectRow card={props.card} />;
 }
 
 // The saved card replaces the link, so no visible link asks for the card.
@@ -568,7 +554,6 @@ function ResolvedAnchor(props: {
         bare={props.bare}
         card={card}
         href={props.href}
-        live
         reserveHeight={reserveHeight}
       >
         {props.children}
@@ -599,7 +584,6 @@ function ObjectAnchor(props: {
   card: OwnedObjectAnnotation;
   children: ReactNode;
   href: string;
-  live?: boolean;
   reserveHeight?: boolean;
 }) {
   const { bare, children, ...link } = props;

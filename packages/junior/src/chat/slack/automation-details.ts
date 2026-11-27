@@ -1,4 +1,4 @@
-import { automationCardStatus } from "@/chat/automations/result";
+import { automationCardStatus } from "@/chat/automations/card";
 import { automationTaskText } from "@/chat/automations/task";
 import type { SlackEvent } from "@slack/types";
 import * as z from "zod";

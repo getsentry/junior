@@ -35,6 +35,7 @@ import {
   subjectTodo,
 } from "@/chat/inbox-items/subjects";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { hasAssigneeRoles } from "@/chat/inbox-items/plugin-dismiss";
 import {
   actOnInboxItem,
   readInboxItemForUser,
@@ -67,7 +68,7 @@ import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
 import type { InboxSnoozeWake } from "@/api/schema/inbox-snooze";
 import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
-import { readItemRoots } from "./item-roots";
+import { readHiddenOwners, readItemRoots } from "./item-roots";
 import { readInboxItemMentions } from "./mentions";
 import {
   codeChangeSubjectProvider,
@@ -243,8 +244,13 @@ function inboxItemPayload(
   related: RelatedReviewWork | undefined,
   wake: InboxSnoozeWakeReason | undefined,
   views: ReadonlyMap<string, InboxSubjectView>,
+  hidden: ReadonlySet<string>,
 ): InboxItemPayload {
-  const conversationId = ownerConversationId(item);
+  const owner = ownerConversationId(item);
+  // The viewer sees the item but not its Conversation, so the payload names
+  // no Conversation, Turn, or tree.
+  const conversationHidden = owner !== undefined && hidden.has(owner);
+  const conversationId = conversationHidden ? undefined : owner;
   const root = conversationId ? roots.get(conversationId) : undefined;
   const todo = subjectTodo(item.subject);
   const question = inboxItemQuestion(item.request);
@@ -256,8 +262,10 @@ function inboxItemPayload(
     canAct: canActOnInboxItem(item, viewer.id),
     canAnswer: canAnswerInboxItem(item, viewer.id),
     canTake:
-      canActOnInboxItem(item, viewer.id) && !isOnlyAssignee(item, viewer.id),
-    conversationIds: item.conversationIds,
+      canActOnInboxItem(item, viewer.id) &&
+      !isOnlyAssignee(item, viewer.id) &&
+      !hasAssigneeRoles(item),
+    conversationIds: conversationHidden ? [] : item.conversationIds,
     createdAt: item.createdAt.toISOString(),
     id: item.id,
     kind: item.kind,
@@ -271,7 +279,9 @@ function inboxItemPayload(
       ? { rootConversationId: root?.rootConversationId ?? conversationId }
       : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
-    ...(item.addedByTurnId ? { addedByTurnId: item.addedByTurnId } : undefined),
+    ...(item.addedByTurnId && !conversationHidden
+      ? { addedByTurnId: item.addedByTurnId }
+      : undefined),
     ...(item.addedByAutomationId
       ? { automationId: item.addedByAutomationId }
       : undefined),
@@ -304,8 +314,9 @@ async function inboxItemPayloads(
   reader: InboxItemReader,
 ): Promise<InboxItemPayload[]> {
   const db = getDb();
-  const [roots, mentions, related, snoozes, views] = await Promise.all([
+  const [roots, hidden, mentions, related, snoozes, views] = await Promise.all([
     readItemRoots(db, items, viewer),
+    readHiddenOwners(db, items, viewer),
     readInboxItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
     readViewerInboxSnoozes(db, {
@@ -325,6 +336,7 @@ async function inboxItemPayloads(
       related.get(item.id),
       snoozes.wakeReasons.get(item.id),
       views,
+      hidden,
     );
     return snoozes.snoozed.has(item.id)
       ? { ...payload, snoozedByViewer: true }

@@ -568,6 +568,7 @@ const PULL_REQUEST_HEAD_FACT = githubGraphql(`
   }
 
   fragment HeadFacts on PullRequest {
+    databaseId
     updatedAt
     headRefOid
     mergeable

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import { storeConversationEmbedding } from "@/chat/conversations/embedding";
 import { searchConversations } from "@/chat/conversations/search";
+import { resolveAnnotationFilter } from "@/chat/conversations/sql/annotation-filter";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -142,7 +143,6 @@ describe("Conversation search", () => {
       }).upsert({
         kind: "resource_link",
         key: "acme/widget#12",
-        label: "acme/widget#12",
         url: "https://example.com/acme/widget/12",
       });
 
@@ -250,10 +250,8 @@ describe("Conversation search", () => {
           channelName: "carchive-name",
           conversationId: targetConversationId,
           links: [
-            {
-              label: "acme/widget#12",
-              url: "https://example.com/acme/widget/12",
-            },
+            // No plugin reads the link, so its host is the label.
+            { label: "example.com", url: "https://example.com/acme/widget/12" },
           ],
           providerDestinationId: "CARCHIVE",
           summary: "The deployment decision uses the blue rollout.",
@@ -284,7 +282,7 @@ describe("Conversation search", () => {
             rootsOnly: true,
             limit: 10,
             afterMs: Date.parse("2026-07-02T00:00:00.000Z"),
-            annotation: "ACME/WIDGET",
+            annotation: await resolveAnnotationFilter(db, "ACME/WIDGET"),
             beforeMs: Date.parse("2026-07-03T00:00:00.000Z"),
             channelId: "CARCHIVE",
           },

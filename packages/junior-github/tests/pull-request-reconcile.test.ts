@@ -2,6 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { githubObjectCacheKey } from "../src/object-cache";
 import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
@@ -202,23 +203,37 @@ describe("daily reconcile of open pull requests", () => {
       title: "Review requested · #949",
       waitsOnAssignees: true,
     });
+    // A card read cached 949 while it was open.
+    const cached949 = githubObjectCacheKey("pulls", "getsentry/junior", 949);
+    await h.cache.update(cached949, () => ({
+      value: {
+        html_url: "https://github.com/getsentry/junior/pull/949",
+        id: 9490,
+        number: 949,
+        state: "open",
+        title: "Pull request 949",
+      },
+    }));
     await h.heartbeat(now);
+    // No webhook refreshed the cached card either, so the close does, and
+    // open pages read both cards again.
+    expect(await h.cache.get(cached949)).toMatchObject({
+      merged: false,
+      state: "closed",
+    });
+    expect(h.changedObjects).toEqual(
+      expect.arrayContaining([
+        { id: "9460", kind: "pull_request" },
+        { id: "9490", kind: "pull_request" },
+      ]),
+    );
     // No webhook closes the ask after a missed close, so the close does.
     expect(h.closedNotices).toEqual([
       "merge_conflict:9490",
       "pull_request:9490",
     ]);
-    // The chip and the ask change in one write.
+    // The asks close in one write.
     expect(h.batches).toContainEqual({
-      annotations: [
-        {
-          conversationId: "slack:C1:1.0",
-          upsert: expect.objectContaining({
-            key: "getsentry/junior#949",
-            status: "closed",
-          }),
-        },
-      ],
       inboxItems: ["pull_request", "merge_conflict"].map((kind) => ({
         close: {
           subject: { id: "9490", kind },
@@ -258,16 +273,8 @@ describe("daily reconcile of open pull requests", () => {
       [947, "open", "Pull request 947"],
       [949, "closed", "Pull request 949"],
     ]);
-    expect(
-      h.annotations.map(({ annotation, conversationId }) => [
-        conversationId,
-        annotation.key,
-        annotation.status,
-      ]),
-    ).toEqual([
-      ["slack:C1:1.0", "getsentry/junior#946", "merged"],
-      ["slack:C1:1.0", "getsentry/junior#949", "closed"],
-    ]);
+    // A merge or close changes no Annotation: cards read it live.
+    expect(h.annotations).toEqual([]);
 
     vi.setSystemTime(now + 60_000);
     await h.heartbeat(now + 60_000);

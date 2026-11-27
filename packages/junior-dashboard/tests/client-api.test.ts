@@ -282,7 +282,17 @@ describe("dashboard client API", () => {
     ];
     const listOf = (ownerId: string) => ({
       pageParams: [undefined],
-      pages: [{ items: [{ owner: { id: ownerId, kind: "conversation" } }] }],
+      // The API names the root of an owner that the viewer can see.
+      pages: [
+        {
+          items: [
+            {
+              owner: { id: ownerId, kind: "conversation" },
+              rootConversationId: ownerId,
+            },
+          ],
+        },
+      ],
     });
     const sideReadsInvalidated = () =>
       sideReads.map((key) => client.getQueryState(key)?.isInvalidated);

@@ -11,7 +11,7 @@ import {
 } from "@/chat/credentials/subject";
 import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { getDb } from "@/chat/db";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationAnnotations } from "@/chat/plugins/annotations";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder } from "@/chat/plugins/model";
@@ -120,14 +120,10 @@ export function createHeartbeatContext(args: {
   };
   return {
     plugin: { name: pluginName },
-    annotations: {
-      forConversation: (conversationId) =>
-        createPluginAnnotations({
-          conversationId,
-          db: getDb(),
-          plugin: pluginName,
-        }),
-    },
+    annotations: createPluginConversationAnnotations({
+      db: getDb,
+      plugin: pluginName,
+    }),
     cache: createPluginCache(pluginName),
     codeChanges: createPluginCodeChanges(pluginName),
     conversationChanges: createPluginConversationChanges({

@@ -1,6 +1,5 @@
 import type { GitHubStatusIncident } from "../github-status.js";
 import type { InstallationTokens } from "../installation-tokens.js";
-import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   PluginCache,
@@ -16,6 +15,7 @@ import type {
   PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { GitHubResponses } from "../installation-http-cache.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
@@ -25,13 +25,15 @@ import {
   githubPullRequestOutcomeTaskKey,
 } from "../pull-request-outcomes/apply-task.js";
 import { recordGitHubPullRequestOutcome } from "../pull-request-outcomes/store.js";
-import { normalizeGitHubClosedIssue } from "./issue-outcome.js";
+import {
+  normalizeGitHubIssueItemEvent,
+  syncGitHubIssueItem,
+} from "./issue-item.js";
 import {
   normalizeGitHubPullRequestConversations,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
-import { refreshGitHubPullRequestPreview } from "./pull-request-preview.js";
 import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
@@ -44,6 +46,7 @@ import {
   type GitHubPullRequestRef,
 } from "./merge-conflict.js";
 import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
+import { moveGitHubRepositoryAnnotations } from "./repository-move.js";
 import {
   pullRequestActionTargets,
   syncGitHubPullRequestActions,
@@ -181,6 +184,8 @@ export function createGitHubWebhookRoute(args: {
   privateKeyEnv: string;
   events: EventPublisher;
   inboxItems: PluginConversationInboxItems;
+  /** Saved GET responses, as in `installationResponses`. */
+  responses: GitHubResponses;
   state: PluginState;
   /** Starts the task that applies a failed pull request outcome again. */
   tasks: PluginTaskStarter;
@@ -226,11 +231,20 @@ export function createGitHubWebhookRoute(args: {
           status: 202,
         });
       }
+      if (eventName === "repository") {
+        const moved = await moveGitHubRepositoryAnnotations(
+          args.annotations,
+          body,
+        );
+        return new Response(moved ? "Accepted" : "Ignored", { status: 202 });
+      }
       await refreshGitHubObjectCache({
         body,
         cache: args.cache,
         eventName,
         nowMs: Date.now(),
+        objectChanged: async (subject) =>
+          await args.annotations.objectChanged(subject),
         state: args.state,
         tasks: args.tasks,
       });
@@ -239,9 +253,9 @@ export function createGitHubWebhookRoute(args: {
         eventName === "pull_request"
           ? normalizeGitHubPullRequestOutcome({ body, botEmail })
           : undefined;
-      const closedIssue =
+      const issueItemEvent =
         eventName === "issues"
-          ? normalizeGitHubClosedIssue({ body, botEmail })
+          ? normalizeGitHubIssueItemEvent({ body, botEmail })
           : undefined;
       const pullRequestConversations =
         eventName === "pull_request"
@@ -253,7 +267,6 @@ export function createGitHubWebhookRoute(args: {
           | undefined;
         try {
           recordedOutcome = await applyGitHubPullRequestOutcome({
-            annotations: args.annotations,
             codeChanges: args.codeChanges,
             conversationChanges: args.conversationChanges,
             db: args.db,
@@ -303,33 +316,19 @@ export function createGitHubWebhookRoute(args: {
           }
         }
       }
-      if (closedIssue) {
-        await updateGitHubAnnotations({
+      if (issueItemEvent) {
+        await syncGitHubIssueItem({
           annotations: args.annotations,
-          conversationIds: closedIssue.conversationIds,
-          // A person can edit the footer, so it cannot add a card.
-          existingOnly: true,
+          event: issueItemEvent,
+          findLinkedIdentityIds: args.findLinkedIdentityIds,
+          inboxItems: args.inboxItems,
           log: args.log,
-          update: {
-            repo: closedIssue.repositoryFullName,
-            number: closedIssue.number,
-            objectType: "task",
-            status: "closed",
-          },
         });
       }
       if (pullRequestConversations) {
         await args.codeChanges.associateConversations({
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
-        });
-      }
-      if (eventName === "pull_request") {
-        await refreshGitHubPullRequestPreview({
-          annotations: args.annotations,
-          body,
-          codeChanges: args.codeChanges,
-          log: args.log,
         });
       }
       const pullRequestActivity = normalizeGitHubPullRequestActivity({
@@ -367,7 +366,7 @@ export function createGitHubWebhookRoute(args: {
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
               privateKeyEnv: args.privateKeyEnv,
-              responses: args.state,
+              responses: args.responses,
               tokens: args.tokens,
             })
           : undefined;
@@ -471,7 +470,7 @@ export function createGitHubWebhookRoute(args: {
         appIdEnv: args.appIdEnv,
         installationIdEnv: args.installationIdEnv,
         privateKeyEnv: args.privateKeyEnv,
-        responses: args.state,
+        responses: args.responses,
         tokens: args.tokens,
       };
       // Ask for the review of a draft that became ready before the next
@@ -503,7 +502,7 @@ export function createGitHubWebhookRoute(args: {
       });
       if (
         !pullRequestOutcome &&
-        !closedIssue &&
+        !issueItemEvent &&
         !pullRequestConversations &&
         events.length === 0
       ) {

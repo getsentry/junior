@@ -19,7 +19,7 @@ import { recordJuniorPullRequest } from "./code-index";
 import { conversationChangesThrough } from "./conversation-changes";
 import type { GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
-import { memoryState } from "./plugin-harness";
+import { memoryState, passThroughHttpCache } from "./plugin-harness";
 
 export const PULL_URL = "https://github.com/getsentry/junior/pull/946";
 /** The subject of the pull request's item: GitHub's id of #946. */
@@ -798,6 +798,12 @@ export function route(
   // The requester's repository access stays cached across webhooks.
   const cached = new Map<string, unknown>();
   const annotations: PluginConversationAnnotations = {
+    async listObjects() {
+      return [];
+    },
+    async nameObject() {},
+    async objectsMoved() {},
+    async objectChanged() {},
     forConversation() {
       return {
         async upsert() {},
@@ -812,8 +818,9 @@ export function route(
     agent: { dispatchForIdentity: unused },
     annotations,
     codeChanges: fixture.codeIndex.codeChanges,
+    // Core owns the HTTP cache. These reads go to GitHub as they are.
+    httpCache: passThroughHttpCache,
     conversationChanges: conversationChangesThrough({
-      annotations,
       inboxItems,
     }),
     db: fixture.db(),
