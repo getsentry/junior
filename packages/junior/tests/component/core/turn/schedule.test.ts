@@ -247,7 +247,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
-  it("holds a new Turn for its start delay, so an input in that time joins it", async () => {
+  it("holds a new Turn for its start delay, also on a redelivery, so an input in that time joins it", async () => {
     const first = await scheduleInput(engineCtx, {
       ...keyed(input("event-1")),
       startDelayMs: 30_000,
@@ -256,14 +256,21 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       ...keyed(input("event-2")),
       startDelayMs: 30_000,
     });
+    // The source sends the first input again while the Turn waits.
+    await scheduleInput(engineCtx, {
+      ...keyed(input("event-1")),
+      startDelayMs: 30_000,
+    });
 
     expect(second).toMatchObject({ turnId: first.turnId, created: false });
+    const delayedStep = [
+      TURN_STEP_TOPIC,
+      expect.anything(),
+      expect.objectContaining({ delaySeconds: 30 }),
+    ];
     expect(vi.mocked(getQueueProvider().send).mock.calls).toEqual([
-      [
-        TURN_STEP_TOPIC,
-        expect.anything(),
-        expect.objectContaining({ delaySeconds: 30 }),
-      ],
+      delayedStep,
+      delayedStep,
     ]);
   });
 

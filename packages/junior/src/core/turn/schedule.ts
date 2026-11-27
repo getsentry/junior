@@ -146,7 +146,7 @@ async function placeInput(
  * the placement calls for, such as the end of a Turn it superseded. A known
  * idempotency key writes nothing. Call it outside a transaction: it publishes
  * after its own commit, so a publish error leaves the input stored.
- * `startDelayMs` holds a Turn that the input creates, so later inputs join it.
+ * `startDelayMs` holds the Turn that this publishes, so later inputs join it.
  */
 export async function scheduleInput(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
@@ -173,7 +173,7 @@ export async function scheduleInput(
     await publishTurnStep(
       { queue },
       placement.turnId,
-      placement.created && startDelayMs ? { delayMs: startDelayMs } : {},
+      startDelayMs ? { delayMs: startDelayMs } : {},
     );
   }
   return {
