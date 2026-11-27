@@ -512,8 +512,12 @@ function reportEventData(args: {
         toolCallId: data.toolCallId,
         toolName: data.toolName,
         decision: data.decision,
-        riskLevel: data.riskLevel,
-        userAuthorization: data.userAuthorization,
+        ...(data.rule ? { rule: data.rule } : undefined),
+        ...(data.reason ? { reason: data.reason } : undefined),
+        ...(data.riskLevel ? { riskLevel: data.riskLevel } : undefined),
+        ...(data.userAuthorization
+          ? { userAuthorization: data.userAuthorization }
+          : undefined),
       };
     case "turn_completed":
       return {

@@ -74,8 +74,6 @@ describe("Pi tool adapter integration", () => {
                 decision: {
                   decision: "allow",
                   reason: "Read-only lookup requested by the user.",
-                  riskLevel: "low",
-                  userAuthorization: "high",
                 },
               },
             ]),

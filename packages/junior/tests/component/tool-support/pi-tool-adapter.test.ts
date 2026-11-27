@@ -3,6 +3,7 @@ import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orche
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import {
   createToolActionReview,
   type ToolActionReview,
@@ -55,7 +56,7 @@ function actionReview(
     },
     onDecision: vi.fn(async () => undefined),
     onFatal,
-    reviewer,
+    guardian: (batch) => createCurrentGuardian(reviewer, batch),
   });
 }
 
@@ -369,7 +370,7 @@ describe("Pi tool adapter", () => {
         input: { reportId: "weekly" },
         tool: expect.objectContaining({ name: "demo" }),
       }),
-      {},
+      { signal: expect.any(AbortSignal) },
     );
     expect(execute).toHaveBeenCalledOnce();
     expect(review.mock.invocationCallOrder[0]).toBeLessThan(
@@ -435,7 +436,7 @@ describe("Pi tool adapter", () => {
           name: managedTool.name,
         }),
       }),
-      {},
+      { signal: expect.any(AbortSignal) },
     );
     expect(review.mock.invocationCallOrder[0]).toBeLessThan(
       execute.mock.invocationCallOrder[0]!,
@@ -515,7 +516,6 @@ describe("Pi tool adapter", () => {
     const sandbox = new SkillSandbox([], []);
     const execute = vi.fn(async () => ({ ok: true }));
     const onToolResult = vi.fn();
-    const onFatal = vi.fn();
     const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
       decision: "ask",
       reason: "Recurring work should be confirmed.",
@@ -525,7 +525,6 @@ describe("Pi tool adapter", () => {
     const reviewState = actionReview(
       { review },
       "Create the recurring report.",
-      onFatal,
     );
     const [demoTool] = createPiAgentTools(
       {
@@ -606,7 +605,6 @@ describe("Pi tool adapter", () => {
       "Do not retry this action or an equivalent write this turn.",
     );
     expect(review).toHaveBeenCalledTimes(3);
-    expect(onFatal).not.toHaveBeenCalled();
     expect(
       reviewState.projectToolResult("tool-limit", { isError: true }),
     ).toMatchObject({
