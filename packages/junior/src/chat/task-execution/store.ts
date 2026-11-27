@@ -367,7 +367,9 @@ export async function appendAndEnqueueInboundMessage(args: {
   state?: StateAdapter | undefined;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
   if (getChatConfig().turnEngine === "core") {
-    return await scheduleInboundMessage(args.message);
+    return await scheduleInboundMessage(args.message, {
+      startDelayMs: args.queueDelayMs,
+    });
   }
   const nowMs = args.nowMs ?? now();
   const result = await enqueueAfterAppend({

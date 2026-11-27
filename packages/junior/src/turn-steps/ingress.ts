@@ -11,10 +11,12 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createSlackActor } from "@/chat/actor";
 import { getChatConfig } from "@/chat/config";
+import { getConversationStore } from "@/chat/db";
 import {
   getDispatchIdForConversation,
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
@@ -29,7 +31,6 @@ import type {
   InboundMessage,
 } from "@/chat/task-execution/state";
 import type { TurnDestination } from "@/db/schema/turn-inbox";
-import { findInputTurn } from "@/core/turn/inbox";
 import { scheduleInput } from "@/core/turn/schedule";
 import { createEngineContext } from "./engine-context";
 import { turnGroupKey } from "./group-key";
@@ -74,7 +75,21 @@ function slackFacts(message: InboundMessage): InputFacts {
   };
 }
 
-function webFacts(message: InboundMessage): InputFacts {
+// Main's rule: a web Source takes its Conversation's privacy, and a child
+// with no stored privacy is private, because its parent's task can carry the
+// root's private content.
+async function webVisibility(
+  conversationId: string,
+): Promise<"private" | "public"> {
+  const conversation = await getConversationStore().get({ conversationId });
+  const visibility =
+    !conversation || isTopLevel(conversation)
+      ? conversation?.visibility
+      : (conversation.visibility ?? "private");
+  return visibility === "private" ? "private" : "public";
+}
+
+async function webFacts(message: InboundMessage): Promise<InputFacts> {
   const metadata = legacyWebMailboxMetadataSchema.parse(message.input.metadata);
   return {
     actor: {
@@ -91,7 +106,10 @@ function webFacts(message: InboundMessage): InputFacts {
     actorIdentityId: message.input.authorIdentityId,
     // The dashboard reads the answer from the Conversation history.
     destination: null,
-    source: createWebSource(message.conversationId),
+    source: createWebSource(
+      message.conversationId,
+      await webVisibility(message.conversationId),
+    ),
     text: message.input.text,
   };
 }
@@ -132,7 +150,7 @@ async function inputFacts(message: InboundMessage): Promise<InputFacts> {
     case "slack":
       return slackFacts(message);
     case "web":
-      return webFacts(message);
+      return await webFacts(message);
     case "event":
       return eventFacts(message);
     case "plugin":
@@ -145,22 +163,20 @@ async function inputFacts(message: InboundMessage): Promise<InputFacts> {
 /**
  * Schedules a mailbox message as a core input. The message id is the
  * idempotency key, so a redelivery writes nothing and is a `duplicate`.
- * Call it outside a transaction, as `scheduleInput` requires.
+ * `startDelayMs` holds a new Turn so that inputs sent soon after join it, as
+ * main's delayed wake does. Call it outside a transaction, as
+ * `scheduleInput` requires.
  */
 export async function scheduleInboundMessage(
   message: InboundMessage,
+  options: { startDelayMs?: number | undefined } = {},
 ): Promise<AppendInboundMessageResult> {
   const facts = await inputFacts(message);
   if (!facts.actorIdentityId) {
     throw new Error(`${message.source} input has no author Identity`);
   }
   const engineCtx = createEngineContext(getChatConfig());
-  const idempotencyKey = message.inboundMessageId;
-  const known = await findInputTurn(engineCtx, {
-    conversationId: message.conversationId,
-    idempotencyKey,
-  });
-  await scheduleInput(engineCtx, {
+  const { duplicate } = await scheduleInput(engineCtx, {
     conversationId: message.conversationId,
     actorIdentityId: facts.actorIdentityId,
     groupKey: turnGroupKey(facts.actorIdentityId, facts.source),
@@ -168,7 +184,7 @@ export async function scheduleInboundMessage(
       text: facts.text,
       actor: facts.actor,
     }),
-    idempotencyKey,
+    idempotencyKey: message.inboundMessageId,
     sentAt: new Date(message.createdAtMs),
     source: facts.source,
     destination: facts.destination,
@@ -176,6 +192,7 @@ export async function scheduleInboundMessage(
     ...(message.traceContext
       ? { traceContext: message.traceContext }
       : undefined),
+    startDelayMs: options.startDelayMs,
   });
-  return { status: known ? "duplicate" : "appended" };
+  return { status: duplicate ? "duplicate" : "appended" };
 }
