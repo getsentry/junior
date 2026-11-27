@@ -24,7 +24,6 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -53,6 +52,7 @@ import {
   conversationsInfoOk,
   usersInfoOk,
 } from "../fixtures/slack/factories/api";
+import { useAppContext } from "../fixtures/app-context";
 
 const rootTurnTools = turnBehavior({
   kind: "thread",
@@ -2266,7 +2266,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
   it("scheduler tools bind to the runtime-owned source", async () => {
     // Verifies that real getPluginTools wiring passes Source through to
     // the scheduler, which stores it as the task destination.
-    const previous = setPlugins([]);
+    useAppContext();
     const fixture = await useSchedulerSqlPlugin();
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
@@ -2353,7 +2353,6 @@ describe("Scheduled automation tool wiring via createTools", () => {
     } finally {
       await fixture.close();
       vi.restoreAllMocks();
-      setPlugins(previous);
     }
   });
 

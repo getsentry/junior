@@ -27,11 +27,12 @@ vi.mock("@/chat/oauth-flow", () => ({
   startOAuthFlow,
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getOAuthConfig: getOAuthConfigMock,
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/credentials/unlink-provider", () => ({
   unlinkProvider,

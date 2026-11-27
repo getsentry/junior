@@ -13,7 +13,7 @@ import type { GuardianBatch } from "@/chat/guardian/gate";
 import type { Guardian, Review } from "@/chat/guardian/guardian";
 import { guardianPluginFacts } from "@/chat/guardian/policy";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { ProviderError } from "@/chat/services/provider-error";
 import type {
   GuardianArm,
@@ -35,7 +35,9 @@ function armModelId(reviewUnavailable: boolean | undefined): string {
 /** The facts that production gives for the installed plugins. */
 function installedPluginFacts() {
   return guardianPluginFacts(
-    pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+    getAppContext()
+      .catalog.getProviders()
+      .map(({ manifest }) => manifest),
   );
 }
 

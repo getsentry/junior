@@ -11,7 +11,7 @@ import type {
 } from "@/chat/credentials/user-token-store";
 import type { OAuthAuthorizationRequest } from "@/chat/oauth-authorization";
 import { startOAuthFlow } from "@/chat/oauth-flow";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
 /** One plugin account that a user can connect and disconnect. */
@@ -40,7 +40,7 @@ export async function readConnectedOAuthTokens(
 }
 
 function connectablePlugin(provider: string): PluginDefinition | undefined {
-  const plugin = pluginCatalogRuntime.getDefinition(provider);
+  const plugin = getAppContext().catalog.getDefinition(provider);
   return plugin?.manifest.oauth ? plugin : undefined;
 }
 
@@ -49,8 +49,8 @@ export async function listConnections(
   userId: string,
   userTokenStore: UserTokenStore,
 ): Promise<Connection[]> {
-  const plugins = pluginCatalogRuntime
-    .getProviders()
+  const plugins = getAppContext()
+    .catalog.getProviders()
     .filter((plugin) => Boolean(plugin.manifest.oauth));
   return await mapBounded(plugins, async (plugin) => {
     const tokens = await readConnectedOAuthTokens(

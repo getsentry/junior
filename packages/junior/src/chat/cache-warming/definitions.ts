@@ -6,7 +6,7 @@
  * schemas: they differ per person, and providers change them, not deploys.
  */
 import { createHash } from "node:crypto";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import {
   staticToolDefinitions,
@@ -39,8 +39,8 @@ const fingerprintKey = (key: ToolDefinitionsKey) =>
 
 // The configured MCP providers, as their plugin manifests declare them.
 function configuredMcpProviders() {
-  return pluginCatalogRuntime
-    .getMcpProviders()
+  return getAppContext()
+    .catalog.getMcpProviders()
     .map(({ manifest }) => ({
       provider: manifest.name,
       displayName: manifest.displayName,

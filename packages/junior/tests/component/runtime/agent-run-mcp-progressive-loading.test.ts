@@ -600,7 +600,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   }),
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => {
+vi.mock("@/app/context", () => {
   const plugin = {
     dir: "/tmp/plugins/demo",
     skillsDir: "/tmp/plugins/demo/skills",
@@ -616,14 +616,13 @@ vi.mock("@/chat/plugins/catalog-runtime", () => {
     },
   };
 
-  return {
-    pluginCatalogRuntime: {
-      getDefinition: (provider: string) =>
-        provider === "demo" ? plugin : undefined,
-      getMcpProviders: () => [plugin],
-      getProviders: () => [plugin],
-    },
+  const catalog = {
+    getDefinition: (provider: string) =>
+      provider === "demo" ? plugin : undefined,
+    getMcpProviders: () => [plugin],
+    getProviders: () => [plugin],
   };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
 });
 
 vi.mock("@/chat/skills", async (importOriginal) => {

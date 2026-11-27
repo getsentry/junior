@@ -3,7 +3,7 @@ import {
   actionFromGuardian,
   guardianContext,
 } from "@/chat/guardian/call-facts";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
 import type { ActionDescription } from "@/chat/tool-support/definition";
 
@@ -38,7 +38,7 @@ export async function mcpCallGuardian(args: {
   if (result) {
     return actionFromGuardian(result);
   }
-  const audience = pluginCatalogRuntime.getDefinition(args.provider)?.manifest
-    .mcp?.audience;
+  const audience = getAppContext().catalog.getDefinition(args.provider)
+    ?.manifest.mcp?.audience;
   return audience ? { target: { ref: args.provider, audience } } : {};
 }

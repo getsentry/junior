@@ -26,7 +26,6 @@ import {
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
@@ -43,6 +42,7 @@ import { runMcpOauthCallbackRoute } from "../fixtures/mcp-oauth-callback-harness
 import { createPluginAppFixture } from "../fixtures/plugin-app";
 import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { useAppContext } from "../fixtures/app-context";
 
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
@@ -531,40 +531,37 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const loadedRuns: PluginRunContext[] = [];
-    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "local-task-demo",
-          displayName: "Local Task Demo",
-          description: "Local task demo",
-        },
-        tasks: {
-          captureSession: {
-            async run(ctx) {
-              loadedRuns.push(await ctx.run.load());
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "local-task-demo",
+            displayName: "Local Task Demo",
+            description: "Local task demo",
+          },
+          tasks: {
+            captureSession: {
+              async run(ctx) {
+                loadedRuns.push(await ctx.run.load());
+              },
             },
           },
-        },
-      }),
-    ]);
+        }),
+      ],
+    });
 
-    try {
-      await runLocalAgentTurn(
-        {
-          conversationId: conversationId!,
-          message: "capture this local turn",
-        },
-        {
-          deliverReply: async () => undefined,
-          agentRunner: createModelAgentRunnerForRun(() =>
-            createModelStream([{ type: "text", text: "captured" }]),
-          ),
-        },
-      );
-    } finally {
-      setPlugins([]);
-    }
+    await runLocalAgentTurn(
+      {
+        conversationId: conversationId!,
+        message: "capture this local turn",
+      },
+      {
+        deliverReply: async () => undefined,
+        agentRunner: createModelAgentRunnerForRun(() =>
+          createModelStream([{ type: "text", text: "captured" }]),
+        ),
+      },
+    );
 
     expect(loadedRuns).toEqual([
       expect.objectContaining({
@@ -759,47 +756,45 @@ describe("local agent runner", () => {
 
     const delivered: LocalAgentReply[] = [];
     let taskRuns = 0;
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "local-task-failure",
-          displayName: "Local Task Failure",
-          description: "Local task failure fixture",
-        },
-        tasks: {
-          processSession: {
-            run() {
-              taskRuns += 1;
-              throw new Error("background task failed");
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "local-task-failure",
+            displayName: "Local Task Failure",
+            description: "Local task failure fixture",
+          },
+          tasks: {
+            processSession: {
+              run() {
+                taskRuns += 1;
+                throw new Error("background task failed");
+              },
             },
           },
-        },
-      }),
-    ]);
+        }),
+      ],
+    });
 
-    try {
-      await expect(
-        runLocalAgentTurn(
-          {
-            conversationId: conversationId!,
-            message: "hello",
+    await expect(
+      runLocalAgentTurn(
+        {
+          conversationId: conversationId!,
+          message: "hello",
+        },
+        {
+          deliverReply: async (reply) => {
+            delivered.push(reply);
           },
-          {
-            deliverReply: async (reply) => {
-              delivered.push(reply);
-            },
-            agentRunner: createModelAgentRunnerForRun(() =>
-              createModelStream([{ type: "text", text: "visible reply" }]),
-            ),
-          },
-        ),
-      ).resolves.toEqual({
-        conversationId,
-        outcome: "success",
-      });
-    } finally {
-      setPlugins([]);
-    }
+          agentRunner: createModelAgentRunnerForRun(() =>
+            createModelStream([{ type: "text", text: "visible reply" }]),
+          ),
+        },
+      ),
+    ).resolves.toEqual({
+      conversationId,
+      outcome: "success",
+    });
 
     expect(delivered).toEqual([{ text: "visible reply" }]);
     expect(taskRuns).toBe(1);

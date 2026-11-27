@@ -39,7 +39,6 @@ import {
   applyPluginFormatMarkdown,
   getPluginUserPromptContributions,
 } from "@/chat/plugins/hooks/prompt";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   getPluginOperationalReports,
   getPluginProfileReports,
@@ -60,6 +59,7 @@ import type {
   SandboxCommandInput,
   SandboxSession,
 } from "@/chat/sandbox/workspace";
+import { useAppContext } from "../../fixtures/app-context";
 
 const rootTurnTools = turnBehavior({
   kind: "thread",
@@ -243,41 +243,39 @@ describe("agent plugin hooks", () => {
   });
 
   it("applies formatMarkdown transforms and fails open on plugin errors", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "a-demo",
-          displayName: "A Demo",
-          description: "A demo",
-        },
-        hooks: {
-          formatMarkdown({ text }) {
-            return text.replaceAll("alpha", "beta");
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "a-demo",
+            displayName: "A Demo",
+            description: "A demo",
           },
-        },
-      }),
-      defineJuniorPlugin({
-        manifest: {
-          name: "z-demo",
-          displayName: "Z Demo",
-          description: "Z demo",
-        },
-        hooks: {
-          formatMarkdown() {
-            throw new Error("boom");
+          hooks: {
+            formatMarkdown({ text }) {
+              return text.replaceAll("alpha", "beta");
+            },
           },
-        },
-      }),
-    ]);
-    try {
-      expect(applyPluginFormatMarkdown("alpha one")).toBe("beta one");
-      expect(logWarnMock).toHaveBeenCalledWith(
-        "plugin.format_markdown.hook.failed",
-        expect.objectContaining({ "app.plugin.name": "z-demo" }),
-      );
-    } finally {
-      setPlugins(previous);
-    }
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "z-demo",
+            displayName: "Z Demo",
+            description: "Z demo",
+          },
+          hooks: {
+            formatMarkdown() {
+              throw new Error("boom");
+            },
+          },
+        }),
+      ],
+    });
+    expect(applyPluginFormatMarkdown("alpha one")).toBe("beta one");
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "plugin.format_markdown.hook.failed",
+      expect.objectContaining({ "app.plugin.name": "z-demo" }),
+    );
   });
 
   it("collects system prompt contributions in plugin name order", async () => {
@@ -347,46 +345,44 @@ describe("agent plugin hooks", () => {
   });
 
   it("collects user prompt messages from configured plugins", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          async userPrompt(ctx) {
-            expect(ctx.actor).toBeUndefined();
-            expect(ctx.source).toEqual(LOCAL_SOURCE);
-            expect(ctx.text).toBe("remember this");
-            expect(ctx).toHaveProperty("embedder");
-            expect(ctx).toHaveProperty("model");
-            expect(ctx).toHaveProperty("reranker");
-            return [{ text: "remembered context" }];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginUserPromptContributions({
-          context: {
-            conversationId: "conversation-1",
-            source: LOCAL_SOURCE,
-            destination: LOCAL_DESTINATION,
-            userText: "remember this",
+          hooks: {
+            async userPrompt(ctx) {
+              expect(ctx.actor).toBeUndefined();
+              expect(ctx.source).toEqual(LOCAL_SOURCE);
+              expect(ctx.text).toBe("remember this");
+              expect(ctx).toHaveProperty("embedder");
+              expect(ctx).toHaveProperty("model");
+              expect(ctx).toHaveProperty("reranker");
+              return [{ text: "remembered context" }];
+            },
           },
         }),
-      ).resolves.toEqual([
-        {
-          id: "userPrompt:0",
-          pluginName: "agent-demo",
-          text: "remembered context",
+      ],
+    });
+    await expect(
+      getPluginUserPromptContributions({
+        context: {
+          conversationId: "conversation-1",
+          source: LOCAL_SOURCE,
+          destination: LOCAL_DESTINATION,
+          userText: "remember this",
         },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
+      }),
+    ).resolves.toEqual([
+      {
+        id: "userPrompt:0",
+        pluginName: "agent-demo",
+        text: "remembered context",
+      },
+    ]);
   });
 
   it("keeps web actors and Slack destinations for dashboard continues", async () => {
@@ -401,44 +397,42 @@ describe("agent plugin hooks", () => {
       channelId: "C123",
     };
     const webSource = createWebSource("slack:C123:1712345.0001", "public");
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          async userPrompt(ctx) {
-            expect(ctx.actor).toEqual(webActor);
-            expect(ctx.destination).toEqual(slackDestination);
-            expect(ctx.source).toEqual(webSource);
-            return [{ text: "web continue context" }];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginUserPromptContributions({
-          context: {
-            conversationId: "slack:C123:1712345.0001",
-            actor: webActor,
-            destination: slackDestination,
-            source: webSource,
-            userText: "continue from the dashboard",
+          hooks: {
+            async userPrompt(ctx) {
+              expect(ctx.actor).toEqual(webActor);
+              expect(ctx.destination).toEqual(slackDestination);
+              expect(ctx.source).toEqual(webSource);
+              return [{ text: "web continue context" }];
+            },
           },
         }),
-      ).resolves.toEqual([
-        {
-          id: "userPrompt:0",
-          pluginName: "agent-demo",
-          text: "web continue context",
+      ],
+    });
+    await expect(
+      getPluginUserPromptContributions({
+        context: {
+          conversationId: "slack:C123:1712345.0001",
+          actor: webActor,
+          destination: slackDestination,
+          source: webSource,
+          userText: "continue from the dashboard",
         },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
+      }),
+    ).resolves.toEqual([
+      {
+        id: "userPrompt:0",
+        pluginName: "agent-demo",
+        text: "web continue context",
+      },
+    ]);
   });
 
   it("renders and retains typed user prompt context", async () => {
@@ -451,174 +445,166 @@ describe("agent plugin hooks", () => {
       renderPrompt: ({ memories }) =>
         memories.map((memory) => memory.content).join("\n"),
     });
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "notes",
-          displayName: "Notes",
-          description: "Notes",
-        },
-        hooks: {
-          userPrompt() {
-            return [
-              recall({
-                memories: [{ id: "memory-1", content: "Use pnpm." }],
-              }),
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "notes",
+            displayName: "Notes",
+            description: "Notes",
           },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginUserPromptContributions({
-          context: {
-            conversationId: "conversation-1",
-            source: LOCAL_SOURCE,
-            destination: LOCAL_DESTINATION,
-            userText: "hello",
+          hooks: {
+            userPrompt() {
+              return [
+                recall({
+                  memories: [{ id: "memory-1", content: "Use pnpm." }],
+                }),
+              ];
+            },
           },
         }),
-      ).resolves.toEqual([
-        {
-          id: "userPrompt:0",
-          pluginName: "notes",
-          text: "Use pnpm.",
-          context: {
-            content: {
-              memories: [{ id: "memory-1", content: "Use pnpm." }],
-            },
-            kind: "recall",
-            loadedAtMs: expect.any(Number),
-            pluginName: "notes",
-            version: 1,
-          },
+      ],
+    });
+    await expect(
+      getPluginUserPromptContributions({
+        context: {
+          conversationId: "conversation-1",
+          source: LOCAL_SOURCE,
+          destination: LOCAL_DESTINATION,
+          userText: "hello",
         },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
+      }),
+    ).resolves.toEqual([
+      {
+        id: "userPrompt:0",
+        pluginName: "notes",
+        text: "Use pnpm.",
+        context: {
+          content: {
+            memories: [{ id: "memory-1", content: "Use pnpm." }],
+          },
+          kind: "recall",
+          loadedAtMs: expect.any(Number),
+          pluginName: "notes",
+          version: 1,
+        },
+      },
+    ]);
   });
 
   it("omits invalid user prompt messages", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          userPrompt() {
-            return [{ text: "" }];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginUserPromptContributions({
-          context: {
-            conversationId: "conversation-1",
-            source: LOCAL_SOURCE,
-            destination: LOCAL_DESTINATION,
-            userText: "hello",
+          hooks: {
+            userPrompt() {
+              return [{ text: "" }];
+            },
           },
         }),
-      ).resolves.toEqual([]);
-    } finally {
-      setPlugins(previous);
-    }
+      ],
+    });
+    await expect(
+      getPluginUserPromptContributions({
+        context: {
+          conversationId: "conversation-1",
+          source: LOCAL_SOURCE,
+          destination: LOCAL_DESTINATION,
+          userText: "hello",
+        },
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("omits empty user prompt message arrays", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          userPrompt() {
-            return [];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginUserPromptContributions({
-          context: {
-            conversationId: "conversation-1",
-            source: LOCAL_SOURCE,
-            destination: LOCAL_DESTINATION,
-            userText: "hello",
+          hooks: {
+            userPrompt() {
+              return [];
+            },
           },
         }),
-      ).resolves.toEqual([]);
-    } finally {
-      setPlugins(previous);
-    }
+      ],
+    });
+    await expect(
+      getPluginUserPromptContributions({
+        context: {
+          conversationId: "conversation-1",
+          source: LOCAL_SOURCE,
+          destination: LOCAL_DESTINATION,
+          userText: "hello",
+        },
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("omits plugin contributions that exceed the aggregate prompt budget", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          userPrompt() {
-            return [{ text: "x".repeat(8_000) }, { text: "y".repeat(8_000) }];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-      defineJuniorPlugin({
-        manifest: {
-          name: "overflow-demo",
-          displayName: "Overflow Demo",
-          description: "Overflow demo",
-        },
-        hooks: {
-          userPrompt() {
-            return [{ text: "z" }];
-          },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginUserPromptContributions({
-          context: {
-            conversationId: "conversation-1",
-            source: LOCAL_SOURCE,
-            destination: LOCAL_DESTINATION,
-            userText: "hello",
+          hooks: {
+            userPrompt() {
+              return [{ text: "x".repeat(8_000) }, { text: "y".repeat(8_000) }];
+            },
           },
         }),
-      ).resolves.toEqual([
-        {
-          id: "userPrompt:0",
-          pluginName: "agent-demo",
-          text: "x".repeat(8_000),
+        defineJuniorPlugin({
+          manifest: {
+            name: "overflow-demo",
+            displayName: "Overflow Demo",
+            description: "Overflow demo",
+          },
+          hooks: {
+            userPrompt() {
+              return [{ text: "z" }];
+            },
+          },
+        }),
+      ],
+    });
+    await expect(
+      getPluginUserPromptContributions({
+        context: {
+          conversationId: "conversation-1",
+          source: LOCAL_SOURCE,
+          destination: LOCAL_DESTINATION,
+          userText: "hello",
         },
-        {
-          id: "userPrompt:1",
-          pluginName: "agent-demo",
-          text: "y".repeat(8_000),
-        },
-        {
-          id: "userPrompt:0",
-          pluginName: "overflow-demo",
-          text: "The context of this plugin could not load for this Turn.",
-        },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
+      }),
+    ).resolves.toEqual([
+      {
+        id: "userPrompt:0",
+        pluginName: "agent-demo",
+        text: "x".repeat(8_000),
+      },
+      {
+        id: "userPrompt:1",
+        pluginName: "agent-demo",
+        text: "y".repeat(8_000),
+      },
+      {
+        id: "userPrompt:0",
+        pluginName: "overflow-demo",
+        text: "The context of this plugin could not load for this Turn.",
+      },
+    ]);
   });
 
   it("collects turn-scoped tools from configured plugins", async () => {
@@ -637,35 +623,37 @@ describe("agent plugin hooks", () => {
       | ToolRegistrationHookContext["users"]["resolveActor"]
       | undefined;
     let disabled: Record<string, string> = { writeTool: "Read-only Turn." };
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        events: {
-          resourceTypes: [
-            { type: "demo", supportedEvents: ["demo.completed"] },
-          ],
-          events: { "demo.completed": { reach: "resource" } },
-        },
-        hooks: {
-          tools() {
-            return {
-              demoTool: demoPluginTool("Demo tool"),
-              writeTool: demoPluginTool("Write tool"),
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-          disabledTools(ctx) {
-            expect(ctx.actor).toEqual(TEST_ACTOR);
-            expect(ctx.events.canSubscribe).toBe(true);
-            resolveActor = ctx.users.resolveActor;
-            return disabled;
+          events: {
+            resourceTypes: [
+              { type: "demo", supportedEvents: ["demo.completed"] },
+            ],
+            events: { "demo.completed": { reach: "resource" } },
           },
-        },
-      }),
-    ]);
+          hooks: {
+            tools() {
+              return {
+                demoTool: demoPluginTool("Demo tool"),
+                writeTool: demoPluginTool("Write tool"),
+              };
+            },
+            disabledTools(ctx) {
+              expect(ctx.actor).toEqual(TEST_ACTOR);
+              expect(ctx.events.canSubscribe).toBe(true);
+              resolveActor = ctx.users.resolveActor;
+              return disabled;
+            },
+          },
+        }),
+      ],
+    });
     const context = {
       turnTools: rootTurnTools,
       conversationId: "slack:DDM:1712345.0001",
@@ -676,37 +664,33 @@ describe("agent plugin hooks", () => {
       source: SLACK_SOURCE,
       workspace: {} as any,
     };
-    try {
-      const tools = getPluginTools(context);
+    const tools = getPluginTools(context);
 
-      await expect(resolveActor?.()).resolves.toEqual({ identity, user });
-      expect(tools).toHaveProperty("agentDemo_demoTool");
-      expect(tools["demoTool"]).toBeUndefined();
-      expect(tools["agentDemo_demoTool"]?.identity).toEqual({
-        id: "agent-demo.demoTool",
-        name: "demoTool",
-        plugin: "agent-demo",
-      });
-      expect(tools["agentDemo_demoTool"]?.source).toEqual({
-        id: "agent-demo",
-        description: "Agent demo",
-      });
-      expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("auto");
-      expect(await tools["agentDemo_demoTool"]?.guardian?.({})).toEqual({
-        target: { ref: "Demo tool", audience: "internal" },
-      });
-      expect(tools["agentDemo_demoTool"]?.disabledReason).toBeUndefined();
-      expect(tools["agentDemo_writeTool"]?.disabledReason).toBe(
-        "Read-only Turn.",
-      );
+    await expect(resolveActor?.()).resolves.toEqual({ identity, user });
+    expect(tools).toHaveProperty("agentDemo_demoTool");
+    expect(tools["demoTool"]).toBeUndefined();
+    expect(tools["agentDemo_demoTool"]?.identity).toEqual({
+      id: "agent-demo.demoTool",
+      name: "demoTool",
+      plugin: "agent-demo",
+    });
+    expect(tools["agentDemo_demoTool"]?.source).toEqual({
+      id: "agent-demo",
+      description: "Agent demo",
+    });
+    expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("auto");
+    expect(await tools["agentDemo_demoTool"]?.guardian?.({})).toEqual({
+      target: { ref: "Demo tool", audience: "internal" },
+    });
+    expect(tools["agentDemo_demoTool"]?.disabledReason).toBeUndefined();
+    expect(tools["agentDemo_writeTool"]?.disabledReason).toBe(
+      "Read-only Turn.",
+    );
 
-      disabled = { missingTool: "No tool." };
-      expect(() => getPluginTools(context)).toThrow(
-        'Plugin "agent-demo" disabled unknown tool "missingTool"',
-      );
-    } finally {
-      setPlugins(previous);
-    }
+    disabled = { missingTool: "No tool." };
+    expect(() => getPluginTools(context)).toThrow(
+      'Plugin "agent-demo" disabled unknown tool "missingTool"',
+    );
   });
 
   it.each([
@@ -725,294 +709,281 @@ describe("agent plugin hooks", () => {
       email: "alice@example.com",
     };
     const webSource = createWebSource("local:web:dashboard-1", "public");
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        events: {
-          resourceTypes: [
-            { type: "demo", supportedEvents: ["demo.completed"] },
-          ],
-          events: { "demo.completed": { reach: "resource" } },
-          isEnabled: () => enabled,
-        },
-        hooks: {
-          tools() {
-            return {
-              demoTool: demoPluginTool("Demo tool"),
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-          disabledTools(ctx) {
-            expect(ctx.events.canSubscribe).toBe(enabled);
-            return {};
+          events: {
+            resourceTypes: [
+              { type: "demo", supportedEvents: ["demo.completed"] },
+            ],
+            events: { "demo.completed": { reach: "resource" } },
+            isEnabled: () => enabled,
           },
-        },
-      }),
-    ]);
-    try {
-      const tools = getPluginTools({
-        turnTools: rootTurnTools,
-        conversationId: "local:web:dashboard-1",
-        destination: LOCAL_DESTINATION,
-        actor: webActor,
-        egress: TEST_EGRESS,
-        source: webSource,
-        workspace: {} as any,
-      });
+          hooks: {
+            tools() {
+              return {
+                demoTool: demoPluginTool("Demo tool"),
+              };
+            },
+            disabledTools(ctx) {
+              expect(ctx.events.canSubscribe).toBe(enabled);
+              return {};
+            },
+          },
+        }),
+      ],
+    });
+    const tools = getPluginTools({
+      turnTools: rootTurnTools,
+      conversationId: "local:web:dashboard-1",
+      destination: LOCAL_DESTINATION,
+      actor: webActor,
+      egress: TEST_EGRESS,
+      source: webSource,
+      workspace: {} as any,
+    });
 
-      expect(tools).toHaveProperty("agentDemo_demoTool");
-    } finally {
-      setPlugins(previous);
-    }
+    expect(tools).toHaveProperty("agentDemo_demoTool");
   });
 
   it("warns when a plugin tool omits behavioral annotations", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          tools() {
-            return {
-              demoTool: definePluginTool({
-                description: "Demo tool",
-                inputSchema: z.object({}),
-                outputSchema: demoToolResultSchema,
-                execute: () => ({ message: "done" }),
-              }),
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      getPluginTools({
-        turnTools: rootTurnTools,
-        conversationId: "slack:DDM:1712345.0001",
-        destination: SLACK_DESTINATION,
-        actor: TEST_ACTOR,
-        egress: TEST_EGRESS,
-        source: SLACK_SOURCE,
-        workspace: {} as any,
-      });
+          hooks: {
+            tools() {
+              return {
+                demoTool: definePluginTool({
+                  description: "Demo tool",
+                  inputSchema: z.object({}),
+                  outputSchema: demoToolResultSchema,
+                  execute: () => ({ message: "done" }),
+                }),
+              };
+            },
+          },
+        }),
+      ],
+    });
+    getPluginTools({
+      turnTools: rootTurnTools,
+      conversationId: "slack:DDM:1712345.0001",
+      destination: SLACK_DESTINATION,
+      actor: TEST_ACTOR,
+      egress: TEST_EGRESS,
+      source: SLACK_SOURCE,
+      workspace: {} as any,
+    });
 
-      expect(logWarnMock).toHaveBeenCalledWith(
-        "plugin.tool_annotations.missing",
-        {
-          "app.plugin.name": "agent-demo",
-          "gen_ai.tool.name": "demoTool",
-          "app.tool.missing_annotations":
-            "destructiveHint,idempotentHint,openWorldHint,readOnlyHint",
-        },
-      );
-    } finally {
-      setPlugins(previous);
-    }
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "plugin.tool_annotations.missing",
+      {
+        "app.plugin.name": "agent-demo",
+        "gen_ai.tool.name": "demoTool",
+        "app.tool.missing_annotations":
+          "destructiveHint,idempotentHint,openWorldHint,readOnlyHint",
+      },
+    );
   });
 
   it("preserves plugin tool methods while adding internal identity", async () => {
     const prototypeTool = new PrototypeTool();
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          tools() {
-            return {
-              prototypeTool,
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-          disabledTools(ctx) {
-            expect(ctx.events.canSubscribe).toBe(false);
-            return {};
+          hooks: {
+            tools() {
+              return {
+                prototypeTool,
+              };
+            },
+            disabledTools(ctx) {
+              expect(ctx.events.canSubscribe).toBe(false);
+              return {};
+            },
           },
-        },
-      }),
-    ]);
-    try {
-      const tools = getPluginTools({
-        turnTools: rootTurnTools,
-        conversationId: LOCAL_DESTINATION.conversationId,
-        destination: LOCAL_DESTINATION,
-        egress: TEST_EGRESS,
-        source: LOCAL_SOURCE,
-        workspace: {} as any,
-      });
+        }),
+      ],
+    });
+    const tools = getPluginTools({
+      turnTools: rootTurnTools,
+      conversationId: LOCAL_DESTINATION.conversationId,
+      destination: LOCAL_DESTINATION,
+      egress: TEST_EGRESS,
+      source: LOCAL_SOURCE,
+      workspace: {} as any,
+    });
 
-      expect(tools["agentDemo_prototypeTool"]?.description).toBe(
-        "Prototype tool",
-      );
-      expect(tools["prototypeTool"]).toBeUndefined();
-      expect(tools["agentDemo_prototypeTool"]?.approvalMode).toBe("auto");
-      expect(tools["agentDemo_prototypeTool"]?.identity).toEqual({
-        id: "agent-demo.prototypeTool",
-        name: "prototypeTool",
-        plugin: "agent-demo",
-      });
-      expect(tools["agentDemo_prototypeTool"]?.source).toEqual({
-        id: "agent-demo",
-        description: "Agent demo",
-      });
-      const prototypeResult = (await tools[
-        "agentDemo_prototypeTool"
-      ]?.execute?.({}, {})) as ReturnType<PrototypeTool["execute"]> | undefined;
-      expect(prototypeResult).toEqual({
-        message: "done",
-      });
-    } finally {
-      setPlugins(previous);
-    }
+    expect(tools["agentDemo_prototypeTool"]?.description).toBe(
+      "Prototype tool",
+    );
+    expect(tools["prototypeTool"]).toBeUndefined();
+    expect(tools["agentDemo_prototypeTool"]?.approvalMode).toBe("auto");
+    expect(tools["agentDemo_prototypeTool"]?.identity).toEqual({
+      id: "agent-demo.prototypeTool",
+      name: "prototypeTool",
+      plugin: "agent-demo",
+    });
+    expect(tools["agentDemo_prototypeTool"]?.source).toEqual({
+      id: "agent-demo",
+      description: "Agent demo",
+    });
+    const prototypeResult = (await tools["agentDemo_prototypeTool"]?.execute?.(
+      {},
+      {},
+    )) as ReturnType<PrototypeTool["execute"]> | undefined;
+    expect(prototypeResult).toEqual({
+      message: "done",
+    });
   });
 
   it("normalizes hyphen edge cases in plugin tool namespaces", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent--demo-",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          tools() {
-            return {
-              demoTool: demoPluginTool(),
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent--demo-",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      const tools = getPluginTools({
-        turnTools: rootTurnTools,
-        conversationId: LOCAL_DESTINATION.conversationId,
-        destination: LOCAL_DESTINATION,
-        egress: TEST_EGRESS,
-        source: LOCAL_SOURCE,
-        workspace: {} as any,
-      });
+          hooks: {
+            tools() {
+              return {
+                demoTool: demoPluginTool(),
+              };
+            },
+          },
+        }),
+      ],
+    });
+    const tools = getPluginTools({
+      turnTools: rootTurnTools,
+      conversationId: LOCAL_DESTINATION.conversationId,
+      destination: LOCAL_DESTINATION,
+      egress: TEST_EGRESS,
+      source: LOCAL_SOURCE,
+      workspace: {} as any,
+    });
 
-      expect(tools["agentDemo_demoTool"]).toBeDefined();
-      expect(tools["agent-Demo-_demoTool"]).toBeUndefined();
-    } finally {
-      setPlugins(previous);
-    }
+    expect(tools["agentDemo_demoTool"]).toBeDefined();
+    expect(tools["agent-Demo-_demoTool"]).toBeUndefined();
   });
 
   it("preserves explicit plugin tool exposure", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          tools() {
-            return {
-              directTool: demoPluginTool("Direct tool", "direct"),
-              defaultTool: demoPluginTool(),
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      const tools = getPluginTools({
-        turnTools: rootTurnTools,
-        conversationId: LOCAL_DESTINATION.conversationId,
-        destination: LOCAL_DESTINATION,
-        egress: TEST_EGRESS,
-        source: LOCAL_SOURCE,
-        workspace: {} as any,
-      });
+          hooks: {
+            tools() {
+              return {
+                directTool: demoPluginTool("Direct tool", "direct"),
+                defaultTool: demoPluginTool(),
+              };
+            },
+          },
+        }),
+      ],
+    });
+    const tools = getPluginTools({
+      turnTools: rootTurnTools,
+      conversationId: LOCAL_DESTINATION.conversationId,
+      destination: LOCAL_DESTINATION,
+      egress: TEST_EGRESS,
+      source: LOCAL_SOURCE,
+      workspace: {} as any,
+    });
 
-      expect(tools["agentDemo_directTool"]?.exposure).toBe("direct");
-      expect(tools["agentDemo_defaultTool"]?.exposure).toBe("deferred");
-    } finally {
-      setPlugins(previous);
-    }
+    expect(tools["agentDemo_directTool"]?.exposure).toBe("direct");
+    expect(tools["agentDemo_defaultTool"]?.exposure).toBe("deferred");
   });
 
   it("registers plugin tools without enforcing the lint naming convention", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          tools() {
-            return {
-              deployment_create: demoPluginTool(),
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      const tools = getPluginTools({
+          hooks: {
+            tools() {
+              return {
+                deployment_create: demoPluginTool(),
+              };
+            },
+          },
+        }),
+      ],
+    });
+    const tools = getPluginTools({
+      turnTools: rootTurnTools,
+      conversationId: LOCAL_DESTINATION.conversationId,
+      destination: LOCAL_DESTINATION,
+      egress: TEST_EGRESS,
+      source: LOCAL_SOURCE,
+      workspace: {} as any,
+    });
+    expect(tools["agentDemo_deployment_create"]?.identity).toEqual({
+      id: "agent-demo.deployment_create",
+      name: "deployment_create",
+      plugin: "agent-demo",
+    });
+  });
+
+  it("prefixes plugin tools so local names cannot conflict with core tools", () => {
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
+          },
+          hooks: {
+            tools() {
+              return {
+                loadSkill: demoPluginTool(),
+              };
+            },
+          },
+        }),
+      ],
+    });
+    const tools = createTools(
+      [],
+      {},
+      {
         turnTools: rootTurnTools,
         conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
         workspace: {} as any,
-      });
-      expect(tools["agentDemo_deployment_create"]?.identity).toEqual({
-        id: "agent-demo.deployment_create",
-        name: "deployment_create",
-        plugin: "agent-demo",
-      });
-    } finally {
-      setPlugins(previous);
-    }
-  });
-
-  it("prefixes plugin tools so local names cannot conflict with core tools", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          tools() {
-            return {
-              loadSkill: demoPluginTool(),
-            };
-          },
-        },
-      }),
-    ]);
-    try {
-      const tools = createTools(
-        [],
-        {},
-        {
-          turnTools: rootTurnTools,
-          conversationId: LOCAL_DESTINATION.conversationId,
-          destination: LOCAL_DESTINATION,
-          egress: TEST_EGRESS,
-          source: LOCAL_SOURCE,
-          workspace: {} as any,
-        },
-      );
-      expect(tools["loadSkill"]).toBeDefined();
-      expect(tools["agentDemo_loadSkill"]).toBeDefined();
-    } finally {
-      setPlugins(previous);
-    }
+      },
+    );
+    expect(tools["loadSkill"]).toBeDefined();
+    expect(tools["agentDemo_loadSkill"]).toBeDefined();
   });
 
   it("activates MCP providers for wrapper tool calls", async () => {
@@ -1030,78 +1001,76 @@ describe("agent plugin hooks", () => {
       content: [{ type: "text" as const, text: "created" }],
       structuredContent: { identifier: "ENG-123" },
     }));
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "linear",
-          displayName: "Linear",
-          description: "Linear",
-          mcp: {
-            transport: "http",
-            url: "https://mcp.linear.example.test/mcp",
-            wrappedTools: ["create_issue"],
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "linear",
+            displayName: "Linear",
+            description: "Linear",
+            mcp: {
+              transport: "http",
+              url: "https://mcp.linear.example.test/mcp",
+              wrappedTools: ["create_issue"],
+            },
           },
-        },
-        hooks: {
-          tools() {
-            return {};
+          hooks: {
+            tools() {
+              return {};
+            },
+            disabledTools(ctx) {
+              captured = ctx;
+              return {};
+            },
           },
-          disabledTools(ctx) {
-            captured = ctx;
-            return {};
-          },
-        },
-      }),
-    ]);
-    try {
-      getPluginTools({
-        turnTools: rootTurnTools,
-        conversationId: LOCAL_DESTINATION.conversationId,
-        destination: LOCAL_DESTINATION,
-        egress: TEST_EGRESS,
-        mcpToolManager: {
-          activateProvider,
-          callWrappedTool,
-          getActiveProviders: () => [...activeProviders],
-        } as never,
-        source: LOCAL_SOURCE,
-        workspace: {} as any,
-      });
-
-      await expect(
-        captured?.mcp?.callTool({
-          name: "create_issue",
-          arguments: { title: "Wrapped issue" },
-          toolCallId: "call-1",
         }),
-      ).resolves.toMatchObject({
-        status: "success",
-        structuredContent: { identifier: "ENG-123" },
-      });
-      expect(activateProvider).toHaveBeenCalledWith("linear");
-      expect(callWrappedTool).toHaveBeenCalledWith(
-        "linear",
-        "create_issue",
-        { title: "Wrapped issue" },
-        { toolCallId: "call-1" },
-      );
-      authorizationPending = true;
-      activeProviders.clear();
-      callWrappedTool.mockClear();
-      await expect(
-        captured?.mcp?.callTool({ name: "create_issue" }),
-      ).resolves.toEqual({ status: "authorization_pending" });
-      expect(callWrappedTool).not.toHaveBeenCalled();
-    } finally {
-      setPlugins(previous);
-    }
+      ],
+    });
+    getPluginTools({
+      turnTools: rootTurnTools,
+      conversationId: LOCAL_DESTINATION.conversationId,
+      destination: LOCAL_DESTINATION,
+      egress: TEST_EGRESS,
+      mcpToolManager: {
+        activateProvider,
+        callWrappedTool,
+        getActiveProviders: () => [...activeProviders],
+      } as never,
+      source: LOCAL_SOURCE,
+      workspace: {} as any,
+    });
+
+    await expect(
+      captured?.mcp?.callTool({
+        name: "create_issue",
+        arguments: { title: "Wrapped issue" },
+        toolCallId: "call-1",
+      }),
+    ).resolves.toMatchObject({
+      status: "success",
+      structuredContent: { identifier: "ENG-123" },
+    });
+    expect(activateProvider).toHaveBeenCalledWith("linear");
+    expect(callWrappedTool).toHaveBeenCalledWith(
+      "linear",
+      "create_issue",
+      { title: "Wrapped issue" },
+      { toolCallId: "call-1" },
+    );
+    authorizationPending = true;
+    activeProviders.clear();
+    callWrappedTool.mockClear();
+    await expect(
+      captured?.mcp?.callTool({ name: "create_issue" }),
+    ).resolves.toEqual({ status: "authorization_pending" });
+    expect(callWrappedTool).not.toHaveBeenCalled();
   });
 
   it("validates plugin task registration names", () => {
-    const previous = setPlugins([]);
-    try {
-      expect(() =>
-        setPlugins([
+    useAppContext();
+    expect(() =>
+      useAppContext({
+        plugins: [
           defineJuniorPlugin({
             manifest: {
               name: "agent-demo",
@@ -1114,11 +1083,13 @@ describe("agent plugin hooks", () => {
               },
             },
           }),
-        ]),
-      ).not.toThrow();
+        ],
+      }),
+    ).not.toThrow();
 
-      expect(() =>
-        setPlugins([
+    expect(() =>
+      useAppContext({
+        plugins: [
           defineJuniorPlugin({
             manifest: {
               name: "agent-demo",
@@ -1131,11 +1102,13 @@ describe("agent plugin hooks", () => {
               },
             },
           }),
-        ]),
-      ).toThrow('Plugin task "bad-task"');
+        ],
+      }),
+    ).toThrow('Plugin task "bad-task"');
 
-      expect(() =>
-        setPlugins([
+    expect(() =>
+      useAppContext({
+        plugins: [
           defineJuniorPlugin({
             manifest: {
               name: "agent-demo",
@@ -1146,123 +1119,119 @@ describe("agent plugin hooks", () => {
               processSession: {} as any,
             },
           }),
-        ]),
-      ).toThrow('Plugin task "processSession"');
-    } finally {
-      setPlugins(previous);
-    }
+        ],
+      }),
+    ).toThrow('Plugin task "processSession"');
   });
 
   it("collects route handlers from configured plugins", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        events: {
-          resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
-          events: { "demo.created": { reach: "resource" } },
-          normalizeIdentifier: (identifier) => identifier.toLowerCase(),
-        },
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          routes(ctx) {
-            return [
-              {
-                path: "/demo",
-                async handler() {
-                  await ctx.events.publish({
-                    eventKey: "demo:event",
-                    eventType: "demo.created",
-                    occurredAtMs: 1,
-                    identifier: "Resource:1",
-                    trustedSummary: "s".repeat(EVENT_SUMMARY_MAX_LENGTH + 1),
-                    untrustedText: "u".repeat(EVENT_TEXT_MAX_LENGTH + 1),
-                  });
-                  return new Response("demo");
-                },
-              },
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          events: {
+            resourceTypes: [
+              { type: "demo", supportedEvents: ["demo.created"] },
+            ],
+            events: { "demo.created": { reach: "resource" } },
+            normalizeIdentifier: (identifier) => identifier.toLowerCase(),
           },
-        },
-      }),
-    ]);
-    try {
-      const publish = vi.fn(async (_event: Event) => {});
-      const routes = getPluginRoutes({
-        sendPluginTask: sendVercelPluginTask,
-        dispatchForIdentity,
-        events: { publish },
-      });
-
-      expect(routes).toHaveLength(1);
-      expect(routes[0]?.pluginName).toBe("agent-demo");
-      expect(routes[0]?.path).toBe("/demo");
-      const response = await routes[0]!.handler(
-        new Request("http://localhost/demo"),
-      );
-      await expect(response.text()).resolves.toBe("demo");
-      expect(publish).toHaveBeenCalledWith(
-        expect.objectContaining({
-          eventKey: "demo:event",
-          identifier: "resource:1",
-          namespace: "agent-demo",
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
+          },
+          hooks: {
+            routes(ctx) {
+              return [
+                {
+                  path: "/demo",
+                  async handler() {
+                    await ctx.events.publish({
+                      eventKey: "demo:event",
+                      eventType: "demo.created",
+                      occurredAtMs: 1,
+                      identifier: "Resource:1",
+                      trustedSummary: "s".repeat(EVENT_SUMMARY_MAX_LENGTH + 1),
+                      untrustedText: "u".repeat(EVENT_TEXT_MAX_LENGTH + 1),
+                    });
+                    return new Response("demo");
+                  },
+                },
+              ];
+            },
+          },
         }),
-      );
-      const published = publish.mock.calls[0]?.[0];
-      expect(published?.trustedSummary).toHaveLength(EVENT_SUMMARY_MAX_LENGTH);
-      expect(published?.untrustedText).toHaveLength(EVENT_TEXT_MAX_LENGTH);
-    } finally {
-      setPlugins(previous);
-    }
+      ],
+    });
+    const publish = vi.fn(async (_event: Event) => {});
+    const routes = getPluginRoutes({
+      sendPluginTask: sendVercelPluginTask,
+      dispatchForIdentity,
+      events: { publish },
+    });
+
+    expect(routes).toHaveLength(1);
+    expect(routes[0]?.pluginName).toBe("agent-demo");
+    expect(routes[0]?.path).toBe("/demo");
+    const response = await routes[0]!.handler(
+      new Request("http://localhost/demo"),
+    );
+    await expect(response.text()).resolves.toBe("demo");
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKey: "demo:event",
+        identifier: "resource:1",
+        namespace: "agent-demo",
+      }),
+    );
+    const published = publish.mock.calls[0]?.[0];
+    expect(published?.trustedSummary).toHaveLength(EVENT_SUMMARY_MAX_LENGTH);
+    expect(published?.untrustedText).toHaveLength(EVENT_TEXT_MAX_LENGTH);
   });
 
   it("rejects plugin-supplied event namespaces", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          routes(ctx) {
-            return [
-              {
-                path: "/demo",
-                async handler() {
-                  await ctx.events.publish({
-                    eventKey: "other:event",
-                    eventType: "demo.created",
-                    occurredAtMs: 1,
-                    identifier: "resource:1",
-                    namespace: "other",
-                    trustedSummary: "Demo created",
-                  } as any);
-                  return new Response("demo");
-                },
-              },
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({
-        sendPluginTask: sendVercelPluginTask,
-        dispatchForIdentity,
-        events: { publish },
-      });
+          hooks: {
+            routes(ctx) {
+              return [
+                {
+                  path: "/demo",
+                  async handler() {
+                    await ctx.events.publish({
+                      eventKey: "other:event",
+                      eventType: "demo.created",
+                      occurredAtMs: 1,
+                      identifier: "resource:1",
+                      namespace: "other",
+                      trustedSummary: "Demo created",
+                    } as any);
+                    return new Response("demo");
+                  },
+                },
+              ];
+            },
+          },
+        }),
+      ],
+    });
+    const publish = vi.fn(async () => {});
+    const [route] = getPluginRoutes({
+      sendPluginTask: sendVercelPluginTask,
+      dispatchForIdentity,
+      events: { publish },
+    });
 
-      await expect(
-        route!.handler(new Request("http://localhost/demo")),
-      ).rejects.toThrow(/Unrecognized key.*namespace/s);
-      expect(publish).not.toHaveBeenCalled();
-    } finally {
-      setPlugins(previous);
-    }
+    await expect(
+      route!.handler(new Request("http://localhost/demo")),
+    ).rejects.toThrow(/Unrecognized key.*namespace/s);
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1289,163 +1258,155 @@ describe("agent plugin hooks", () => {
       error: 'did not register event "demo.deleted"',
     },
   ])("rejects event publication $label", async ({ events, error }) => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        ...(events ? { events } : undefined),
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          routes(ctx) {
-            return [
-              {
-                path: "/demo",
-                async handler() {
-                  await ctx.events.publish({
-                    eventKey: "demo:event",
-                    eventType: "demo.deleted",
-                    occurredAtMs: 1,
-                    identifier: "resource:1",
-                    trustedSummary: "Demo deleted",
-                  });
-                  return new Response("demo");
-                },
-              },
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          ...(events ? { events } : undefined),
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({
-        sendPluginTask: sendVercelPluginTask,
-        dispatchForIdentity,
-        events: { publish },
-      });
+          hooks: {
+            routes(ctx) {
+              return [
+                {
+                  path: "/demo",
+                  async handler() {
+                    await ctx.events.publish({
+                      eventKey: "demo:event",
+                      eventType: "demo.deleted",
+                      occurredAtMs: 1,
+                      identifier: "resource:1",
+                      trustedSummary: "Demo deleted",
+                    });
+                    return new Response("demo");
+                  },
+                },
+              ];
+            },
+          },
+        }),
+      ],
+    });
+    const publish = vi.fn(async () => {});
+    const [route] = getPluginRoutes({
+      sendPluginTask: sendVercelPluginTask,
+      dispatchForIdentity,
+      events: { publish },
+    });
 
-      await expect(
-        route!.handler(new Request("http://localhost/demo")),
-      ).rejects.toThrow(error);
-      expect(publish).not.toHaveBeenCalled();
-    } finally {
-      setPlugins(previous);
-    }
+    await expect(
+      route!.handler(new Request("http://localhost/demo")),
+    ).rejects.toThrow(error);
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it("rejects invalid route methods from configured plugins", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          routes() {
-            return [
-              {
-                method: "TRACE" as never,
-                path: "/demo",
-                handler: () => new Response("demo"),
-              },
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      expect(() =>
-        getPluginRoutes({
-          sendPluginTask: sendVercelPluginTask,
-          dispatchForIdentity,
-          events: { publish: async () => {} },
+          hooks: {
+            routes() {
+              return [
+                {
+                  method: "TRACE" as never,
+                  path: "/demo",
+                  handler: () => new Response("demo"),
+                },
+              ];
+            },
+          },
         }),
-      ).toThrow(
-        'Plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
-      );
-    } finally {
-      setPlugins(previous);
-    }
+      ],
+    });
+    expect(() =>
+      getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
+        dispatchForIdentity,
+        events: { publish: async () => {} },
+      }),
+    ).toThrow(
+      'Plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
+    );
   });
 
   it("rejects routes that combine ALL with explicit methods", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          routes() {
-            return [
-              {
-                method: ["ALL", "GET"],
-                path: "/demo",
-                handler: () => new Response("demo"),
-              },
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      expect(() =>
-        getPluginRoutes({
-          sendPluginTask: sendVercelPluginTask,
-          dispatchForIdentity,
-          events: { publish: async () => {} },
+          hooks: {
+            routes() {
+              return [
+                {
+                  method: ["ALL", "GET"],
+                  path: "/demo",
+                  handler: () => new Response("demo"),
+                },
+              ];
+            },
+          },
         }),
-      ).toThrow(
-        'Plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
-      );
-    } finally {
-      setPlugins(previous);
-    }
+      ],
+    });
+    expect(() =>
+      getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
+        dispatchForIdentity,
+        events: { publish: async () => {} },
+      }),
+    ).toThrow(
+      'Plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
+    );
   });
 
   it("rejects route paths that mix ALL and explicit method registrations", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          routes() {
-            return [
-              {
-                method: "ALL",
-                path: "/demo",
-                handler: () => new Response("demo"),
-              },
-              {
-                method: "GET",
-                path: "/demo",
-                handler: () => new Response("demo"),
-              },
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      expect(() =>
-        getPluginRoutes({
-          sendPluginTask: sendVercelPluginTask,
-          dispatchForIdentity,
-          events: { publish: async () => {} },
+          hooks: {
+            routes() {
+              return [
+                {
+                  method: "ALL",
+                  path: "/demo",
+                  handler: () => new Response("demo"),
+                },
+                {
+                  method: "GET",
+                  path: "/demo",
+                  handler: () => new Response("demo"),
+                },
+              ];
+            },
+          },
         }),
-      ).toThrow(
-        'Plugin route "/demo" conflicts with an ALL route for the same path',
-      );
-    } finally {
-      setPlugins(previous);
-    }
+      ],
+    });
+    expect(() =>
+      getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
+        dispatchForIdentity,
+        events: { publish: async () => {} },
+      }),
+    ).toThrow(
+      'Plugin route "/demo" conflicts with an ALL route for the same path',
+    );
   });
 
   it("collects API route apps from configured plugins", async () => {
@@ -1457,267 +1418,253 @@ describe("agent plugin hooks", () => {
       identities: [],
     };
     resolveViewerUserMock.mockResolvedValue(viewer);
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          apiRoutes(ctx) {
-            resolveUser = ctx.users.resolve;
-            return {
-              fetch: (_request, context) => {
-                receivedContext = context;
-                return new Response("api demo");
-              },
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      const routes = getPluginApiRoutes().filter(
-        (route) => route.pluginName !== "memory",
-      );
-
-      expect(routes).toHaveLength(1);
-      expect(routes[0]?.pluginName).toBe("agent-demo");
-      await expect(resolveUser?.("person@example.com")).resolves.toEqual(
-        viewer,
-      );
-      expect(resolveViewerUserMock).toHaveBeenCalledWith("person@example.com");
-      const response = await routes[0]!.app.fetch(
-        new Request("http://localhost/demo"),
-        {
-          auth: {
-            user: {
-              email: "person@example.com",
-              emailVerified: true,
-              isAdmin: false,
+          hooks: {
+            apiRoutes(ctx) {
+              resolveUser = ctx.users.resolve;
+              return {
+                fetch: (_request, context) => {
+                  receivedContext = context;
+                  return new Response("api demo");
+                },
+              };
             },
           },
-          pluginName: "agent-demo",
+        }),
+      ],
+    });
+    const routes = getPluginApiRoutes().filter(
+      (route) => route.pluginName !== "memory",
+    );
+
+    expect(routes).toHaveLength(1);
+    expect(routes[0]?.pluginName).toBe("agent-demo");
+    await expect(resolveUser?.("person@example.com")).resolves.toEqual(viewer);
+    expect(resolveViewerUserMock).toHaveBeenCalledWith("person@example.com");
+    const response = await routes[0]!.app.fetch(
+      new Request("http://localhost/demo"),
+      {
+        auth: {
+          user: {
+            email: "person@example.com",
+            emailVerified: true,
+            isAdmin: false,
+          },
         },
-      );
-      await expect(response.text()).resolves.toBe("api demo");
-      expect(receivedContext).not.toHaveProperty("viewer");
-    } finally {
-      setPlugins(previous);
-    }
+        pluginName: "agent-demo",
+      },
+    );
+    await expect(response.text()).resolves.toBe("api demo");
+    expect(receivedContext).not.toHaveProperty("viewer");
   });
 
   it("rejects invalid API route apps from configured plugins", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          apiRoutes() {
-            return {} as never;
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      expect(() => getPluginApiRoutes()).toThrow(
-        'Plugin apiRoutes hook from plugin "agent-demo" must return a fetch-compatible app',
-      );
-    } finally {
-      setPlugins(previous);
-    }
+          hooks: {
+            apiRoutes() {
+              return {} as never;
+            },
+          },
+        }),
+      ],
+    });
+    expect(() => getPluginApiRoutes()).toThrow(
+      'Plugin apiRoutes hook from plugin "agent-demo" must return a fetch-compatible app',
+    );
   });
 
   it("rejects unsafe Slack conversation links from configured plugins", () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          slackConversationLink() {
-            return { url: "javascript:alert(1)" };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      expect(() => getPluginSlackConversationLink("slack:C1:123")).toThrow(
-        'Plugin "agent-demo" slackConversationLink must return an absolute http(s) URL',
-      );
-    } finally {
-      setPlugins(previous);
-    }
+          hooks: {
+            slackConversationLink() {
+              return { url: "javascript:alert(1)" };
+            },
+          },
+        }),
+      ],
+    });
+    expect(() => getPluginSlackConversationLink("slack:C1:123")).toThrow(
+      'Plugin "agent-demo" slackConversationLink must return an absolute http(s) URL',
+    );
   });
 
   it("collects operational reports from configured plugins", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          async operationalReport(ctx) {
-            expect(ctx.nowMs).toBe(123);
-            expect("set" in ctx.state).toBe(false);
-            await expect(ctx.state.get("dashboard-test")).resolves.toBe(
-              undefined,
-            );
-            return {
-              title: "Agent Demo",
-              metrics: [{ label: "active", value: "1" }],
-              widgets: [
-                {
-                  categories: [
-                    {
-                      id: " 30d ",
-                      label: " 30 days ",
-                      values: { " created ": 4, ignored: 99 },
-                    },
-                  ],
-                  description: " Rolling activity ",
-                  id: " activity ",
-                  series: [
-                    { key: " created ", label: " Created ", tone: "good" },
-                  ],
-                  title: " Activity ",
-                  type: "bar_chart",
-                },
-              ],
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      await expect(testPluginReports()).resolves.toEqual([
-        {
-          pluginName: "agent-demo",
-          title: "Agent Demo",
-          metrics: [{ label: "active", value: "1" }],
-          widgets: [
-            {
-              categories: [
-                {
-                  id: "30d",
-                  label: "30 days",
-                  values: { created: 4 },
-                },
-              ],
-              description: "Rolling activity",
-              id: "activity",
-              series: [{ key: "created", label: "Created", tone: "good" }],
-              title: "Activity",
-              type: "bar_chart",
+          hooks: {
+            async operationalReport(ctx) {
+              expect(ctx.nowMs).toBe(123);
+              expect("set" in ctx.state).toBe(false);
+              await expect(ctx.state.get("dashboard-test")).resolves.toBe(
+                undefined,
+              );
+              return {
+                title: "Agent Demo",
+                metrics: [{ label: "active", value: "1" }],
+                widgets: [
+                  {
+                    categories: [
+                      {
+                        id: " 30d ",
+                        label: " 30 days ",
+                        values: { " created ": 4, ignored: 99 },
+                      },
+                    ],
+                    description: " Rolling activity ",
+                    id: " activity ",
+                    series: [
+                      { key: " created ", label: " Created ", tone: "good" },
+                    ],
+                    title: " Activity ",
+                    type: "bar_chart",
+                  },
+                ],
+              };
             },
-          ],
-        },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
+          },
+        }),
+      ],
+    });
+    await expect(testPluginReports()).resolves.toEqual([
+      {
+        pluginName: "agent-demo",
+        title: "Agent Demo",
+        metrics: [{ label: "active", value: "1" }],
+        widgets: [
+          {
+            categories: [
+              {
+                id: "30d",
+                label: "30 days",
+                values: { created: 4 },
+              },
+            ],
+            description: "Rolling activity",
+            id: "activity",
+            series: [{ key: "created", label: "Created", tone: "good" }],
+            title: "Activity",
+            type: "bar_chart",
+          },
+        ],
+      },
+    ]);
   });
 
   it("keeps the newest chart categories when sanitizing bounded reports", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          operationalReport() {
-            return {
-              widgets: [
-                {
-                  categories: Array.from({ length: 101 }, (_, index) => ({
-                    id: `day-${index + 1}`,
-                    label: `Day ${index + 1}`,
-                    values: { created: index + 1 },
-                  })),
-                  id: "activity",
-                  series: [{ key: "created", label: "Created" }],
-                  title: "Activity",
-                  type: "bar_chart" as const,
-                },
-              ],
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
-    try {
-      const reports = await getPluginOperationalReports(123);
-      expect(reports[0]?.widgets?.[0]?.categories).toHaveLength(100);
-      expect(reports[0]?.widgets?.[0]?.categories[0]?.id).toBe("day-2");
-      expect(reports[0]?.widgets?.[0]?.categories.at(-1)?.id).toBe("day-101");
-    } finally {
-      setPlugins(previous);
-    }
+          hooks: {
+            operationalReport() {
+              return {
+                widgets: [
+                  {
+                    categories: Array.from({ length: 101 }, (_, index) => ({
+                      id: `day-${index + 1}`,
+                      label: `Day ${index + 1}`,
+                      values: { created: index + 1 },
+                    })),
+                    id: "activity",
+                    series: [{ key: "created", label: "Created" }],
+                    title: "Activity",
+                    type: "bar_chart" as const,
+                  },
+                ],
+              };
+            },
+          },
+        }),
+      ],
+    });
+    const reports = await getPluginOperationalReports(123);
+    expect(reports[0]?.widgets?.[0]?.categories).toHaveLength(100);
+    expect(reports[0]?.widgets?.[0]?.categories[0]?.id).toBe("day-2");
+    expect(reports[0]?.widgets?.[0]?.categories.at(-1)?.id).toBe("day-101");
   });
 
   it("contains failed operational reports per plugin", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          operationalReport() {
-            return {
-              title: "Agent Demo",
-              metrics: [{ label: "active", value: "1" }],
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-      defineJuniorPlugin({
-        manifest: {
-          name: "broken-demo",
-          displayName: "Broken Demo",
-          description: "Broken demo",
-        },
-        hooks: {
-          operationalReport() {
-            throw new Error("database unavailable");
-          },
-        },
-      }),
-    ]);
-    try {
-      await expect(testPluginReports()).resolves.toEqual([
-        {
-          pluginName: "agent-demo",
-          title: "Agent Demo",
-          metrics: [{ label: "active", value: "1" }],
-        },
-        {
-          generatedAt: "1970-01-01T00:00:00.123Z",
-          pluginName: "broken-demo",
-          recordSets: [
-            {
-              emptyText: "This plugin report failed to load.",
-              title: "Error",
+          hooks: {
+            operationalReport() {
+              return {
+                title: "Agent Demo",
+                metrics: [{ label: "active", value: "1" }],
+              };
             },
-          ],
-          metrics: [{ label: "report", tone: "danger", value: "failed" }],
-          title: "broken-demo",
-        },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
+          },
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "broken-demo",
+            displayName: "Broken Demo",
+            description: "Broken demo",
+          },
+          hooks: {
+            operationalReport() {
+              throw new Error("database unavailable");
+            },
+          },
+        }),
+      ],
+    });
+    await expect(testPluginReports()).resolves.toEqual([
+      {
+        pluginName: "agent-demo",
+        title: "Agent Demo",
+        metrics: [{ label: "active", value: "1" }],
+      },
+      {
+        generatedAt: "1970-01-01T00:00:00.123Z",
+        pluginName: "broken-demo",
+        recordSets: [
+          {
+            emptyText: "This plugin report failed to load.",
+            title: "Error",
+          },
+        ],
+        metrics: [{ label: "report", tone: "danger", value: "failed" }],
+        title: "broken-demo",
+      },
+    ]);
   });
 
   it("collects profile reports and skips plugin failures", async () => {
@@ -1731,161 +1678,157 @@ describe("agent plugin hooks", () => {
       id: "user-viewer",
       identities: [],
     };
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          async profileReport(ctx) {
-            expect(ctx.nowMs).toBe(123);
-            expect(ctx.subject).toEqual(subject);
-            expect(ctx.viewer).toEqual(viewer);
-            expect("set" in ctx.state).toBe(false);
-            return {
-              title: "Agent Demo",
-              metrics: [{ label: "prs", value: "2" }],
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-      defineJuniorPlugin({
-        manifest: {
-          name: "broken-demo",
-          displayName: "Broken Demo",
-          description: "Broken demo",
-        },
-        hooks: {
-          profileReport() {
-            throw new Error("database unavailable");
+          hooks: {
+            async profileReport(ctx) {
+              expect(ctx.nowMs).toBe(123);
+              expect(ctx.subject).toEqual(subject);
+              expect(ctx.viewer).toEqual(viewer);
+              expect("set" in ctx.state).toBe(false);
+              return {
+                title: "Agent Demo",
+                metrics: [{ label: "prs", value: "2" }],
+              };
+            },
           },
-        },
-      }),
-      defineJuniorPlugin({
-        manifest: {
-          name: "empty-demo",
-          displayName: "Empty Demo",
-          description: "Empty demo",
-        },
-        hooks: {
-          profileReport() {
-            return undefined;
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "broken-demo",
+            displayName: "Broken Demo",
+            description: "Broken demo",
           },
-        },
-      }),
+          hooks: {
+            profileReport() {
+              throw new Error("database unavailable");
+            },
+          },
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "empty-demo",
+            displayName: "Empty Demo",
+            description: "Empty demo",
+          },
+          hooks: {
+            profileReport() {
+              return undefined;
+            },
+          },
+        }),
+      ],
+    });
+    await expect(
+      getPluginProfileReports({ nowMs: 123, subject, viewer }),
+    ).resolves.toEqual([
+      {
+        pluginName: "agent-demo",
+        title: "Agent Demo",
+        metrics: [{ label: "prs", value: "2" }],
+      },
     ]);
-    try {
-      await expect(
-        getPluginProfileReports({ nowMs: 123, subject, viewer }),
-      ).resolves.toEqual([
-        {
-          pluginName: "agent-demo",
-          title: "Agent Demo",
-          metrics: [{ label: "prs", value: "2" }],
-        },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
   });
 
   it("runs sandbox and tool lifecycle hooks from configured plugins", async () => {
     const writes: Array<{ content: string | Uint8Array; path: string }> = [];
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          async sandboxPrepare(ctx) {
-            expect(ctx.actor).toEqual(TEST_ACTOR);
-            await ctx.sandbox.writeFile({
-              path: `${ctx.sandbox.juniorRoot}/prepared.txt`,
-              content: TEST_ACTOR.userId,
-            });
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-          beforeToolExecute(ctx) {
-            expect(ctx.actor).toEqual(TEST_ACTOR);
-            // No `actors` getter was passed to createPluginHookRunner, so the
-            // hook context falls back to the single run actor.
-            expect(ctx.actors).toEqual([TEST_ACTOR]);
-            ctx.env.set("AGENT_PLUGIN", TEST_ACTOR.userId);
-            if (
-              typeof ctx.tool.input === "object" &&
-              ctx.tool.input &&
-              "command" in ctx.tool.input &&
-              ctx.tool.input["command"] === "replace me"
-            ) {
-              ctx.decision.replaceInput({
-                ...ctx.tool.input,
-                command: "replaced",
+          hooks: {
+            async sandboxPrepare(ctx) {
+              expect(ctx.actor).toEqual(TEST_ACTOR);
+              await ctx.sandbox.writeFile({
+                path: `${ctx.sandbox.juniorRoot}/prepared.txt`,
+                content: TEST_ACTOR.userId,
               });
-            }
-            if (
-              typeof ctx.tool.input === "object" &&
-              ctx.tool.input &&
-              "command" in ctx.tool.input &&
-              ctx.tool.input["command"] === "denied"
-            ) {
-              ctx.decision.deny("blocked by plugin");
-            }
-            if (
-              typeof ctx.tool.input === "object" &&
-              ctx.tool.input &&
-              "command" in ctx.tool.input &&
-              ctx.tool.input["command"] === "redirected"
-            ) {
-              ctx.decision.redirect("use otherTool instead");
-            }
+            },
+            beforeToolExecute(ctx) {
+              expect(ctx.actor).toEqual(TEST_ACTOR);
+              // No `actors` getter was passed to createPluginHookRunner, so the
+              // hook context falls back to the single run actor.
+              expect(ctx.actors).toEqual([TEST_ACTOR]);
+              ctx.env.set("AGENT_PLUGIN", TEST_ACTOR.userId);
+              if (
+                typeof ctx.tool.input === "object" &&
+                ctx.tool.input &&
+                "command" in ctx.tool.input &&
+                ctx.tool.input["command"] === "replace me"
+              ) {
+                ctx.decision.replaceInput({
+                  ...ctx.tool.input,
+                  command: "replaced",
+                });
+              }
+              if (
+                typeof ctx.tool.input === "object" &&
+                ctx.tool.input &&
+                "command" in ctx.tool.input &&
+                ctx.tool.input["command"] === "denied"
+              ) {
+                ctx.decision.deny("blocked by plugin");
+              }
+              if (
+                typeof ctx.tool.input === "object" &&
+                ctx.tool.input &&
+                "command" in ctx.tool.input &&
+                ctx.tool.input["command"] === "redirected"
+              ) {
+                ctx.decision.redirect("use otherTool instead");
+              }
+            },
           },
-        },
-      }),
+        }),
+      ],
+    });
+    const runner = createPluginHookRunner({
+      actor: TEST_ACTOR,
+    });
+
+    await runner.prepareSandbox(fakeSandbox(writes));
+    expect(writes).toEqual([
+      {
+        path: "/vercel/sandbox/.junior/prepared.txt",
+        content: "U123",
+      },
     ]);
-    try {
-      const runner = createPluginHookRunner({
-        actor: TEST_ACTOR,
-      });
 
-      await runner.prepareSandbox(fakeSandbox(writes));
-      expect(writes).toEqual([
-        {
-          path: "/vercel/sandbox/.junior/prepared.txt",
-          content: "U123",
-        },
-      ]);
-
-      await expect(
-        runner.beforeToolExecute({
-          name: "bash",
-          input: { command: "denied" },
-        }),
-      ).rejects.toEqual(new PluginToolDeniedError("blocked by plugin"));
-      await expect(
-        runner.beforeToolExecute({
-          name: "bash",
-          input: { command: "redirected" },
-        }),
-      ).rejects.toEqual(new ToolInputError("use otherTool instead"));
-
-      const before = await runner.beforeToolExecute({
+    await expect(
+      runner.beforeToolExecute({
         name: "bash",
-        input: {
-          command: "replace me",
-          env: { PUBLIC_MODE: "preview" },
-        },
-      });
-      expect(before.input).toEqual({
-        command: "replaced",
+        input: { command: "denied" },
+      }),
+    ).rejects.toEqual(new PluginToolDeniedError("blocked by plugin"));
+    await expect(
+      runner.beforeToolExecute({
+        name: "bash",
+        input: { command: "redirected" },
+      }),
+    ).rejects.toEqual(new ToolInputError("use otherTool instead"));
+
+    const before = await runner.beforeToolExecute({
+      name: "bash",
+      input: {
+        command: "replace me",
         env: { PUBLIC_MODE: "preview" },
-      });
-      expect(before.env).toEqual({ AGENT_PLUGIN: "U123" });
-    } finally {
-      setPlugins(previous);
-    }
+      },
+    });
+    expect(before.input).toEqual({
+      command: "replaced",
+      env: { PUBLIC_MODE: "preview" },
+    });
+    expect(before.env).toEqual({ AGENT_PLUGIN: "U123" });
   });
 
   it("runs Workspace preparation non-interactively with owner cancellation", async () => {
@@ -1894,148 +1837,144 @@ describe("agent plugin hooks", () => {
       stdout: "",
       stderr: "",
     }));
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          async workspacePrepare(ctx) {
-            await ctx.sandbox.run({
-              cmd: "git",
-              args: ["clone", "https://example.com/demo.git", "demo"],
-              cwd: ctx.sandbox.root,
-            });
-            return async () => {
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
+          },
+          hooks: {
+            async workspacePrepare(ctx) {
               await ctx.sandbox.run({
                 cmd: "git",
-                args: ["-C", "demo", "reset", "--hard"],
+                args: ["clone", "https://example.com/demo.git", "demo"],
                 cwd: ctx.sandbox.root,
               });
-            };
+              return async () => {
+                await ctx.sandbox.run({
+                  cmd: "git",
+                  args: ["-C", "demo", "reset", "--hard"],
+                  cwd: ctx.sandbox.root,
+                });
+              };
+            },
           },
+        }),
+      ],
+    });
+    const controller = new AbortController();
+    const sandbox = {
+      ...fakeSandbox([]),
+      runCommand,
+    };
+
+    const finalize = await createPluginHookRunner().prepareWorkspace(
+      sandbox,
+      [
+        {
+          provider: "agent-demo",
+          repo: "example/demo",
         },
-      }),
-    ]);
-    try {
-      const controller = new AbortController();
-      const sandbox = {
-        ...fakeSandbox([]),
-        runCommand,
-      };
+      ],
+      controller.signal,
+    );
 
-      const finalize = await createPluginHookRunner().prepareWorkspace(
-        sandbox,
-        [
-          {
-            provider: "agent-demo",
-            repo: "example/demo",
-          },
-        ],
-        controller.signal,
-      );
-
-      expect(runCommand).toHaveBeenCalledTimes(1);
-      await finalize();
-      expect(runCommand).toHaveBeenCalledTimes(2);
-      const command = runCommand.mock.calls[0]?.[0];
-      expect(command).toMatchObject({
-        cmd: "bash",
-        cwd: "/vercel/sandbox",
-        signal: controller.signal,
-      });
-      expect(command?.args?.[0]).toBe("-c");
-      expect(command?.args?.[1]).toContain("GIT_TERMINAL_PROMPT");
-      expect(command?.args?.[1]).toContain(
-        "'git' 'clone' 'https://example.com/demo.git' 'demo'",
-      );
-    } finally {
-      setPlugins(previous);
-    }
+    expect(runCommand).toHaveBeenCalledTimes(1);
+    await finalize();
+    expect(runCommand).toHaveBeenCalledTimes(2);
+    const command = runCommand.mock.calls[0]?.[0];
+    expect(command).toMatchObject({
+      cmd: "bash",
+      cwd: "/vercel/sandbox",
+      signal: controller.signal,
+    });
+    expect(command?.args?.[0]).toBe("-c");
+    expect(command?.args?.[1]).toContain("GIT_TERMINAL_PROMPT");
+    expect(command?.args?.[1]).toContain(
+      "'git' 'clone' 'https://example.com/demo.git' 'demo'",
+    );
   });
 
   it("rejects unhandled Workspace repository providers before preparation", async () => {
     const workspacePrepare = vi.fn(async () => {});
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
+          },
+          hooks: { workspacePrepare },
+        }),
+      ],
+    });
+    await expect(
+      createPluginHookRunner().prepareWorkspace(fakeSandbox([]), [
+        {
+          provider: "agent-demo",
+          repo: "example/demo",
         },
-        hooks: { workspacePrepare },
-      }),
-    ]);
-    try {
-      await expect(
-        createPluginHookRunner().prepareWorkspace(fakeSandbox([]), [
-          {
-            provider: "agent-demo",
-            repo: "example/demo",
-          },
-          {
-            provider: "missing-provider",
-            repo: "example/missing",
-          },
-        ]),
-      ).rejects.toThrow(
-        "Workspace repository providers have no preparation hook: missing-provider",
-      );
-      expect(workspacePrepare).not.toHaveBeenCalled();
-    } finally {
-      setPlugins(previous);
-    }
+        {
+          provider: "missing-provider",
+          repo: "example/missing",
+        },
+      ]),
+    ).rejects.toThrow(
+      "Workspace repository providers have no preparation hook: missing-provider",
+    );
+    expect(workspacePrepare).not.toHaveBeenCalled();
   });
 
   it("rejects colliding Workspace checkout paths from short repository names", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "github",
-          displayName: "GitHub",
-          description: "GitHub",
-        },
-        hooks: {
-          async workspacePrepare() {},
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        createPluginHookRunner().prepareWorkspace(fakeSandbox([]), [
-          {
-            provider: "github",
-            repo: "getsentry/sentry",
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "github",
+            displayName: "GitHub",
+            description: "GitHub",
           },
-          {
-            provider: "github",
-            repo: "acme/sentry",
+          hooks: {
+            async workspacePrepare() {},
           },
-        ]),
-      ).rejects.toThrow("Workspace checkout path collision: repos/sentry");
-    } finally {
-      setPlugins(previous);
-    }
+        }),
+      ],
+    });
+    await expect(
+      createPluginHookRunner().prepareWorkspace(fakeSandbox([]), [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+        },
+        {
+          provider: "github",
+          repo: "acme/sentry",
+        },
+      ]),
+    ).rejects.toThrow("Workspace checkout path collision: repos/sentry");
   });
 
   it("materializes beforeToolExecute actors from the live actors getter per call", async () => {
     const seenActorSets: unknown[][] = [];
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          beforeToolExecute(ctx) {
-            seenActorSets.push(ctx.actors ?? []);
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
           },
-        },
-      }),
-    ]);
+          hooks: {
+            beforeToolExecute(ctx) {
+              seenActorSets.push(ctx.actors ?? []);
+            },
+          },
+        }),
+      ],
+    });
     const SECOND_ACTOR = {
       platform: "slack",
       teamId: "T123",
@@ -2045,20 +1984,16 @@ describe("agent plugin hooks", () => {
     // getter reads live state, so mid-run growth (steering) is visible to
     // the next tool call without re-creating the hook runner.
     let liveActors: unknown[] = [TEST_ACTOR];
-    try {
-      const runner = createPluginHookRunner({
-        actor: TEST_ACTOR,
-        actors: () => liveActors as never,
-      });
+    const runner = createPluginHookRunner({
+      actor: TEST_ACTOR,
+      actors: () => liveActors as never,
+    });
 
-      await runner.beforeToolExecute({ name: "bash", input: {} });
-      liveActors = [TEST_ACTOR, SECOND_ACTOR];
-      await runner.beforeToolExecute({ name: "bash", input: {} });
+    await runner.beforeToolExecute({ name: "bash", input: {} });
+    liveActors = [TEST_ACTOR, SECOND_ACTOR];
+    await runner.beforeToolExecute({ name: "bash", input: {} });
 
-      expect(seenActorSets).toEqual([[TEST_ACTOR], [TEST_ACTOR, SECOND_ACTOR]]);
-    } finally {
-      setPlugins(previous);
-    }
+    expect(seenActorSets).toEqual([[TEST_ACTOR], [TEST_ACTOR, SECOND_ACTOR]]);
   });
 });
 
@@ -2074,26 +2009,27 @@ describe("getPluginTools channel resolution", () => {
     },
   ) {
     let captured: ToolRegistrationHookContext | undefined;
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "capture",
-          displayName: "Capture",
-          description: "Capture plugin context",
-        },
-        hooks: {
-          tools() {
-            return {};
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "capture",
+            displayName: "Capture",
+            description: "Capture plugin context",
           },
-          disabledTools(ctx) {
-            captured = ctx;
-            return {};
+          hooks: {
+            tools() {
+              return {};
+            },
+            disabledTools(ctx) {
+              captured = ctx;
+              return {};
+            },
           },
-        },
-      }),
-    ]);
+        }),
+      ],
+    });
     getPluginTools(context);
-    setPlugins(previous);
     if (!captured) {
       throw new Error("capture plugin tools hook was not called");
     }

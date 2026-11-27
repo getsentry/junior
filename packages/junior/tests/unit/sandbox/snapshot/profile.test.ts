@@ -8,12 +8,13 @@ const { dependenciesMock, globalPostinstall, postinstallMock } = vi.hoisted(
   }),
 );
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getRuntimeDependencies: dependenciesMock,
     getRuntimePostinstall: postinstallMock,
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],

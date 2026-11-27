@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { getChatConfig } from "@/chat/config";
 import type { Workspace } from "@/chat/workspaces/types";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type {
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
@@ -99,11 +99,11 @@ export function create(runtime: string, workspace?: Workspace): Profile | null {
   const declared = {
     dependencies: mergeDependencies([
       ...GLOBAL_RUNTIME_DEPENDENCIES,
-      ...pluginCatalogRuntime.getRuntimeDependencies(),
+      ...getAppContext().catalog.getRuntimeDependencies(),
     ]),
     postinstall: [
       ...GLOBAL_RUNTIME_POSTINSTALL,
-      ...pluginCatalogRuntime.getRuntimePostinstall(),
+      ...getAppContext().catalog.getRuntimePostinstall(),
     ],
   };
   const { dependencies, postinstall } =

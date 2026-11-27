@@ -155,19 +155,13 @@ async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
 async function configureLocalChatPlugins(
   pluginSet?: JuniorPluginSet | null,
 ): Promise<void> {
-  const [
-    pluginsModule,
-    registryModule,
-    catalogRuntimeModule,
-    validationModule,
-    databaseModule,
-  ] = await Promise.all([
-    import("@/plugins"),
-    import("@/chat/plugins/hooks/registry"),
-    import("@/chat/plugins/catalog-runtime"),
-    import("@/chat/plugins/validation"),
-    import("@/chat/db"),
-  ]);
+  const [pluginsModule, appContextModule, validationModule, databaseModule] =
+    await Promise.all([
+      import("@/plugins"),
+      import("@/app/context"),
+      import("@/chat/plugins/validation"),
+      import("@/chat/db"),
+    ]);
   const resolvedPluginSet =
     pluginSet === undefined
       ? await loadLocalPluginSet()
@@ -179,12 +173,12 @@ async function configureLocalChatPlugins(
     : pluginsModule.pluginCatalogConfigFromEnv();
   const shouldValidatePluginCatalog =
     Boolean(pluginConfig) || Boolean(resolvedPluginSet?.registrations.length);
-  registryModule.validatePlugins(plugins);
-  const previousPluginCatalogConfig =
-    catalogRuntimeModule.pluginCatalogRuntime.setConfig(pluginConfig);
+  const previousAppContext = appContextModule.installAppContext(
+    appContextModule.createAppContext({ plugins, pluginConfig }),
+  );
   try {
     if (shouldValidatePluginCatalog) {
-      catalogRuntimeModule.pluginCatalogRuntime.getSignature();
+      appContextModule.getAppContext().catalog.getSignature();
       validationModule.validatePluginRegistrations(
         resolvedPluginSet?.registrations ?? [],
       );
@@ -193,11 +187,8 @@ async function configureLocalChatPlugins(
       );
     }
     databaseModule.getDb();
-    registryModule.setPlugins(plugins);
   } catch (error) {
-    catalogRuntimeModule.pluginCatalogRuntime.setConfig(
-      previousPluginCatalogConfig,
-    );
+    appContextModule.installAppContext(previousAppContext);
     throw error;
   }
 }

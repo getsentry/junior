@@ -17,12 +17,12 @@ import {
   startThread,
 } from "../../fixtures/spaces-api";
 
-async function legacyArchivedAt(spaceId: string): Promise<Date | null> {
+async function legacySpaceColumns(spaceId: string) {
   const [row] = await getDb()
-    .select({ archivedAt: juniorSpaces.archivedAt })
+    .select({ archivedAt: juniorSpaces.archivedAt, name: juniorSpaces.name })
     .from(juniorSpaces)
     .where(eq(juniorSpaces.id, spaceId));
-  return row?.archivedAt ?? null;
+  return row;
 }
 
 describe("Space archive API", () => {
@@ -108,13 +108,17 @@ describe("Space archive API", () => {
     ).toEqual([first, second].sort());
 
     // The Space's archive is its Lead's, so archiving the Lead as any root
-    // archives the Space. The Space row keeps the archive that 0.316.0 reads.
+    // archives the Space. Nothing writes the Space row's legacy name or
+    // archive, which a later migration drops.
     expect((await archiveConversation(lead.conversationId)).status).toBe(200);
     expect(
       spaceSchema.parse(await (await send(ana, "GET", `/${space.id}`)).json())
         .archivedAt,
     ).not.toBeNull();
-    expect(await legacyArchivedAt(space.id)).not.toBeNull();
+    expect(await legacySpaceColumns(space.id)).toEqual({
+      archivedAt: null,
+      name: null,
+    });
 
     // A retry after a failed stop stops the tree again, though the stop
     // added activity after what the page saw.
@@ -155,6 +159,5 @@ describe("Space archive API", () => {
         )
       ).status,
     ).toBe(200);
-    expect(await legacyArchivedAt(space.id)).toBeNull();
   });
 });

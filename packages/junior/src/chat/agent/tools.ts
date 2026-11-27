@@ -35,7 +35,7 @@ import {
   createPluginHookRunner,
   type PluginHookRunner,
 } from "@/chat/plugins/hooks/runner";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   getMcpAwareTelemetryMessage,
@@ -259,7 +259,9 @@ function selectedGuardian(): (batch: GuardianBatch) => Guardian {
   const options = {
     completeObject,
     destinationFacts: guardianPluginFacts(
-      pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+      getAppContext()
+        .catalog.getProviders()
+        .map(({ manifest }) => manifest),
     ),
     modelId: botConfig.guardianModelId,
   };
@@ -463,7 +465,7 @@ export async function wireAgentTools(
   });
 
   const mcpToolManager = new McpToolManager(
-    pluginCatalogRuntime.getMcpProviders(),
+    getAppContext().catalog.getMcpProviders(),
     {
       auditAttributes: credentialAuditAttributes(auditSource),
       authProviderFactory: mcpAuth.authProviderFactory,

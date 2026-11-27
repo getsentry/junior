@@ -107,12 +107,11 @@ describe("Amplitude plugin package", () => {
       pluginRoots: () => [],
     }));
 
-    const { pluginCatalogRuntime } =
-      await import("@/chat/plugins/catalog-runtime");
-    pluginCatalogRuntime.setConfig({
+    const { getAppContext } = await import("@/app/context");
+    getAppContext().catalog.setConfig({
       packages: ["@sentry/junior-amplitude"],
     });
-    const providers = pluginCatalogRuntime.getProviders();
+    const providers = getAppContext().catalog.getProviders();
 
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.mcp).toMatchObject({
