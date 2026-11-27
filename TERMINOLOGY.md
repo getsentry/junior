@@ -105,7 +105,7 @@ Canonical words for Junior code and docs. One concept, one word.
   Invite. In a public Conversation, access stays the same, because anyone
   can already read it and Join it.
   In a private Conversation, only a Participant may Invite, and it gives
-  access. A private Space and a Slack-backed private Conversation refuse it.
+  access. A Slack-backed private Conversation refuses it.
 - **Leave**: a Participant takes a Conversation out of their feed, and Join
   puts it back. In a private Conversation with its own Participant list,
   Leave also ends access until someone Invites them again. Nobody removes
