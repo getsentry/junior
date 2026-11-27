@@ -150,8 +150,9 @@ describe("snoozes", () => {
     expect((await readListAgain()).status).toBe(200);
     expect(await feedWaitingIds(ana.id)).toEqual([]);
     await seedDashboardScale();
-    // About 480.
-    const snoozed = await expectPlanCost(() => asAna.snoozed(), 750);
+    // About 840. Each check of the items assigned to Ana reads them once,
+    // which costs more on two rows than a check on each row.
+    const snoozed = await expectPlanCost(() => asAna.snoozed(), 1_250);
     expect(snoozed.count).toBe(2);
     expect([...snoozed.items].sort()).toEqual(awake.inbox);
     expect(await asAna.versions()).not.toBe(versionBefore);
