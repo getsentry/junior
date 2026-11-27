@@ -511,39 +511,30 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
   expect(saved.filter((event) => event.data.type === "tool_result")).toEqual(
     history.filter((event) => event.data.type === "tool_result"),
   );
+  // A page load reads no provider. This link type cannot read only its
+  // cache, so the page shows the stored title, the label, and the link,
+  // also with the provider down.
+  liveStatus = undefined;
   const detail = await readConversationDetail(conversationId, {
     viewer: testViewer(harness.actor.email),
   });
-  expect(detail?.annotations).toMatchObject([
+  expect(detail?.annotations).toEqual([
     {
-      plugin: "objects",
+      kind: "object",
       key: annotation.key,
-      status: "merged",
-      description: card.description,
+      label: "repo#1",
+      objectType: "code_change",
+      plugin: "objects",
+      title: annotation.title,
+      url: annotation.url,
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
     },
   ]);
   const reported = detail?.events.find((event) => event.seq === message.seq);
   if (reported?.data.type !== "message")
     throw new Error("Expected a reported Message");
   expect(reported.data.cards).toEqual(refs);
-  // With the provider down, the page shows only the plugin's label and
-  // the link: the title is for readers who can open the object.
-  liveStatus = undefined;
-  const down = await readConversationDetail(conversationId, {
-    viewer: testViewer(harness.actor.email),
-  });
-  expect(down?.annotations).toEqual([
-    {
-      kind: "resource_link",
-      key: annotation.key,
-      label: "repo#1",
-      objectType: "code_change",
-      plugin: "objects",
-      url: annotation.url,
-      createdAt: expect.any(String),
-      updatedAt: expect.any(String),
-    },
-  ]);
   liveStatus = "merged";
 
   harness.setModelStream(

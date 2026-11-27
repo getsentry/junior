@@ -356,16 +356,15 @@ describe("Slack Work Object details", () => {
     ]);
     await saveScheduledAutomation(getDb(), { ...task, status: "paused" });
     expect(await live()).toMatchObject([{ key: task.id, status: "paused" }]);
-    // Another person cannot see the private Automation: only its label.
-    expect(
-      await readConversationDetail(conversationId, {
-        viewer: await signedInViewer("other@example.com"),
-      }),
-    ).toMatchObject({
-      annotations: [
-        { kind: "resource_link", key: task.id, label: "Automation", url },
-      ],
+    // Another person cannot see the private Automation: only the stored
+    // title, its label, and the link.
+    const other = await readConversationDetail(conversationId, {
+      viewer: await signedInViewer("other@example.com"),
     });
+    expect(other?.annotations).toMatchObject([
+      { key: task.id, label: "Automation", title: task.title, url },
+    ]);
+    expect(JSON.stringify(other?.annotations)).not.toMatch(/active|Every day/);
   });
 
   it("loads a private scheduled Automation for its owner and refreshes its saved facts", async () => {

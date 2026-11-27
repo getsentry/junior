@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
+import { resolveObjectLinks } from "@/api/objects/resolve";
 import type { JuniorApiEnv } from "@/api/route";
 import { objectLinksReportSchema } from "@/api/schema";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
@@ -285,6 +286,32 @@ describe("Linear issue link cards", () => {
           title: "Fix login redirect",
         },
       ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a page load only the card that a live read kept fresh, and calls no Linear", async () => {
+    const linear = fakeLinearMcp({ alice: ["ENG-123"] });
+    const alice = testViewer("alice@example.com");
+    await linear.connect(alice, "alice");
+    const pageLoad = async () =>
+      (await resolveObjectLinks(alice, [ISSUE_URL], { cacheOnly: true })).map(
+        (card) => card.object.title,
+      );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const start = Date.now();
+      expect(await pageLoad()).toEqual([]);
+      await readCards(alice, [ISSUE_URL]);
+      expect(await pageLoad()).toEqual(["Fix login redirect"]);
+      expect(linear.calls).toEqual(["alice get_issue ENG-123"]);
+
+      // After the card's TTL, the kept card is only a last good value. A
+      // page load does not show it, because no live read checked access.
+      vi.setSystemTime(start + 10 * 60_000);
+      expect(await pageLoad()).toEqual([]);
+      expect(linear.calls).toEqual(["alice get_issue ENG-123"]);
     } finally {
       vi.useRealTimers();
     }
