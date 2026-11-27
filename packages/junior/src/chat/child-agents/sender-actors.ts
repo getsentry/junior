@@ -8,6 +8,7 @@ import {
   childAgentInput,
   getChildAgentInputSender,
   isDroppedChildInput,
+  readChildInputDropFacts,
 } from "./child-input";
 import { logDroppedParentMessage, parentMessageText } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
@@ -56,10 +57,13 @@ export async function withSenderActors(
   if (work.kind !== "mailbox") {
     return work;
   }
+  const dropFacts = await readChildInputDropFacts(
+    work.batch.map((entry) => entry.message),
+  );
   const batch = await mapBounded(work.batch, async (entry) => {
     const parentMessage = readParentMessage(entry.message);
     if (parentMessage) {
-      if (await isDroppedChildInput(entry.message)) {
+      if (isDroppedChildInput(entry.message, dropFacts)) {
         logDroppedParentMessage(entry.message, parentMessage);
         return undefined;
       }
@@ -81,7 +85,7 @@ export async function withSenderActors(
     if (!input) {
       return entry;
     }
-    if (await isDroppedChildInput(entry.message)) {
+    if (isDroppedChildInput(entry.message, dropFacts)) {
       return undefined;
     }
     const sender = await getChildAgentInputSender(entry.message, input);

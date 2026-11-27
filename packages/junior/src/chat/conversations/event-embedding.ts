@@ -168,15 +168,6 @@ export async function embedConversationEvents(
  * when `embedEvents` is set, under the Conversation's index lock. A Turn
  * that ends calls it, through the event search task or directly. When the
  * lock stays busy, the heartbeat backfill indexes the events later.
- *
- * Attributes on the `event_search.index` span:
- * - `app.event_search.index.lexeme.count`,
- *   `app.event_search.index.vector.count`: rows that the run stored.
- * - `app.event_search.index.capped`: the run stopped at its lexeme or vector
- *   limit, so rows may remain for a later run.
- * - `app.event_search.index.lock.acquired`,
- *   `app.event_search.index.lock.wait_ms`: whether the run got the lock, and
- *   how long it waited for it.
  */
 export async function indexConversationEvents(args: {
   conversationId: string;

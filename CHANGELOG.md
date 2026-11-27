@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.318.0
+
+Users get steadier mobile sheets and clearer migration checks, while Guardian review temporarily changes for two core tools and hierarchy moves require attention.
+
+### New Features ✨
+
+Phones gain consistent stacked bottom sheets; failed streams count toward Turn costs, and migration checks reject split leaves.
+
+#### Dashboard
+
+- Show phone menus, popovers, and dialogs as bottom sheets by @dcramer with @sentry-junior in [#4529](https://github.com/getsentry/junior/pull/4529)
+- Move phone drawers and menus onto one bottom sheet by @dcramer with @sentry-junior in [#4520](https://github.com/getsentry/junior/pull/4520)
+- Open Inbox items in a bottom sheet on phones by @dcramer with @sentry-junior in [#4514](https://github.com/getsentry/junior/pull/4514)
+- List only non-Lead roots under In flight by @dcramer with @sentry-junior in [#4528](https://github.com/getsentry/junior/pull/4528)
+
+#### Other
+
+- (core) Count the usage of model replies that a Turn drops by @thomasjiangcy with @sentry-junior in [#4532](https://github.com/getsentry/junior/pull/4532)
+- (db) Fail the migration check when a package has two migration leaves by @thomasjiangcy with @sentry-junior in [#4547](https://github.com/getsentry/junior/pull/4547)
+
+### Bug Fixes 🐛
+
+messageAgent skips review until new Guardian; restore approvalMode: "auto" then. Bash skips review until sandbox evals support routine work; restore it then.
+
+#### Dashboard
+
+- Show every agent-to-agent message as a message row by @dcramer with @sentry-junior in [#4552](https://github.com/getsentry/junior/pull/4552)
+- Keep a done Conversation's drawer status neutral by @dcramer with @sentry-junior in [#4536](https://github.com/getsentry/junior/pull/4536)
+- Move the pointer off before the agent messages shot by @dcramer with @sentry-junior in [#4530](https://github.com/getsentry/junior/pull/4530)
+
+#### Guardian
+
+- Stop reviewing messageAgent calls by @dcramer with @sentry-junior in [#4551](https://github.com/getsentry/junior/pull/4551)
+- Stop reviewing bash commands by @dcramer with @sentry-junior in [#4550](https://github.com/getsentry/junior/pull/4550)
+
+#### Other
+
+- (agents) Pause Conversation loop Turns at the host request deadline by @sentry-junior in [#4054](https://github.com/getsentry/junior/pull/4054)
+- (config) Trim entries in comma-separated env lists by @sentry-junior in [#4541](https://github.com/getsentry/junior/pull/4541)
+- (conversations) Let only Participants post and Invite, with a web Join by @dcramer with @sentry-junior in [#4555](https://github.com/getsentry/junior/pull/4555)
+- (db) Merge the migration leaves from #4522 and #4523 by @BYK with @sentry-junior in [#4531](https://github.com/getsentry/junior/pull/4531)
+- (slack) Build thread context in the Slack provider and mark cut Messages by @dcramer with @sentry-junior in [#4515](https://github.com/getsentry/junior/pull/4515)
+- (spaces) Fix the archive, restore and rename gaps from the Lead root change by @dcramer with @sentry-junior in [#4535](https://github.com/getsentry/junior/pull/4535)
+
+### Documentation 📚
+
+- (design) Consolidate Guardian facts, rules, asking, and audience by @dcramer with @sentry-junior in [#4525](https://github.com/getsentry/junior/pull/4525)
+
+### Internal Changes 🔧
+
+Lead children become plain children; public moves change, with no data migration; explicit limits.maxAgentDepth allows one fewer level below a Lead.
+
+#### Config
+
+- Resolve createApp settings in config instead of setters by @thomasjiangcy with @sentry-junior in [#4527](https://github.com/getsentry/junior/pull/4527)
+- Remove dead DATABASE_URL guards on stat writes by @thomasjiangcy with @sentry-junior in [#4502](https://github.com/getsentry/junior/pull/4502)
+- Resolve misc env settings in config by @thomasjiangcy with @sentry-junior in [#4500](https://github.com/getsentry/junior/pull/4500)
+
+#### Other
+
+- (agents) Batch child input drop checks and trim one-hop helpers by @dcramer with @sentry-junior in [#4450](https://github.com/getsentry/junior/pull/4450)
+- (dashboard) Move the pointer off the page before every screenshot by @dcramer with @sentry-junior in [#4549](https://github.com/getsentry/junior/pull/4549)
+- (evals) Serve the review reads that pull request review evals make by @dcramer with @sentry-junior in [#4518](https://github.com/getsentry/junior/pull/4518)
+- (guardian) Put the current Guardian behind a Guardian interface by @dcramer with @sentry-junior in [#4538](https://github.com/getsentry/junior/pull/4538)
+- (lint) Lint only changed files on pre-push by @dcramer with @sentry-junior in [#4526](https://github.com/getsentry/junior/pull/4526)
+- (postgres) Keep each worker's test database for the worker's life by @thomasjiangcy with @sentry-junior in [#4553](https://github.com/getsentry/junior/pull/4553)
+- (spaces) Make a Lead's children plain children by @dcramer with @sentry-junior in [#4556](https://github.com/getsentry/junior/pull/4556)
+- Check only lint, format, and types on merge queue runs by @BYK with @sentry-junior in [#4533](https://github.com/getsentry/junior/pull/4533)
+
 ## 0.317.0
 
 Junior expands execution, collaboration, observability, and guidance while correcting workflows and consolidating foundations; plugin and Space integrations require targeted updates.

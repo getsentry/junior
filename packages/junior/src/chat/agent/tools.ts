@@ -90,6 +90,7 @@ import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/core-model";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
@@ -204,8 +205,6 @@ export function createPromptHookContext(args: {
 interface ToolWiringArgs {
   abortAgent: () => void;
   behavior: TurnBehavior;
-  /** A root or a Lead's child, which counts as a root for `maxAgentDepth`. */
-  topLevelWork: boolean;
   currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
@@ -500,7 +499,7 @@ export async function wireAgentTools(
             await readActorIdentity(args.currentActor!),
         }
       : undefined),
-    ...bindTurnTools(args.run, args.behavior, args.topLevelWork),
+    ...bindTurnTools(args.run, args.behavior),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,
@@ -516,6 +515,13 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
+  const reviewer = createGuardianActionReviewer({
+    completeObject,
+    destinationFacts: guardianPluginFacts(
+      pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+    ),
+    modelId: botConfig.guardianModelId,
+  });
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
@@ -554,18 +560,12 @@ export async function wireAgentTools(
         toolName,
         costUsd: decision.costUsd,
         decision: decision.decision,
-        riskLevel: decision.riskLevel,
-        userAuthorization: decision.userAuthorization,
+        rule: decision.rule,
+        reason: decision.reason,
       }),
     onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
-    reviewer: createGuardianActionReviewer({
-      completeObject,
-      destinationFacts: guardianPluginFacts(
-        pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
-      ),
-      modelId: botConfig.guardianModelId,
-    }),
+    guardian: (batch) => createCurrentGuardian(reviewer, batch),
   });
   const skills = loadableSkills(args.availableSkills, [
     ...args.invokedSkillNames,
@@ -772,7 +772,6 @@ export async function wireAgentTools(
 export function bindTurnTools(
   run: AgentRun,
   behavior: TurnBehavior,
-  topLevelWork: boolean,
 ): Pick<
   ToolRuntimeContext,
   "listedTools" | "messageAgent" | "spawnAgent" | "turnTools"
@@ -794,7 +793,7 @@ export function bindTurnTools(
         ? { ...behavior.tools, reply: false }
         : behavior.tools,
     listedTools,
-    ...bindAgentTools(run, listedTools.agents, topLevelWork),
+    ...bindAgentTools(run, listedTools.agents),
   };
 }
 
@@ -802,17 +801,14 @@ export function bindTurnTools(
 export function bindAgentTools(
   run: AgentRun,
   agents: AgentTools,
-  topLevelWork: boolean,
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
   if (!bindSpawnAgent) return {};
-  // The rule reads only the Turn behavior, the Conversation's place in its
-  // tree, and the deployment, so a child gets the same tools on every path.
-  // A Lead's child counts as a root. Every other child has depth 1 or more,
-  // so with maxAgentDepth 0 it cannot spawn. With more, a child past the
-  // limit still sees startAgent, and the depth check in spawn.ts refuses it.
-  const canSpawn =
-    agents === "children" || topLevelWork || botConfig.maxAgentDepth > 0;
+  // The rule reads only the Turn behavior and the deployment, so a child
+  // gets the same tools on every path. A child has depth 1 or more, so with
+  // maxAgentDepth 0 it cannot spawn. With more, a child past the limit still
+  // sees startAgent, and the depth check in spawn.ts refuses it.
+  const canSpawn = agents === "children" || botConfig.maxAgentDepth > 0;
   const spawnAgent = canSpawn ? bindSpawnAgent(run) : undefined;
   // A child agent can always message its parent, even when it is too deep to
   // start child agents of its own.

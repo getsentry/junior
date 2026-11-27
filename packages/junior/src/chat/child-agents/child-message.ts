@@ -13,13 +13,6 @@ export type ChildMessage = {
   sender: InboundMessageSender;
 };
 
-/** Mailbox metadata that stores who sent one child reply or result. */
-export function childMessageSenderMetadata(sender: InboundMessageSender): {
-  sender: InboundMessageSender;
-} {
-  return { sender };
-}
-
 /**
  * List the child replies and results among the ids that reached one
  * mailbox, oldest first, with the sender fields that the mailbox keeps.

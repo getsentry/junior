@@ -120,9 +120,9 @@ describe("Lead API", () => {
     expect(
       acceptedConversationMessageSchema.parse(await sent.json()),
     ).toMatchObject({ conversationId: leadId, status: "accepted" });
-    // Anyone messages a public Lead, as any public root.
+    // Only members message a Lead, as any root.
     expect((await postMessage(bo, leadId, "lead-api-bo-message")).status).toBe(
-      200,
+      403,
     );
 
     // ACP acts only in the person's own Conversations.

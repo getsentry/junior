@@ -31,11 +31,10 @@ export async function requireSpaceForWork(
 }
 
 /**
- * Put one tree root in a Space, as a child of the Space's Lead, or make it a
- * one-off root with null. Only a participant moves it. They must be a member
- * of the Space that it leaves and of the Space that it joins. Only a public
- * Conversation joins a Space. One in a private Space stays there, so its
- * data stays with the members.
+ * Put one Conversation in a Space, as a child of the Space's Lead, or make it
+ * a one-off root with null. Only a participant moves it. They must be a
+ * member of the Space that it leaves and of the Space that it joins. Only
+ * public work moves, and only into a public Space.
  */
 export async function setConversationSpaceForViewer(
   viewer: User,
@@ -71,9 +70,6 @@ export async function setConversationSpaceForViewer(
       throwApiError(403, "Join the Space that it is in to move it.");
     }
   }
-  if (target && access.visibility !== "public") {
-    throwApiError(409, "Only a public conversation can join a Space.");
-  }
   const lead = target ? await getSpaceLead(target.id) : undefined;
   const refusal = await setConversationSpace(
     conversationId,
@@ -86,14 +82,11 @@ export async function setConversationSpaceForViewer(
   if (refusal === "moved") {
     throwApiError(409, "It moved to another Space. Reload and try again.");
   }
-  if (refusal === "leaves_private") {
-    throwApiError(409, "A conversation in a private Space stays in it.");
+  if (refusal === "private") {
+    throwApiError(409, "Only a public conversation can move.");
   }
-  if (refusal === "private_into_public") {
-    throwApiError(409, "Only a public conversation can join a Space.");
-  }
-  if (refusal === "shared_location") {
-    throwApiError(409, "A Slack conversation can't join a private Space.");
+  if (refusal === "private_space") {
+    throwApiError(409, "A conversation can't move into a private Space.");
   }
   return response;
 }

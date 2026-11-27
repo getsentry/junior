@@ -236,7 +236,8 @@ test("a member leaves a public Space from the Conversation menu", async ({
   await conversationMenuRow(page, "Leave").click();
   await expect(pane).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // A public Space stays open, and a message to its Lead joins it again.
+  // A public Space stays open. Leave keeps them a Participant of its Lead,
+  // so they can still post.
   await expect(page.getByLabel("Continue this conversation")).toBeVisible();
 });
 

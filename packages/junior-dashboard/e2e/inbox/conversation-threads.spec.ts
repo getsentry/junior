@@ -404,9 +404,6 @@ test.describe("new UI", () => {
     await expect(
       transcript.getByRole("group", { name: "Message to Conversation" }),
     ).toContainText("Refused");
-    // The chip click left the pointer on the transcript. The scroll would
-    // move the sent row's link under it and show its hover underline.
-    await page.mouse.move(-1, -1);
     await sent.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-agent-messages", { lightTheme: true });
 
@@ -449,7 +446,11 @@ test.describe("new UI", () => {
 
     // The parent agent started the first Turn; a person started the next.
     const transcript = page.getByLabel("Conversation transcript");
-    await expect(transcript.getByText("Parent agent")).toBeVisible();
+    await expect(
+      transcript.getByRole("group", {
+        name: "Message from Dashboard QA edge cases",
+      }),
+    ).toBeVisible();
     await expect(transcript.getByText("Taylor Chen")).toBeVisible();
     // A Watch Event of the Thread shows as an Event, not as parent input.
     await expect(

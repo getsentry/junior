@@ -26,7 +26,7 @@ Canonical words for Junior code and docs. One concept, one word.
   Space's other Conversations are its child agents. It finds, starts, and
   steers them, and does no work itself.
 - **Top-level Conversation**: a Conversation with no parent, or a child of a
-  Lead. Top-level lists show these. It is not stored.
+  Lead. It is not stored.
 - **Space**: a named, shared home for a body of related work: metadata on
   its Lead. A **Member** of a Space is a Participant of its Lead.
 - **Thread**: a Conversation of kind `thread`, which people can message. It
@@ -105,7 +105,7 @@ Canonical words for Junior code and docs. One concept, one word.
   Invite. In a public Conversation, access stays the same, because anyone
   can already read it and Join it.
   In a private Conversation, only a Participant may Invite, and it gives
-  access. A private Space and a Slack-backed private Conversation refuse it.
+  access. A Slack-backed private Conversation refuses it.
 - **Leave**: a Participant takes a Conversation out of their feed, and Join
   puts it back. In a private Conversation with its own Participant list,
   Leave also ends access until someone Invites them again. Nobody removes
