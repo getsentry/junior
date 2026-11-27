@@ -4,23 +4,20 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  MAX_COMMENT_BLOCK_LINES,
+  MAX_BLOCK_LINES,
+  MAX_LINE_WIDTH,
   checkCommentLength,
-  countExcessCommentLines,
+  measureComments,
 } from "./check-comment-length.mjs";
 
 const FILE = "packages/junior/src/feature.ts";
 
-function countIn(files) {
+function measure(lines) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "comment-length-"));
   try {
-    for (const [filePath, contents] of Object.entries(files)) {
-      fs.mkdirSync(path.join(root, path.dirname(filePath)), {
-        recursive: true,
-      });
-      fs.writeFileSync(path.join(root, filePath), contents);
-    }
-    return countExcessCommentLines(root, ["packages"]);
+    fs.mkdirSync(path.join(root, path.dirname(FILE)), { recursive: true });
+    fs.writeFileSync(path.join(root, FILE), lines.join("\n"));
+    return measureComments(root, ["packages"]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -31,45 +28,58 @@ function lineComments(count) {
 }
 
 test("counts adjacent line comments as one block", () => {
-  const counts = countIn({
-    [FILE]: [
-      ...lineComments(MAX_COMMENT_BLOCK_LINES + 3),
-      "export const a = 1;",
-    ].join("\n"),
-  });
-  assert.deepEqual(counts, { [FILE]: 3 });
+  const counts = measure([
+    ...lineComments(MAX_BLOCK_LINES + 3),
+    "export const a = 1;",
+  ]);
+  assert.deepEqual(counts["block-lines"], { [FILE]: 3 });
 });
 
-test("measures a JSDoc block by its lines", () => {
-  const body = Array.from(
-    { length: MAX_COMMENT_BLOCK_LINES },
-    (_, index) => ` * line ${index}`,
-  );
-  const counts = countIn({
-    [FILE]: ["/**", ...body, " */", "export function a() {}"].join("\n"),
-  });
-  assert.deepEqual(counts, { [FILE]: 2 });
+test("counts JSDoc text lines, not its delimiters or blank lines", () => {
+  const body = Array.from({ length: MAX_BLOCK_LINES }, (_, i) => ` * ${i}`);
+  const within = measure(["/**", ...body, " *", " */", "function a() {}"]);
+  assert.deepEqual(within["block-lines"], {});
+  const over = measure(["/**", ...body, " * more", " */", "function a() {}"]);
+  assert.deepEqual(over["block-lines"], { [FILE]: 1 });
 });
 
-test("ignores blocks within the limit, blocks split by code, and strings", () => {
-  const counts = countIn({
-    [FILE]: [
-      ...lineComments(MAX_COMMENT_BLOCK_LINES),
-      "export const a = 1;",
-      ...lineComments(MAX_COMMENT_BLOCK_LINES),
-      `export const b = \`${"\n// not a comment".repeat(20)}\`;`,
-    ].join("\n"),
-  });
-  assert.deepEqual(counts, {});
+test("ignores blocks split by code, and comment text in strings", () => {
+  const counts = measure([
+    ...lineComments(MAX_BLOCK_LINES),
+    "export const a = 1;",
+    ...lineComments(MAX_BLOCK_LINES),
+    `export const b = \`${"\n// not a comment".repeat(20)}\`;`,
+  ]);
+  assert.deepEqual(counts, { "block-lines": {}, "line-width": {} });
+});
+
+test("counts wide comment lines, except links and directives", () => {
+  const long = "x".repeat(MAX_LINE_WIDTH);
+  const counts = measure([
+    `// ${long}`,
+    "const a = 1;",
+    `// https://example.com/${long}`,
+    "const b = 2;",
+    `// oxlint-disable-next-line no-console -- ${long}`,
+    "const c = 3;",
+  ]);
+  assert.deepEqual(counts["line-width"], { [FILE]: 1 });
 });
 
 test("reports growth and baseline entries that can shrink", () => {
-  assert.deepEqual(
-    checkCommentLength({ a: 1 }, { a: 1, b: 2, c: 3 }).length,
-    2,
+  const check = (counts, baseline) =>
+    checkCommentLength({ "line-width": {}, ...counts }, baseline);
+  assert.match(
+    check({ "block-lines": { a: 2 } }, { "block-lines": { a: 1 } })[0],
+    /baseline allows 1/,
   );
-  assert.match(checkCommentLength({ a: 2 }, { a: 1 })[0], /baseline allows 1/);
-  assert.match(checkCommentLength({ new: 1 }, {})[0], /baseline allows 0/);
-  assert.match(checkCommentLength({ c: 1 }, { c: 3 })[0], /Lower the entry/);
-  assert.match(checkCommentLength({}, { b: 2 })[0], /Remove the entry/);
+  assert.match(check({ "block-lines": { a: 1 } }, {})[0], /allows 0/);
+  assert.match(
+    check({ "block-lines": { a: 1 } }, { "block-lines": { a: 3 } })[0],
+    /Lower the entry/,
+  );
+  assert.match(
+    check({ "block-lines": {} }, { "block-lines": { a: 3 } })[0],
+    /Remove the entry/,
+  );
 });

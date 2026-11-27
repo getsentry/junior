@@ -28,9 +28,10 @@ a comment must earn its place.
   - What another module does: the comment in that module.
 - Do not write Given/When/Then scenario lists, test file paths, change
   history, or catalogs of attributes, reasons, or error codes in a comment.
-- A comment block has at most 12 lines (`comment-length:check`). A longer
-  block usually belongs in `design/`, a policy, or a type. Do not split it
-  into smaller comments to pass.
+- A comment block has at most 5 text lines, and a comment line is at most
+  80 columns wide (`comment-length:check`). Comments on adjacent lines count
+  as one block. A fact that needs more belongs in `design/`, a policy, or a
+  type. Do not split a block to pass.
 - Every TODO must name an owner in the form `TODO(owner): ...`.
 - A removal TODO must name what will be removed and the condition that makes
   removal safe. Use a version only when support for that version is the real
