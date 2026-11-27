@@ -45,9 +45,9 @@ failed, or still runs, without opening each Conversation.
 - `stopped` When a person or the parent stops a Conversation, the status is
   `stopped`. It does not resume by itself: only a person's input or new work
   from its parent ends the stop.
-- `idle` When the latest Turn ended and a Watch or a Timer on this
-  Conversation is live, the status is `idle`. A new, cancelled, or expired
-  Watch or Timer changes the status.
+- `idle` When the latest Turn ended and a Watch on this Conversation is
+  live, the status is `idle`. A new, cancelled, or expired Watch changes the
+  status.
 - `done` When the latest Turn ended and nothing on this Conversation is
   pending, the status is `done`. This is the same for every kind of
   Conversation, so a root is done when it answered the person and nothing
