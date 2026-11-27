@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 // The mobile/desktop layout split. `tailwind.css` repeats these queries in
 // the `md` and `max-md` variants, so change both together.
@@ -32,4 +32,16 @@ export function useMobileLayout(): boolean {
     () => window.matchMedia(MOBILE_LAYOUT_QUERY).matches,
     () => false,
   );
+}
+
+/**
+ * Whether an overlay shows in its mobile form. An open overlay keeps the
+ * form that it opened in, so a resize or a turn of the phone does not
+ * remount it and lose its focus and its state.
+ */
+export function useMobileLayoutWhileOpen(open: boolean): boolean {
+  const mobile = useMobileLayout();
+  const [openedMobile, setOpenedMobile] = useState(mobile);
+  if (!open && openedMobile !== mobile) setOpenedMobile(mobile);
+  return open ? openedMobile : mobile;
 }

@@ -1,14 +1,8 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Ellipsis, Info, PanelRight, Search, X } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
+import { ActionSheet } from "../../components/BottomSheet";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../styles";
 import {
@@ -49,14 +43,6 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
 
 const NO_ANCHOR = { current: null };
-
-// The sheet opens only after a tap on a phone, so the drawer loads with the
-// first open instead of with the page.
-const ConversationMenuSheet = lazy(() =>
-  import("../../conversations/ConversationMenuSheet").then((module) => ({
-    default: module.ConversationMenuSheet,
-  })),
-);
 
 /**
  * Keep the header to one row: the title and the controls people use most.
@@ -352,13 +338,11 @@ export function ConversationHeader(props: {
           <Ellipsis aria-hidden="true" size={20} strokeWidth={2} />
         </Button>
         {sheet.open ? (
-          <Suspense fallback={null}>
-            <ConversationMenuSheet
-              groups={sheetGroups}
-              onClose={sheet.close}
-              title={props.title}
-            />
-          </Suspense>
+          <ActionSheet
+            groups={sheetGroups}
+            onClose={sheet.close}
+            title={props.title}
+          />
         ) : null}
       </MobileHeaderActionsPortal>
       {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu

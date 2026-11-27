@@ -377,10 +377,58 @@ test.describe("new UI", () => {
       view: "mobile",
     });
 
-    // Close goes back to the details.
-    await item.getByRole("button", { exact: true, name: "Close" }).click();
+    // Back goes back to the details.
+    await item.getByRole("button", { exact: true, name: "Back" }).click();
     await expect(item).toHaveCount(0);
     await expect(details).toBeVisible();
+  });
+
+  test("on a phone, memories and Tasks open one step deeper in the details sheet", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+    );
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await conversationMenuRow(page, "Conversation details").click();
+    const details = page.getByRole("dialog", { name: "Conversation details" });
+    const memoryCard = details.getByRole("button", {
+      name: "1 recalled · 2 captured",
+    });
+
+    // Memories replace details in the sheet, with a way back.
+    await memoryCard.click();
+    const memories = page.getByRole("dialog", { name: "Memories" });
+    await expect(
+      memories.getByRole("button", { name: "Back to details" }),
+    ).toBeVisible();
+    await screenshot(page, "conversation-details-memories", {
+      view: "mobile",
+    });
+    await memories.getByRole("button", { name: "Back to details" }).click();
+    await expect(memoryCard).toBeVisible();
+
+    // A Task opens over the details, and Back goes back to them.
+    const reviewerRow = details
+      .getByRole("region", { name: "Tasks" })
+      .getByRole("button", { name: /^blocked reviewer/ });
+    await reviewerRow.click();
+    const reviewer = page.getByRole("dialog", { name: "reviewer" });
+    await expect(
+      reviewer.getByRole("link", { name: "Open conversation" }),
+    ).toBeVisible();
+    await screenshot(page, "conversation-details-task", { view: "mobile" });
+    await reviewer.getByRole("button", { exact: true, name: "Back" }).click();
+    await expect(reviewer).toHaveCount(0);
+    await expect(details).toBeVisible();
+
+    // Its close button shuts the Task and the details together.
+    await reviewerRow.click();
+    await reviewer.getByRole("button", { name: "Close transcript" }).click();
+    await expect(reviewer).toHaveCount(0);
+    await expect(details).toHaveCount(0);
   });
 
   test("keeps memories out of the transcript and jumps to their Turn", async ({
