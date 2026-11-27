@@ -27,8 +27,9 @@ function heldInputKey(conversationId: string): string {
 }
 
 /**
- * Keep held inbound messages until the Conversation resumes. Each append is
- * atomic, so it needs no mailbox lock.
+ * Keep held inbound messages until the Conversation resumes. Call it under
+ * the mailbox lock, so it cannot land between the read and the delete of a
+ * release.
  */
 export async function holdInboundMessages(
   conversationId: string,
@@ -36,6 +37,25 @@ export async function holdInboundMessages(
   stateAdapter?: StateAdapter,
 ): Promise<void> {
   const state = await getConnectedState(stateAdapter);
+  await appendHeld(state, conversationId, messages);
+}
+
+/** Hold inbound messages under the mailbox lock of their Conversation. */
+export async function holdInboundMessagesLocked(
+  conversationId: string,
+  messages: readonly InboundMessage[],
+  state?: StateAdapter,
+): Promise<void> {
+  await withConversationMutation({ conversationId, state }, (connected) =>
+    appendHeld(connected, conversationId, messages),
+  );
+}
+
+async function appendHeld(
+  state: StateAdapter,
+  conversationId: string,
+  messages: readonly InboundMessage[],
+): Promise<void> {
   for (const message of messages) {
     // oxlint-disable-next-line no-await-in-loop -- Keep the held order.
     await state.appendToList(heldInputKey(conversationId), message, {
@@ -55,8 +75,12 @@ export async function releaseHeldInput(args: {
   state?: StateAdapter | undefined;
 }): Promise<number> {
   const nowMs = args.nowMs ?? Date.now();
+  const key = heldInputKey(args.conversationId);
+  // Most Conversations hold nothing, so check before taking the lock.
+  if ((await (await getConnectedState(args.state)).getList(key)).length === 0) {
+    return 0;
+  }
   return await withConversationMutation(args, async (state, lock) => {
-    const key = heldInputKey(args.conversationId);
     const held = (await state.getList(key)).flatMap((value) => {
       const parsed = inboundMessageSchema.safeParse(value);
       return parsed.success ? [parsed.data] : [];
@@ -114,10 +138,10 @@ export async function releaseHeldInput(args: {
 }
 
 /**
- * Remove the pending Event input of a Conversation and return it, so a stop
- * can hold input that reached the mailbox before it. The input of a running
- * attempt stays and is marked held: that Turn saves it, or the next claim
- * holds it.
+ * Remove the pending Event input of a Conversation, hold it, and return it,
+ * so a stop holds input that reached the mailbox before it. The input of a
+ * running attempt stays and is marked held: that Turn saves it, or the next
+ * claim holds it.
  */
 export async function takePendingEventMessages(args: {
   conversationId: string;
@@ -151,6 +175,7 @@ export async function takePendingEventMessages(args: {
     );
     const becomesIdle =
       current.execution.status === "pending" && pendingMessages.length === 0;
+    await appendHeld(state, args.conversationId, removed);
     await writeConversation(
       state,
       lock,

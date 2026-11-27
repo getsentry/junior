@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
@@ -14,6 +15,7 @@ import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import {
   holdInboundMessages,
+  holdInboundMessagesLocked,
   releaseHeldInput,
 } from "@/chat/task-execution/held-input";
 import {
@@ -85,11 +87,16 @@ export async function enqueueAutomatedInput(
       }
       // Save before the mailbox records the id, so a retry after a failed
       // save holds the input again.
-      await saveHeldInput(
+      const heldInput = [
+        { ...args.message, input: { ...args.message.input, text } },
+      ];
+      // A resume releases under this lock, so it sees this hold.
+      await holdInboundMessages(
         args.message.conversationId,
-        [{ ...args.message, input: { ...args.message.input, text } }],
+        heldInput,
         args.state,
       );
+      await saveHeldInput(args.message.conversationId, heldInput);
       held = true;
       return undefined;
     },
@@ -197,7 +204,8 @@ export async function stopConversationTree(
       state: options.state,
     });
     if (pending.length > 0) {
-      await saveHeldInput(conversationId, pending, options.state);
+      await saveHeldInput(conversationId, pending);
+      await releaseIfResumed(conversationId, options);
     }
     await cancelSignInWait(conversationId);
     if (conversationId === options.finishedRunOf) {
@@ -245,8 +253,11 @@ export async function resumeConversationTree(
     const stoppedAt = rows.find(
       (row) => row.conversationId === conversationId,
     )?.stoppedAt;
+    const notStopped = rows.flatMap((row) =>
+      row.stoppedAt ? [] : [row.conversationId],
+    );
     if (!stoppedAt || sentAtMs <= stoppedAt.getTime()) {
-      return [];
+      return notStopped;
     }
     await tx
       .update(juniorConversations)
@@ -257,24 +268,59 @@ export async function resumeConversationTree(
           lte(juniorConversations.stoppedAt, stoppedAt),
         ),
       );
-    return rows.flatMap((row) =>
-      row.stoppedAt && row.stoppedAt <= stoppedAt ? [row.conversationId] : [],
-    );
+    return [
+      ...notStopped,
+      ...rows.flatMap((row) =>
+        row.stoppedAt && row.stoppedAt <= stoppedAt ? [row.conversationId] : [],
+      ),
+    ];
   });
-  await mapBounded(resumed, async (resumedId) => {
-    const released = await releaseHeldInput({
-      conversationId: resumedId,
+  // Conversations that a resume already ended release too, so a retry after
+  // a failed release delivers the held input.
+  await mapBounded(resumed, (resumedId) => releaseAndWake(resumedId, options));
+}
+
+async function releaseAndWake(
+  conversationId: string,
+  options: ResumeOptions,
+): Promise<void> {
+  const released = await releaseHeldInput({
+    conversationId,
+    state: options.state,
+  });
+  if (released > 0) {
+    await ensureConversationWake({
+      conversationId,
+      idempotencyKey: `held-input:${conversationId}:${randomUUID()}`,
+      queue: options.queue ?? getVercelConversationWorkQueue(),
       state: options.state,
     });
-    if (released > 0) {
-      await ensureConversationWake({
-        conversationId: resumedId,
-        idempotencyKey: `held-input:${resumedId}:${sentAtMs}`,
-        queue: options.queue ?? getVercelConversationWorkQueue(),
-        state: options.state,
-      });
-    }
-  });
+  }
+}
+
+// A hold outside the append lock can land after a resume released. Then
+// release it again here, so it does not wait for the next stop.
+async function releaseIfResumed(
+  conversationId: string,
+  options: ResumeOptions,
+): Promise<void> {
+  if (!(await isHeld(conversationId))) {
+    await releaseAndWake(conversationId, options);
+  }
+}
+
+/**
+ * Hold the input that a claim found held by a stop, and save it to the
+ * transcript.
+ */
+export async function holdClaimedInput(
+  conversationId: string,
+  messages: readonly InboundMessage[],
+  options: ResumeOptions,
+): Promise<void> {
+  await holdInboundMessagesLocked(conversationId, messages, options.state);
+  await saveHeldInput(conversationId, messages);
+  await releaseIfResumed(conversationId, options);
 }
 
 /** Where a resume wakes the Conversations that get held input back. */
@@ -309,18 +355,15 @@ export async function resumeForPersonInput(
 }
 
 /**
- * Hold input until the Conversation resumes, and save it as one skipped
- * Message so the transcript shows it. The Message takes the id of the first
- * input, so the Turn that runs the input on resume updates it. The append is
- * idempotent by Message id.
+ * Save held input as one skipped Message, so the transcript shows it. The
+ * Message takes the id of the first input, so the Turn that runs the input
+ * on resume updates it. The append is idempotent by Message id.
  */
 export async function saveHeldInput(
   conversationId: string,
   messages: readonly InboundMessage[],
-  state?: StateAdapter,
 ): Promise<void> {
   const first = messages[0]!;
-  await holdInboundMessages(conversationId, messages, state);
   const { text } = instructionForInputs(
     renderEventBatchInputs(messages, await eventInboxItemInputs(messages)),
   );

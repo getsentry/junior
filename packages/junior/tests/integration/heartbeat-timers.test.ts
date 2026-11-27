@@ -1,7 +1,10 @@
+import { eq } from "drizzle-orm";
 import { afterEach, expect, it, vi } from "vitest";
 import { messageChildAgent } from "@/chat/child-agents/create";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
+import { getSqlExecutor } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { createWatch, takeDueTimerWatches } from "@/chat/events/store";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
@@ -347,6 +350,41 @@ it("keeps a root stopped when the stop drops queued input", async () => {
     expect.stringContaining("Deploy succeeded."),
     expect.stringContaining("Check again later."),
   ]);
+});
+
+it("delivers held timers on the next person input after a release failed", async () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+  const fixture = await timerConversation();
+  const { conversationId, tools, queue, drain, agentRuns } = fixture;
+  await execute(
+    tools["watchTimer"]!,
+    { after_ms: 60_000, intent: "Check the deployment." },
+    "timer-1",
+  );
+  await stopConversation({ conversationId, queue });
+  clock.mockReturnValue(clock() + 120_000);
+  await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+  await drain();
+  expect(agentRuns).toHaveLength(0);
+
+  // A resume that ended the stop but failed before its release leaves the
+  // timer held while the Conversation runs.
+  await getSqlExecutor()
+    .db()
+    .update(juniorConversations)
+    .set({ stoppedAt: null })
+    .where(eq(juniorConversations.conversationId, conversationId));
+  clock.mockReturnValue(clock() + 600_000);
+  await fixture.continue({
+    conversationId,
+    idempotencyKey: "after-failed-release",
+    message: "Keep watching.",
+  });
+  await drain();
+  expect(agentRuns.map((run) => run.source.kind)).toEqual(["web", "event"]);
+  expect(JSON.stringify(agentRuns[1]!.instruction.inputs)).toContain(
+    "Check the deployment.",
+  );
 });
 
 it("saves a stopped child's timers until a person writes to its root", async () => {

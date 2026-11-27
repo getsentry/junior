@@ -12,7 +12,7 @@ import {
 } from "@/chat/logging";
 import {
   getConversationStoppedAtMs,
-  saveHeldInput,
+  holdClaimedInput,
 } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
@@ -583,7 +583,10 @@ async function processConversationWorkInContext(
           state: options.state,
         });
         if (claim.status === "held") {
-          await saveHeldInput(conversationId, claim.messages, options.state);
+          await holdClaimedInput(conversationId, claim.messages, {
+            queue: options.queue,
+            state: options.state,
+          });
           if (claim.pendingCount === 0 && !resumePending) {
             break;
           }
