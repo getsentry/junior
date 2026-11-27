@@ -92,9 +92,11 @@ export async function measureSql<T>(
     },
     end: ignore,
     // pg-pool can call a waiting checkout back from another caller's
-    // release, so a checkout is known by its start, not by the store.
+    // release, so a checkout is known by its start, not by the store. A
+    // checkout that the call did not start stays on the stack too, so its
+    // statements do not count when this call's release runs it.
     asyncStart: (context: PgCall) => {
-      if (connectStarts.has(context)) checkouts.push(context);
+      checkouts.push(context);
     },
     asyncEnd: (context: PgCall) => {
       if (checkouts.at(-1) === context) checkouts.pop();
@@ -108,7 +110,7 @@ export async function measureSql<T>(
   const query = {
     start: (context: PgCall) => {
       const checkout = checkouts.at(-1);
-      if (!checkout && !owned()) return;
+      if (checkout ? !connectStarts.has(checkout) : !owned()) return;
       const start = checkout && connectStarts.get(checkout);
       spans.set(context, { start: start ?? ++order });
       const statement = statementOf(context.arguments);
