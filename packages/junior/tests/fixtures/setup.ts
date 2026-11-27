@@ -1,5 +1,6 @@
 import { installTestClock } from "@sentry/junior-testing/clock";
 import { afterAll, afterEach, beforeEach, expect, vi } from "vitest";
+import { resetAiEmulator } from "./ai-emulator-server";
 
 const clock = installTestClock();
 
@@ -20,6 +21,8 @@ beforeEach(startClock);
 afterEach(() => {
   vi.useRealTimers();
 });
+
+afterEach(resetAiEmulator);
 
 function isIntegrationTest(): boolean {
   return expect.getState().testPath?.includes("/tests/integration/") ?? false;
