@@ -68,7 +68,8 @@ export interface TurnStart {
   startedAtMs: number;
 }
 
-function turnStartedKey(turnId: string): string {
+/** The idempotency key of a Turn's `turn_started` event. */
+export function turnStartedKey(turnId: string): string {
   return `turn:${turnId}:started`;
 }
 

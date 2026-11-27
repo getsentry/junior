@@ -144,6 +144,15 @@ describe("advanceTurn after a failed model request", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
+    // LEGACY COMPAT: the second claim of step 0 writes main's rows again,
+    // and their idempotency keys keep one of each.
+    const types = (await harness.events()).map((event) => event.data.type);
+    expect(types).toEqual([
+      "message",
+      "turn_started",
+      "user_message",
+      "assistant_message",
+    ]);
   });
 
   it("adds the usage of each failed reply once, also of the reply that fails the Turn", async () => {

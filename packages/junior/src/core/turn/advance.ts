@@ -78,6 +78,16 @@ export type AdvanceTurnOptions = {
    * not limit the steps of a Turn.
    */
   maxAttempts: number;
+  /**
+   * LEGACY COMPAT: writes the rows that main's readers need when a Turn
+   * starts, such as the person's visible messages. Core calls it after each
+   * claim while the Turn has no committed step, before the step runs, so it
+   * must be safe to run again. Delete it once readers read `junior_turns`.
+   */
+  legacyTurnStarted?: (
+    turn: ClaimedTurn,
+    inputs: TurnInputRecord[],
+  ) => Promise<void>;
 };
 
 /**
@@ -149,11 +159,14 @@ async function runClaimedStep(
     modelSettings,
     tools,
     maxAttempts,
-  }: Pick<
-    AdvanceTurnOptions,
-    "client" | "prompt" | "modelSettings" | "tools" | "maxAttempts"
-  >,
+    legacyTurnStarted,
+  }: AdvanceTurnOptions,
 ): Promise<void> {
+  const inputs = await findTurnInputs({ executor }, claim.turnId);
+  // Each commit moves step_seq, so a claim at 0 has no committed step.
+  if (claim.stepSeq === 0) {
+    await legacyTurnStarted?.(claim, inputs);
+  }
   const history = await loadAgentHistory({ executor }, claim.conversationId);
   setActiveSpanAttributes({
     "app.turn.step_seq": claim.stepSeq,
@@ -163,10 +176,7 @@ async function runClaimedStep(
     { executor, queue },
     claim,
     async () => {
-      const stepTools = await tools(
-        claim,
-        await findTurnInputs({ executor }, claim.turnId),
-      );
+      const stepTools = await tools(claim, inputs);
       return whileLeased({ executor }, claim, (signal) =>
         runStep({
           history,

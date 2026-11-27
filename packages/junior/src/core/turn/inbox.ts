@@ -107,7 +107,10 @@ export async function findTurnActor(
 }
 
 /** An input of a Turn, whether the history has read it or not. */
-export type TurnInputRecord = Pick<TurnInput, "payload"> & {
+export type TurnInputRecord = Pick<
+  TurnInput,
+  "actorIdentityId" | "payload" | "sentAt"
+> & {
   inputId: string;
 };
 
@@ -120,7 +123,9 @@ export async function findTurnInputs(
     .db()
     .select({
       inputId: juniorTurnInbox.id,
+      actorIdentityId: juniorTurnInbox.actorIdentityId,
       payload: juniorTurnInbox.payload,
+      sentAt: juniorTurnInbox.sentAt,
     })
     .from(juniorTurnInbox)
     .where(eq(juniorTurnInbox.turnId, turnId))

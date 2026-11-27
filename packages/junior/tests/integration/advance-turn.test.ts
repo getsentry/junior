@@ -293,14 +293,32 @@ describe("advanceTurn", () => {
       storedReply(reply),
     ]);
     const events = await harness.events();
+    // LEGACY COMPAT: main's visible message and turn_started come first.
     expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `message:inbox:${inputId}`,
+      `turn:${turnId}:started`,
       `inbox:${inputId}`,
       `step:${turnId}:0:0`,
     ]);
-    expect(events[0]!.data).toMatchObject({
-      type: "user_message",
-      provenance: { authority: "instruction", actor: ACTOR },
-    });
+    expect(events.map((event) => event.data)).toMatchObject([
+      {
+        type: "message",
+        messageId: `inbox:${inputId}`,
+        role: "user",
+        text: "How many Turns?",
+      },
+      {
+        type: "turn_started",
+        turnId,
+        inputMessageIds: [`inbox:${inputId}`],
+        surface: "slack",
+      },
+      {
+        type: "user_message",
+        provenance: { authority: "instruction", actor: ACTOR },
+      },
+      { type: "assistant_message" },
+    ]);
     await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual(
       [],
     );
