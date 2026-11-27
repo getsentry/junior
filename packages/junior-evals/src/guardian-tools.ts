@@ -235,15 +235,11 @@ export async function agentActionFacts(
  */
 export async function gateReviews(
   tool: ToolActionProposal["tool"],
-  input: Record<string, unknown>,
 ): Promise<boolean> {
   agentTools ??= buildAgentTools();
   const definition = (await agentTools)[tool.dispatcherName ?? tool.name];
   if (!definition) {
     return true;
   }
-  return toolActionNeedsReview(
-    definition,
-    await definition.resolveApprovalMetadata?.(input),
-  );
+  return toolActionNeedsReview(definition);
 }

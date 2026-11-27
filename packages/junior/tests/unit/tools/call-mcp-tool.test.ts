@@ -103,7 +103,7 @@ describe("callMcpTool", () => {
         arguments: { query: "errors" },
       }),
     ).toEqual({
-      annotations: {
+      serverHints: {
         destructiveHint: false,
         openWorldHint: true,
         readOnlyHint: true,

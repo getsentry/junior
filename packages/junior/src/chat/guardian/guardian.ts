@@ -37,6 +37,8 @@ export interface Action {
   target?: Target;
   /** What the call does, written by the tool's code. */
   summary?: string;
+  /** Marks that a remote MCP server gives its tool. Untrusted hints. */
+  serverHints?: Record<string, unknown>;
   /**
    * The decision of the tool's own code. `deny` and `ask` hold, and only
    * the person's yes to this exact action clears an ask. `allow` clears

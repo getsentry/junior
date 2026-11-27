@@ -57,6 +57,9 @@ export function renderAction(
       ? { toolDecision: action.toolDecision }
       : undefined),
     input: action.input,
+    ...(action.serverHints
+      ? { untrustedServerHints: action.serverHints }
+      : undefined),
     // The credential placeholders of the Sandbox (`placeholders`).
     ...(sandbox && action.tool === "bash" ? { sandbox } : undefined),
     ...(madeByScript ? { madeBy: "a Code Mode script" } : undefined),

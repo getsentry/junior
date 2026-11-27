@@ -204,17 +204,13 @@ export class ToolActionReviewLimitError extends Error {
 }
 
 /**
- * True when an `auto` action must enter review. The tool's annotations alone
- * decide: an action marked read-only and not destructive skips review, like
- * MCP clients such as Codex do. MCP annotations come from the server, and
- * plugin annotations from the plugin. Anything else, including missing
- * annotations, is unknown risk.
+ * True when an `auto` action must enter review. Only our own code's marks
+ * count: an action that its tool marks read-only and not destructive skips
+ * review. A remote MCP server's marks are hints, never a reason to skip
+ * (`review-by-default`). Missing marks are unknown risk.
  */
-function autoActionNeedsReview(
-  tool: AnyToolDefinition,
-  resolved: ToolApprovalResolution | undefined,
-): boolean {
-  const annotations = resolved?.annotations ?? tool.annotations;
+function autoActionNeedsReview(tool: AnyToolDefinition): boolean {
+  const annotations = tool.annotations;
   return !(
     annotations?.readOnlyHint === true && annotations.destructiveHint !== true
   );
@@ -392,10 +388,14 @@ export function proposalTool(
   proposalDescription: string | undefined,
 ): ToolActionProposal["tool"] {
   const name = resolved?.name ?? toolName;
-  const annotations = resolved?.annotations ?? tool.annotations;
   const catalogSource = resolved?.source ?? tool.source;
   return {
-    ...(annotations ? { annotations } : undefined),
+    // A dispatcher's own marks say nothing about the real tool.
+    ...(resolved?.serverHints
+      ? { serverHints: resolved.serverHints }
+      : !resolved && tool.annotations
+        ? { annotations: tool.annotations }
+        : undefined),
     description: resolved?.description ?? tool.description,
     ...(name !== toolName ? { dispatcherName: toolName } : undefined),
     ...(tool.identity ? { identity: tool.identity } : undefined),
@@ -458,20 +458,17 @@ function mayNeedReview(tool: AnyToolDefinition): boolean {
   return (
     tool.approvalMode !== "auto" ||
     tool.resolveApprovalMetadata !== undefined ||
-    autoActionNeedsReview(tool, undefined)
+    autoActionNeedsReview(tool)
   );
 }
 
 /** Whether the gate sends a call of `tool` to Guardian, given its metadata. */
-export function toolActionNeedsReview(
-  tool: AnyToolDefinition,
-  resolved: ToolApprovalResolution | undefined,
-): boolean {
+export function toolActionNeedsReview(tool: AnyToolDefinition): boolean {
   if (!mayNeedReview(tool)) {
     return false;
   }
   // Each mode other than `auto`, also one that is not known, needs review.
-  return tool.approvalMode !== "auto" || autoActionNeedsReview(tool, resolved);
+  return tool.approvalMode !== "auto" || autoActionNeedsReview(tool);
 }
 
 /**
@@ -538,7 +535,7 @@ async function prepareToolActionReview(
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  if (action.toolName !== "bash" && !toolActionNeedsReview(tool, resolved)) {
+  if (action.toolName !== "bash" && !toolActionNeedsReview(tool)) {
     return;
   }
   assertAuthoritativeContext(context);
@@ -570,6 +567,9 @@ async function prepareToolActionReview(
         described?.summary ??
         proposal.tool.proposalDescription ??
         proposal.tool.name,
+      ...(resolved?.serverHints
+        ? { serverHints: resolved.serverHints }
+        : undefined),
     },
     proposal,
   };

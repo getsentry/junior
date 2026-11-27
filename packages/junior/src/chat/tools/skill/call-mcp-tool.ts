@@ -79,7 +79,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       }
       return {
         ...(activeTool.annotations
-          ? { annotations: activeTool.annotations }
+          ? { serverHints: activeTool.annotations }
           : undefined),
         description: activeTool.description,
         name: tool_name,

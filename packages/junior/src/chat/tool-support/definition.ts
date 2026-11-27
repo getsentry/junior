@@ -17,7 +17,11 @@ export type { ToolExposure };
 
 /** Invocation-specific approval metadata resolved by a trusted host bridge. */
 export interface ToolApprovalResolution {
-  annotations?: ToolAnnotations;
+  /**
+   * What a remote MCP server says about its tool. Untrusted hints for
+   * Guardian: they never skip review (`review-by-default`).
+   */
+  serverHints?: ToolAnnotations;
   description?: string;
   name?: string;
   source?: {

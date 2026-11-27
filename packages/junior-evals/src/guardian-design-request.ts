@@ -111,6 +111,9 @@ async function designAction(
     ...(described.toolDecision
       ? { toolDecision: described.toolDecision }
       : undefined),
+    ...(proposal.tool.serverHints
+      ? { serverHints: proposal.tool.serverHints }
+      : undefined),
     summary:
       proposal.tool.name === "bash" && typeof input.command === "string"
         ? input.command
