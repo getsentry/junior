@@ -25,7 +25,7 @@ export function updateWorkspaceToolDefinition(
     exposure: "deferred",
     source: WORKSPACES_TOOL_SOURCE,
     approvalMode: "review",
-    describe: ({ id: _id, ...input }) => ({
+    guardian: ({ id: _id, ...input }) => ({
       summary: describeWorkspaceWrite("Replace", input),
     }),
     executionMode: "sequential",

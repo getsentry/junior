@@ -133,7 +133,7 @@ describe("tool action review", () => {
         openWorldHint: true,
         readOnlyHint: false,
       },
-      describe: ({ reportId }) => ({
+      guardian: ({ reportId }) => ({
         summary: `Generate report ${reportId}.`,
       }),
       identity: {
@@ -428,7 +428,7 @@ describe("tool action review", () => {
     [
       "proposal description",
       (tool: AnyToolDefinition, failure: Error) => {
-        tool.describe = () => {
+        tool.guardian = () => {
           throw failure;
         };
         return {};

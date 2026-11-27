@@ -38,10 +38,11 @@ export interface Action {
   /** What the call does, written by the tool's code. */
   summary?: string;
   /**
-   * The tool's code advises allow, such as for a text update of a pull
-   * request that this work created. It clears only `unrequested`.
+   * The decision of the tool's own code. `deny` and `ask` hold, and only
+   * the person's yes to this exact action clears an ask. `allow` clears
+   * only `unrequested`.
    */
-  advice?: { decision: "allow"; reason?: string };
+  toolDecision?: { decision: "allow" | "ask" | "deny"; reason?: string };
 }
 
 /** One batch of actions and the messages of the work. */
@@ -85,8 +86,8 @@ export interface Review {
   /** The rule that matched, also when code cleared it and allowed. */
   rule?: Rule;
   /**
-   * An ask names what the person must give. When the tool's advice cleared
-   * the rule, it starts with the advice reason.
+   * An ask names what the person must give. When the tool's own code
+   * decided, it starts with that decision and its reason.
    */
   reason: string;
   /** Model cost of this review. */

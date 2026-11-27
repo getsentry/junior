@@ -3,7 +3,7 @@
  * or internal repository, `world` for a public one. Junior reads it from
  * GitHub through the plugin cache, never from a tool's input or result.
  */
-import type { Audience, DescribeReadContext } from "@sentry/junior-plugin-api";
+import type { Audience, GuardianContext } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
@@ -20,7 +20,7 @@ const repositorySchema = z.object({
  * the audience is `world`, as for any target that Junior cannot type.
  */
 export async function repositoryAudience(
-  ctx: DescribeReadContext,
+  ctx: GuardianContext,
   repository: { name: string; owner: string },
 ): Promise<Audience> {
   try {

@@ -99,6 +99,8 @@ import {
   readSandboxRepos,
   readUnpushedCommits,
 } from "@/chat/guardian/sandbox-facts";
+import { readCheckoutTargets } from "@/chat/guardian/checkout-records";
+import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
@@ -586,6 +588,16 @@ export async function wireAgentTools(
                 : [],
             sandboxUnpushed: async (path: string) =>
               await readUnpushedCommits(agentSandbox.workspace, path),
+            sandboxTargets: async () =>
+              await readCheckoutTargets({
+                conversationId: args.run.conversationId,
+                conversationIds: async () =>
+                  await readAncestorAndDescendantIds(
+                    getDb(),
+                    args.run.conversationId,
+                  ),
+                workspaceRepos: agentSandbox.activeWorkspace()?.repos ?? [],
+              }),
           }
         : undefined),
     },

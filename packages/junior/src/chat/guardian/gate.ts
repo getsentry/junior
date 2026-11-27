@@ -25,6 +25,7 @@ import type {
   Guardian,
   Review,
   ReviewRequest,
+  Target,
 } from "@/chat/guardian/guardian";
 import type {
   RootConversation,
@@ -42,8 +43,9 @@ import {
   type SandboxRepo,
 } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
-import { describeReadContext } from "@/chat/guardian/call-facts";
-import { describeMcpCall } from "@/chat/plugins/describe-mcp-call";
+import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
+import { getDb } from "@/chat/db";
+import { mcpCallGuardian } from "@/chat/plugins/mcp-call-guardian";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -69,6 +71,8 @@ export interface ToolActionReviewContext {
   sandboxRepos?: (dirs: readonly string[]) => Promise<SandboxRepo[]>;
   /** Read the commits of one checkout that no remote has yet. */
   sandboxUnpushed?: (path: string) => Promise<string>;
+  /** Read the recorded target of each clone URL of the Sandbox. */
+  sandboxTargets?: () => Promise<ReadonlyMap<string, Target>>;
 }
 
 /** One exact tool call that the agent asked to run. */
@@ -398,7 +402,7 @@ export function proposalTool(
   toolName: string,
   tool: AnyToolDefinition,
   resolved: ToolApprovalResolution | undefined,
-  /** The summary of the tool's own `describe`, when it has one. */
+  /** The summary of the tool's own `guardian`, when it has one. */
   proposalDescription: string | undefined,
 ): ToolActionProposal["tool"] {
   const name = resolved?.name ?? toolName;
@@ -485,25 +489,38 @@ export function toolActionNeedsReview(
 }
 
 /**
- * The action of a tool that does not describe its own: no target. An MCP
+ * The action of a tool that has no `guardian` of its own: no target. An MCP
  * call is the exception when its plugin says what the call touches
- * (`describeMcpCall`). Without a target, the audience counts as `world`.
+ * (`mcpCallGuardian`). Without a target, the audience counts as `world`.
  */
 export async function undescribedAction(
   toolName: string,
   resolved: ToolApprovalResolution | undefined,
   input: Record<string, unknown>,
+  conversationId: string,
 ): Promise<ActionDescription> {
   const provider =
     toolName === "callMcpTool" ? resolved?.source?.id : undefined;
-  const target = provider
-    ? await describeMcpCall({
+  return provider
+    ? await mcpCallGuardian({
         provider,
         toolName: resolved?.name ?? String(input["tool_name"] ?? ""),
         input: input["arguments"],
+        conversationIds: async () =>
+          await readAncestorAndDescendantIds(getDb(), conversationId),
       })
+    : {};
+}
+
+/** The review of an action that the tool's own code denies. */
+function toolDenial(action: Action): Review | undefined {
+  const tool = action.toolDecision;
+  return tool?.decision === "deny"
+    ? {
+        decision: "deny",
+        reason: `Tool: deny. ${tool.reason ?? "The tool's own check denies this call."}`,
+      }
     : undefined;
-  return target ? { target } : {};
 }
 
 /** One action that Guardian must review, with the gate's proposal for it. */
@@ -539,7 +556,7 @@ async function prepareToolActionReview(
     return;
   }
   assertAuthoritativeContext(context);
-  const described = await tool.describe?.(input);
+  const described = await tool.guardian?.(input);
   const proposal = buildProposal(
     action.toolName,
     tool,
@@ -557,7 +574,12 @@ async function prepareToolActionReview(
       tool: proposal.tool.name,
       input,
       ...(described ??
-        (await undescribedAction(action.toolName, resolved, input))),
+        (await undescribedAction(
+          action.toolName,
+          resolved,
+          input,
+          context.conversationId,
+        ))),
       summary:
         described?.summary ??
         proposal.tool.proposalDescription ??
@@ -663,11 +685,22 @@ export function createToolActionReview(options: {
     const runGuardian = async (
       batch: readonly PreparedReview[],
     ): Promise<Review[]> => {
+      // The tool's own `deny` holds without a model review.
+      const open = batch.filter((review) => !toolDenial(review.action));
+      const reviewed = open.length > 0 ? await reviewByGuardian(open) : [];
+      return batch.map(
+        (review) =>
+          toolDenial(review.action) ?? reviewed[open.indexOf(review)]!,
+      );
+    };
+    const reviewByGuardian = async (
+      batch: readonly PreparedReview[],
+    ): Promise<Review[]> => {
       const request: ReviewRequest = {
         actions: batch.map((review) => review.action),
         messages: guardianMessages(batch[0]!.proposal),
       };
-      const { sandboxRepos, sandboxUnpushed } = options.context;
+      const { sandboxRepos, sandboxTargets, sandboxUnpushed } = options.context;
       const commands = request.actions.filter((a) => a.tool === "bash");
       // A shell command is reviewed by what the Sandbox can reach.
       if (sandboxRepos && commands.length > 0) {
@@ -682,7 +715,7 @@ export function createToolActionReview(options: {
           ...(pushes && sandboxUnpushed
             ? { unpushed: sandboxUnpushed }
             : undefined),
-          readContext: describeReadContext,
+          targets: (await sandboxTargets?.()) ?? new Map(),
         });
       }
       const decisions = await options

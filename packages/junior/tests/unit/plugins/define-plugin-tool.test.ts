@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  type DescribeContext,
   definePluginTool,
+  type GuardianContext,
   missingToolAnnotationKeys,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -22,8 +22,8 @@ describe("definePluginTool", () => {
         openWorldHint: true,
         readOnlyHint: true,
       },
-      describe: async ({ query }) => ({
-        ref: `search:${query}`,
+      guardian: async ({ query }) => ({
+        target: `search:${query}`,
         audience: "internal",
       }),
       description: "Schedule a meeting.",
@@ -39,13 +39,9 @@ describe("definePluginTool", () => {
       readOnlyHint: true,
     });
     const input = tool.prepareArguments?.({ query: "errors" });
-    const call = await tool.describe?.(input!, {
-      // This describe reads nothing, so no read context is used.
-      cache: {} as DescribeContext["cache"],
-      egress: {} as DescribeContext["egress"],
-      isOwnPullRequest: async () => false,
-    });
-    expect(call?.ref).toBe("search:errors");
+    // This `guardian` reads nothing, so it gets no context.
+    const call = await tool.guardian?.(input!, {} as GuardianContext);
+    expect(call?.target).toBe("search:errors");
   });
 
   it("reports missing behavioral annotations", () => {
@@ -70,7 +66,7 @@ describe("definePluginTool", () => {
       execute,
     });
 
-    expect(tool.describe).toBeUndefined();
+    expect(tool.guardian).toBeUndefined();
     expect(tool.inputSchema).toMatchObject({
       properties: {
         count: { type: "integer" },

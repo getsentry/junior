@@ -9,7 +9,7 @@ describe("zodTool", () => {
     const tool = zodTool({
       approvalMode: "approve",
       annotations: { destructiveHint: true, readOnlyHint: false },
-      describe: ({ recordId }) => ({
+      guardian: ({ recordId }) => ({
         summary: `Delete record ${recordId}.`,
       }),
       description: "Delete a record.",
@@ -24,7 +24,7 @@ describe("zodTool", () => {
       readOnlyHint: false,
     });
     const input = tool.prepareArguments({ recordId: 42 });
-    expect((await tool.describe?.(input))?.summary).toBe("Delete record 42.");
+    expect((await tool.guardian?.(input))?.summary).toBe("Delete record 42.");
   });
 
   it("projects Zod input schemas to JSON Schema and parses tool arguments", async () => {

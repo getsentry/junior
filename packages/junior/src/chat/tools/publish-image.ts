@@ -66,7 +66,7 @@ export function createPublishImageTool(args: {
       .strict(),
     outputSchema,
     // Anyone on the internet with the URL can view the image.
-    describe: ({ path }) => ({
+    guardian: ({ path }) => ({
       target: { ref: `public URL of ${path}`, audience: "world" },
     }),
     async execute({ path, expires_in_minutes }) {

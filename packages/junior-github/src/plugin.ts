@@ -8,7 +8,7 @@ import {
   GITHUB_INBOX_SUBJECTS,
   githubInboxSubjectKinds,
 } from "./inbox-subjects.js";
-import { describeGitHubUrl } from "./describe-url.js";
+import { checkoutCall } from "./tool-support/guardian-call.js";
 import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
@@ -653,7 +653,12 @@ export function githubPlugin(
           actorTrailers.join("\n"),
         );
       },
-      describeUrl: describeGitHubUrl,
+      // The clone URL of a Workspace checkout, for the push check.
+      async guardian(call, ctx) {
+        return call.kind === "workspaceCheckout"
+          ? await checkoutCall(call.repo, ctx)
+          : undefined;
+      },
       grantForEgress(ctx) {
         return githubGrantForEgress(ctx, {
           appIdEnv,

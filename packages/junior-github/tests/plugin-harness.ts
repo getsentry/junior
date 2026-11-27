@@ -4,6 +4,7 @@ import type {
   ConversationChangeBatch,
   EventInput,
   EventPublisher,
+  GuardianContext,
   HeartbeatHookContext,
   PluginReviewNotice,
   PluginStartedTaskContext,
@@ -69,6 +70,34 @@ export function memoryCache(): HeartbeatHookContext["cache"] {
     },
     async delete(key) {
       cacheEntries.delete(key);
+    },
+  };
+}
+
+/**
+ * What a `guardian` reads in a test: repositories that GitHub reports with
+ * `visibility`, and code-change records that hold this work's pull request
+ * only when `own` is true.
+ */
+export function guardianContext(
+  options: { own?: boolean; visibility?: { private: boolean } } = {},
+): GuardianContext {
+  return {
+    cache: memoryCache(),
+    egress: {
+      async fetch() {
+        return options.visibility
+          ? Response.json(options.visibility)
+          : Response.json({ message: "Not Found" }, { status: 404 });
+      },
+    },
+    codeChanges: {
+      async list() {
+        return options.own ? [{} as never] : [];
+      },
+    },
+    async conversationIds() {
+      return ["conversation-1"];
     },
   };
 }

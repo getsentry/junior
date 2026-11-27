@@ -27,6 +27,11 @@ import { ProviderError } from "@/chat/services/provider-error";
 // names the rule.
 const assessmentFields = {
   reason: z.string().trim().min(1).max(500),
+  personSaidYes: z
+    .boolean()
+    .describe(
+      "True only when the `instruction` person's own line said yes to a question that named this exact action.",
+    ),
   rule: z.enum(AGENT_GUARDIAN_RULE_IDS),
 };
 
@@ -71,27 +76,38 @@ function isDenyRule(rule: Rule): boolean {
 
 /**
  * Turn the model's assessment into the review (`rule-kinds`,
- * `allow-default`). A deny rule always denies. The tool's `allow` advice
- * clears only `unrequested`: the action runs and the review keeps the rule
- * and both reasons, so the record shows what code cleared. A person's yes
- * clears an ask rule only through the model, which then names `none`.
+ * `allow-default`). The tool's own `deny` always holds, and its `ask` holds
+ * until the person says yes to this exact action. Its `allow` clears only
+ * `unrequested`. The reason starts with the tool's decision, so the record
+ * keeps it.
  */
 export function decide(
-  assessment: { rule: Rule | "none"; reason: string },
-  action: Pick<Action, "advice">,
+  assessment: { rule: Rule | "none"; reason: string; personSaidYes?: boolean },
+  action: Pick<Action, "toolDecision">,
 ): Pick<Review, "decision" | "rule" | "reason"> {
   const { rule, reason } = assessment;
+  const tool = action.toolDecision;
+  const withTool = (text: string) =>
+    tool
+      ? `Tool: ${tool.decision}. ${tool.reason ? `${tool.reason} ` : ""}${text}`
+      : text;
+  const ruled = rule === "none" ? {} : { rule };
+  if (rule !== "none" && isDenyRule(rule)) {
+    return { decision: "deny", rule, reason: withTool(reason) };
+  }
+  if (tool?.decision === "deny") {
+    return { decision: "deny", ...ruled, reason: withTool(reason) };
+  }
+  if (tool?.decision === "ask" && !assessment.personSaidYes) {
+    return { decision: "ask", ...ruled, reason: withTool(reason) };
+  }
   if (rule === "none") {
-    return { decision: "allow", reason };
+    return { decision: "allow", reason: withTool(reason) };
   }
-  if (isDenyRule(rule)) {
-    return { decision: "deny", rule, reason };
+  if (rule === "unrequested" && tool?.decision === "allow") {
+    return { decision: "allow", rule, reason: withTool(reason) };
   }
-  if (rule === "unrequested" && action.advice) {
-    const advice = action.advice.reason ?? "The tool advises allow.";
-    return { decision: "allow", rule, reason: `${advice} ${reason}` };
-  }
-  return { decision: "ask", rule, reason };
+  return { decision: "ask", rule, reason: withTool(reason) };
 }
 
 /** Create the agent Guardian over one review model, for one batch. */

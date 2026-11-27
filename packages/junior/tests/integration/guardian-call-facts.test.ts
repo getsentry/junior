@@ -3,8 +3,8 @@ import type { CodeChangeInput } from "@sentry/junior-plugin-api";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
-  actionFromDescription,
-  describeContext,
+  actionFromGuardian,
+  guardianContext,
 } from "@/chat/guardian/call-facts";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 
@@ -34,11 +34,20 @@ describe("Guardian call facts", () => {
     await fixture.close();
   });
 
-  function isOwn(conversationIds: string[], provider = "github", number = 691) {
-    return describeContext({
-      provider,
+  async function isOwn(
+    conversationIds: string[],
+    plugin = "github",
+    number = 691,
+  ) {
+    const ctx = guardianContext({
+      plugin,
       conversationIds: async () => conversationIds,
-    }).isOwnPullRequest("getsentry/junior", number);
+    });
+    const changes = await ctx.codeChanges.list({
+      conversationIds: await ctx.conversationIds(),
+      repository: { name: "getsentry/junior", numbers: [number] },
+    });
+    return changes.length > 0;
   }
 
   it("counts a pull request that this work's code records hold", async () => {
@@ -58,17 +67,17 @@ describe("Guardian call facts", () => {
     await expect(isOwn([ROOT], "github", 692)).resolves.toBe(false);
   });
 
-  it("keeps the tool's advice and its reason on the action", () => {
+  it("keeps the tool's decision and its reason on the action", () => {
     expect(
-      actionFromDescription({
-        ref: "getsentry/junior#691",
+      actionFromGuardian({
+        target: "getsentry/junior#691",
         audience: "world",
-        advice: "allow",
+        decision: "allow",
         reason: "Only the text of this work's pull request changes.",
       }),
     ).toEqual({
       target: { ref: "getsentry/junior#691", audience: "world" },
-      advice: {
+      toolDecision: {
         decision: "allow",
         reason: "Only the text of this work's pull request changes.",
       },

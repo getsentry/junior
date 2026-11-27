@@ -423,33 +423,32 @@ export function missingToolAnnotationKeys(
 export type Audience = "internal" | "world";
 
 /**
- * What a plugin may read while it says what a call touches: its cache and
- * provider reads as Junior's own system account. Reads only.
+ * What a plugin may read while Guardian reviews one call: its cache,
+ * provider reads as Junior's own system account, and its code changes.
+ * Reads only.
  */
-export interface DescribeReadContext {
+export interface GuardianContext {
   cache: PluginCache;
   egress: PluginEgress;
+  /** This plugin's code changes in Junior's records. */
+  codeChanges: Pick<PluginCodeChanges, "list">;
+  /** The Conversations of the work that makes the call. */
+  conversationIds(): Promise<string[]>;
 }
 
-/** What core answers for a tool's `describe`, from its own records. */
-export interface DescribeContext extends DescribeReadContext {
-  /** Whether this work created the pull request, from core's code-change records. */
-  isOwnPullRequest(repo: string, number: number): Promise<boolean>;
-}
-
-/** What one call touches, for Guardian. Never a verdict on the call. */
-export interface CallDescription {
+/** What a plugin tells Guardian about one call. */
+export interface GuardianResult {
   /** What the call touches, such as `getsentry/junior#12`. */
-  ref: string;
+  target: string;
+  /** Who can read the target. */
   audience: Audience;
   /**
-   * `allow` when the call only keeps something that this work made current,
-   * such as the text of Junior's own pull request. It clears only
-   * Guardian's "nobody asked for this" check. Every other check still
-   * applies.
+   * `deny` and `ask` always hold, and only the person's yes to the exact
+   * action clears an ask. `allow` clears only Guardian's check that nobody
+   * asked for the call. Every other check still applies.
    */
-  advice?: "allow";
-  /** Why the tool gives its advice. The decision record keeps it. */
+  decision?: "allow" | "ask" | "deny";
+  /** Why. The decision record keeps it. */
   reason?: string;
 }
 
@@ -486,12 +485,11 @@ export interface PluginToolDefinition<
   /** Override the host's default tool exposure. */
   exposure?: ToolExposure | undefined;
   /**
-   * What one call touches, from parsed input and stored records, never from
-   * what tool input or a tool result claims. It runs before review, so it
-   * must not write anything. Without it, Guardian judges the call with no
-   * target, and the audience counts as `world`.
+   * What one call touches and who can read it, from parsed input and stored
+   * records, never from what tool input or a tool result claims. It must not
+   * write anything. Without it, the target counts as `world`.
    */
-  describe?(input: TInput, ctx: DescribeContext): Promise<CallDescription>;
+  guardian?(input: TInput, ctx: GuardianContext): Promise<GuardianResult>;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**

@@ -46,10 +46,13 @@ export interface ToolApprovalMetadata {
 }
 
 /**
- * What a tool's `describe` tells Guardian about one call. Only core tools
+ * What a tool's `guardian` tells Guardian about one call. Only core tools
  * write a `summary`.
  */
-export type ActionDescription = Pick<Action, "target" | "advice" | "summary">;
+export type ActionDescription = Pick<
+  Action,
+  "target" | "toolDecision" | "summary"
+>;
 
 export interface ToolExecuteOptions {
   experimental_context?: unknown;
@@ -66,7 +69,7 @@ interface BaseToolDefinition<
    * Describe one call for Guardian from stored records
    * (`facts-from-junior` in `design/guardian.md`).
    */
-  describe?(input: TInput): ActionDescription | Promise<ActionDescription>;
+  guardian?(input: TInput): ActionDescription | Promise<ActionDescription>;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;
@@ -130,7 +133,7 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
    * Describe one call for Guardian. Core binds a plugin tool's hook to the
    * Turn's stored facts (`facts-from-junior` in `design/guardian.md`).
    */
-  describe?(input: unknown): ActionDescription | Promise<ActionDescription>;
+  guardian?(input: unknown): ActionDescription | Promise<ActionDescription>;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;

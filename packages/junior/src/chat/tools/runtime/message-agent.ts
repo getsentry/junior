@@ -30,7 +30,7 @@ export const messageAgentToolDefinition = zodToolDefinition({
   approvalMode: "auto",
   executionMode: "sequential",
   // Every agent that it can reach is part of this organization's work.
-  describe: ({ to }) => ({ target: { ref: to, audience: "internal" } }),
+  guardian: ({ to }) => ({ target: { ref: to, audience: "internal" } }),
   annotations: {
     destructiveHint: false,
     idempotentHint: true,

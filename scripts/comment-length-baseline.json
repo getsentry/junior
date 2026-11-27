@@ -682,7 +682,7 @@
     "packages/junior-plugin-api/src/registration.ts": 1,
     "packages/junior-plugin-api/src/schemas.ts": 3,
     "packages/junior-plugin-api/src/tasks.ts": 4,
-    "packages/junior-plugin-api/src/tools.ts": 12,
+    "packages/junior-plugin-api/src/tools.ts": 11,
     "packages/junior-sentry/src/events/metric-alert.ts": 2,
     "packages/junior-sentry/src/webhooks/events.ts": 3,
     "packages/junior-sentry/src/webhooks/secret.ts": 1,

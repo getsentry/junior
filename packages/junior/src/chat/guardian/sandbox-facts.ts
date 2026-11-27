@@ -1,18 +1,15 @@
 /**
  * What a shell command can reach, for Guardian (`sandbox-boundary`). The
- * remotes come from the Sandbox, and `describeUrl` types each one. Before a
- * push to a `world` checkout, the commits that no remote has show what the
- * push publishes, since edits and commits stay in the Sandbox until then.
+ * remotes come from the Sandbox, and the clone records type each one. Before
+ * a push that can reach `world`, the commits that no remote has show what
+ * the push publishes, since edits and commits stay in the Sandbox until then.
  */
-import type {
-  DescribeReadContext,
-  PluginManifest,
-} from "@sentry/junior-plugin-api";
+import type { PluginManifest } from "@sentry/junior-plugin-api";
 import { posix } from "node:path";
 import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
-import type { ReviewRequest } from "@/chat/guardian/guardian";
-import { describeRemote } from "@/chat/plugins/describe-url";
+import { targetOfUrl } from "@/chat/guardian/checkout-records";
+import type { ReviewRequest, Target } from "@/chat/guardian/guardian";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 type SandboxFacts = NonNullable<ReviewRequest["sandbox"]>;
@@ -198,14 +195,14 @@ export async function sandboxFacts(args: {
   placeholders: SandboxFacts["placeholders"];
   /** Set only when the batch has a `git push`. */
   unpushed?: (path: string) => Promise<string>;
-  /** What each plugin's `describeUrl` may read. */
-  readContext: (plugin: string) => DescribeReadContext;
+  /** The recorded target of each clone URL (`readCheckoutTargets`). */
+  targets: ReadonlyMap<string, Target>;
 }): Promise<SandboxFacts> {
-  const describe = (url: string) => describeRemote(url, args.readContext);
-  const urls = await mapBounded([...new Set(args.urls)], describe);
+  const describe = (url: string) => targetOfUrl(url, args.targets);
+  const urls = [...new Set(args.urls)].map(describe);
   const toWorldUrl = urls.some((target) => target.audience === "world");
   const repos = await mapBounded(args.repos, async (repo) => {
-    const remotes = await mapBounded(repo.remotes, describe);
+    const remotes = repo.remotes.map(describe);
     const publishes =
       toWorldUrl || remotes.some((target) => target.audience === "world");
     const unpushed =

@@ -8,7 +8,7 @@
  */
 import {
   createSlackSource,
-  type DescribeReadContext,
+  type GuardianContext,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { linearPlugin } from "@sentry/junior-linear";
@@ -17,7 +17,7 @@ import { googlePlugin } from "@sentry/junior-google";
 import { vercelPlugin } from "@sentry/junior-vercel";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { actionFromDescription } from "@/chat/guardian/call-facts";
+import { actionFromGuardian } from "@/chat/guardian/call-facts";
 import {
   proposalTool,
   toolActionNeedsReview,
@@ -179,14 +179,11 @@ export async function agentToolSpec(
   if (!tool) {
     throw new Error(`The agent has no tool named ${name}.`);
   }
-  let summary: string | undefined;
-  try {
-    summary = (await tool.describe?.(input))?.summary;
-  } catch {
-    // A GitHub pull request tool reads Junior's code records for its call
-    // facts, and the evals have no database. Its proposal has no summary.
-    summary = undefined;
-  }
+  // Only a core tool writes a summary. A plugin tool's `guardian` reads
+  // provider state, which `agentActionFacts` gives it.
+  const summary = tool.identity
+    ? undefined
+    : (await tool.guardian?.(input))?.summary;
   return proposalTool(
     name,
     tool,
@@ -196,19 +193,15 @@ export async function agentToolSpec(
 }
 
 /**
- * The target and advice that production gives one call: the tool's own
- * `describe`, or what core gives a tool without one. Core answers a plugin
- * tool's `isOwnPullRequest` from its code-change records. The evals have no
- * database, so `ownPullRequests` (`owner/repo#number`) stands in for them,
- * and `readContext` stands in for the plugin's cache and provider reads.
+ * The target and decision that production gives one call: the tool's own
+ * `guardian`, or what core gives a tool without one. The evals have no
+ * database or provider, so `ctx` stands in for the plugin's cache, provider
+ * reads, and code-change records.
  */
 export async function agentActionFacts(
   tool: ToolActionProposal["tool"],
   input: Record<string, unknown>,
-  records: {
-    ownPullRequests: readonly string[];
-    readContext: DescribeReadContext;
-  },
+  ctx: GuardianContext,
 ): Promise<ActionDescription> {
   agentTools ??= buildAgentTools();
   const name = tool.dispatcherName ?? tool.name;
@@ -221,23 +214,17 @@ export async function agentActionFacts(
     const source = getPlugins()
       .find((plugin) => plugin.manifest.name === identity.plugin)
       ?.hooks?.tools?.()[identity.name];
-    if (!source?.describe) {
-      return {};
-    }
-    const own = new Set(records.ownPullRequests);
-    return actionFromDescription(
-      await source.describe(input, {
-        ...records.readContext,
-        isOwnPullRequest: async (repo, number) => own.has(`${repo}#${number}`),
-      }),
-    );
+    return source?.guardian
+      ? actionFromGuardian(await source.guardian(input, ctx))
+      : {};
   }
   return (
-    (await definition.describe?.(input)) ??
+    (await definition.guardian?.(input)) ??
     (await undescribedAction(
       name,
       await definition.resolveApprovalMetadata?.(input),
       input,
+      "guardian-eval",
     ))
   );
 }

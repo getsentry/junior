@@ -17,7 +17,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { describeRepositoryCall } from "../tool-support/describe-call.js";
+import { repositoryCall } from "../tool-support/guardian-call.js";
 import * as z from "zod";
 import { appendGitHubFooter } from "../conversation-footer.js";
 import { watchGitHubIssue } from "../events/issue.js";
@@ -321,7 +321,7 @@ export const gitHubIssueTool = definePluginTool({
     "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
   inputSchema: createIssueToolInputSchema,
   outputSchema: gitHubIssueOutputSchema,
-  describe: (input, ctx) => describeRepositoryCall(input.repo, ctx),
+  guardian: (input, ctx) => repositoryCall(input.repo, ctx),
   async execute(
     input: z.output<typeof createIssueToolInputSchema>,
     options: PluginToolExecuteOptions,

@@ -32,8 +32,8 @@ import type {
 } from "./operations";
 import type {
   AfterMcpToolHookContext,
-  Audience,
-  DescribeReadContext,
+  GuardianContext,
+  GuardianResult,
   AfterToolExecuteHookContext,
   BeforeToolExecuteHookContext,
   PluginEgress,
@@ -52,6 +52,11 @@ import type {
 } from "./prompt";
 
 /** Input for a pure Markdown rewrite before destination delivery formatting. */
+/** A call that a plugin's `guardian` hook describes. */
+export type PluginGuardianCall =
+  | { kind: "mcp"; tool: string; input: Record<string, unknown> }
+  | { kind: "workspaceCheckout"; repo: string };
+
 export interface FormatMarkdownHookContext {
   /**
    * String config values of this plugin for the Conversation's Location, by
@@ -192,27 +197,14 @@ export interface PluginHooks {
     | { objectAnnotations: ObjectAnnotation[] }
     | void;
   /**
-   * Return the target behind a remote URL of this plugin's provider, such as
-   * the repository of a Git remote, or nothing for another URL. Guardian
-   * reviews a shell command with it. Read who can see the target from the
-   * provider or stored records, never from the URL, and return `world` when
-   * they do not say.
+   * What a call of this plugin's MCP tools touches, or the clone URL and
+   * audience of a Workspace checkout of its repository. Without an answer,
+   * an MCP call gets the manifest's `mcp.audience`, else `world`.
    */
-  describeUrl?(
-    url: URL,
-    ctx: DescribeReadContext,
-  ): Promise<{ ref: string; audience: Audience } | undefined>;
-  /**
-   * Say what one call of this plugin's MCP tools touches, so Guardian knows
-   * who can read what it writes. `tool` is the MCP tool's own name, such as
-   * `save_issue`. Read only the input and the install's options, and return
-   * undefined when they do not say. Without an answer, the manifest's
-   * `mcp.audience` applies.
-   */
-  describeMcpCall?(call: {
-    tool: string;
-    input: Record<string, unknown>;
-  }): Promise<{ ref: string; audience: Audience } | undefined>;
+  guardian?(
+    call: PluginGuardianCall,
+    ctx: GuardianContext,
+  ): Promise<GuardianResult | undefined>;
   /**
    * Select the grant for one sandbox egress request.
    *

@@ -225,7 +225,7 @@ export function createAutomationTool(
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
-    describe: (input) => ({
+    guardian: (input) => ({
       summary: describeDelivery(input),
     }),
     annotations: {

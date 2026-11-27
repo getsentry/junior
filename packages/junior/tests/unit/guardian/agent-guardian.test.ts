@@ -5,68 +5,87 @@ import type { Action } from "@/chat/guardian/guardian";
 import { renderAction, renderMessages } from "@/chat/guardian/agent/render";
 
 const RULES = ["none", ...ASK_RULES, ...DENY_RULES] as const;
+type RuleId = (typeof RULES)[number];
 
-/** Every advice that core can give Guardian. */
+/** Every decision that a tool's own `guardian` can give. */
 const ACTIONS = [
   {},
-  { advice: { decision: "allow", reason: "Only the PR text changes." } },
-] as const satisfies readonly Pick<Action, "advice">[];
+  { toolDecision: { decision: "allow", reason: "Only the PR text changes." } },
+  { toolDecision: { decision: "ask", reason: "A public team." } },
+  { toolDecision: { decision: "deny" } },
+] as const satisfies readonly Pick<Action, "toolDecision">[];
 
-function isDeny(rule: (typeof RULES)[number]): boolean {
+function isDeny(rule: RuleId): boolean {
   return DENY_RULES.some((deny) => deny === rule);
 }
 
 /** The decision order of `design/guardian.md`, written out case by case. */
 function expected(
-  rule: (typeof RULES)[number],
-  action: Pick<Action, "advice">,
+  rule: RuleId,
+  action: Pick<Action, "toolDecision">,
+  personSaidYes: boolean,
 ): "allow" | "ask" | "deny" {
+  const tool = action.toolDecision?.decision;
+  if (isDeny(rule) || tool === "deny") return "deny";
+  if (tool === "ask" && !personSaidYes) return "ask";
   if (rule === "none") return "allow";
-  if (isDeny(rule)) return "deny";
-  return rule === "unrequested" && action.advice ? "allow" : "ask";
+  return rule === "unrequested" && tool === "allow" ? "allow" : "ask";
 }
 
 describe("agent Guardian decide", () => {
-  it("decides every rule and advice in the design's order", () => {
+  it("decides every rule and tool decision in the design's order", () => {
     const wrong = RULES.flatMap((rule) =>
-      ACTIONS.filter(
-        (action) =>
-          decide({ rule, reason: "r" }, action).decision !==
-          expected(rule, action),
-      ).map((action) => ({ rule, action })),
+      ACTIONS.flatMap((action) =>
+        [false, true]
+          .filter(
+            (personSaidYes) =>
+              decide({ rule, reason: "r", personSaidYes }, action).decision !==
+              expected(rule, action, personSaidYes),
+          )
+          .map((personSaidYes) => ({ rule, action, personSaidYes })),
+      ),
     );
     expect(wrong).toEqual([]);
   });
 
   it("always denies a deny rule", () => {
     for (const rule of DENY_RULES) {
-      for (const action of ACTIONS) {
-        expect(decide({ rule, reason: "r" }, action)).toEqual({
-          decision: "deny",
-          rule,
-          reason: "r",
-        });
-      }
+      expect(decide({ rule, reason: "r" }, {})).toEqual({
+        decision: "deny",
+        rule,
+        reason: "r",
+      });
     }
   });
 
-  it("keeps the rule and both reasons when advice allows", () => {
+  it("keeps the rule and both reasons when the tool allows", () => {
     expect(
       decide({ rule: "unrequested", reason: "Nobody asked." }, ACTIONS[1]),
     ).toEqual({
       decision: "allow",
       rule: "unrequested",
-      reason: "Only the PR text changes. Nobody asked.",
+      reason: "Tool: allow. Only the PR text changes. Nobody asked.",
     });
   });
 
-  it("lets advice change only `unrequested`", () => {
+  it("lets the tool's allow change only `unrequested`", () => {
     const changed = RULES.filter(
       (rule) =>
         decide({ rule, reason: "r" }, ACTIONS[1]).decision !==
         decide({ rule, reason: "r" }, ACTIONS[0]).decision,
     );
     expect(changed).toEqual(["unrequested"]);
+  });
+
+  it("holds the tool's ask until the person says yes", () => {
+    expect(decide({ rule: "none", reason: "r" }, ACTIONS[2])).toEqual({
+      decision: "ask",
+      reason: "Tool: ask. A public team. r",
+    });
+    expect(
+      decide({ rule: "none", reason: "r", personSaidYes: true }, ACTIONS[2])
+        .decision,
+    ).toBe("allow");
   });
 });
 

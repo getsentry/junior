@@ -1,5 +1,5 @@
 import {
-  type CallDescription,
+  type GuardianResult,
   definePluginTool,
   getSourceKey,
   PluginToolInputError,
@@ -206,8 +206,8 @@ export const memoryCreateTool = definePluginTool({
   executionMode: "sequential",
   inputSchema: createMemoryInputSchema,
   // Only people in the organization read memories.
-  describe: async (): Promise<CallDescription> => ({
-    ref: "memory",
+  guardian: async (): Promise<GuardianResult> => ({
+    target: "memory",
     audience: "internal",
   }),
   outputSchema: memoryCreateOutputSchema,

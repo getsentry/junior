@@ -8,9 +8,10 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import {
-  actionFromDescription,
-  describeContext,
+  actionFromGuardian,
+  guardianContext,
 } from "@/chat/guardian/call-facts";
+import { recordClone } from "@/chat/guardian/checkout-records";
 import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
@@ -37,6 +38,7 @@ import {
 import { createPluginState } from "@/chat/plugins/state";
 import type {
   AnyToolDefinition,
+  ActionDescription,
   ToolExecuteOptions,
 } from "@/chat/tool-support/definition";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
@@ -77,8 +79,8 @@ function pluginToolDefinitions(
   const definitions: Record<string, AnyToolDefinition> = {};
   for (const [localName, definition] of Object.entries(pluginTools)) {
     const execute = definition.execute;
-    // Only `getPluginTools` binds the plugin's `describe`.
-    const { describe: _describe, ...rest } = definition;
+    // Only `getPluginTools` binds the plugin's `guardian`.
+    const { guardian: _guardian, ...rest } = definition;
     // Naming conventions belong in lint, not on the turn's critical path.
     definitions[`${namespace}_${localName}`] = {
       ...(rest as AnyToolDefinition),
@@ -323,26 +325,33 @@ export function getPluginTools(
         | undefined;
       const source = pluginTools[localName];
       // Keep the receiver of the plugin's object, like `execute`.
-      const describe = source?.describe?.bind(source);
+      const guardian = source?.guardian?.bind(source);
+      // One answer per input in this Turn: review and the clone record
+      // after the call read the same one.
+      const answers = new Map<string, Promise<ActionDescription>>();
+      const guardianOf = (input: unknown) => {
+        const key = JSON.stringify(input) ?? "";
+        let answer = answers.get(key);
+        if (!answer && guardian) {
+          answer = guardian(
+            input,
+            guardianContext({ plugin: pluginName, conversationIds }),
+          ).then(actionFromGuardian);
+          answers.set(key, answer);
+        }
+        return answer;
+      };
       const disabledReason = disabled[localName];
       tools[name] = {
         ...definition,
         ...(disabledReason ? { disabledReason } : undefined),
-        ...(describe
-          ? {
-              describe: async (input: unknown) =>
-                actionFromDescription(
-                  await describe(
-                    input,
-                    describeContext({ provider: pluginName, conversationIds }),
-                  ),
-                ),
-            }
+        ...(guardian
+          ? { guardian: async (input: unknown) => (await guardianOf(input))! }
           : undefined),
         ...(execute
           ? {
-              execute: async (input: unknown, options: ToolExecuteOptions) =>
-                annotateToolResult(
+              execute: async (input: unknown, options: ToolExecuteOptions) => {
+                const result = await annotateToolResult(
                   context.conversationId,
                   pluginName,
                   await recordToolReply({
@@ -352,7 +361,10 @@ export function getPluginTools(
                     toolCallId: options.toolCallId,
                   }),
                   { readOnly: definition.annotations?.readOnlyHint === true },
-                ),
+                );
+                await recordClone(context.conversationId, guardianOf(input));
+                return result;
+              },
             }
           : undefined),
       };

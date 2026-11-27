@@ -79,7 +79,7 @@ function demoPluginTool(description = "Demo tool", exposure?: ToolExposure) {
       openWorldHint: false,
       readOnlyHint: true,
     },
-    describe: async () => ({ ref: description, audience: "internal" }),
+    guardian: async () => ({ target: description, audience: "internal" }),
     description,
     exposure,
     inputSchema: z.object({}),
@@ -692,7 +692,7 @@ describe("agent plugin hooks", () => {
         description: "Agent demo",
       });
       expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("auto");
-      expect(await tools["agentDemo_demoTool"]?.describe?.({})).toEqual({
+      expect(await tools["agentDemo_demoTool"]?.guardian?.({})).toEqual({
         target: { ref: "Demo tool", audience: "internal" },
       });
       expect(tools["agentDemo_demoTool"]?.disabledReason).toBeUndefined();

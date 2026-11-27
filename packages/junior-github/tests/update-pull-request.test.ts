@@ -1,6 +1,7 @@
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
+import { guardianContext } from "./plugin-harness";
 
 const ATTRIBUTED_BODY = `Original body
 
@@ -709,29 +710,29 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 describe("updatePullRequest call facts", () => {
   const tool = createGitHubUpdatePullRequestTool();
 
-  async function describeUpdate(input: Record<string, unknown>, own = true) {
-    return await tool.describe?.(
+  async function guardianOf(input: Record<string, unknown>, own = true) {
+    return await tool.guardian?.(
       { repo: "getsentry/junior", pull_request: 691, ...input } as never,
-      { isOwnPullRequest: async () => own },
+      guardianContext({ own, visibility: { private: true } }),
     );
   }
 
-  it("advises allow for a text update of this work's pull request", async () => {
+  it("allows a text update of this work's pull request", async () => {
     await expect(
-      describeUpdate({ title: "New title", body: "New body" }),
+      guardianOf({ title: "New title", body: "New body" }),
     ).resolves.toEqual({
-      ref: "getsentry/junior#691",
-      audience: "world",
-      advice: "allow",
+      target: "getsentry/junior#691",
+      audience: "internal",
+      decision: "allow",
       reason:
         "Only the text of getsentry/junior#691, which this work created, changes.",
     });
   });
 
-  it("gives no advice for another pull request", async () => {
-    await expect(describeUpdate({ body: "New body" }, false)).resolves.toEqual({
-      ref: "getsentry/junior#691",
-      audience: "world",
+  it("gives no decision for another pull request", async () => {
+    await expect(guardianOf({ body: "New body" }, false)).resolves.toEqual({
+      target: "getsentry/junior#691",
+      audience: "internal",
     });
   });
 
@@ -740,9 +741,10 @@ describe("updatePullRequest call facts", () => {
     { draft: false },
     { base: "release" },
     { request_review: true },
-  ])("gives no advice for an update that also sets %o", async (change) => {
-    await expect(
-      describeUpdate({ body: "New body", ...change }),
-    ).resolves.toEqual({ ref: "getsentry/junior#691", audience: "world" });
+  ])("gives no decision for an update that also sets %o", async (change) => {
+    await expect(guardianOf({ body: "New body", ...change })).resolves.toEqual({
+      target: "getsentry/junior#691",
+      audience: "internal",
+    });
   });
 });

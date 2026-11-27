@@ -24,8 +24,9 @@ describe("Linear plugin package", () => {
   });
 
   it("gives each team write the audience of its team", async () => {
-    const registration = linearPlugin({ publicTeams: ["py"] });
-    const describe = registration.hooks!.describeMcpCall!;
+    const registration = linearPlugin({ publicTeams: ["PY"] });
+    const guardian = (tool: string, input: Record<string, unknown>) =>
+      registration.hooks!.guardian!({ kind: "mcp", tool, input }, {} as never);
     const manifest = parseInlinePluginManifest(
       {
         ...registration.manifest,
@@ -36,13 +37,21 @@ describe("Linear plugin package", () => {
 
     expect(manifest.reviewContext).toContain("Linear teams PY sync");
     await expect(
-      describe({ tool: "save_issue", input: { team: "PY", title: "x" } }),
-    ).resolves.toEqual({ ref: "Linear team PY", audience: "world" });
+      guardian("save_issue", { team: "PY", title: "x" }),
+    ).resolves.toEqual({ target: "Linear team PY", audience: "world" });
     await expect(
-      describe({ tool: "save_comment", input: { issueId: "WEB-12" } }),
-    ).resolves.toEqual({ ref: "Linear team WEB", audience: "internal" });
+      guardian("save_comment", { issueId: "WEB-12" }),
+    ).resolves.toEqual({ target: "Linear team WEB", audience: "internal" });
+    // A team name or a UUID could be a public team.
     await expect(
-      describe({ tool: "save_issue", input: { id: "6f1c-uuid" } }),
+      guardian("save_issue", { team: "Python SDK", title: "x" }),
+    ).resolves.toEqual({ target: "Linear Python SDK", audience: "world" });
+    await expect(guardian("save_issue", { id: "6f1c-uuid" })).resolves.toEqual({
+      target: "Linear 6f1c-uuid",
+      audience: "world",
+    });
+    await expect(
+      guardian("get_issue", { id: "PY-1" }),
     ).resolves.toBeUndefined();
   });
 });

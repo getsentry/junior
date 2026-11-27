@@ -26,7 +26,10 @@ export type GuardianOutcome = "allow" | "ask" | "deny" | "unavailable";
 /** One Git checkout in the Sandbox, as the gate reads it for a command. */
 export interface GuardianDesignCheckout {
   path: string;
-  /** Its remote URLs. A plugin's `describeUrl` types each, as in production. */
+  /**
+   * Its remote URLs. The first is its Workspace checkout, whose plugin types
+   * it, as in production. Core has no record of the others.
+   */
   remotes: string[];
   /** What `git log -p --branches --not --remotes` prints in this checkout. */
   unpushed?: string;
@@ -35,7 +38,7 @@ export interface GuardianDesignCheckout {
 /**
  * Stored records that production reads to build Guardian's facts, which the
  * evals have no database for (`facts-from-junior`). Each call's target and
- * advice come from its tool's `describe`, as in production.
+ * decision come from its tool's `guardian`, as in production.
  */
 export interface GuardianDesignFacts {
   /**
@@ -51,7 +54,7 @@ export interface GuardianDesignFacts {
   }>;
   /**
    * Pull requests that this work created, as `owner/repo#number`: what
-   * core's code-change records hold for `isOwnPullRequest`.
+   * core's code-change records hold.
    */
   ownPullRequests?: string[];
   /** The Git checkouts of the Sandbox, for a shell command. */

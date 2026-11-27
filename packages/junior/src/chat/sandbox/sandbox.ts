@@ -90,6 +90,8 @@ export interface SandboxAccess {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
+  /** The Workspace whose checkouts this Sandbox holds, if any. */
+  activeWorkspace(): Workspace | undefined;
   switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   close(): void;
 }
@@ -838,6 +840,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     },
     sandboxRef() {
       return runtime.sandboxRef();
+    },
+    activeWorkspace() {
+      return activeWorkspace;
     },
     close() {
       runtime.close();

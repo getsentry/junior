@@ -11,7 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubDbSchema } from "../db/database.js";
-import { describePullRequestCall } from "../tool-support/describe-call.js";
+import { repositoryCall } from "../tool-support/guardian-call.js";
 import {
   ADD_REVIEW_REACTION,
   type GitHubGraphqlOperation,
@@ -521,8 +521,8 @@ export function createGitHubUpdatePullRequestFeedbackTool(
     exposure: "direct",
     // A status reaction can ask the author to review again, so it is not
     // just text.
-    describe: (input, ctx) =>
-      describePullRequestCall(input.repo, input.pull_request, ctx, false),
+    guardian: (input, ctx) =>
+      repositoryCall(input.repo, ctx, input.pull_request),
     inputSchema,
     outputSchema,
     async execute(input, _options, ctx: FeedbackContext): Promise<Result> {

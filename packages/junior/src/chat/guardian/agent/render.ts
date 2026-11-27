@@ -53,6 +53,9 @@ export function renderAction(
     tool: action.tool,
     ...(action.target ? { target: action.target } : undefined),
     ...(action.summary ? { summary: action.summary } : undefined),
+    ...(action.toolDecision
+      ? { toolDecision: action.toolDecision }
+      : undefined),
     input: action.input,
     // What a shell command can reach (`sandbox-boundary`).
     ...(sandbox && action.tool === "bash" ? { sandbox } : undefined),

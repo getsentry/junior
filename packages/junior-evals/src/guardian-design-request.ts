@@ -4,9 +4,16 @@
  * `design/guardian.md`).
  */
 import { posix } from "node:path";
-import type { DescribeReadContext } from "@sentry/junior-plugin-api";
+import type { GuardianContext } from "@sentry/junior-plugin-api";
 import { mapBounded } from "@/chat/fan-out";
-import type { Action, Message, ReviewRequest } from "@/chat/guardian/guardian";
+import { actionFromGuardian } from "@/chat/guardian/call-facts";
+import { repositoryUrlKey } from "@/chat/guardian/checkout-records";
+import type {
+  Action,
+  Message,
+  ReviewRequest,
+  Target,
+} from "@/chat/guardian/guardian";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import { guardianMessages } from "@/chat/guardian/request";
 import {
@@ -16,7 +23,10 @@ import {
 } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-import type { GuardianDesignFacts } from "./guardian-design-harness";
+import type {
+  GuardianDesignCheckout,
+  GuardianDesignFacts,
+} from "./guardian-design-harness";
 import { agentActionFacts } from "./guardian-tools";
 /**
  * The messages of the work. A line of the person that reaches the Turn
@@ -39,7 +49,7 @@ function designMessages(
 }
 
 /** A plugin cache in memory, for the reads of one request. */
-function memoryCache(): DescribeReadContext["cache"] {
+function memoryCache(): GuardianContext["cache"] {
   const entries = new Map<string, unknown>();
   return {
     async get<T>(key: string) {
@@ -63,18 +73,31 @@ function memoryCache(): DescribeReadContext["cache"] {
 }
 
 /**
- * What a plugin reads while it describes a call, as production gives it.
- * GitHub answers a repository read with the case's visibility. Every other
- * provider read fails, as when a provider does not answer.
+ * What a plugin's `guardian` reads, as production gives it. GitHub answers a
+ * repository read with the case's visibility. Every other provider read
+ * fails, as when a provider does not answer. The code-change records hold
+ * the case's own pull requests.
  */
-function designReadContext(
+function designGuardianContext(
   facts: GuardianDesignFacts | undefined,
-): DescribeReadContext {
+): GuardianContext {
   const privateRepos = new Set(
     (facts?.privateRepos ?? []).map((repo) => repo.toLowerCase()),
   );
+  const own = new Set(facts?.ownPullRequests ?? []);
   return {
     cache: memoryCache(),
+    codeChanges: {
+      async list({ repository }) {
+        const owned = (repository?.numbers ?? []).some((number) =>
+          own.has(`${repository?.name}#${number}`),
+        );
+        return owned ? [{} as never] : [];
+      },
+    },
+    async conversationIds() {
+      return ["guardian-eval"];
+    },
     egress: {
       async fetch({ request }) {
         const url = new URL(request.url);
@@ -90,22 +113,20 @@ function designReadContext(
   };
 }
 
-/** One action as core builds it, with the facts that its tool describes. */
+/** One action as core builds it, with the facts that its tool gives. */
 async function designAction(
   proposal: ToolActionProposal,
-  facts: GuardianDesignFacts | undefined,
-  readContext: DescribeReadContext,
+  ctx: GuardianContext,
 ): Promise<Action> {
   const input = proposal.input as { command?: unknown };
-  const described = await agentActionFacts(proposal.tool, proposal.input, {
-    ownPullRequests: facts?.ownPullRequests ?? [],
-    readContext,
-  });
+  const described = await agentActionFacts(proposal.tool, proposal.input, ctx);
   return {
     tool: proposal.tool.name,
     input: proposal.input,
     ...(described.target ? { target: described.target } : undefined),
-    ...(described.advice ? { advice: described.advice } : undefined),
+    ...(described.toolDecision
+      ? { toolDecision: described.toolDecision }
+      : undefined),
     summary:
       proposal.tool.name === "bash" && typeof input.command === "string"
         ? input.command
@@ -122,7 +143,7 @@ async function designAction(
 async function designSandbox(
   proposals: readonly ToolActionProposal[],
   facts: GuardianDesignFacts | undefined,
-  readContext: DescribeReadContext,
+  ctx: GuardianContext,
 ): Promise<ReviewRequest["sandbox"]> {
   const commands = proposals.filter(({ tool }) => tool.name === "bash");
   if (commands.length === 0) return undefined;
@@ -152,8 +173,40 @@ async function designSandbox(
             "",
         }
       : undefined),
-    readContext: () => readContext,
+    targets: await workspaceTargets(checkouts, ctx),
   });
+}
+
+/**
+ * The clone records of the case's Sandbox. Each checkout is the Workspace
+ * checkout of its first remote, which the GitHub plugin describes, as core
+ * reads it at push time. Other remotes have no record.
+ */
+async function workspaceTargets(
+  checkouts: readonly GuardianDesignCheckout[],
+  ctx: GuardianContext,
+): Promise<Map<string, Target>> {
+  const github = getPlugins().find(
+    (plugin) => plugin.manifest.name === "github",
+  );
+  const described = await mapBounded(checkouts, async ({ remotes }) => {
+    const repo = /^https:\/\/github\.com\/([^/]+\/[^/]+?)\.git$/.exec(
+      remotes[0] ?? "",
+    )?.[1];
+    const result = repo
+      ? await github?.hooks?.guardian?.(
+          { kind: "workspaceCheckout", repo },
+          ctx,
+        )
+      : undefined;
+    return result ? actionFromGuardian(result).target : undefined;
+  });
+  const targets = new Map<string, Target>();
+  for (const target of described) {
+    const key = target && repositoryUrlKey(target.ref);
+    if (target && key) targets.set(key, target);
+  }
+  return targets;
 }
 
 /** The Guardian request for the reviewed actions of one case, in order. */
@@ -161,12 +214,12 @@ export async function designGuardianRequest(
   proposals: readonly ToolActionProposal[],
   facts: GuardianDesignFacts | undefined,
 ): Promise<ReviewRequest> {
-  const readContext = designReadContext(facts);
-  const sandbox = await designSandbox(proposals, facts, readContext);
+  const ctx = designGuardianContext(facts);
+  const sandbox = await designSandbox(proposals, facts, ctx);
   return {
     messages: designMessages(proposals[0]!, facts),
     actions: await mapBounded(proposals, async (proposal) =>
-      designAction(proposal, facts, readContext),
+      designAction(proposal, ctx),
     ),
     ...(sandbox ? { sandbox } : undefined),
   };

@@ -1,65 +1,53 @@
-import type {
-  CallDescription,
-  DescribeContext,
-  DescribeReadContext,
-} from "@sentry/junior-plugin-api";
-import { listCodeChanges } from "@/chat/code/store";
+import type { GuardianContext } from "@sentry/junior-plugin-api";
+import * as z from "zod";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { getDb } from "@/chat/db";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { createPluginCache } from "@/chat/plugins/cache";
+import type { ActionDescription } from "@/chat/tool-support/definition";
 
 // Facts about a target, such as a repository's visibility, do not depend on
 // who asked, so they are read as Junior's own system account.
 const GUARDIAN_FACTS_ACTOR = { platform: "system", name: "guardian" } as const;
 
 /**
- * What one plugin may read while it describes a call or a URL: its cache,
- * and provider reads as Junior's system account. A read never asks anyone
- * to authorize.
+ * What one plugin may read while Guardian reviews a call: its cache,
+ * provider reads as Junior's system account, and its code changes. A read
+ * never asks anyone to authorize.
  */
-export function describeReadContext(plugin: string): DescribeReadContext {
+export function guardianContext(args: {
+  plugin: string;
+  /** The Conversations of the work that makes the call. */
+  conversationIds(): Promise<string[]>;
+}): GuardianContext {
+  const codeChanges = createPluginCodeChanges(args.plugin);
   return {
-    cache: createPluginCache(plugin),
+    cache: createPluginCache(args.plugin),
     egress: createPluginEgress({
       credentialContext: credentialContextForActor(GUARDIAN_FACTS_ACTOR),
       pluginAuth: { async handleAuthRequired() {} },
     }),
-  };
-}
-import type { ActionDescription } from "@/chat/tool-support/definition";
-
-/**
- * What core answers for one plugin's `describe`. Core, not the plugin,
- * says whether this work created a pull request: it reads its own
- * code-change records for the work's Conversations.
- */
-export function describeContext(args: {
-  /** The plugin whose code-change records hold the pull request. */
-  provider: string;
-  conversationIds(): Promise<string[]>;
-}): DescribeContext {
-  return {
-    ...describeReadContext(args.provider),
-    async isOwnPullRequest(repo, number) {
-      const changes = await listCodeChanges(getDb(), args.provider, {
-        conversationIds: await args.conversationIds(),
-        repository: { name: repo, numbers: [number] },
-      });
-      return changes.length > 0;
-    },
+    codeChanges: { list: async (filter) => await codeChanges.list(filter) },
+    conversationIds: args.conversationIds,
   };
 }
 
-/** The action that Guardian reviews, from one plugin call's description. */
-export function actionFromDescription(
-  description: CallDescription,
-): ActionDescription {
-  const { ref, audience, advice, reason } = description;
+/** What a plugin's `guardian` returns, checked at the plugin boundary. */
+const guardianResultSchema = z.object({
+  target: z.string().min(1),
+  audience: z.enum(["internal", "world"]),
+  decision: z.enum(["allow", "ask", "deny"]).optional(),
+  reason: z.string().min(1).optional(),
+});
+
+/** The action that Guardian reviews, from what a plugin says about a call. */
+export function actionFromGuardian(result: unknown): ActionDescription {
+  const { target, audience, decision, reason } =
+    guardianResultSchema.parse(result);
   return {
-    target: { ref, audience },
-    ...(advice === "allow"
-      ? { advice: { decision: "allow", ...(reason ? { reason } : undefined) } }
+    target: { ref: target, audience },
+    ...(decision
+      ? { toolDecision: { decision, ...(reason ? { reason } : undefined) } }
       : undefined),
   };
 }

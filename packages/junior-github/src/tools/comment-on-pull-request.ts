@@ -8,7 +8,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubDbSchema } from "../db/database.js";
-import { describePullRequestCall } from "../tool-support/describe-call.js";
+import { pullRequestCall } from "../tool-support/guardian-call.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import { markGitHubReviewAsked } from "../pull-request-review-again.js";
 import {
@@ -221,15 +221,10 @@ export const gitHubCommentOnPullRequestTool = definePluginTool({
   },
   description:
     "Post a conversation comment on a GitHub pull request, or reply in an inline review thread. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL, and whether the requester was asked.",
-  // A comment is text, unless it also asks the requester for a review,
-  // which changes what the pull request waits on.
-  describe: (input, ctx) =>
-    describePullRequestCall(
-      input.repo,
-      input.pull_request,
-      ctx,
-      input.asks_requester !== true,
-    ),
+  // A comment or a reply is text. `asks_requester` changes what the pull
+  // request waits on.
+  guardian: (input, ctx) =>
+    pullRequestCall(input, ctx, ["body", "in_reply_to"]),
   inputSchema,
   outputSchema,
   async execute(input, _options, ctx: CommentContext): Promise<Result> {
