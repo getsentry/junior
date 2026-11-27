@@ -1,14 +1,17 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { sentryPlugin } from "@sentry/junior-sentry";
+import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
+import type { JuniorApiEnv } from "@/api/route";
+import { objectLinksReportSchema } from "@/api/schema";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { closeDb } from "@/chat/db";
 import { defineJuniorPlugins } from "@/plugins";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
-import { readLiveCards } from "../../fixtures/object-cards";
 
 const SENTRY_SCOPE =
   "alerts:write event:write member:read org:read project:releases project:write team:write";
@@ -104,6 +107,23 @@ async function connectSentry(viewer: User, name: string) {
   });
 }
 
+async function readCards(viewer: User, urls: string[]) {
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi());
+  const query = new URLSearchParams(urls.map((url) => ["url", url]));
+  const response = await app.request(`http://localhost/api/objects?${query}`);
+  expect(response.status).toBe(200);
+  const body = await response.text();
+  return {
+    body,
+    objects: objectLinksReportSchema.parse(JSON.parse(body)).objects,
+  };
+}
+
 describe("Sentry chart link cards", () => {
   beforeEach(async () => {
     vi.stubEnv("SENTRY_READ_TOKEN", ORG_READ_TOKEN);
@@ -123,7 +143,7 @@ describe("Sentry chart link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    const { objects } = await readLiveCards(alice, [EXPLORE_URL]);
+    const { objects } = await readCards(alice, [EXPLORE_URL]);
 
     expect(objects).toEqual([
       {
@@ -176,8 +196,8 @@ describe("Sentry chart link cards", () => {
     await connectSentry(bob, "bob");
 
     // Alice's cached chart must not reach Bob.
-    await readLiveCards(alice, [EXPLORE_URL]);
-    const { body, objects } = await readLiveCards(bob, [EXPLORE_URL]);
+    await readCards(alice, [EXPLORE_URL]);
+    const { body, objects } = await readCards(bob, [EXPLORE_URL]);
 
     expect(objects).toEqual([]);
     for (const text of ["http.client", "p95(span.duration)", "30.1"]) {
@@ -193,7 +213,7 @@ describe("Sentry chart link cards", () => {
     const { queries } = fakeSentry({ alice: ["11"], carol: ["11"] });
     await connectSentry(testViewer("alice@example.com"), "alice");
 
-    const { objects } = await readLiveCards(testViewer("carol@example.com"), [
+    const { objects } = await readCards(testViewer("carol@example.com"), [
       EXPLORE_URL,
     ]);
 
@@ -206,8 +226,8 @@ describe("Sentry chart link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    await readLiveCards(alice, [EXPLORE_URL]);
-    const { objects } = await readLiveCards(alice, [EXPLORE_URL]);
+    await readCards(alice, [EXPLORE_URL]);
+    const { objects } = await readCards(alice, [EXPLORE_URL]);
 
     expect(objects).toHaveLength(1);
     expect(queries).toHaveLength(1);
@@ -228,7 +248,7 @@ describe("Sentry chart link cards", () => {
     url.searchParams.set("start", "2026-11-13T00:00:00");
     url.searchParams.set("end", "2026-11-13T12:00:00");
 
-    const { objects } = await readLiveCards(alice, [url.href]);
+    const { objects } = await readCards(alice, [url.href]);
 
     expect(objects[0]?.object.facts).toMatchObject({
       range: "2026-11-13 00:00 to 2026-11-13 12:00 UTC",
@@ -275,7 +295,7 @@ describe("Sentry chart link cards", () => {
     );
     url.searchParams.append("aggregateField", field({ groupBy: "span.op" }));
 
-    const { objects } = await readLiveCards(alice, [url.href]);
+    const { objects } = await readCards(alice, [url.href]);
 
     const facts = objects[0]?.object.facts;
     expect(facts?.type === "chart" && facts.series.map((s) => s.label)).toEqual(
@@ -299,7 +319,7 @@ describe("Sentry chart link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    const { objects } = await readLiveCards(alice, [EXPLORE_URL]);
+    const { objects } = await readCards(alice, [EXPLORE_URL]);
 
     const facts = objects[0]?.object.facts;
     if (facts?.type !== "chart") throw new Error("Expected a chart card");

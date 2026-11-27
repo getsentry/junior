@@ -24,9 +24,7 @@ import {
   sendGitHubWebhook,
   stubGitHubApp,
   viewerApi,
-  viewerPageApi,
 } from "../../fixtures/github-objects";
-import { recordOutboundRequests } from "../../fixtures/object-cards";
 import {
   conversationsInfoOk,
   conversationsMembersPage,
@@ -316,14 +314,6 @@ describe("object links API", () => {
         provider: "github",
         providerSubjectId: "1002",
       });
-      const outbound = recordOutboundRequests();
-      // A dashboard read asks GitHub nothing. Nothing holds Alice's access
-      // yet, so it shows no card.
-      const page = await viewerPageApi("alice@example.com");
-      expect(await page(`${repo}/issues/12`, `${repo}/pull/34`)).toEqual(
-        new Map(),
-      );
-      expect(outbound.urls).toEqual([]);
 
       const member = await (
         await viewerApi("alice@example.com")
@@ -377,26 +367,6 @@ describe("object links API", () => {
       // repository.
       expect(member.objects.has(`${repo}/issues/56`)).toBe(false);
       expect(member.body).not.toContain("Secret");
-      // The live read cached her access and the objects, so the dashboard
-      // shows them with no GitHub call.
-      outbound.urls.length = 0;
-      const cached = await page(`${repo}/issues/12`, `${repo}/pull/34`);
-      expect(cached.get(`${repo}/issues/12`)).toEqual(
-        member.objects.get(`${repo}/issues/12`),
-      );
-      expect(cached.get(`${repo}/pull/34`)).toMatchObject({
-        objectType: "code_change",
-        status: "draft",
-      });
-      // An outsider's dashboard read shows no card, not even the public
-      // page.
-      expect(
-        await (
-          await viewerPageApi("bob@example.com")
-        )(`${repo}/pull/34`),
-      ).toEqual(new Map());
-      expect(outbound.urls).toEqual([]);
-      outbound.stop();
 
       // A viewer who cannot see the repository gets only what GitHub shows
       // signed out, and the App reads nothing more for them.

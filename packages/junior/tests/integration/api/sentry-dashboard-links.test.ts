@@ -1,14 +1,17 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { sentryPlugin } from "@sentry/junior-sentry";
+import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
+import type { JuniorApiEnv } from "@/api/route";
+import { objectLinksReportSchema } from "@/api/schema";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { closeDb } from "@/chat/db";
 import { defineJuniorPlugins } from "@/plugins";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
-import { readLiveCards } from "../../fixtures/object-cards";
 
 const SENTRY_SCOPE =
   "alerts:write event:write member:read org:read project:releases project:write team:write";
@@ -168,6 +171,23 @@ async function connectSentry(viewer: User, name: string) {
   });
 }
 
+async function readCards(viewer: User, urls: string[]) {
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi());
+  const query = new URLSearchParams(urls.map((url) => ["url", url]));
+  const response = await app.request(`http://localhost/api/objects?${query}`);
+  expect(response.status).toBe(200);
+  const body = await response.text();
+  return {
+    body,
+    objects: objectLinksReportSchema.parse(JSON.parse(body)).objects,
+  };
+}
+
 const chartQueries = (requests: ReturnType<typeof fakeSentry>["requests"]) =>
   requests
     .filter(({ path }) => path.endsWith("/events-timeseries/"))
@@ -192,7 +212,7 @@ describe("Sentry dashboard link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    const { body, objects } = await readLiveCards(alice, [DASHBOARD_URL]);
+    const { body, objects } = await readCards(alice, [DASHBOARD_URL]);
 
     expect(objects).toEqual([
       {
@@ -296,7 +316,7 @@ describe("Sentry dashboard link cards", () => {
     await connectSentry(alice, "alice");
     const url = `${DASHBOARD_URL}?project=12&environment=staging&statsPeriod=7d`;
 
-    const { objects } = await readLiveCards(alice, [url]);
+    const { objects } = await readCards(alice, [url]);
 
     expect(objects[0]?.object.facts).toMatchObject({
       projects: ["payments"],
@@ -318,7 +338,7 @@ describe("Sentry dashboard link cards", () => {
     await connectSentry(alice, "alice");
     const url = "https://sentry.io/organizations/sentry/dashboard/42/widget/3/";
 
-    const { objects } = await readLiveCards(alice, [url]);
+    const { objects } = await readCards(alice, [url]);
 
     expect(objects).toEqual([
       {
@@ -354,7 +374,7 @@ describe("Sentry dashboard link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    const { objects } = await readLiveCards(alice, [
+    const { objects } = await readCards(alice, [
       `${DASHBOARD_URL}widget/1/`,
       `${DASHBOARD_URL}widget/2/`,
       `${DASHBOARD_URL}widget/99/`,
@@ -373,8 +393,8 @@ describe("Sentry dashboard link cards", () => {
 
     // Alice's cached dashboard and widget must not reach Bob.
     const urls = [DASHBOARD_URL, `${DASHBOARD_URL}widget/0/`];
-    expect((await readLiveCards(alice, urls)).objects).toHaveLength(2);
-    const { body, objects } = await readLiveCards(bob, urls);
+    expect((await readCards(alice, urls)).objects).toHaveLength(2);
+    const { body, objects } = await readCards(bob, urls);
 
     expect(objects).toEqual([]);
     for (const text of ["Checkout health", "checkout@4.2.0", "Log volume"]) {
@@ -389,7 +409,7 @@ describe("Sentry dashboard link cards", () => {
     const { requests } = fakeSentry({ alice: ["11"], carol: ["11"] });
     await connectSentry(testViewer("alice@example.com"), "alice");
 
-    const { objects } = await readLiveCards(testViewer("carol@example.com"), [
+    const { objects } = await readCards(testViewer("carol@example.com"), [
       DASHBOARD_URL,
     ]);
 
@@ -402,8 +422,8 @@ describe("Sentry dashboard link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    await readLiveCards(alice, [DASHBOARD_URL]);
-    const { objects } = await readLiveCards(alice, [DASHBOARD_URL]);
+    await readCards(alice, [DASHBOARD_URL]);
+    const { objects } = await readCards(alice, [DASHBOARD_URL]);
 
     expect(objects).toHaveLength(1);
     // The dashboard, its projects, and three charts, read once.

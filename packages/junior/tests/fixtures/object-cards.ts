@@ -1,7 +1,6 @@
 /**
- * Live card reads, as an Attach, a Turn's card delivery, or a Slack card's
- * details make them. Dashboard reads through `/api/objects` read only the
- * caches.
+ * Live card reads, as `/api/objects`, an Attach, or a Turn's card delivery
+ * makes them, and a record of the provider calls that a page load makes.
  */
 import type { User } from "@sentry/junior-plugin-api";
 import { resolveObjectLinks } from "@/api/objects/resolve";

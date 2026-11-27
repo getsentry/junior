@@ -29,45 +29,42 @@ class AccessReadFailed extends Error {
 }
 
 async function readRepositoryAccess(
-  ctx: { cache: PluginCache; cacheOnly?: true; egress: PluginEgress },
+  ctx: { cache: PluginCache; egress: PluginEgress },
   repository: { name: string; owner: string },
   login: string,
 ): Promise<boolean> {
-  const key =
-    `repository-access:${repository.owner}/${repository.name}:${login}`.toLowerCase();
-  // An access answer that is not cached is not known, so it is false.
-  if (ctx.cacheOnly) return (await ctx.cache.get<boolean>(key)) === true;
-  return await ctx.cache.getOrLoad(key, async () => {
-    const response = await githubApi(ctx.egress, {
-      operation: "github.repository.collaborator-permission.get",
-      path: `${repoPath(repository)}/collaborators/${encodeURIComponent(login)}/permission`,
-    });
-    // GitHub answers 404 when the App cannot see the repository or does
-    // not know the login. Other failures, such as a rate limit, are not
-    // an answer, so they are not cached.
-    if (!response.ok && response.status !== 404) {
-      throw new AccessReadFailed(response.status);
-    }
-    const parsed = response.ok
-      ? permissionSchema.safeParse(response.body)
-      : undefined;
-    return {
-      value: parsed?.success === true && parsed.data.permission !== "none",
-      ttlMs: ACCESS_TTL_MS,
-    };
-  });
+  return await ctx.cache.getOrLoad(
+    `repository-access:${repository.owner}/${repository.name}:${login}`.toLowerCase(),
+    async () => {
+      const response = await githubApi(ctx.egress, {
+        operation: "github.repository.collaborator-permission.get",
+        path: `${repoPath(repository)}/collaborators/${encodeURIComponent(login)}/permission`,
+      });
+      // GitHub answers 404 when the App cannot see the repository or does
+      // not know the login. Other failures, such as a rate limit, are not
+      // an answer, so they are not cached.
+      if (!response.ok && response.status !== 404) {
+        throw new AccessReadFailed(response.status);
+      }
+      const parsed = response.ok
+        ? permissionSchema.safeParse(response.body)
+        : undefined;
+      return {
+        value: parsed?.success === true && parsed.data.permission !== "none",
+        ttlMs: ACCESS_TTL_MS,
+      };
+    },
+  );
 }
 
 /**
  * Return whether the viewer's linked GitHub account can see the repository.
  * A viewer without a linked account, and a failed read, get false. A failed
- * read is not kept, so the next call asks GitHub again. A `cacheOnly` read
- * gets true only from a cached answer.
+ * read is not kept, so the next call asks GitHub again.
  */
 export async function viewerCanSeeRepository(
   ctx: {
     cache: PluginCache;
-    cacheOnly?: true;
     egress: PluginEgress;
     log: PluginLogger;
     viewer: User;

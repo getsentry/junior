@@ -103,7 +103,7 @@ describe("conversation detail annotations", () => {
     });
   });
 
-  it("shows each annotation's cached object only to a viewer whose access is cached, and reads no provider", async () => {
+  it("shows each annotation's stored object to anyone who can read the Conversation, and reads no provider", async () => {
     // createApp installs its plugins; the next test starts without them.
     useAppContext();
     stubGitHubApp();
@@ -154,8 +154,8 @@ describe("conversation detail annotations", () => {
     const alice = await signedInViewer("alice@example.com");
     const outbound = recordOutboundRequests();
     try {
-      // Nothing holds Alice's access yet, so the page shows the stored
-      // title and the link, and asks GitHub nothing.
+      // Nothing holds the object yet, so the page shows the stored title
+      // and the link, and asks GitHub nothing.
       const unknown = await readConversationDetail(conversationId, {
         viewer: alice,
       });
@@ -174,7 +174,7 @@ describe("conversation detail annotations", () => {
       ]);
       expect(outbound.urls).toEqual([]);
 
-      // A live read, such as an Attach, caches her access and the object.
+      // A live read keeps the object, as a webhook does.
       await readLiveCards(alice, [`${GITHUB_REPO}/pull/35`]);
       outbound.urls.length = 0;
       const member = await readConversationDetail(conversationId, {
@@ -213,15 +213,18 @@ describe("conversation detail annotations", () => {
         source: "github",
       });
 
-      // A reader without access to the repository sees only the stored
-      // title and the link, never what the App read.
+      // A reader without access to the repository sees the stored object
+      // too, because they can read the Conversation.
       const outsider = await readConversationDetail(conversationId, {
         viewer: await signedInViewer("bob@example.com"),
       });
-      expect(outsider?.annotations).toEqual(unknown?.annotations);
-      expect(JSON.stringify(outsider)).not.toMatch(
-        /Show screenshots|merged|user-attachments/,
-      );
+      expect(outsider?.annotations).toEqual([
+        expect.objectContaining({
+          kind: "object",
+          status: "merged",
+          title: "Show screenshots on cards",
+        }),
+      ]);
       expect(outbound.urls).toEqual([]);
     } finally {
       outbound.stop();

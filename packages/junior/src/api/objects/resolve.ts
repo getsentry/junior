@@ -405,7 +405,7 @@ async function prefetchLinks(
 /**
  * Resolve links to object cards for one viewer. A link without a link type,
  * without access, or with a failed read gets no card. Nothing is saved on a
- * Conversation. `cacheOnly` reads, for a page load, a poll, or a hover, make
+ * Conversation. `cacheOnly` reads, for a page load or a poll, make
  * no provider call: they show only what the caches hold.
  */
 export async function resolveObjectLinks(

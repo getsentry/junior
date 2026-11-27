@@ -2,9 +2,13 @@ import { linearPlugin } from "../../../../junior-linear/src/index.js";
 import type { User } from "@sentry/junior-plugin-api";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
+import type { JuniorApiEnv } from "@/api/route";
+import { objectLinksReportSchema } from "@/api/schema";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { putMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -16,7 +20,6 @@ import {
 } from "../../fixtures/conversation-retention";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
-import { readLiveCards } from "../../fixtures/object-cards";
 
 const MCP_URL = "https://mcp.linear.app/mcp";
 const ISSUE_URL = "https://linear.app/acme/issue/ENG-123/fix-login-redirect";
@@ -126,6 +129,29 @@ function fakeLinearMcp(access: Record<string, string[]>) {
   return { calls, connect, linear };
 }
 
+function signedInApi(viewer: User) {
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi());
+  return app;
+}
+
+async function readCards(viewer: User, urls: string[]) {
+  const query = new URLSearchParams(urls.map((url) => ["url", url]));
+  const response = await signedInApi(viewer).request(
+    `http://localhost/api/objects?${query}`,
+  );
+  expect(response.status).toBe(200);
+  const body = await response.text();
+  return {
+    body,
+    objects: objectLinksReportSchema.parse(JSON.parse(body)).objects,
+  };
+}
+
 /**
  * Save a Ticket card as an older release did: its subject is the
  * identifier, because that release did not know Linear's uuid.
@@ -193,7 +219,7 @@ describe("Linear issue link cards", () => {
     );
     const otherBefore = await savedTicket(otherConversationId);
 
-    const { objects } = await readLiveCards(alice, [ISSUE_URL]);
+    const { objects } = await readCards(alice, [ISSUE_URL]);
 
     expect(objects).toEqual([
       {
@@ -224,7 +250,7 @@ describe("Linear issue link cards", () => {
     ]);
     // The access check and the card share one `get_issue` call, and a link
     // without the title slug reads the same issue from the cache.
-    const { objects: bare } = await readLiveCards(alice, [
+    const { objects: bare } = await readCards(alice, [
       "https://linear.app/acme/issue/eng-123",
     ]);
     expect(bare.map((card) => card.object.key)).toEqual(["ENG-123"]);
@@ -244,7 +270,7 @@ describe("Linear issue link cards", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       const start = Date.now();
-      const { objects: fresh } = await readLiveCards(alice, [ISSUE_URL]);
+      const { objects: fresh } = await readCards(alice, [ISSUE_URL]);
       expect(fresh.map((card) => card.object.title)).toEqual([
         "Fix login redirect",
       ]);
@@ -252,7 +278,7 @@ describe("Linear issue link cards", () => {
 
       linear.down = true;
       vi.setSystemTime(start + 10 * 60_000);
-      const { objects: stale } = await readLiveCards(alice, [ISSUE_URL]);
+      const { objects: stale } = await readCards(alice, [ISSUE_URL]);
       expect(stale.map((card) => card.object)).toMatchObject([
         {
           fetchedAt: new Date(start).toISOString(),
@@ -271,7 +297,7 @@ describe("Linear issue link cards", () => {
     const conversationId = await seedIdentifierTicket("WEB-9");
     const [before] = await savedTicket(conversationId);
 
-    const { objects } = await readLiveCards(alice, [
+    const { objects } = await readCards(alice, [
       "https://linear.app/acme/issue/WEB-9/fix-login-redirect",
     ]);
 
@@ -294,7 +320,7 @@ describe("Linear issue link cards", () => {
     const before = await savedTicket(conversationId);
 
     for (const viewer of [bob, carol]) {
-      const { body, objects } = await readLiveCards(viewer, [ISSUE_URL]);
+      const { body, objects } = await readCards(viewer, [ISSUE_URL]);
       expect(objects).toEqual([]);
       expect(body).not.toContain("login redirect");
     }
@@ -307,7 +333,7 @@ describe("Linear issue link cards", () => {
     const alice = testViewer("alice@example.com");
     await linear.connect(alice, "alice");
 
-    const { objects } = await readLiveCards(alice, [
+    const { objects } = await readCards(alice, [
       "https://linear.app/other-team/issue/ENG-123/fix-login-redirect",
     ]);
 

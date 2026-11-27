@@ -824,14 +824,16 @@ defineJuniorPlugin({
   of your subject kind `kind` from `from` to `to`, and changes nothing else.
   When `from` is unique only in one workspace, set `urlPrefix` to the
   workspace's address: only Annotations whose url starts with it move.
-- **Cache-only reads.** Dashboard pages, polls, and hover cards make no
-  provider call. They read each card with `ctx.cacheOnly` set, and
-  `egress`, `viewerEgress`, and `viewerMcp` throw. Set
-  `cacheOnlyReads: true` when your `canView` and `resolve` then read only
-  `ctx.cache`, such as objects that your webhooks keep. Return false or
-  nothing on a miss, and never show what your app credential read to a
-  viewer whose access is not cached. Without `cacheOnlyReads`, these reads
-  show only a card that `cacheCards` kept, or the saved title and link.
+- **Cache-only reads.** The dashboard's page loads and polls, such as the
+  conversation feed and the Inbox, make no provider call. They read each
+  card with `ctx.cacheOnly` set, and `egress`, `viewerEgress`, and
+  `viewerMcp` throw. A card that scrolls into view or is hovered still
+  reads live. Set `cacheOnlyReads: true` when your `canView` and `resolve`
+  then read only `ctx.cache`, such as objects that your webhooks keep.
+  Anyone who can read the Conversation or Inbox item sees that stored
+  card, so these reads need no viewer access check. Return nothing on a
+  miss. Without `cacheOnlyReads`, these reads show only a card that
+  `cacheCards` kept, or the saved title and link.
 - **Prefetch.** To load many links in one provider call, add
   `prefetch(ctx, urls)`. Junior calls it once per read of many links with
   every URL that the link type claims, before `canView` and `resolve` run

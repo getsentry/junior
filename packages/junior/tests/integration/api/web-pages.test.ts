@@ -7,9 +7,9 @@ import sharp from "sharp";
 import { describe, expect, test } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { MAX_WEB_PAGE_BYTES } from "@/api/objects/web-page/resolve";
+import { objectLinksReportSchema } from "@/api/schema";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { decodeImageId } from "@/chat/images/ids";
-import { readLiveCards } from "../../fixtures/object-cards";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
 import { patchConfig } from "../../fixtures/config";
@@ -30,11 +30,20 @@ function signedInApi(email = "viewer@example.com") {
   return app;
 }
 
-async function resolveLinks(urls: string[], email = "viewer@example.com") {
-  const { body, objects } = await readLiveCards(testViewer(email), urls);
+async function resolveLinks(urls: string[], email?: string) {
+  const query = new URLSearchParams(urls.map((url) => ["url", url]));
+  const response = await signedInApi(email).request(
+    `http://localhost/api/objects?${query}`,
+  );
+  expect(response.status).toBe(200);
+  const body = await response.text();
   return {
     body,
-    objects: new Map(objects.map((item) => [item.url, item.object])),
+    objects: new Map(
+      objectLinksReportSchema
+        .parse(JSON.parse(body))
+        .objects.map((item) => [item.url, item.object]),
+    ),
   };
 }
 

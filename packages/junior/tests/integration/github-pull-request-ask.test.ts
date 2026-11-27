@@ -458,7 +458,7 @@ describe("the ask of a Junior pull request", () => {
       });
       api.route("/", createJuniorApi());
       // A page reads only the caches. A live read, such as the Inbox tools
-      // make, caches Pat's access and the card.
+      // make, keeps the card.
       const readCard = () => readLiveCards(viewer, [PULL_URL]);
       await readCard();
       const outbound = recordOutboundRequests();
@@ -927,8 +927,8 @@ describe("the ask of a Junior pull request", () => {
       });
 
       // Out sees the item and the pull request, but not the private
-      // Conversation. A live read, such as the Inbox tools make, caches
-      // Out's access and the card, and the page reads only the caches.
+      // Conversation. A live read, such as the Inbox tools make, keeps the
+      // card, and the page reads only the caches.
       const viewer = await signedInViewer("out@example.com");
       await readLiveCards(viewer, [PULL_URL]);
       const api = new Hono<JuniorApiEnv>();

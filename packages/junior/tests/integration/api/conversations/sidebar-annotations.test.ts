@@ -321,14 +321,14 @@ describe("conversation list sidebar annotations", () => {
       // reads a provider.
       const cardReads = () =>
         outbound.urls.filter((url) => !url.endsWith("/api/team.info"));
-      // Nothing holds Alice's access yet, so her row shows the stored
-      // title and asks GitHub nothing.
+      // Nothing holds the object yet, so the row shows the stored title
+      // and asks GitHub nothing.
       await expect(chips(alice)).resolves.toEqual(titleOnly);
       expect(cardReads()).toEqual([]);
-      // A live read, such as an Attach, caches her access and the object.
+      // A live read keeps the object, as a webhook does.
       await readLiveCards(alice, [`${GITHUB_REPO}/pull/36`]);
       outbound.urls.length = 0;
-      await expect(chips(alice)).resolves.toEqual([
+      const stored = [
         {
           key: "getsentry/junior#36",
           label: "junior",
@@ -337,9 +337,11 @@ describe("conversation list sidebar annotations", () => {
           title: "Retry flaky uploads",
           url: `${GITHUB_REPO}/pull/36`,
         },
-      ]);
-      // A reader who cannot see the repository gets only the stored title.
-      await expect(chips(bob)).resolves.toEqual(titleOnly);
+      ];
+      await expect(chips(alice)).resolves.toEqual(stored);
+      // A reader who cannot see the repository but can read the
+      // Conversation sees the stored object too.
+      await expect(chips(bob)).resolves.toEqual(stored);
       expect(cardReads()).toEqual([]);
       outbound.stop();
     } finally {

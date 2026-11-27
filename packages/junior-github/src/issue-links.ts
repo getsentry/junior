@@ -324,7 +324,11 @@ async function readObject(
 
 async function canViewLink(ctx: ObjectLinkContext, url: URL): Promise<boolean> {
   const link = parseLink(url);
-  if (!link || !(await viewerCanSeeRepository(ctx, link))) return false;
+  if (!link) return false;
+  // A page load shows the stored card to anyone who can read the
+  // Conversation, so it checks no viewer access.
+  if (ctx.cacheOnly) return true;
+  if (!(await viewerCanSeeRepository(ctx, link))) return false;
   const card = await readObject(ctx, link);
   if (!card) return true;
   // A transferred issue or a renamed repository redirects, so the card can
