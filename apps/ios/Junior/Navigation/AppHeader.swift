@@ -11,6 +11,7 @@ struct AppHeader<Trailing: View, Below: View>: View {
   @Environment(WindowModel.self) private var window
   @Environment(\.dismiss) private var dismiss
   @Environment(\.splitColumn) private var column
+  @Environment(\.barsAreVertical) private var barsAreVertical
   var title: String
   var leading: Leading = .menu
   /// Outfit 14 medium (Conversation titles) instead of Inter 14 semibold.
@@ -39,6 +40,8 @@ struct AppHeader<Trailing: View, Below: View>: View {
           // The open item beside the list has nothing to go back to, and the
           // list's header has the menu. The slot keeps titles aligned.
           Color.clear.frame(width: 40, height: 40)
+        } else if leading == .back && barsAreVertical {
+          // The system Back shows at the top of the vertical bar instead.
         } else {
           Button {
             switch leading {
@@ -79,6 +82,15 @@ struct AppHeader<Trailing: View, Below: View>: View {
   }
 
   private var repeatsListTitle: Bool { column == .detailRoot && leading == .menu }
+}
+
+extension EnvironmentValues {
+  /// The system places bars on the side, as on iPhone Duo closed or open in
+  /// landscape. A pushed screen then shows the navigation bar for its Back.
+  var barsAreVertical: Bool {
+    guard #available(iOS 27.1, *) else { return false }
+    return toolbarVerticalEdge != nil
+  }
 }
 
 extension AppHeader where Trailing == Color, Below == EmptyView {
