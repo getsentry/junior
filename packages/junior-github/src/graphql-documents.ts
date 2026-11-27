@@ -266,6 +266,7 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
         baseRef { associatedPullRequests(states: [OPEN]) { totalCount } }
         commits(last: 1) { nodes { commit { committedDate } } }
         isDraft
+        isInMergeQueue
         mergeStateStatus
         state
         title

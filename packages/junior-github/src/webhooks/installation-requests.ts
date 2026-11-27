@@ -550,6 +550,7 @@ const nextActionSchema = z.object({
           ),
         }),
         isDraft: z.boolean(),
+        isInMergeQueue: z.boolean(),
         mergeStateStatus: z.string(),
         reviewRequests: z.object({
           nodes: nodesSchema(z.object({ requestedReviewer: userLoginSchema })),
@@ -630,6 +631,8 @@ export interface GitHubPullRequestMergeState {
   draft: boolean;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: Date;
+  /** A person added it to the merge queue, so GitHub merges it. */
+  inMergeQueue: boolean;
   /**
    * The requester's latest review that approves or requests changes
    * approves it. Read for drafts too, from the last 100 reviews, because the
@@ -784,6 +787,7 @@ export async function loadPullRequestMergeState(
     ...(headCommittedAt
       ? { headCommittedAt: new Date(headCommittedAt) }
       : undefined),
+    inMergeQueue: pull.isInMergeQueue,
     ...(mergeableState ? { mergeableState } : undefined),
     requesterApproved: false,
     requestedReviewers: pull.reviewRequests.nodes.flatMap((request) =>

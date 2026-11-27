@@ -278,6 +278,7 @@ describe("review request when a draft is ready", () => {
                 commits: { nodes: [] },
                 headRefOid: "head-1",
                 isDraft: false,
+                isInMergeQueue: false,
                 mergeStateStatus: "BLOCKED",
                 reviewRequests: { nodes: [] },
                 reviews: {

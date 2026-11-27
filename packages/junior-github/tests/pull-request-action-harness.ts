@@ -203,6 +203,8 @@ export interface GitHubState {
   headSha?: string;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: string;
+  /** A person added the pull request to the merge queue. */
+  inMergeQueue?: boolean;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
   /** When set, the next pull request read waits for it. */
@@ -570,6 +572,7 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                 },
                 headRefOid: github.headSha ?? "head-1",
                 isDraft: github.draft,
+                isInMergeQueue: github.inMergeQueue ?? false,
                 mergeStateStatus: (mergeableState ?? "unknown").toUpperCase(),
                 reviewRequests: {
                   nodes: [

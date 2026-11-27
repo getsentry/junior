@@ -268,3 +268,91 @@ describe("merge ask above an open base", () => {
     }
   });
 });
+
+// GitHub merges a pull request in the merge queue, so no person needs to.
+describe("merge ask in the merge queue", () => {
+  beforeEach(() => {
+    stubGitHubAppEnv();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("closes the merge ask while the pull request is queued, and asks again when it leaves the queue", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["clean"],
+      merged: false,
+      reviews: [
+        {
+          state: "APPROVED",
+          submitted_at: "2026-07-02T12:00:00.000Z",
+          user: { login: "Requester" },
+        },
+      ],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls);
+      await webhook.handler(checkSuiteCompleted());
+      expect(calls).toMatchObject([
+        { kind: "upsert", notice: { title: "Ready to merge · #946" } },
+      ]);
+
+      github.inMergeQueue = true;
+      await webhook.handler(pullRequestAction("enqueued"));
+      expect(calls.slice(1)).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          input: {
+            subject: SUBJECT,
+            reason: "It is in the merge queue.",
+            status: "done",
+          },
+          kind: "close",
+        },
+      ]);
+
+      // A failed merge group takes it out of the queue.
+      github.inMergeQueue = false;
+      await webhook.handler(pullRequestAction("dequeued"));
+      expect(calls.slice(2)).toMatchObject([
+        { kind: "upsert", notice: { title: "Ready to merge · #946" } },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("does not ask for the requester's review of a queued pull request", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    // The repo requires no review, so a person queued it unreviewed.
+    mockGitHub(
+      {
+        draft: false,
+        inMergeQueue: true,
+        mergeableStates: ["clean"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      await route(fixture, calls).handler(checkSuiteCompleted());
+      expect(requests).not.toContain("request Requester");
+      expect(calls).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+});

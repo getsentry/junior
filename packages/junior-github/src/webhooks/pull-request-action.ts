@@ -96,8 +96,10 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
     "auto_merge_enabled",
     "closed",
     "converted_to_draft",
+    "dequeued",
     // Only a base change, such as GitHub's retarget after the base merged.
     "edited",
+    "enqueued",
     "ready_for_review",
     "reopened",
     "review_request_removed",
