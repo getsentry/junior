@@ -70,7 +70,7 @@ export async function countInboxItemsNeedingUserBySubject(
           Number,
         ),
       decisions:
-        sql<number>`count(*) filter (where ${inboxItemRequest} -> 'question' is not null)`.mapWith(
+        sql<number>`count(*) filter (where ${inboxItemRequest} -> 'fields' is not null)`.mapWith(
           Number,
         ),
       subjectId: juniorInboxItems.subjectId,

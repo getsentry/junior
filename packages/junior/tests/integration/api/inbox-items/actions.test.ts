@@ -730,7 +730,8 @@ describe("inbox item actions API", () => {
         ...(input.kind === "decision"
           ? {
               kind: "action",
-              request: REQUEST,
+              // askUserQuestion stores no shared question, only fields.
+              request: index % 2 ? { fields: REQUEST.fields } : REQUEST,
               subject: { id: `bundles:${index}`, kind: "question" },
             }
           : input.kind === "pr"
