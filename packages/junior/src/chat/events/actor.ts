@@ -33,17 +33,18 @@ export const EVENT_SYSTEM_ACTOR = {
 } as const satisfies Actor;
 
 /**
- * Whether a saved Message started a event Turn.
+ * Whether a saved Message started an Event Turn, by its stored `eventType`.
  *
- * TODO(dcramer): Delete this marker check after deployed Turn cursors all store
- * Source and Actor. `eventType` only supports saved synthetic Slack input.
+ * TODO(dcramer): Read Source.kind from the Turn checkpoint instead, after
+ * deployed Turn cursors all store Source and Actor.
  */
 export function isEventConversationMessage(message: {
   author?: { userId?: string };
   meta?: { eventType?: string };
 }): boolean {
   return (
-    Boolean(message.meta?.eventType) || isEventAuthorId(message.author?.userId)
+    Boolean(message.meta?.eventType) ||
+    legacyIsEventAuthorId(message.author?.userId)
   );
 }
 
@@ -52,8 +53,13 @@ export function eventBotAuthorId(provider: string, handle: string): string {
   return `${EVENT_AUTHOR_ID}:${provider}:${handle.toLowerCase()}`;
 }
 
-/** Whether an author id belongs to an Event Message, system or listed bot. */
-export function isEventAuthorId(id: string | undefined): boolean {
+/**
+ * Read an Event Message saved without `eventType` by its author id.
+ *
+ * TODO(dcramer): Delete once no saved Message or open Turn has an Event
+ * author id without `eventType`.
+ */
+export function legacyIsEventAuthorId(id: string | undefined): boolean {
   return (
     id === EVENT_AUTHOR_ID || Boolean(id?.startsWith(`${EVENT_AUTHOR_ID}:`))
   );

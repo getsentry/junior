@@ -1,5 +1,5 @@
-// A leaf module, so the Turn lifecycle can tell Watch Event deliveries apart
-// without loading the notification pipeline.
+// A leaf module, so the Turn lifecycle can read legacy Turn starts without
+// loading the notification pipeline.
 const EVENT_INBOUND_MESSAGE_PREFIX = "event:";
 
 /** Build the mailbox message id that delivers one Watch Event. */
@@ -10,7 +10,18 @@ export function eventInboundMessageId(
   return `${EVENT_INBOUND_MESSAGE_PREFIX}${subscriptionId}:${eventKey}`;
 }
 
-/** Whether a mailbox message id is the delivery of a Watch Event. */
-export function isEventInboundMessageId(id: string): boolean {
-  return id.startsWith(EVENT_INBOUND_MESSAGE_PREFIX);
+/**
+ * Whether only Watch Event deliveries started a Turn whose `turn_started`
+ * event predates its `watchEventsOnly` field, read from the input ids.
+ *
+ * TODO(dcramer): Delete once no Turn that started before `watchEventsOnly`
+ * is open. A newer start without the field never has only these ids.
+ */
+export function legacyStartedByWatchEventsOnly(
+  inputMessageIds: readonly string[],
+): boolean {
+  return (
+    inputMessageIds.length > 0 &&
+    inputMessageIds.every((id) => id.startsWith(EVENT_INBOUND_MESSAGE_PREFIX))
+  );
 }

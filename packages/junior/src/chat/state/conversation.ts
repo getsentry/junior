@@ -49,6 +49,8 @@ export interface ConversationMessageMeta {
    */
   events?: ConversationMessageEvent[];
   explicitMention?: boolean | undefined;
+  /** A parent agent wrote this Message: its task or a message to its child. */
+  fromParentAgent?: true;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   imageAttachmentCount?: number | undefined;

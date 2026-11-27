@@ -216,6 +216,8 @@ const turnStartedEventDataSchema = z
     surface: conversationTurnSurfaceSchema,
     /** Highest Message seq known when the Turn built its thread context. */
     threadContextThroughSeq: z.number().int().nonnegative().optional(),
+    /** Only Watch Events started the Turn. */
+    watchEventsOnly: z.literal(true).optional(),
   })
   .strict()
   .refine(
