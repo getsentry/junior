@@ -23,9 +23,9 @@ groups and acts on its rows.
   asks. It can link to other objects, such as a pull request.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
-- Only an assignee answers a private item that has assignees. Anyone who
-  can see a public question can answer it, but only an assignee dismisses
-  or takes it. The answer carries the authority of the person who gives
+- Only an assignee answers or dismisses a private item that has assignees.
+  Anyone who can see a public question can answer or dismiss it. The
+  answer carries the authority of the person who gives
   it. Junior, an Event, or a trigger never answers or approves for a
   person.
 - "Needs you" means one thing on every surface: an ask or a Conversation
