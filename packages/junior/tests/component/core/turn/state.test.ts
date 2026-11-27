@@ -21,6 +21,7 @@ import {
   stopTurns,
 } from "@/core/turn/state";
 import {
+  juniorConversationEvents,
   juniorConversations,
   juniorIdentities,
   juniorTurnInbox,
@@ -292,10 +293,19 @@ describe("Turn state", () => {
       types: ["assistant_message", "tool_result"],
       messages,
     });
+    // Each row names the Turn that wrote it.
+    await expect(
+      fixture.sql
+        .db()
+        .select({ turnId: juniorConversationEvents.turnId })
+        .from(juniorConversationEvents)
+        .where(eq(juniorConversationEvents.conversationId, CONVERSATION_ID)),
+    ).resolves.toEqual([{ turnId }, { turnId }]);
   });
 
   it("lets a new claim take the next step at once, and fences out the old lease", async () => {
     const first = (await claim("worker-a"))!;
+    const { startedAt } = await readTurn();
     await commitStep(
       engineCtx,
       first,
@@ -312,6 +322,9 @@ describe("Turn state", () => {
     });
     const running = await readTurn();
     expect(running).toMatchObject({ state: "running", leaseOwner: "worker-b" });
+    // The first claim started the Turn; the next claim keeps that time.
+    expect(startedAt).toBeInstanceOf(Date);
+    expect(running.startedAt).toEqual(startedAt);
 
     await expect(
       commitStep(engineCtx, first, finishedStep(), []),

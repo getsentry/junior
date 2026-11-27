@@ -16,7 +16,6 @@ import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { messageCardText } from "@/chat/conversations/cards";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { commitAssistantMessage } from "@/chat/task-execution/assistant-message";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { sendSlackReply } from "@/chat/slack/reply";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { seedLinkedPerson } from "../fixtures/slack-user";
@@ -51,6 +50,7 @@ import {
   createConfiguredJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
+import { patchConfig } from "../fixtures/config";
 
 vi.hoisted(() => {
   process.env["JUNIOR_STATE_ADAPTER"] = "memory";
@@ -111,161 +111,154 @@ describe("event automations", () => {
   it("delivers the current automation card and retains its reference in web history", async () => {
     const conversationId = "local:automation-card";
     mockTitleModel("Review fixes.");
-    const links = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
-    try {
-      // The creator starts the Conversation, so its cards read the
-      // Automation with the creator's access.
-      await seedLinkedPerson({
-        email: "creator@example.com",
-        slackTeamId: teamId,
-        slackUserId: "U123",
-      });
-      await getConversationStore().recordActivity({
-        actor: { platform: "slack", slackUserId: "U123", teamId },
-        conversationId,
-        destination: { platform: "local", conversationId },
-        source: "internal",
-        nowMs: 1,
-        visibility: "public",
-      });
-      const taskContext = { ...context(), conversationId };
-      const created = await createTask(
-        "Review fixes.",
-        undefined,
-        undefined,
-        taskContext,
-      );
-      const updated = await execute(
-        createUpdateAutomationTool(
-          automationToolContext(taskContext),
-          getEventCatalog(),
-        ),
-        {
-          automation_id: created.automation.id,
-          credential_mode: "system",
-          instruction:
-            "Review fixes.\nCheck the parser and report unresolved errors.",
-          trigger: {
-            type: "event",
-            namespace: "github",
-            label: "Review feedback",
-            events: ["pull_request.review.commented"],
-          },
+    // The creator starts the Conversation, so its cards read the
+    // Automation with the creator's access.
+    await seedLinkedPerson({
+      email: "creator@example.com",
+      slackTeamId: teamId,
+      slackUserId: "U123",
+    });
+    await getConversationStore().recordActivity({
+      actor: { platform: "slack", slackUserId: "U123", teamId },
+      conversationId,
+      destination: { platform: "local", conversationId },
+      source: "internal",
+      nowMs: 1,
+      visibility: "public",
+    });
+    const taskContext = { ...context(), conversationId };
+    const created = await createTask(
+      "Review fixes.",
+      undefined,
+      undefined,
+      taskContext,
+    );
+    const updated = await execute(
+      createUpdateAutomationTool(
+        automationToolContext(taskContext),
+        getEventCatalog(),
+      ),
+      {
+        automation_id: created.automation.id,
+        credential_mode: "system",
+        instruction:
+          "Review fixes.\nCheck the parser and report unresolved errors.",
+        trigger: {
+          type: "event",
+          namespace: "github",
+          label: "Review feedback",
+          events: ["pull_request.review.commented"],
         },
-      );
-      const store = getConversationEventStore();
-      await store.append(conversationId, [
-        {
-          createdAtMs: 1,
-          data: {
-            type: "tool_result",
-            toolName: "createAutomation",
-            details: created,
-            isError: false,
-          },
+      },
+    );
+    const store = getConversationEventStore();
+    await store.append(conversationId, [
+      {
+        createdAtMs: 1,
+        data: {
+          type: "tool_result",
+          toolName: "createAutomation",
+          details: created,
+          isError: false,
         },
-        {
-          createdAtMs: 2,
-          data: {
-            type: "tool_result",
-            toolName: "updateAutomation",
-            details: updated,
-            isError: false,
-          },
+      },
+      {
+        createdAtMs: 2,
+        data: {
+          type: "tool_result",
+          toolName: "updateAutomation",
+          details: updated,
+          isError: false,
         },
-      ]);
-      const cards = await loadPendingMessageCards(conversationId);
-      expect(cards).toEqual([
-        expect.objectContaining({
-          kind: "object",
-          plugin: "junior",
-          key: created.automation.id,
-          label: "Review fixes.",
-          title: "Review fixes.",
-          trigger:
-            "Review feedback · pull request review commented · filters: repo is getsentry/junior and pullRequest is 1174",
-          url: `https://junior.example.com/automations/${created.automation.id}`,
-        }),
-      ]);
-      expect(messageCardText(cards[0]!)).toContain(
-        "Review fixes.\nCheck the parser and report unresolved errors.",
-      );
-      await sendSlackReply({
-        channelId: "C123",
-        conversationId,
-        text: "Updated the trigger.",
-        cards,
-      });
-      const posted =
-        getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
-      expect(posted?.["text"]).toContain(
-        "Review feedback · pull request review commented",
-      );
-      expect(posted?.["attachments"]).toBeUndefined();
-      expect(posted?.["metadata"]).toMatchObject({
-        entities: [
-          {
-            entity_type: "slack#/entities/item",
-            external_ref: { id: created.automation.id, type: "automation" },
-            url: cards[0]!.url,
-            entity_payload: {
-              attributes: {
-                title: { text: cards[0]!.title },
-                display_type: "Automation",
-              },
-              custom_fields: [
-                {
-                  key: "trigger",
-                  label: "When",
-                  type: "string",
-                  value:
-                    "Review feedback · pull request review commented · filters: repo is getsentry/junior and pullRequest is 1174",
-                  long: true,
-                },
-              ],
+      },
+    ]);
+    const cards = await loadPendingMessageCards(conversationId);
+    expect(cards).toEqual([
+      expect.objectContaining({
+        kind: "object",
+        plugin: "junior",
+        key: created.automation.id,
+        label: "Review fixes.",
+        title: "Review fixes.",
+        trigger:
+          "Review feedback · pull request review commented · filters: repo is getsentry/junior and pullRequest is 1174",
+        url: `https://junior.example.com/automations/${created.automation.id}`,
+      }),
+    ]);
+    expect(messageCardText(cards[0]!)).toContain(
+      "Review fixes.\nCheck the parser and report unresolved errors.",
+    );
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId,
+      text: "Updated the trigger.",
+      cards,
+    });
+    const posted = getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params;
+    expect(posted?.["text"]).toContain(
+      "Review feedback · pull request review commented",
+    );
+    expect(posted?.["attachments"]).toBeUndefined();
+    expect(posted?.["metadata"]).toMatchObject({
+      entities: [
+        {
+          entity_type: "slack#/entities/item",
+          external_ref: { id: created.automation.id, type: "automation" },
+          url: cards[0]!.url,
+          entity_payload: {
+            attributes: {
+              title: { text: cards[0]!.title },
+              display_type: "Automation",
             },
+            custom_fields: [
+              {
+                key: "trigger",
+                label: "When",
+                type: "string",
+                value:
+                  "Review feedback · pull request review commented · filters: repo is getsentry/junior and pullRequest is 1174",
+                long: true,
+              },
+            ],
           },
-        ],
-      });
-      expect(JSON.stringify(posted?.["blocks"])).not.toContain(cards[0]!.url);
-      await commitAssistantMessage({
-        cards,
-        conversation: coerceThreadConversationState({}),
-        conversationId,
-        sessionId: "turn-card",
-        text: "Updated the trigger.",
-        userMessageId: "user-card",
-      });
-      await expect(loadPendingMessageCards(conversationId)).resolves.toEqual(
-        [],
-      );
-      const response = await createJuniorApi().request(
-        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
-      );
-      const report = conversationDetailReportSchema.parse(
-        await response.json(),
-      );
-      expect(report.events).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            data: expect.objectContaining({
-              type: "message",
-              cards: [
-                {
-                  kind: "object",
-                  plugin: "junior",
-                  key: created.automation.id,
-                },
-              ],
-            }),
+        },
+      ],
+    });
+    expect(JSON.stringify(posted?.["blocks"])).not.toContain(cards[0]!.url);
+    await commitAssistantMessage({
+      cards,
+      conversation: coerceThreadConversationState({}),
+      conversationId,
+      sessionId: "turn-card",
+      text: "Updated the trigger.",
+      userMessageId: "user-card",
+    });
+    await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([]);
+    const response = await createJuniorApi().request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    const report = conversationDetailReportSchema.parse(await response.json());
+    expect(report.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: "message",
+            cards: [
+              {
+                kind: "object",
+                plugin: "junior",
+                key: created.automation.id,
+              },
+            ],
           }),
-        ]),
-      );
-    } finally {
-      setDashboardConversationLinkOptions(links);
-    }
+        }),
+      ]),
+    );
   });
 
   it("dismisses an item that a running run added when its Automation is deleted", async () => {

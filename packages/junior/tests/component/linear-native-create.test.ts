@@ -8,12 +8,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { linearPlugin } from "../../../junior-linear/src/index.js";
 import { getConversationStore, getDb } from "@/chat/db";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginHookRunner } from "@/chat/plugins/hooks/runner";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
 import { mswServer } from "../msw/server";
 import * as z from "zod";
+import { useAppContext } from "../fixtures/app-context";
 
 describe("Linear MCP create annotations", () => {
   let manager: McpToolManager | undefined;
@@ -94,7 +94,7 @@ describe("Linear MCP create annotations", () => {
       );
 
       const registration = linearPlugin();
-      const previousPlugins = setPlugins([registration]);
+      useAppContext({ plugins: [registration] });
       const conversationId = "local:test:linear-mcp-create-annotations";
       const pluginHooks = createPluginHookRunner();
       const manifest = parseInlinePluginManifest(
@@ -224,7 +224,6 @@ describe("Linear MCP create annotations", () => {
           { id: "ENG-123", state: "In Progress" },
         ]);
       } finally {
-        setPlugins(previousPlugins);
         await server.close();
       }
     },
@@ -262,17 +261,19 @@ describe("Linear MCP create annotations", () => {
     );
 
     const registration = linearPlugin();
-    const previousPlugins = setPlugins([
-      {
-        ...registration,
-        hooks: {
-          ...registration.hooks,
-          afterMcpTool: async () => {
-            throw new Error("annotation failed");
+    useAppContext({
+      plugins: [
+        {
+          ...registration,
+          hooks: {
+            ...registration.hooks,
+            afterMcpTool: async () => {
+              throw new Error("annotation failed");
+            },
           },
         },
-      },
-    ]);
+      ],
+    });
     const conversationId = "local:test:linear-mcp-create-hook-failure";
     const pluginHooks = createPluginHookRunner();
     const manifest = parseInlinePluginManifest(
@@ -333,7 +334,6 @@ describe("Linear MCP create annotations", () => {
         listConversationAnnotations(getDb(), conversationId),
       ).resolves.toEqual([]);
     } finally {
-      setPlugins(previousPlugins);
       await server.close();
     }
   });

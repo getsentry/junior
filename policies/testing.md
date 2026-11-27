@@ -66,6 +66,9 @@ Prefer high-fidelity behavior coverage when it is stable.
   `killWorker()` from `createConversationWorkHarness`, then
   `runHeartbeatAfterLeasesExpire()`. Do not take the lease through store
   calls.
+- Host request near its deadline: call `processNearRequestDeadline()` from
+  `createConversationWorkHarness`. It runs one wake in a host request with
+  the time left that you give.
 - An error thrown by the agent runner is a failure that the worker catches.
   It is not a killed worker.
 - Write the stored state of a failure by hand only when no harness fault can

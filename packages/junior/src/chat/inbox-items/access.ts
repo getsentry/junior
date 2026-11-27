@@ -33,7 +33,6 @@ import {
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
-  juniorSpaces,
 } from "@/db/schema";
 import {
   automationCreatorUserId,
@@ -122,7 +121,6 @@ export function inboxItemOwnedByConversation(
 
 const todoOwner = alias(juniorConversations, "todo_owner");
 const todoRoot = alias(juniorConversations, "todo_root");
-const ownerSpace = alias(juniorSpaces, "owner_space");
 
 /** SQL: the User is a Participant of this root Conversation. */
 function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
@@ -146,19 +144,17 @@ function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
  * SQL: the User can see the private content of the Conversation that owns
  * the item. This is the rule of `conversationAccessFromRows`: the User is a
  * Participant of the owner when it has no parent, even with no stored root.
- * Otherwise the owner needs a valid stored root, whose Destination is public
- * or whose Participants include the User. With `privateSpaces`, a valid
- * root in a private Space is open to the Space's members, and only to them.
- * A To-do's check leaves it out (a Gap in `design/inbox.md`). Pass the
+ * Otherwise the owner needs a valid stored root that is public or whose
+ * Participants include the User. A Space's Lead is the root of every
+ * Conversation in it, so a private Space is open only to its members. Pass the
  * narrowest expression of the owner id that fits the item's subject kind,
  * since each owner check runs once per Conversation in the version reads.
  */
 function ownerConversationOpenTo(
   userId: string,
   ownerConversationId: SQL<string | null>,
-  options: { privateSpaces?: boolean } = {},
 ): SQL {
-  const openWithoutSpace = or(
+  const open = or(
     and(
       isNull(todoOwner.parentConversationId),
       participantOf(userId, todoOwner.conversationId),
@@ -186,39 +182,8 @@ function ownerConversationOpenTo(
         ),
       ),
     );
-  if (!options.privateSpaces) {
-    return exists(
-      query.where(
-        and(
-          eq(todoOwner.conversationId, ownerConversationId),
-          openWithoutSpace,
-        ),
-      ),
-    );
-  }
   return exists(
-    query
-      .leftJoin(
-        ownerSpace,
-        and(
-          eq(ownerSpace.id, todoRoot.spaceId),
-          eq(ownerSpace.visibility, "private"),
-        ),
-      )
-      .where(
-        and(
-          eq(todoOwner.conversationId, ownerConversationId),
-          or(
-            and(isNull(ownerSpace.id), openWithoutSpace),
-            // A private Space's members are the Participants of its Lead,
-            // the root of every Conversation in it.
-            and(
-              isNotNull(ownerSpace.id),
-              participantOf(userId, todoRoot.conversationId),
-            ),
-          ),
-        ),
-      ),
+    query.where(and(eq(todoOwner.conversationId, ownerConversationId), open)),
   );
 }
 
@@ -304,9 +269,7 @@ function inboxItemForEveryoneOfOwner(userId: string): SQL {
       eq(juniorInboxItems.assignedToEveryone, true),
       sql`not exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
     ),
-    ownerConversationOpenTo(userId, inboxItemOwnerConversationId(), {
-      privateSpaces: true,
-    }),
+    ownerConversationOpenTo(userId, inboxItemOwnerConversationId()),
   )!;
 }
 

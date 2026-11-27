@@ -11,10 +11,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import {
-  getDashboardTaskLink,
-  setDashboardConversationLinkOptions,
-} from "@/chat/dashboard-link";
+import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import {
   blockEventAutomation,
   createEventAutomation,
@@ -43,6 +40,7 @@ import { signedInViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import { patchConfig } from "../../fixtures/config";
 
 const SIGNING_SECRET = "test-signing-secret";
 const ORIGINAL_ENV = { ...process.env };
@@ -138,15 +136,16 @@ async function saveReminder(): Promise<ScheduledAutomation> {
 describe("Slack Work Object details", () => {
   beforeEach(() => {
     process.env["SLACK_BOT_TOKEN"] = "xoxb-test-token";
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     resetSlackApiMockState();
   });
 
   afterEach(async () => {
     process.env = { ...ORIGINAL_ENV };
-    setDashboardConversationLinkOptions(undefined);
     resetSlackApiMockState();
     await disconnectStateAdapter();
   });

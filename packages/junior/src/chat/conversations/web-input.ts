@@ -35,11 +35,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
-import {
-  isThread,
-  isTopLevel,
-  ownsLocation,
-} from "@/chat/conversations/kind-behavior";
+import { isThread, isTopLevel } from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
@@ -313,7 +309,7 @@ export async function recordWebConversationActivity(args: {
       ? { spaceId: args.rootSpaceId }
       : undefined),
   });
-  return existing && !ownsLocation(existing) ? undefined : destination;
+  return existing && !isTopLevel(existing) ? undefined : destination;
 }
 
 /** Create a Conversation from web input and enqueue its first Message. */

@@ -123,11 +123,9 @@ export interface PluginConversationAnnotations {
   ): Promise<void>;
   /**
    * Tell Junior that the provider moved objects of this plugin, such as by
-   * a repository rename. Each Annotation whose key starts with `from.key`
-   * gets `to.key` in place of it, and a link that starts with `from.url`
-   * gets `to.url` in place of it. Links compare without case. An
-   * Annotation keeps its key when its Conversation already has one with
-   * the new key.
+   * a repository rename. A key that starts with `from.key` and a link that
+   * starts with `from.url` (without case) get the `to` prefix. An Annotation
+   * keeps its key when its Conversation already has one with the new key.
    */
   objectsMoved(move: {
     from: AnnotationPrefix;

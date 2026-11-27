@@ -1,7 +1,7 @@
 import { conversationMenuRow } from "./conversationMenu";
 import { openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
-import { screenshot } from "../screenshot";
+import { mobile, screenshot } from "../screenshot";
 
 test.describe("new UI", () => {
   test("opens conversation details beside the chat", async ({
@@ -232,6 +232,41 @@ test.describe("new UI", () => {
     await expect(
       page.getByRole("textbox", { name: "Continue this conversation" }),
     ).toHaveCount(0);
+    // Only an Invite lets them in, so the menu offers no Join.
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    const menu = page.getByRole("menu");
+    await expect(menu.getByRole("menuitem", { name: "Share" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Join" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+  });
+
+  test("a reader of a public conversation joins it to reply", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA456:1770025200.000700")}`,
+    );
+    const composer = page.getByRole("textbox", {
+      name: "Continue this conversation",
+    });
+    const join = page.getByRole("button", { name: "Join", exact: true });
+    // Only a Participant posts, so the dock offers Join instead.
+    await expect(join).toBeVisible();
+    await expect(composer).toHaveCount(0);
+
+    const joined = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" &&
+        response.url().endsWith("/subscription"),
+    );
+    await join.click();
+    expect((await joined).request().postDataJSON()).toEqual({
+      subscribed: true,
+    });
+    await expect(composer).toBeVisible();
+    await expect(join).toHaveCount(0);
   });
 
   test("shows a Watch on linked work in its linked work row", async ({
@@ -347,6 +382,88 @@ test.describe("new UI", () => {
     await expect(details.getByRole("button", { name: /^Change / })).toHaveCount(
       0,
     );
+  });
+
+  test("on a phone, an Inbox item in the details opens in its own sheet", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:questions-qa")}`,
+    );
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await conversationMenuRow(page, "Conversation details").click();
+    const details = page.getByRole("dialog", { name: "Conversation details" });
+    await details
+      .getByRole("region", { name: "Inbox" })
+      .getByRole("button", { name: "Handle the negative invoices" })
+      .click();
+    // The item does not open in place in the details, but over them.
+    const item = page.getByRole("dialog", {
+      name: "Handle the negative invoices",
+    });
+    await expect(item.getByRole("button", { name: "Skip them" })).toBeVisible();
+    await expect(
+      details.getByRole("button", { name: "Skip them" }),
+    ).toHaveCount(0);
+    await screenshot(page, "conversation-details-inbox-item", {
+      lightTheme: true,
+      view: "mobile",
+    });
+
+    // Back goes back to the details.
+    await item.getByRole("button", { exact: true, name: "Back" }).click();
+    await expect(item).toHaveCount(0);
+    await expect(details).toBeVisible();
+  });
+
+  test("on a phone, memories and Tasks open one step deeper in the details sheet", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+    );
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await conversationMenuRow(page, "Conversation details").click();
+    const details = page.getByRole("dialog", { name: "Conversation details" });
+    const memoryCard = details.getByRole("button", {
+      name: "1 recalled · 2 captured",
+    });
+
+    // Memories replace details in the sheet, with a way back.
+    await memoryCard.click();
+    const memories = page.getByRole("dialog", { name: "Memories" });
+    await expect(
+      memories.getByRole("button", { name: "Back to details" }),
+    ).toBeVisible();
+    await screenshot(page, "conversation-details-memories", {
+      view: "mobile",
+    });
+    await memories.getByRole("button", { name: "Back to details" }).click();
+    await expect(memoryCard).toBeVisible();
+
+    // A Task opens over the details, and Back goes back to them.
+    const reviewerRow = details
+      .getByRole("region", { name: "Tasks" })
+      .getByRole("button", { name: /^blocked reviewer/ });
+    await reviewerRow.click();
+    const reviewer = page.getByRole("dialog", { name: "reviewer" });
+    await expect(
+      reviewer.getByRole("link", { name: "Open conversation" }),
+    ).toBeVisible();
+    await screenshot(page, "conversation-details-task", { view: "mobile" });
+    await reviewer.getByRole("button", { exact: true, name: "Back" }).click();
+    await expect(reviewer).toHaveCount(0);
+    await expect(details).toBeVisible();
+
+    // Its close button shuts the Task and the details together.
+    await reviewerRow.click();
+    await reviewer.getByRole("button", { name: "Close transcript" }).click();
+    await expect(reviewer).toHaveCount(0);
+    await expect(details).toHaveCount(0);
   });
 
   test("keeps memories out of the transcript and jumps to their Turn", async ({

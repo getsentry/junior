@@ -9,6 +9,7 @@ import {
   createTestMessage,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { patchConfig } from "../../fixtures/config";
 
 const failTurn = vi.hoisted(() => vi.fn(async () => undefined));
 
@@ -173,46 +174,41 @@ describe("createSlackTurnRuntime", () => {
 
   describe("handleSubscribedMessage", () => {
     it("skips non-mention replies before prepare when passive-routing is off", async () => {
-      const { setExperimentalFeatures } = await import("@/chat/experimental");
-      setExperimentalFeatures(undefined);
-      try {
-        const deps = createMockDeps({
-          decideSubscribedReply: vi.fn().mockResolvedValue({
+      patchConfig({ experimental: {} });
+      const deps = createMockDeps({
+        decideSubscribedReply: vi.fn().mockResolvedValue({
+          shouldReply: false,
+          reason: "passive_disabled:passive-routing",
+        }),
+      });
+      const runtime = createSlackTurnRuntime<TestState>(deps);
+      const thread = await createTestThread({});
+      const message = createTestMessage({
+        text: "what did you just say?",
+        isMention: false,
+      });
+
+      await runtime.handleSubscribedMessage(thread, message, {
+        conversationId: thread.id,
+        destination: createTestDestination(thread),
+      });
+
+      expect(deps.prepareTurnState).not.toHaveBeenCalled();
+      expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isExplicitMention: false,
+          text: "what did you just say?",
+        }),
+      );
+      expect(deps.recordSkippedSubscribedTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          decision: {
             shouldReply: false,
             reason: "passive_disabled:passive-routing",
-          }),
-        });
-        const runtime = createSlackTurnRuntime<TestState>(deps);
-        const thread = await createTestThread({});
-        const message = createTestMessage({
-          text: "what did you just say?",
-          isMention: false,
-        });
-
-        await runtime.handleSubscribedMessage(thread, message, {
-          conversationId: thread.id,
-          destination: createTestDestination(thread),
-        });
-
-        expect(deps.prepareTurnState).not.toHaveBeenCalled();
-        expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
-          expect.objectContaining({
-            isExplicitMention: false,
-            text: "what did you just say?",
-          }),
-        );
-        expect(deps.recordSkippedSubscribedTurn).toHaveBeenCalledWith(
-          expect.objectContaining({
-            decision: {
-              shouldReply: false,
-              reason: "passive_disabled:passive-routing",
-            },
-          }),
-        );
-        expect(deps.executeSlackTurn).not.toHaveBeenCalled();
-      } finally {
-        setExperimentalFeatures({ "passive-routing": true });
-      }
+          },
+        }),
+      );
+      expect(deps.executeSlackTurn).not.toHaveBeenCalled();
     });
 
     it("does not unsubscribe the thread when resource cleanup fails", async () => {

@@ -23,6 +23,19 @@ export async function scrollListUntil(
 }
 
 /**
+ * Bring the last status line in `region` into view, if it has one. A page
+ * load replaces that line, so find and scroll it in one step instead of
+ * acting on a line that may have unmounted.
+ */
+export async function scrollToLastStatus(region: Locator): Promise<void> {
+  await region.evaluate((element) =>
+    [...element.querySelectorAll('[role="status"]')]
+      .at(-1)
+      ?.scrollIntoView({ block: "center" }),
+  );
+}
+
+/**
  * Scroll a transcript until `row` mounts. Rows mount only near the viewport,
  * so `up` moves one viewport at a time and does not skip past them. `down`
  * goes to the end. At an edge, it waits for a page to load past it.

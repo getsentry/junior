@@ -19,16 +19,16 @@ import {
   addPriorRejection,
   projectToolActionRejection,
 } from "@/chat/guardian/history";
+import type { Action, Guardian, Review } from "@/chat/guardian/guardian";
 import type {
   RootConversation,
   ScriptCallStatus,
   ToolActionDecision,
   ToolActionEvidence,
   ToolActionProposal,
-  ToolActionReviewDecision,
-  ToolActionReviewer,
   ToolActionScript,
 } from "@/chat/guardian/proposal";
+import { guardianMessages } from "@/chat/guardian/request";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -71,13 +71,19 @@ export interface ToolAction {
   };
 }
 
+/** What the gate gives the Guardian of one batch, besides the request. */
+export interface GuardianBatch {
+  /** The proposal that the gate built for each action, in order. */
+  proposals: readonly ToolActionProposal[];
+}
+
 /**
  * Review result for one action. An allowed action has a decision only when
  * Guardian reviewed it. A rejected action has the error that its tool call
  * must fail with.
  */
 export type ToolActionReviewResult =
-  | { allowed: true; decision?: ToolActionReviewDecision }
+  | { allowed: true; decision?: Review }
   | { allowed: false; error: Error };
 
 /**
@@ -136,20 +142,15 @@ export class ToolActionRejectedError extends Error {
   readonly decision: Exclude<ToolActionDecision, "allow">;
   readonly reason: string;
   readonly reviewedAction?: ToolActionPriorRejection | undefined;
-  readonly riskLevel?: ToolActionReviewDecision["riskLevel"] | undefined;
-  readonly rule?: ToolActionReviewDecision["rule"] | undefined;
-  readonly userAuthorization?:
-    | ToolActionReviewDecision["userAuthorization"]
-    | undefined;
+  readonly rule?: string | undefined;
 
   constructor(
     decision: Exclude<ToolActionDecision, "allow">,
     reason: string,
-    assessment: Partial<
-      Pick<ToolActionReviewDecision, "riskLevel" | "rule" | "userAuthorization">
-    > & {
+    assessment: {
       instructions?: string;
       reviewedAction?: ToolActionPriorRejection;
+      rule?: string;
     } = {},
   ) {
     const instructions =
@@ -162,9 +163,7 @@ export class ToolActionRejectedError extends Error {
     this.decision = decision;
     this.reason = reason;
     this.reviewedAction = assessment.reviewedAction;
-    this.riskLevel = assessment.riskLevel;
     this.rule = assessment.rule;
-    this.userAuthorization = assessment.userAuthorization;
   }
 }
 
@@ -190,17 +189,12 @@ export class ToolActionReviewLimitError extends Error {
 }
 
 /**
- * True when an `auto` action must enter review. The tool's annotations alone
- * decide: an action marked read-only and not destructive skips review, like
- * MCP clients such as Codex do. MCP annotations come from the server, and
- * plugin annotations from the plugin. Anything else, including missing
- * annotations, is unknown risk.
+ * True when an `auto` action must enter review. Only the annotations that
+ * Junior or plugin code declares on the tool can skip review: read-only and
+ * not destructive. Annotations that an MCP server sends reach Guardian only as
+ * hints, because a server can mark a write as read-only.
  */
-function autoActionNeedsReview(
-  tool: AnyToolDefinition,
-  resolved: ToolApprovalResolution | undefined,
-): boolean {
-  const annotations = resolved?.annotations ?? tool.annotations;
+function autoActionNeedsReview({ annotations }: AnyToolDefinition): boolean {
   return !(
     annotations?.readOnlyHint === true && annotations.destructiveHint !== true
   );
@@ -287,7 +281,7 @@ function assertAuthoritativeContext(
   }
 }
 
-/** Build the bounded wire proposal without treating tool metadata as authority. */
+/** Build the bounded wire proposal. Tool metadata is not authority. */
 function buildProposal(
   toolName: string,
   tool: AnyToolDefinition,
@@ -409,7 +403,7 @@ function canonicalJson(value: unknown): unknown {
 
 function projectedRejection(
   proposal: ToolActionProposal,
-  decision: ToolActionReviewDecision,
+  decision: Review,
 ): ToolActionPriorRejection {
   const inputJson = JSON.stringify(canonicalJson(proposal.input));
   const input =
@@ -427,34 +421,38 @@ function projectedRejection(
     decision: decision.decision as Exclude<ToolActionDecision, "allow">,
     input,
     reason: decision.reason,
-    riskLevel: decision.riskLevel,
     tool: proposal.tool,
-    userAuthorization: decision.userAuthorization,
   };
 }
 
-/** A core tool stays outside review unless it opts in. Plugin tools default to `auto`. */
+/** Core tools skip review unless they opt in; plugin tools default `auto`. */
 function mayNeedReview(tool: AnyToolDefinition): boolean {
   return tool.approvalMode !== undefined && tool.approvalMode !== "approve";
 }
 
-/** Prepare the exact action that Guardian must review, when review is required. */
+/** One action that Guardian must review, with the gate's proposal for it. */
+interface PreparedReview {
+  action: Action;
+  proposal: ToolActionProposal;
+}
+
+/** Prepare the exact action that Guardian must review, when it must. */
 async function prepareToolActionReview(
   action: ToolAction,
   context: ToolActionReviewContext,
   priorRejections: ToolActionPriorRejection[],
-): Promise<ToolActionProposal | undefined> {
+): Promise<PreparedReview | undefined> {
   const { tool, input } = action;
   if (!mayNeedReview(tool)) {
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
   // Each mode other than `auto`, also one that is not known, needs review.
-  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool, resolved)) {
+  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool)) {
     return;
   }
   assertAuthoritativeContext(context);
-  return buildProposal(
+  const proposal = buildProposal(
     action.toolName,
     tool,
     input,
@@ -465,6 +463,15 @@ async function prepareToolActionReview(
     await context.rootConversation?.(),
     action.script,
   );
+  return {
+    action: {
+      tool: proposal.tool.name,
+      input,
+      effect: "write",
+      summary: proposal.tool.proposalDescription ?? proposal.tool.name,
+    },
+    proposal,
+  };
 }
 
 /**
@@ -475,32 +482,43 @@ async function prepareToolActionReview(
  */
 export const MAX_TOOL_ACTION_BATCH = 10;
 
-/** Most Guardian reviews of one batch that run at the same time. */
-const MAX_CONCURRENT_REVIEWS = 4;
+/** Most actions of one batch that the gate prepares or records at once. */
+const MAX_CONCURRENT_PREPARATIONS = 4;
 
 /** Outcome of the review step of one action, before gate state changes. */
 type ReviewStep =
   | { kind: "skipped" }
   | {
       kind: "reviewed";
-      decision: ToolActionReviewDecision;
+      decision: Review;
       proposal: ToolActionProposal;
     }
   | { kind: "unavailable"; error: ToolActionReviewUnavailableError };
 
-/** Create the core review path that prepares actions and enforces Guardian decisions. */
+function unavailableStep(error: unknown): ReviewStep {
+  return {
+    kind: "unavailable",
+    error:
+      error instanceof ToolActionReviewUnavailableError
+        ? error
+        : new ToolActionReviewUnavailableError({ cause: error }),
+  };
+}
+
+/** Create the review path that prepares actions and enforces decisions. */
 export function createToolActionReview(options: {
   context: ToolActionReviewContext;
+  /** Make the Guardian that decides the actions of one batch. */
+  guardian(batch: GuardianBatch): Guardian;
   /** Persist the Guardian decision before the reviewed action can continue. */
   onDecision(event: {
     toolCallId: string;
     toolName: string;
-    decision: ToolActionReviewDecision;
+    decision: Review;
   }): Promise<void>;
   /** Escalate unavailable review to the owning agent-run boundary. */
   onFatal(error: ToolActionReviewUnavailableError): void;
   priorRejections?: ToolActionPriorRejection[];
-  reviewer: ToolActionReviewer;
 }): ToolActionReview {
   const priorRejections = [...(options.priorRejections ?? [])];
   const pendingRejections = new Map<string, ToolActionRejectionMarker>();
@@ -516,53 +534,105 @@ export function createToolActionReview(options: {
   >();
 
   /**
-   * Review one action and record its decision. Gate state does not change
-   * here, so concurrent reviews in one batch cannot corrupt it.
+   * Prepare each action, send the proposals of the batch to Guardian at
+   * once, and record each decision. Gate state does not change here.
    */
-  const reviewStep = async (
-    action: ToolAction,
-    rejections: ToolActionPriorRejection[],
+  const reviewSteps = async (
+    actions: readonly ToolAction[],
     signal: AbortSignal | undefined,
-  ): Promise<ReviewStep> => {
-    try {
-      const proposal = await prepareToolActionReview(
-        action,
-        options.context,
-        rejections,
-      );
-      if (!proposal) {
-        return { kind: "skipped" };
+  ): Promise<ReviewStep[]> => {
+    // Each action sees the same prior rejections, so the order in which
+    // preparations finish cannot change a proposal.
+    const rejections = [...priorRejections];
+    const prepared = await mapBounded(
+      actions,
+      async (action): Promise<PreparedReview | ReviewStep> => {
+        try {
+          return (
+            (await prepareToolActionReview(
+              action,
+              options.context,
+              rejections,
+            )) ?? { kind: "skipped" }
+          );
+        } catch (error) {
+          if (signal?.aborted) {
+            throw error;
+          }
+          return unavailableStep(error);
+        }
+      },
+      MAX_CONCURRENT_PREPARATIONS,
+    );
+    const reviews = prepared.filter(
+      (entry): entry is PreparedReview => !("kind" in entry),
+    );
+    let decisions: Review[] = [];
+    let failure: unknown;
+    if (reviews.length > 0) {
+      try {
+        decisions = await options
+          .guardian({
+            proposals: reviews.map((review) => review.proposal),
+          })
+          .review(
+            {
+              actions: reviews.map((review) => review.action),
+              messages: guardianMessages(reviews[0]!.proposal),
+            },
+            signal ?? new AbortController().signal,
+          );
+        if (decisions.length !== reviews.length) {
+          throw new Error("Guardian must return one Review per action.");
+        }
+      } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
+        // Only the actions of this request fail (`bounded-failure`).
+        failure = error;
       }
-      const decision = await options.reviewer.review(
-        proposal,
-        signal ? { signal } : {},
-      );
-      await options.onDecision({
-        toolCallId: action.toolCallId,
-        toolName: proposal.tool.name,
-        decision,
-      });
-      return { kind: "reviewed", decision, proposal };
-    } catch (error) {
-      if (signal?.aborted) {
-        throw error;
-      }
-      return {
-        kind: "unavailable",
-        error:
-          error instanceof ToolActionReviewUnavailableError
-            ? error
-            : new ToolActionReviewUnavailableError({ cause: error }),
-      };
     }
+    // The index in the request of each action that needs review.
+    let next = 0;
+    const indexes = prepared.map((entry) =>
+      "kind" in entry ? undefined : next++,
+    );
+    // Record each decision before its action can continue. A decision that
+    // cannot be recorded fails its action like a review that cannot run.
+    const steps = await mapBounded(
+      prepared,
+      async (entry, index): Promise<ReviewStep> => {
+        if ("kind" in entry) {
+          return entry;
+        }
+        if (failure !== undefined) {
+          return unavailableStep(failure);
+        }
+        const decision = decisions[indexes[index]!]!;
+        try {
+          await options.onDecision({
+            toolCallId: actions[index]!.toolCallId,
+            toolName: entry.proposal.tool.name,
+            decision,
+          });
+        } catch (error) {
+          return unavailableStep(error);
+        }
+        return { kind: "reviewed", decision, proposal: entry.proposal };
+      },
+      MAX_CONCURRENT_PREPARATIONS,
+    );
+    signal?.throwIfAborted();
+    return steps;
   };
 
   /**
    * Count each attempt in the batch once, in batch order. An attempt with a
    * rejection adds one to the count from before the attempt, also when it
    * has allowed actions or spans several batches. An attempt with only
-   * allowed actions resets the count. Skipped and unavailable actions do not
-   * change it. Return the attempt state of each action.
+   * allowed actions resets the count. Skipped and unavailable actions do
+   * not change it. Return the attempt state of each action.
    */
   const countAttempts = (
     actions: readonly ToolAction[],
@@ -603,11 +673,7 @@ export function createToolActionReview(options: {
         "guardian.action_review.exhausted",
         {
           "app.guardian.decision": step.decision.decision,
-          "app.guardian.risk_level": step.decision.riskLevel,
-          ...(step.decision.rule
-            ? { "app.guardian.rule": step.decision.rule }
-            : undefined),
-          "app.guardian.user_consent": step.decision.userAuthorization,
+          "app.guardian.rule": step.decision.rule,
           "gen_ai.tool.name": step.proposal.tool.name,
           "gen_ai.tool.call.id": actions[index]!.toolCallId,
         },
@@ -639,8 +705,6 @@ export function createToolActionReview(options: {
       decision: decision.decision,
       priorRejection: reviewedAction,
       reason: reviewedAction.reason,
-      riskLevel: decision.riskLevel,
-      userAuthorization: decision.userAuthorization,
       version: 1,
     });
     return {
@@ -649,10 +713,8 @@ export function createToolActionReview(options: {
         instructions: rejectionInstructions(decision.decision, {
           exhausted,
         }),
-        riskLevel: decision.riskLevel,
         reviewedAction,
         rule: decision.rule,
-        userAuthorization: decision.userAuthorization,
       }),
     };
   };
@@ -668,14 +730,7 @@ export function createToolActionReview(options: {
         "guardian.action_review",
         {},
         async () => {
-          // Each action sees the same prior rejections, so the order in
-          // which concurrent reviews finish cannot change a proposal.
-          const rejections = [...priorRejections];
-          const steps = await mapBounded(
-            actions,
-            (action) => reviewStep(action, rejections, signal),
-            MAX_CONCURRENT_REVIEWS,
-          );
+          const steps = await reviewSteps(actions, signal);
           // Change gate state in batch order, so it does not depend on
           // which review finished first.
           const states = countAttempts(actions, steps);

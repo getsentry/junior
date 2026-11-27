@@ -3,7 +3,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { fetchWithBoundedOAuthErrorBodies } from "@/chat/oauth-response";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
@@ -15,7 +15,7 @@ export function getMcpOAuthCallbackPath(provider: string): string {
 }
 
 function requirePluginWithMcp(provider: string): PluginDefinition {
-  const plugin = pluginCatalogRuntime.getDefinition(provider);
+  const plugin = getAppContext().catalog.getDefinition(provider);
   if (!plugin?.manifest.mcp) {
     throw new Error(`Plugin "${provider}" does not support MCP`);
   }

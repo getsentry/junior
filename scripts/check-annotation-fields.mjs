@@ -2,16 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Annotation field check. An Annotation stores the kind and the id of its
- * object, what the Conversation did, and when, with the title and a link
- * for search and for a card when the provider is down. The card reads
- * everything else live, and the plugin makes the label (design/annotations.md).
- *
- * The check fails when a column of `junior_conversation_annotations` or a
- * field that a plugin saves in an Annotation is not in `BASELINE`, or when
- * source reads a field that Annotations no longer store from the stored
- * JSON. The baseline-growth check lets the baseline only shrink, so a new
- * field needs a change of the design first.
+ * Annotation field check (design/annotations.md says what an Annotation
+ * stores). It fails when a column of `junior_conversation_annotations` or a
+ * saved plugin field is not in `BASELINE`, or when source reads a field
+ * that Annotations no longer store. The baseline may only shrink.
  */
 
 const BASELINE = "scripts/annotation-fields-baseline.json";

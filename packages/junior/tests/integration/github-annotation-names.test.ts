@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { patchConfig } from "../fixtures/config";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
@@ -537,26 +537,20 @@ describe("a GitHub issue of a renamed repository", () => {
   /** Create issue #4254 of `getsentry/junior` from the person's Turn. */
   async function createIssue(): Promise<void> {
     // The footer that links the issue to its Conversation needs a link.
-    const previous = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-    });
-    try {
-      await runTool(
-        "github_createIssue",
-        {
-          body: "Fix the flaky check.",
-          repo: "getsentry/junior",
-          title: "Fix the flaky check",
-        },
-        {
-          html_url: "https://github.com/getsentry/junior/issues/4254",
-          id: 4_254_000,
-          number: 4254,
-        },
-      );
-    } finally {
-      setDashboardConversationLinkOptions(previous);
-    }
+    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
+    await runTool(
+      "github_createIssue",
+      {
+        body: "Fix the flaky check.",
+        repo: "getsentry/junior",
+        title: "Fix the flaky check",
+      },
+      {
+        html_url: "https://github.com/getsentry/junior/issues/4254",
+        id: 4_254_000,
+        number: 4254,
+      },
+    );
   }
 
   it("is found by the new name and link after the rename and transfer webhooks", async () => {

@@ -1,15 +1,8 @@
 /**
- * The Inbox item of an issue that Junior created. Each GitHub assignee with
- * a linked account is on it. Assigning a person on GitHub adds them, and
- * unassigning removes them. The item closes when the issue closes, is
- * deleted or transferred, or nobody is left. A reopen brings it back for
- * everyone still assigned. A dismiss unassigns the person on GitHub (`dismissGitHubItem`).
- *
- * The item belongs to the Conversation that first saved the issue's card.
- * The issue body footer names the Conversations that wrote it, and only
- * those are read. Core checks the owner from every stored card, so an edited
- * footer cannot move the item. When the footer no longer names the owner,
- * the webhook skips the item and logs it.
+ * The Inbox item of an issue that Junior created, for its linked assignees.
+ * `design/github.md` says when it opens and closes. Only Conversations that
+ * the issue footer names are read as its owner, and core checks the owner
+ * from every stored card, so an edited footer cannot move the item.
  */
 import {
   PluginInboxItemOwnerError,

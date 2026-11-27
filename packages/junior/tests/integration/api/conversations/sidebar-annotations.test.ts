@@ -11,7 +11,6 @@ import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
   GITHUB_API,
@@ -23,6 +22,7 @@ import {
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 import { signedInViewer } from "../../../fixtures/user";
 import { mswServer } from "../../../msw/server";
+import { useAppContext } from "../../../fixtures/app-context";
 
 describe("conversation list sidebar annotations", () => {
   test("shows resource links as chips on viewable feed conversations", async () => {
@@ -32,29 +32,37 @@ describe("conversation list sidebar annotations", () => {
     const privateId = "slack:D123:annotated-private";
 
     try {
-      setPlugins([
-        defineJuniorPlugin({
-          manifest: {
-            name: "github",
-            displayName: "GitHub",
-            description: "GitHub sidebar test plugin",
-          },
-          hooks: {
-            conversationSidebar(ctx) {
-              return {
-                annotationsByConversationId: Object.fromEntries(
-                  Object.keys(ctx.annotationsByConversationId).map(
-                    (conversationId) => [
-                      conversationId,
-                      [{ icon: "circle-dot", key: "github", label: "junior" }],
-                    ],
-                  ),
-                ),
-              };
+      useAppContext({
+        plugins: [
+          defineJuniorPlugin({
+            manifest: {
+              name: "github",
+              displayName: "GitHub",
+              description: "GitHub sidebar test plugin",
             },
-          },
-        }),
-      ]);
+            hooks: {
+              conversationSidebar(ctx) {
+                return {
+                  annotationsByConversationId: Object.fromEntries(
+                    Object.keys(ctx.annotationsByConversationId).map(
+                      (conversationId) => [
+                        conversationId,
+                        [
+                          {
+                            icon: "circle-dot",
+                            key: "github",
+                            label: "junior",
+                          },
+                        ],
+                      ],
+                    ),
+                  ),
+                };
+              },
+            },
+          }),
+        ],
+      });
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: publicId,
@@ -145,7 +153,6 @@ describe("conversation list sidebar annotations", () => {
         (await readConversationDetail(privateId))?.sidebarAnnotations,
       ).toBeUndefined();
     } finally {
-      setPlugins([]);
       await fixture.close();
     }
   });

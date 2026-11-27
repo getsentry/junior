@@ -9,7 +9,7 @@ import {
 } from "@/chat/credentials/service-account";
 import { getChatConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { escapeHtml } from "@/api/html";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
@@ -42,7 +42,7 @@ function callbackUrl(request: Request, provider: string): string {
 }
 
 function requirePlugin(provider: string): PluginDefinition {
-  const plugin = pluginCatalogRuntime.getDefinition(provider);
+  const plugin = getAppContext().catalog.getDefinition(provider);
   if (!plugin?.manifest.accounts?.serviceAccount) {
     throwApiError(404, "Service account not found.");
   }
@@ -69,7 +69,7 @@ export function createServiceAccountRoutes(): Hono<JuniorApiEnv> {
   app.get("/", requireAdmin, async () =>
     jsonResponse(serviceAccountListSchema, {
       serviceAccounts: await mapBounded(
-        serviceAccountPlugins(pluginCatalogRuntime.getProviders()),
+        serviceAccountPlugins(getAppContext().catalog.getProviders()),
         getServiceAccountStatus,
       ),
     }),

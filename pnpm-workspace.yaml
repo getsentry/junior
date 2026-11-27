@@ -69,8 +69,9 @@ minimumReleaseAgeExclude:
   - "@sentry/replay-canvas@11.16.0"
   - "@sentry/server-runtime-injection@11.16.0"
   - "@sentry/server-utils@11.16.0"
-  # Sentry publishes @sentry/api, so a new release is trusted.
+  # Sentry publishes @sentry/api and @sentry/http, so a new release is trusted.
   - "@sentry/api@2.16.0"
+  - "@sentry/http@1.0.0"
   - "@earendil-works/pi-agent-core"
   - "@earendil-works/pi-ai"
   - sentry

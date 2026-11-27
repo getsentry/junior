@@ -13,9 +13,8 @@ async function setPackages(packageNames: string[]): Promise<void> {
 }
 
 async function setConfig(config: PluginCatalogConfig): Promise<void> {
-  const { pluginCatalogRuntime } =
-    await import("@/chat/plugins/catalog-runtime");
-  pluginCatalogRuntime.setConfig({
+  const { getAppContext } = await import("@/app/context");
+  getAppContext().catalog.setConfig({
     ...config,
     packages: config.packages ?? configuredPackageNames,
   });
@@ -26,8 +25,7 @@ async function expectRegistryLoadFailure(
   message: string,
 ): Promise<void> {
   await setPackages(packageNames);
-  const { pluginCatalogRuntime: registry } =
-    await import("@/chat/plugins/catalog-runtime");
+  const registry = (await import("@/app/context")).getAppContext().catalog;
   expect(() => registry.getProviders()).toThrow(message);
 }
 
@@ -573,8 +571,7 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-demo"]);
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
     const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.name).toBe("demo");
@@ -616,8 +613,7 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-implicit-version"]);
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
     const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.runtimeDependencies).toEqual([
@@ -650,8 +646,7 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-bundle-only"]);
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
     const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.name).toBe("demo");
@@ -694,8 +689,7 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-system-url"]);
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
     const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.runtimeDependencies).toEqual([
@@ -733,8 +727,7 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-postinstall"]);
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
     const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.runtimePostinstall).toEqual([
@@ -844,8 +837,7 @@ describe("plugin registry package discovery", () => {
         },
       },
     });
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
     expect(
       registry.getProviders().map((plugin) => ({
         name: plugin.manifest.name,
@@ -889,8 +881,7 @@ describe("plugin registry package discovery", () => {
         },
       },
     });
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
 
     expect(() => registry.getProviders()).toThrow(
       "plugins.manifests.missing does not match a loaded plugin",
@@ -1043,8 +1034,7 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-oauth-overrides"]);
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
     const provider = registry.getProviders()[0];
     expect(provider?.manifest.credentials).toMatchObject({
       type: "oauth-bearer",
@@ -1130,8 +1120,7 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-mcp"]);
-    const { pluginCatalogRuntime: registry } =
-      await import("@/chat/plugins/catalog-runtime");
+    const registry = (await import("@/app/context")).getAppContext().catalog;
     const provider = registry.getProviders()[0];
     expect(provider?.manifest.mcp).toEqual({
       transport: "http",
@@ -1238,8 +1227,7 @@ describe("plugin registry package discovery", () => {
       }));
 
       await setPackages(["@acme/junior-plugin-mcp-template"]);
-      const { pluginCatalogRuntime: registry } =
-        await import("@/chat/plugins/catalog-runtime");
+      const registry = (await import("@/app/context")).getAppContext().catalog;
       const provider = registry.getProviders()[0];
       expect(provider?.manifest.mcp?.url).toBe(
         "https://mcp.example.com/api/unstable/mcp-server/mcp?toolsets=core",
@@ -1288,8 +1276,7 @@ describe("plugin registry package discovery", () => {
       }));
 
       await setPackages(["@acme/junior-plugin-mcp-template"]);
-      const { pluginCatalogRuntime: registry } =
-        await import("@/chat/plugins/catalog-runtime");
+      const registry = (await import("@/app/context")).getAppContext().catalog;
       const provider = registry.getProviders()[0];
       expect(provider?.manifest.mcp?.url).toBe(
         "https://mcp.us5.example.com/api/unstable/mcp-server/mcp?toolsets=core",

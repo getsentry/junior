@@ -5,7 +5,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { findObjectLinkType } from "@/api/objects/link-types";
 import { readObjectLinkTypes } from "@/api/objects/resolve";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { patchConfig } from "../../fixtures/config";
 
 function plugin(name: string, filters: ObjectLinkFilter[]) {
   return defineJuniorPlugin({
@@ -26,9 +26,7 @@ function ownerOf(url: string, plugins: ReturnType<typeof plugin>[]) {
 }
 
 describe("object link types", () => {
-  afterEach(() => {
-    setDashboardConversationLinkOptions(undefined);
-  });
+  afterEach(() => {});
 
   it("picks the most specific filter", () => {
     const plugins = [
@@ -65,8 +63,10 @@ describe("object link types", () => {
   });
 
   it("matches dashboard pages and mailto links to core types", () => {
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     const types = readObjectLinkTypes([]);
     expect(
@@ -139,8 +139,10 @@ describe("object link types", () => {
       ).toThrow(/claim the same URLs/);
     }
 
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     expect(() =>
       readObjectLinkTypes([plugin("mail", [{ scheme: "mailto" }])]),

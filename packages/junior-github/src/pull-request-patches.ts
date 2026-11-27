@@ -101,8 +101,7 @@ type HeadFactsNode = z.output<typeof headFactsNodeSchema>;
 // fields still wait. Return `expire` when the read is of another head
 // commit than the entry, as for a dropped patch. On the last delivery, a
 // merge state that GitHub still computes stays pending only briefly, so
-// the next read asks GitHub. `written` says whether the read was current,
-// and `changed` whether it changed what a card shows.
+// the next read asks GitHub. `written` says whether the read was current.
 async function writeHeadFacts(
   cache: PluginCache,
   key: string,
@@ -206,8 +205,7 @@ async function expirePending(cache: PluginCache, key: string): Promise<void> {
  * that GitHub still computes stays pending only briefly, so the next read
  * asks GitHub. A pull request missing from the answer, of another head
  * commit, or whose query fails on the last delivery, leaves its pending
- * fields fresh only briefly too. A read that changes the entry tells
- * `objectChanged`, so an open page reads the card again.
+ * fields fresh only briefly too. A change calls `objectChanged`.
  */
 export function githubPullRequestPatchTask(
   loadHeadFacts: (refs: PullRequestRef[]) => Promise<unknown>,

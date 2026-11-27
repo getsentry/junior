@@ -166,11 +166,9 @@ export async function replaceAnnotationSubjectId(
 
 /**
  * Add or replace one annotation of a plugin, and mark the Conversation detail
- * changed in the same statement. Pass a transaction to save it with other
- * changes. `subject` overrides the subject of the annotation, such as for an
- * attached link. Without a subject or an `action`, the database fills them
- * from the saved JSON. A later change keeps `created`: the Conversation
- * still created the object.
+ * changed in the same statement. `subject` overrides the annotation's, such
+ * as for an attached link; without it or an `action`, the database fills
+ * them from the saved JSON. A later change keeps `created`.
  */
 export async function upsertPluginAnnotation(
   db: JuniorDatabase,

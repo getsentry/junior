@@ -238,12 +238,11 @@ function checkEventTarget(
 
 /**
  * Write the issue or pull request of an `issues` or `pull_request` webhook
- * into its cache entry, so the next card read shows it without a GitHub
- * call. A webhook that can change the review decision clears it, so the
- * next page read asks GitHub. A `check_suite` or `check_run` webhook marks the checks
- * of its pull requests pending. Merge state and checks that turn pending
- * get a patch (`pull-request-patches.ts`). Each write that changes an
- * entry tells `objectChanged`, so an open page reads the card again.
+ * into its cache entry, so the next card read needs no GitHub call. A
+ * webhook that can change the review decision clears it. A check webhook
+ * marks its pull requests' checks pending, which gets a patch
+ * (`pull-request-patches.ts`). A write that changes an entry calls
+ * `objectChanged`.
  */
 export async function refreshGitHubObjectCache(
   args: RefreshArgs & { eventName: string },

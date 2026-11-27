@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createPluginEgress } from "@/chat/egress/plugin";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import { useAppContext } from "../../fixtures/app-context";
+
 function githubManifest() {
   return {
     name: "github",
@@ -15,6 +15,10 @@ function githubManifest() {
   };
 }
 
+const githubCatalogConfig = {
+  inlineManifests: [{ manifest: githubManifest() }],
+};
+
 function authOrchestration() {
   return {
     handleAuthRequired: vi.fn(),
@@ -22,25 +26,11 @@ function authOrchestration() {
 }
 
 describe("plugin egress", () => {
-  let restoreCatalog:
-    | { previous: ReturnType<typeof pluginCatalogRuntime.setConfig> }
-    | undefined;
-
   beforeEach(() => {
     process.env["JUNIOR_STATE_ADAPTER"] = "memory";
-    restoreCatalog = {
-      previous: pluginCatalogRuntime.setConfig({
-        inlineManifests: [{ manifest: githubManifest() }],
-      }),
-    };
   });
 
   afterEach(async () => {
-    setPlugins([]);
-    if (restoreCatalog) {
-      pluginCatalogRuntime.setConfig(restoreCatalog.previous);
-      restoreCatalog = undefined;
-    }
     await disconnectStateAdapter();
     vi.restoreAllMocks();
   });
@@ -51,27 +41,30 @@ describe("plugin egress", () => {
       provider: "github",
       scope: "repo",
     };
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: githubManifest(),
-        hooks: {
-          grantForEgress() {
-            return {
-              name: "user-write",
-              access: "write",
-              reason: "github.issue.create",
-            };
+    useAppContext({
+      pluginConfig: githubCatalogConfig,
+      plugins: [
+        defineJuniorPlugin({
+          manifest: githubManifest(),
+          hooks: {
+            grantForEgress() {
+              return {
+                name: "user-write",
+                access: "write",
+                reason: "github.issue.create",
+              };
+            },
+            issueCredential() {
+              return {
+                type: "needed" as const,
+                authorization,
+                message: "Connect GitHub.",
+              };
+            },
           },
-          issueCredential() {
-            return {
-              type: "needed" as const,
-              authorization,
-              message: "Connect GitHub.",
-            };
-          },
-        },
-      }),
-    ]);
+        }),
+      ],
+    });
     const pluginAuth = authOrchestration();
     vi.mocked(pluginAuth.handleAuthRequired).mockRejectedValue(
       new Error("paused"),
@@ -110,21 +103,24 @@ describe("plugin egress", () => {
 
   it("rejects non-HTTPS provider URLs before issuing credentials", async () => {
     const issueCredential = vi.fn();
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: githubManifest(),
-        hooks: {
-          grantForEgress() {
-            return {
-              name: "installation-read",
-              access: "read",
-              reason: "github.repo.read",
-            };
+    useAppContext({
+      pluginConfig: githubCatalogConfig,
+      plugins: [
+        defineJuniorPlugin({
+          manifest: githubManifest(),
+          hooks: {
+            grantForEgress() {
+              return {
+                name: "installation-read",
+                access: "read",
+                reason: "github.repo.read",
+              };
+            },
+            issueCredential,
           },
-          issueCredential,
-        },
-      }),
-    ]);
+        }),
+      ],
+    });
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
@@ -144,34 +140,37 @@ describe("plugin egress", () => {
   });
 
   it("returns upstream permission denied responses to plugin callers", async () => {
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: githubManifest(),
-        hooks: {
-          grantForEgress() {
-            return {
-              name: "installation-read",
-              access: "read",
-              reason: "github.repo.read",
-            };
+    useAppContext({
+      pluginConfig: githubCatalogConfig,
+      plugins: [
+        defineJuniorPlugin({
+          manifest: githubManifest(),
+          hooks: {
+            grantForEgress() {
+              return {
+                name: "installation-read",
+                access: "read",
+                reason: "github.repo.read",
+              };
+            },
+            issueCredential() {
+              return {
+                type: "lease" as const,
+                lease: {
+                  expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                  headerTransforms: [
+                    {
+                      domain: "api.github.com",
+                      headers: { Authorization: "Bearer github-token" },
+                    },
+                  ],
+                },
+              };
+            },
           },
-          issueCredential() {
-            return {
-              type: "lease" as const,
-              lease: {
-                expiresAt: new Date(Date.now() + 60_000).toISOString(),
-                headerTransforms: [
-                  {
-                    domain: "api.github.com",
-                    headers: { Authorization: "Bearer github-token" },
-                  },
-                ],
-              },
-            };
-          },
-        },
-      }),
-    ]);
+        }),
+      ],
+    });
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
       fetch: vi.fn(async () => new Response("forbidden", { status: 403 })),
@@ -189,7 +188,10 @@ describe("plugin egress", () => {
   });
 
   it("denies pull request approvals on plugin egress even when operation is set", async () => {
-    setPlugins([githubPlugin()]);
+    useAppContext({
+      pluginConfig: githubCatalogConfig,
+      plugins: [githubPlugin()],
+    });
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },

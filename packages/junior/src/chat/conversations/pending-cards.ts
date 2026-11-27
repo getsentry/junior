@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { readLiveAnnotations } from "@/api/objects/live-annotations";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
@@ -114,22 +114,29 @@ async function selectChildResultCards(
   }
 }
 
-// The person who started the top-level Conversation of this one, when
-// Junior knows their User. In a Space that is the Lead's child, not the
-// Lead: a thread moved into a Space keeps the person who started it, and
-// only the Lead's own work reads as the Space's creator. System work, such
-// as an Automation run, has none.
+// The person who started the root Conversation of this one, when Junior
+// knows their User. In a Space that is the Lead's child, not the Lead: a
+// thread moved into a Space keeps the person who started it, and only the
+// Lead's own work reads as the Space's creator. System work, such as an
+// Automation run, has none.
 async function readConversationOwner(
   conversationId: string,
 ): Promise<User | undefined> {
   const db = getDb();
+  const leads = db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.kind, "lead"));
   const [row] = await db
     .select({ identityId: juniorConversations.actorIdentityId })
     .from(juniorConversations)
     .where(
       and(
         sql<boolean>`${juniorConversations.conversationId} in ${conversationAncestorsOrSelf(sql`${conversationId}`)}`,
-        topLevelConversation(),
+        or(
+          topLevelConversation(),
+          inArray(juniorConversations.parentConversationId, leads),
+        ),
       ),
     )
     .orderBy(sql`coalesce(${juniorConversations.kind} = 'lead', false)`)

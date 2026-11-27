@@ -88,10 +88,10 @@ async function person(name: string, teamId = "T1") {
       expect(response.status).toBe(200);
       return conversationDetailReportSchema.parse(await response.json());
     },
-    /** Invite a mentioned person by Slack user id. Returns the response. */
-    async invite(slackUserId: string) {
+    /** Invite a person by their User id. Returns the response. */
+    async invite(invitee: { viewer: { id: string } }) {
       return await api(`/${CONVERSATION_ID}/invites`, {
-        body: JSON.stringify({ slackUserId }),
+        body: JSON.stringify({ userId: invitee.viewer.id }),
         headers: { "content-type": "application/json" },
         method: "POST",
       });
@@ -315,7 +315,7 @@ describe("conversation subscription", () => {
     const cleo = await person("cleo");
     expect(await cleo.feed()).toEqual([]);
 
-    const invited = await ana.invite(slackUserId("cleo"));
+    const invited = await ana.invite(cleo);
     expect(invited.status).toBe(200);
     expect(await invited.json()).toEqual({ added: true });
     expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
@@ -323,34 +323,33 @@ describe("conversation subscription", () => {
 
     // An existing Participant keeps their own choice to unsubscribe.
     await ben.setSubscribed(false);
-    expect(await (await ana.invite(slackUserId("ben"))).json()).toEqual({
+    expect(await (await ana.invite(ben)).json()).toEqual({
       added: false,
     });
     expect(await ben.feed()).toEqual([]);
   });
 
-  it("a dashboard Message that mentions a person adds them, like Invite", async () => {
-    const { ana, ben } = await sharedThread();
+  it("only a Participant may Invite: a reader of a public conversation Joins first", async () => {
+    await sharedThread();
     const cleo = await person("cleo");
-    await ben.setSubscribed(false);
+    const dana = await person("dana");
 
-    await ana.post(`<@${slackUserId("cleo")}> <@${slackUserId("ben")}> look`);
-    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
-    expect(await ben.feed()).toEqual([]);
+    const refused = await cleo.invite(dana);
+    expect(refused.status).toBe(403);
+    expect(await dana.feed()).toEqual([]);
+
+    await cleo.setSubscribed(true);
+    expect(await (await cleo.invite(dana)).json()).toEqual({ added: true });
+    expect(await dana.feed()).toEqual([CONVERSATION_ID]);
   });
 
-  it("a Slack Message that mentions a person adds them, like Invite", async () => {
-    const { ana, ben } = await sharedThread();
+  it("a Message that mentions a person adds nobody: only Invite does", async () => {
+    const { ana } = await sharedThread();
     const cleo = await person("cleo");
-    await ben.setSubscribed(false);
 
-    await say(
-      ana,
-      false,
-      `<@${slackUserId("cleo")}> <@${slackUserId("ben")}> look`,
-    );
-    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
-    expect(await ben.feed()).toEqual([]);
+    await ana.post(`<@${slackUserId("cleo")}> look`);
+    await say(ana, true, `<@${slackUserId("cleo")}> look`);
+    expect(await cleo.feed()).toEqual([]);
   });
 
   it("a Message in a private conversation adds nobody it mentions", async () => {
@@ -366,18 +365,25 @@ describe("conversation subscription", () => {
     const { ana } = await sharedThread(undefined, "private");
     const cleo = await person("cleo");
 
-    const invited = await ana.invite(slackUserId("cleo"));
+    const invited = await ana.invite(cleo);
     expect(invited.status).toBe(404);
     expect(await cleo.feed()).toEqual([]);
     expect(await cleo.feed("?q=shared")).toEqual([]);
   });
 
-  it("Invite names a person of the conversation's Slack workspace", async () => {
+  it("Invite adds any User, in another Slack workspace or with no Slack account", async () => {
     const { ana } = await sharedThread();
     const dana = await person("dana", "T2");
+    const eve = await resolveViewerUser("eve@example.com");
 
-    expect((await ana.invite(slackUserId("dana"))).status).toBe(404);
-    expect(await dana.feed()).toEqual([]);
+    expect(await (await ana.invite(dana)).json()).toEqual({ added: true });
+    expect(await dana.feed()).toEqual([CONVERSATION_ID]);
+    expect(await (await ana.invite({ viewer: eve! })).json()).toEqual({
+      added: true,
+    });
+    expect((await ana.invite({ viewer: { id: "missing-user" } })).status).toBe(
+      404,
+    );
   });
 
   it("Invite on an archived conversation is refused", async () => {
@@ -386,7 +392,7 @@ describe("conversation subscription", () => {
     await ana.setSubscribed(false);
     await ben.setSubscribed(false);
 
-    expect((await ana.invite(slackUserId("cleo"))).status).toBe(409);
+    expect((await ana.invite(cleo)).status).toBe(409);
     expect(await cleo.feed("?status=archived")).toEqual([]);
   });
 });
@@ -410,9 +416,9 @@ async function privateDashboardConversation() {
   };
   const path = `/${encodeURIComponent(conversationId)}`;
   const as = (someone: Person) => ({
-    invite: (name: string) =>
+    invite: (invitee: Person) =>
       someone.api(`${path}/invites`, {
-        body: JSON.stringify({ slackUserId: slackUserId(name) }),
+        body: JSON.stringify({ userId: invitee.viewer.id }),
         headers: { "content-type": "application/json" },
         method: "POST",
       }),
@@ -450,16 +456,16 @@ describe("private conversation membership", () => {
     });
 
     // Someone outside cannot add themselves or anyone else.
-    expect((await as(ben).invite("cleo")).status).toBe(404);
+    expect((await as(ben).invite(cleo)).status).toBe(404);
 
     const before = await as(ana).version();
-    expect(await (await as(ana).invite("ben")).json()).toEqual({
+    expect(await (await as(ana).invite(ben)).json()).toEqual({
       added: true,
     });
     expect(await as(ben).reads()).toBe(true);
     // Ana's open page polls the version, and the Participants changed.
     expect(await as(ana).version()).not.toBe(before);
-    expect(await (await as(ben).invite("cleo")).json()).toEqual({
+    expect(await (await as(ben).invite(cleo)).json()).toEqual({
       added: true,
     });
     expect(await as(cleo).reads()).toBe(true);
@@ -468,7 +474,7 @@ describe("private conversation membership", () => {
   it("a Participant leaves on their own and loses access", async () => {
     const { ana, as } = await privateDashboardConversation();
     const ben = await person("ben");
-    await as(ana).invite("ben");
+    await as(ana).invite(ben);
 
     // Nobody can remove another person: leave acts only on the caller.
     expect((await as(ben).leave()).status).toBe(200);
@@ -480,7 +486,7 @@ describe("private conversation membership", () => {
   it("the person who started it stays out after they leave", async () => {
     const { ana, as, conversationId } = await privateDashboardConversation();
     const ben = await person("ben");
-    await as(ana).invite("ben");
+    await as(ana).invite(ben);
     expect((await as(ana).leave()).status).toBe(200);
 
     // A later Turn writes the root again.
@@ -492,7 +498,7 @@ describe("private conversation membership", () => {
   it("the last subscriber leaving archives it for everyone", async () => {
     const { ana, as, conversationId } = await privateDashboardConversation();
     const ben = await person("ben");
-    await as(ana).invite("ben");
+    await as(ana).invite(ben);
     const benPath = `/${encodeURIComponent(conversationId)}/subscription`;
     expect(
       (

@@ -46,10 +46,15 @@ function typing(): boolean {
   );
 }
 
+// On a phone, the open row stays closed in the list, and its asks show in
+// a sheet outside the list.
 function openRowKey(scroller: HTMLElement): string {
   return (
     scroller.querySelector<HTMLElement>("li[data-inbox-row][data-expanded]")
-      ?.dataset["inboxRow"] ?? ""
+      ?.dataset["inboxRow"] ??
+    document.querySelector<HTMLElement>("[data-inbox-sheet][data-sheet-open]")
+      ?.dataset["inboxSheet"] ??
+    ""
   );
 }
 

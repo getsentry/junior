@@ -9,11 +9,15 @@ import {
   conversationFeedSchema,
   spaceListSchema,
 } from "@/api/schema";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { createSpace } from "@/chat/spaces/store";
 import { Hono } from "hono";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { conversationSubtree } from "@/chat/conversations/sql/subtree";
-import { juniorConversations } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
@@ -586,11 +590,13 @@ describe("conversation tree state", () => {
       "/",
       createJuniorApi({ conversationWorkQueue: fixture.queue }),
     );
-    const joined = await bobApp.request(
-      `http://localhost/api/spaces/${space.id}/members/me`,
-      { method: "PUT" },
-    );
-    expect(joined.status).toBe(200);
+    // A Space's members are the Participants of its Lead.
+    const lead = await getSpaceLead(space.id);
+    await getDb().insert(juniorConversationParticipants).values({
+      lastMessageAt: new Date(),
+      rootConversationId: lead.conversationId,
+      userId: bob!.id,
+    });
     const spaceRow = async (request: (path: string) => Promise<Response>) => {
       const response = await request("/api/spaces");
       expect(response.status).toBe(200);

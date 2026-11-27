@@ -8,7 +8,6 @@ import {
   actorProfileReportSchema,
   conversationDetailReportSchema,
   conversationFeedSchema,
-  leadSchema,
   spaceSchema,
 } from "@/api/schema";
 import {
@@ -20,7 +19,6 @@ import {
   getConversationStore,
   getSqlExecutor,
 } from "@/chat/db";
-import { createWatch } from "@/chat/events/store";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { closeConversationFixture } from "../../fixtures/conversation";
@@ -52,21 +50,17 @@ async function createSpace(
   return spaceSchema.parse(await response.json()).id;
 }
 
-function leadPath(spaceId: string): string {
-  return `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/lead`;
-}
-
-async function readLead(app: Hono<JuniorApiEnv>, spaceId: string) {
-  const response = await app.request(leadPath(spaceId));
-  expect(response.status).toBe(200);
-  return leadSchema.parse(await response.json());
+function spacePath(spaceId: string): string {
+  return `http://localhost/api/spaces/${encodeURIComponent(spaceId)}`;
 }
 
 async function readLeadId(
   app: Hono<JuniorApiEnv>,
   spaceId: string,
 ): Promise<string> {
-  return (await readLead(app, spaceId)).conversationId;
+  const response = await app.request(spacePath(spaceId));
+  expect(response.status).toBe(200);
+  return spaceSchema.parse(await response.json()).leadConversationId;
 }
 
 async function postMessage(
@@ -94,7 +88,7 @@ describe("Lead API", () => {
     const bo = apiFor("lead-api-bo@example.com");
     const spaceId = await createSpace(ana, "Billing migration");
 
-    expect((await apiFor().request(leadPath(spaceId))).status).toBe(401);
+    expect((await apiFor().request(spacePath(spaceId))).status).toBe(401);
     const leadId = await readLeadId(ana, spaceId);
     expect(await readLeadId(ana, spaceId)).toBe(leadId);
     // The Lead is public like the Space, so anyone reads the same one.
@@ -126,27 +120,12 @@ describe("Lead API", () => {
     expect(
       acceptedConversationMessageSchema.parse(await sent.json()),
     ).toMatchObject({ conversationId: leadId, status: "accepted" });
+    // Only members message a Lead, as any root.
     expect((await postMessage(bo, leadId, "lead-api-bo-message")).status).toBe(
       403,
     );
-    const joined = await bo.request(
-      `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/members/me`,
-      { method: "PUT" },
-    );
-    expect(joined.status).toBe(200);
-    expect((await postMessage(bo, leadId, "lead-api-bo-joined")).status).toBe(
-      200,
-    );
 
-    // Leaving ends Ana's part in the Lead, so no surface takes her messages.
-    const left = await ana.request(
-      `http://localhost/api/spaces/${encodeURIComponent(spaceId)}/members/me`,
-      { method: "DELETE" },
-    );
-    expect(left.status).toBe(200);
-    expect((await postMessage(ana, leadId, "lead-api-ana-left")).status).toBe(
-      403,
-    );
+    // ACP acts only in the person's own Conversations.
     const state = getStateAdapter();
     await state.connect();
     await expect(
@@ -156,58 +135,11 @@ describe("Lead API", () => {
         state,
       }).prompt({
         conversationId: leadId,
-        idempotencyKey: "lead-api-ana-acp",
+        idempotencyKey: "lead-api-cy-acp",
         text: "Check the deploy.",
-        user: await signedInViewer("lead-api-ana@example.com"),
+        user: await signedInViewer("lead-api-cy@example.com"),
       }),
     ).resolves.toEqual({ status: "not_found" });
-  });
-
-  it("lists the Conversations that the Lead watches, with the seq it read them at", async () => {
-    const api = apiFor("lead-api-watches@example.com");
-    const spaceId = await createSpace(api, "Deploys");
-    const before = await readLead(api, spaceId);
-    expect(before.lastSeq).toBe(-1);
-    const leadId = before.conversationId;
-    const watch = {
-      conversationId: leadId,
-      events: ["agent.update"],
-      expiresAtMs: Date.now() + 3_600_000,
-      intent: "Tell the person when it finishes.",
-    };
-    await createWatch({
-      ...watch,
-      identifier: "slack:C1:1.0",
-      label: "Conversation Checkout latency",
-      namespace: "junior",
-      resourceType: "agent",
-    });
-    // A Watch on another kind of resource is not a watched Conversation.
-    await createWatch({
-      ...watch,
-      events: ["pull_request.merged"],
-      identifier: "getsentry/junior#1",
-      label: "getsentry/junior#1",
-      namespace: "github",
-      resourceType: "pull_request",
-    });
-
-    // The Turn that adds a Watch also adds transcript events.
-    await getConversationEventStore().append(leadId, [
-      {
-        data: {
-          type: "message",
-          messageId: "lead-api-watches:reply",
-          role: "assistant",
-          text: "Watching it.",
-        },
-        createdAtMs: Date.now(),
-      },
-    ]);
-
-    const after = await readLead(api, spaceId);
-    expect(after.watchedConversationIds).toEqual(["slack:C1:1.0"]);
-    expect(after.lastSeq).toBeGreaterThan(before.lastSeq);
   });
 
   it("keeps the Lead out of the conversation lists", async () => {

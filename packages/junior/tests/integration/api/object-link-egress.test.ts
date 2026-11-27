@@ -320,7 +320,8 @@ it("serves a card read from the HTTP cache within its TTL, then revalidates it, 
             { title: "Launch plan" },
             { headers: { etag: '"v1"' } },
           )
-        : new HttpResponse(null, { status: 304 });
+        : // A 304 carries the ETag that the 200 had (RFC 9110).
+          new HttpResponse(null, { status: 304, headers: { etag: '"v1"' } });
     }),
   );
   const alice = testViewer("alice@example.com");

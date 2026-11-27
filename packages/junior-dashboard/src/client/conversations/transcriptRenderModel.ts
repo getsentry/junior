@@ -22,22 +22,40 @@ import { memoryRecallContent } from "./turnContext";
 
 /**
  * True for the parent Event message that delivers a child's agent update,
- * or a child's result that an earlier release wrote. Core writes `subagent_ended` before it sends the
- * result, so the Thread card or Task line already shows the outcome. The
- * transcript keeps this message only for the memories its Turn recalled,
- * folded into activity. An agent update that a Watch delivered has no card,
- * so it stays.
+ * or a child's result from an earlier release, when the child's Thread card
+ * or Task line is in `cardChildIds`. That card already shows the outcome, so
+ * the message stays only for its Turn's recalled memories, folded into
+ * activity. False for an update from a Watch or one whose card is unloaded.
  */
 export function isChildResultMessage(
-  message: Pick<TranscriptViewMessage, "eventType" | "eventWatchId" | "role">,
+  message: Pick<
+    TranscriptViewMessage,
+    "eventIdentifier" | "eventType" | "eventWatchId" | "role"
+  >,
+  cardChildIds: ReadonlySet<string>,
 ): boolean {
   return (
     message.role === "user" &&
     message.eventType !== undefined &&
     (isLegacyResultEventType(message.eventType) ||
       (isAgentUpdateEventType(message.eventType) &&
-        message.eventWatchId === undefined))
+        message.eventWatchId === undefined)) &&
+    (message.eventIdentifier === undefined ||
+      cardChildIds.has(message.eventIdentifier))
   );
+}
+
+/** The children whose Thread card or Task line the messages hold. */
+export function childCardIds(
+  messages: readonly Pick<TranscriptViewMessage, "parts">[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type === "subagent") ids.add(part.childConversationId);
+    }
+  }
+  return ids;
 }
 
 function hasRecalledMemories(message: TranscriptViewMessage): boolean {
@@ -127,9 +145,13 @@ export function groupTranscriptMessages(
   messages: TranscriptViewMessage[],
 ): RenderedTranscriptEntry[] {
   const entries: RenderedTranscriptEntry[] = [];
+  const cardChildIds = childCardIds(messages);
 
   for (const message of messages) {
-    if (isChildResultMessage(message) && !hasRecalledMemories(message)) {
+    if (
+      isChildResultMessage(message, cardChildIds) &&
+      !hasRecalledMemories(message)
+    ) {
       continue;
     }
     const seq = message.pending ? undefined : message.sourceSeq;
@@ -138,8 +160,8 @@ export function groupTranscriptMessages(
     let textGroup = 0;
     const flushMessage = () => {
       if (textParts.length === 0) return;
-      // Keep the original message object when the whole body is one text group so
-      // memoized message rows can skip work on unchanged history.
+      // Keep the original message object when the whole body is one text
+      // group so memoized message rows can skip work on unchanged history.
       const nextMessage =
         textGroup === 0 && textParts.length === message.parts.length
           ? message

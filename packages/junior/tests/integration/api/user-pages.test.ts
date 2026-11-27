@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { afterEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   defineJuniorPlugin,
   pluginUserPageContentSchema,
@@ -11,8 +11,8 @@ import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import type { JuniorApiEnv } from "@/api/route";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
+import { useAppContext } from "../../fixtures/app-context";
 
 function plugin() {
   return defineJuniorPlugin({
@@ -85,10 +85,8 @@ function authenticatedApi(email: string) {
 }
 
 describe("plugin user page API", () => {
-  afterEach(() => setPlugins([]));
-
   test("discovers registered pages without exposing their reader", async () => {
-    setPlugins([plugin()]);
+    useAppContext({ plugins: [plugin()] });
 
     const response = await createJuniorApi().request(
       "http://localhost/api/user-pages",
@@ -110,7 +108,7 @@ describe("plugin user page API", () => {
   });
 
   test("requires an authenticated viewer to read a page", async () => {
-    setPlugins([plugin()]);
+    useAppContext({ plugins: [plugin()] });
 
     const response = await createJuniorApi().request(
       "http://localhost/api/user-pages/notes/memories",
@@ -121,29 +119,31 @@ describe("plugin user page API", () => {
 
   test("passes validated search and pagination state to the page reader", async () => {
     let receivedInput: unknown;
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "notes",
-          displayName: "Notes",
-          description: "Team notes.",
-        },
-        userPages: [
-          {
-            id: "memories",
-            label: "Memories",
-            description: "Personal facts Junior remembers about you.",
-            read(_ctx, input) {
-              receivedInput = input;
-              return {
-                type: "list",
-                records: [],
-              };
-            },
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "notes",
+            displayName: "Notes",
+            description: "Team notes.",
           },
-        ],
-      }),
-    ]);
+          userPages: [
+            {
+              id: "memories",
+              label: "Memories",
+              description: "Personal facts Junior remembers about you.",
+              read(_ctx, input) {
+                receivedInput = input;
+                return {
+                  type: "list",
+                  records: [],
+                };
+              },
+            },
+          ],
+        }),
+      ],
+    });
 
     const response = await authenticatedApi("viewer@example.com").request(
       "http://localhost/api/user-pages/notes/memories?q=runbooks&filter=preferences&cursor=next-page&limit=12",
@@ -206,7 +206,7 @@ describe("plugin user page API", () => {
         title: "Other viewer conversation",
         visibility: "public",
       });
-      setPlugins([plugin()]);
+      useAppContext({ plugins: [plugin()] });
 
       const response = await authenticatedApi("VIEWER@example.com").request(
         "http://localhost/api/user-pages/notes/memories",

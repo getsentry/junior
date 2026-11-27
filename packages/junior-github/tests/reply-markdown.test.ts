@@ -274,6 +274,27 @@ describe("GitHub reply markdown", () => {
     );
   });
 
+  it("gives a bare reference the repository that qualifies the same number", () => {
+    expect(
+      linkifyGitHubReferences(
+        [
+          "- getsentry/datadog-terraform#905 imports accounts.",
+          "- getsentry/ops#26082 adds the topic.",
+          "",
+          "Apply getsentry/ops#26082 first, then merge #905.",
+        ].join("\n"),
+        { config: { org: "getsentry" } },
+      ),
+    ).toBe(
+      [
+        "- [getsentry/datadog-terraform#905](https://github.com/getsentry/datadog-terraform/issues/905) imports accounts.",
+        "- [getsentry/ops#26082](https://github.com/getsentry/ops/issues/26082) adds the topic.",
+        "",
+        "Apply [getsentry/ops#26082](https://github.com/getsentry/ops/issues/26082) first, then merge [getsentry/datadog-terraform#905](https://github.com/getsentry/datadog-terraform/issues/905).",
+      ].join("\n"),
+    );
+  });
+
   it("does not treat short hex IDs, entities, or emails as commits", () => {
     const text =
       "getsentry/junior#1: event 0123456789abcdef0123456789abcdef, &#39;, a@deadbeef.io, x#2";

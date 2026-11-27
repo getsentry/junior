@@ -212,6 +212,7 @@ export {
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
+  ConversationInviteBody,
   ConversationInviteResponse,
   ConversationLeaveResponse,
   ConversationSubscriptionBody,
@@ -384,7 +385,6 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
-export { leadSchema } from "./schema/lead";
 export {
   archiveSpaceBodySchema,
   createSpaceBodySchema,
@@ -404,12 +404,6 @@ export type {
   SpaceReport,
   SpaceVisibilityReport,
 } from "./schema/space";
-export {
-  addSpaceMemberBodySchema,
-  spaceMemberListSchema,
-  spaceMemberSchema,
-} from "./schema/space-member";
-export type { SpaceMemberListReport } from "./schema/space-member";
 export {
   USER_SEARCH_DEFAULT_LIMIT,
   USER_SEARCH_MAX_LIMIT,

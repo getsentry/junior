@@ -61,7 +61,6 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "../format";
-import { useSpaceLead } from "../lead/Lead";
 import { useSpaceData } from "../spaces/queries";
 import { isSpacePath, spaceIdFromPath } from "../spaces/spaceRoutes";
 import { useDashboardServerVersion } from "../dashboard-version";
@@ -259,12 +258,12 @@ function Shell() {
   useDensityRoot();
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // A Space's page shows its Lead. Its header reads the Space, so that read
-  // starts here beside the Lead's, not after the lazy page loads.
+  // A Space's page shows its Lead, which the Space read names. That read
+  // starts here, not after the lazy page loads.
   const pageSpaceId = spaceIdFromPath(location.pathname);
-  const spaceLead = useSpaceLead(pageSpaceId);
-  useSpaceData(pageSpaceId);
-  const openConversationId = conversationId ?? spaceLead.data?.conversationId;
+  const pageSpace = useSpaceData(pageSpaceId);
+  const openConversationId =
+    conversationId ?? pageSpace.data?.leadConversationId;
   // The shell owns the open Conversation's data, and the page reads it. On a
   // direct load, this fetch runs beside the dashboard core reads, before the
   // page mounts. One fetch for each visit also brings the unread page.

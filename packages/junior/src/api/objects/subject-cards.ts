@@ -60,12 +60,9 @@ export function ownerLinkLabel(
 
 /**
  * Read the link and live card of each source for one viewer, in source
- * order. A source's link is its subject link, such as a pull request that
- * follows a renamed repository, else its stored link. A source without a
- * link, or whose owner has no link type for it, gets nothing. A viewer who
- * cannot read the object, or a failed read, gets only the link. Without a
- * viewer, nothing is read. One call reads the whole page: a link type that
- * can read many objects at once, such as GitHub, makes one query.
+ * order, in one call for the page. The link is the subject link, else the
+ * stored one. A source with no link or link type gets nothing. A viewer who
+ * cannot read the object, or a failed read, gets only the link.
  */
 export async function resolveObjectCards(
   viewer: User | undefined,

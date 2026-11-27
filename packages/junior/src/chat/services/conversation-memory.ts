@@ -15,20 +15,9 @@ import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
-import {
-  escapeTagTextAndQuotes,
-  indentTagLines,
-  renderTag,
-} from "@sentry/junior-plugin-api";
-import { authorAttrs, renderThreadContext } from "@/chat/input-tags";
-import { isEventConversationMessage } from "@/chat/events/actor";
+import { escapeTagTextAndQuotes } from "@sentry/junior-plugin-api";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
-const CONTEXT_MAX_MESSAGE_CHARS = 3200;
-// Hard cap on the rendered thread context, newest Messages first.
-const THREAD_CONTEXT_MAX_CHARS = 60_000;
-const THREAD_CONTEXT_OMITTED_NOTE =
-  "Older Messages of this thread are not shown. Find them with a searchConversationEvents query, then read them with readConversationEvent.";
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 
 /** Normalize message boundaries without changing transcript formatting. */
@@ -56,16 +45,19 @@ function buildImageContextSuffix(
   return ` [image context: ${escapeTagTextAndQuotes(summaries.join(" | "))}]`;
 }
 
-function renderConversationMessageLine(
+/**
+ * Render one Message as a single escaped transcript line. `text` replaces the
+ * Message text, such as when a caller cuts it to a budget.
+ */
+export function renderConversationMessageLine(
   message: ConversationMessage,
   conversation?: ThreadConversationState,
+  text: string = message.text,
 ): string {
   const displayName = escapeTagTextAndQuotes(
     conversationAuthorDisplayName(message),
   );
-  const text = escapeTagTextAndQuotes(
-    message.text.replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS),
-  );
+  const lineText = escapeTagTextAndQuotes(text.replace(/\s+/g, " "));
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
@@ -81,10 +73,13 @@ function renderConversationMessageLine(
 
   const markerSuffix = markers.length > 0 ? ` (${markers.join("; ")})` : "";
   const imageContext = buildImageContextSuffix(message, conversation);
-  return `[${message.role}] ${displayName}: ${text}${imageContext}${markerSuffix}`;
+  return `[${message.role}] ${displayName}: ${lineText}${imageContext}${markerSuffix}`;
 }
 
-function conversationAuthorDisplayName(message: ConversationMessage): string {
+/** Return the name to show for a Message author, never a raw Slack id. */
+export function conversationAuthorDisplayName(
+  message: ConversationMessage,
+): string {
   const author = message.author;
   const fullName = authorDisplayField(author?.fullName, author?.userId);
   const userName = authorDisplayField(author?.userName, author?.userId);
@@ -212,51 +207,6 @@ export function markConversationMessage(
   };
 }
 
-// A take or a dismiss is not a decision, so it never reaches the model.
-function isTakeOrDismissOnly(message: ConversationMessage): boolean {
-  const changes = message.meta?.reviewItemChanges;
-  return Boolean(
-    changes?.length &&
-    changes.every(
-      (change) => change.kind === "taken" || change.kind === "dismissed",
-    ),
-  );
-}
-
-function renderThreadContextMessage(
-  message: ConversationMessage,
-  conversation: ThreadConversationState,
-  index: number,
-): string {
-  return indentTagLines(
-    renderTag(
-      "message",
-      {
-        index,
-        sent_at: new Date(message.createdAtMs).toISOString(),
-        role: message.role,
-        ...authorAttrs({
-          authorId: message.author?.userId,
-          authorName: conversationAuthorDisplayName(message),
-        }),
-        slack_ts: message.meta?.slackTs,
-      },
-      [renderConversationMessageLine(message, conversation)],
-    ),
-    "  ",
-  );
-}
-
-// A Message that the agent history does not hold: no mention, no Event, and
-// not Turn input. Backfilled Messages have no mention, so they count.
-function isUntaggedThreadMessage(message: ConversationMessage): boolean {
-  return (
-    message.role === "user" &&
-    !message.meta?.explicitMention &&
-    !isEventConversationMessage(message)
-  );
-}
-
 /** Return the highest saved Message seq, the thread context cursor of a Turn. */
 export function latestConversationMessageSeq(
   conversation: Pick<ThreadConversationState, "messages">,
@@ -268,83 +218,6 @@ export function latestConversationMessageSeq(
     }
   }
   return latest;
-}
-
-/** A rendered thread context block and the counts that telemetry reports. */
-export interface ThreadContextBlock {
-  text?: string;
-  shownMessages: number;
-  /** Messages that matched but did not fit under the size cap. */
-  omittedMessages: number;
-}
-
-/**
- * Render the thread Messages that this Turn needs as one evidence-only block.
- *
- * With agent history, earlier Turns already hold their thread context, Turn
- * input, and replies. So only untagged Messages saved after the cursor of the
- * previous Turn are new. Without history, show the latest Messages. Both keep
- * the newest Messages under one hard size cap, so the block cannot grow with
- * the thread.
- */
-export function buildConversationContext(
-  conversation: ThreadConversationState,
-  options: {
-    /** Turn input Messages, which the prompt already holds. */
-    excludeMessageIds?: readonly string[];
-    /**
-     * Set when agent history exists. `afterSeq` is the cursor of the previous
-     * Turn. A Conversation from before cursors has none.
-     */
-    history?: { afterSeq?: number | undefined };
-  } = {},
-): ThreadContextBlock {
-  const { history } = options;
-  const candidates = conversation.messages.filter(
-    (entry) =>
-      !options.excludeMessageIds?.includes(entry.id) &&
-      !isTakeOrDismissOnly(entry) &&
-      (!history ||
-        (isUntaggedThreadMessage(entry) &&
-          (history.afterSeq === undefined ||
-            entry.seq === undefined ||
-            entry.seq > history.afterSeq))),
-  );
-  // Keep the newest Messages that fit. The index of a Message is its position
-  // in the block.
-  let first = candidates.length;
-  let chars = 0;
-  while (first > 0) {
-    const size = renderThreadContextMessage(
-      candidates[first - 1]!,
-      conversation,
-      first,
-    ).length;
-    if (chars + size > THREAD_CONTEXT_MAX_CHARS) break;
-    chars += size;
-    first -= 1;
-  }
-  const shown = candidates
-    .slice(first)
-    .map((message, index) =>
-      renderThreadContextMessage(message, conversation, index + 1),
-    );
-  const counts = {
-    shownMessages: shown.length,
-    omittedMessages: candidates.length - shown.length,
-  };
-  if (shown.length === 0) {
-    return counts;
-  }
-  const lines = [renderThreadContext(shown)];
-  // Trimming also drops older Messages from the working set.
-  if (
-    shown.length < candidates.length ||
-    (!history && conversation.historyFromSeq !== undefined)
-  ) {
-    lines.push(THREAD_CONTEXT_OMITTED_NOTE);
-  }
-  return { ...counts, text: lines.join("\n") };
 }
 
 /** Return the earliest human-authored message known for a thread. */

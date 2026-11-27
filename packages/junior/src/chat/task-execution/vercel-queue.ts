@@ -1,6 +1,7 @@
+import { getChatConfig } from "@/chat/config";
 import { withSpan } from "@/chat/logging";
 import { getQueueProvider, type QueueProvider } from "@/chat/queue/provider";
-import { resolveConversationWorkQueueTopic } from "@/chat/queue/topics";
+import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/queue/topics";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -31,11 +32,20 @@ function toDelaySeconds(
   return Math.ceil(options.delayMs / 1000);
 }
 
+/** Resolve the conversation work topic: the given topic, config, then the default. */
+export function resolveConversationWorkTopic(topic?: string): string {
+  return (
+    topic?.trim() ||
+    getChatConfig().queue.conversationWorkTopic ||
+    DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC
+  );
+}
+
 /** Create the Vercel Queue implementation for conversation wake-up nudges. */
 export function createVercelConversationWorkQueue(
   options: VercelConversationWorkQueueOptions = {},
 ): ConversationWorkQueue {
-  const topic = resolveConversationWorkQueueTopic(options);
+  const topic = resolveConversationWorkTopic(options.topic);
   const client = options.client ?? getQueueProvider();
 
   return {

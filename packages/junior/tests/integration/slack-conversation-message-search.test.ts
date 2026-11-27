@@ -4,12 +4,12 @@ import {
   getConversationEventStore,
   getConversationStore,
 } from "@/chat/db";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { chatGetPermalinkOk } from "../fixtures/slack/factories/api";
 import { queueSlackApiResponse } from "../msw/handlers/slack-api";
+import { patchConfig } from "../fixtures/config";
 
 const teamId = parseSlackTeamId("T123");
 if (!teamId) {
@@ -25,7 +25,6 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 
 describe("searchConversationMessages", () => {
   afterEach(async () => {
-    setDashboardConversationLinkOptions(undefined);
     await closeDb();
   });
 
@@ -116,8 +115,10 @@ describe("searchConversationMessages", () => {
     });
 
     // With the dashboard, its link replaces the Slack thread link.
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     const withDashboard = await executeTool(tool, {
       query: "launch checklist",

@@ -6,7 +6,8 @@ import { TestRunner } from "vitest";
 import { createJudge, createJudgeHarness } from "vitest-evals";
 import type { JsonValue, NormalizedSession } from "vitest-evals/harness";
 // oxlint-disable-next-line no-restricted-imports -- The eval judge is eval spend, not Conversation spend.
-import { completeText, resolveGatewayModel } from "@/chat/pi/client";
+import { completeText } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { runEvalWork } from "../eval-work";
 
 /** Pass and fail conditions in product language. */

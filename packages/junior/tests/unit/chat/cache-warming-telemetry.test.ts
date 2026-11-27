@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 
 const { spans } = vi.hoisted(() => ({
   spans: [] as Array<{ name: string; attributes: Record<string, unknown> }>,

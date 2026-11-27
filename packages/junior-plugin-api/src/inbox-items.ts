@@ -42,33 +42,18 @@ export interface PluginInboxSubjectKind {
    */
   codeChange?: boolean;
   /**
-   * Where the owner Conversation of an item is. Each item belongs to one
-   * Conversation, which decides who can see it. Junior finds it in the row
-   * of `table` whose `subjectId` column holds the item's subject id, and
-   * reads the `conversationId` column of that row. Name a table of this
-   * plugin and its columns in snake_case. At most one row can have the
-   * subject id and a set Conversation: add a unique index for it.
-   *
-   * `annotation` names the Conversation that first saved an Annotation
-   * whose `subject` is the item's subject, such as the Conversation that
-   * created a GitHub issue. Annotations name their objects with these
-   * kinds too, so register each kind that an object Annotation uses.
+   * Where the owner Conversation of an item is, which decides who can see
+   * it. A table maps the subject id to a `conversationId`, with a unique
+   * index (columns in snake_case). `annotation` names the Conversation that
+   * first saved an Annotation of the subject, so register each kind that an
+   * object Annotation uses.
    */
   owner: PluginInboxSubjectOwner | "annotation";
   /**
-   * Each assignee holds a role on the object, such as a GitHub assignee or
-   * requested reviewer. The role puts them on the item, also when they are
-   * not in the owner Conversation: they can see the object on the provider.
-   * Their card then shows the item and the object, but not the Conversation
-   * unless they can see it. An item that would have nobody on it is not
-   * added, and an open one closes.
-   *
-   * Nobody can take the item, because a take cannot change the roles.
-   *
-   * A dismiss removes only the person who dismissed the item. Junior first
-   * calls the plugin's `inboxItemDismissed` hook, which removes their role
-   * on the provider. When the hook fails, the dismiss fails and the person
-   * stays.
+   * Each assignee holds a role on the object, such as a GitHub assignee, so
+   * they are on the item without the owner Conversation. Nobody can take it.
+   * A dismiss first calls `inboxItemDismissed` to remove the person's role,
+   * and fails when the hook fails. With nobody left, the item closes.
    */
   assigneeRoles?: boolean;
 }

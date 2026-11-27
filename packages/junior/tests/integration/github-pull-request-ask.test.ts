@@ -10,7 +10,6 @@ import type { JuniorApiEnv } from "@/api/route";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { recordConversationParticipant } from "@/chat/conversations/sql/participants";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
@@ -36,6 +35,7 @@ import { seedLinkedPerson } from "../fixtures/slack-user";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { signedInViewer } from "../fixtures/user";
 import { mswServer } from "../msw/server";
+import { patchConfig } from "../fixtures/config";
 
 const API = "https://api.github.com/repos/getsentry/junior/pulls/1592";
 const PULL_URL = "https://github.com/getsentry/junior/pull/1592";
@@ -173,8 +173,10 @@ describe("the ask of a Junior pull request", () => {
     const { fixture } = await prepareSlackParentConversation();
     // The footer that links the pull request to its Conversation needs a
     // dashboard link.
-    const previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     try {
       await migratePluginSchemas(fixture.sql, [
@@ -266,7 +268,6 @@ describe("the ask of a Junior pull request", () => {
       // Cards read the pull request live, so the merge writes no Annotation.
       expect(await annotations()).toEqual(before);
     } finally {
-      setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
     }
   });
@@ -278,9 +279,7 @@ describe("the ask of a Junior pull request", () => {
       slackUserId: person.userId,
     });
     const { fixture } = await prepareSlackParentConversation();
-    const previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-    });
+    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
     try {
       await migratePluginSchemas(fixture.sql, [
         {
@@ -515,7 +514,6 @@ describe("the ask of a Junior pull request", () => {
       });
       expect(again.items[0]!.subject).not.toHaveProperty("dismissNote");
     } finally {
-      setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
     }
   });
@@ -537,9 +535,7 @@ describe("the ask of a Junior pull request", () => {
       atMs: Date.now(),
       conversationId: slackParentConversationId,
     });
-    const previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-    });
+    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
     try {
       await migratePluginSchemas(fixture.sql, [
         {
@@ -713,7 +709,6 @@ describe("the ask of a Junior pull request", () => {
       );
       expect(dismissGone.status).toBe(200);
     } finally {
-      setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
     }
   });
@@ -742,9 +737,7 @@ describe("the ask of a Junior pull request", () => {
     });
     await getDb().update(juniorDestinations).set({ visibility: "private" });
     await getDb().update(juniorConversations).set({ visibility: "private" });
-    const previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-    });
+    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
     try {
       await migratePluginSchemas(fixture.sql, [
         {
@@ -944,7 +937,6 @@ describe("the ask of a Junior pull request", () => {
       expect(removed).toEqual([{ reviewers: ["out"] }]);
       expect(await reviewItem()).toMatchObject({ status: "dismissed" });
     } finally {
-      setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
     }
   });

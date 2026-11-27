@@ -53,7 +53,6 @@ import {
 import { writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,
-  recordMentionedParticipants,
   rootConversationIsArchived,
 } from "./participants";
 
@@ -279,9 +278,8 @@ class SqlConversationEventStore implements ConversationEventStore {
   }
 
   /**
-   * Add the authors of Turn input messages to the conversation, and the
-   * people that they mention in a public one. Only people who start a Turn,
-   * or whom they mention, join it. Thread context, such as backfilled
+   * Add the authors of Turn input messages to the conversation. Only people
+   * who start a Turn join it. Thread context, such as backfilled
    * or skipped messages, and Event Messages keep their author without
    * membership.
    */
@@ -319,20 +317,16 @@ class SqlConversationEventStore implements ConversationEventStore {
       // not address this Conversation, so they do not join it.
       if (data.meta?.["eventType"]) continue;
       const unarchives = eventUnarchivesConversation(data);
-      const isPerson = await recordConversationParticipant(this.executor, {
+      // Only a Participant restores an archive, as only one may Unarchive.
+      // A Slack Message adds its author first. A web Message does not.
+      const isParticipant = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
+        message: true,
         resubscribe: eventAddressesJunior(data) || (rootArchived && unarchives),
       });
-      restores ||= isPerson && unarchives;
-      if (isPerson) {
-        await recordMentionedParticipants(this.executor, {
-          atMs: row.createdAt.getTime(),
-          conversationId,
-          text: data.text,
-        });
-      }
+      restores ||= isParticipant && unarchives;
     }
     /* oxlint-enable no-await-in-loop */
     // Archive is shared, so any person's message restores it for everyone.
