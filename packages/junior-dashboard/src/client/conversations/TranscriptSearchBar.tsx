@@ -27,7 +27,12 @@ export function TranscriptSearchBar(props: {
         props.className,
       )}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+        // Enter steps only from the search box. On an arrow, it clicks it.
+        if (
+          event.key === "Enter" &&
+          event.target === props.inputRef.current &&
+          !event.nativeEvent.isComposing
+        ) {
           event.preventDefault();
           props.match.step(event.shiftKey ? -1 : 1);
           return;
