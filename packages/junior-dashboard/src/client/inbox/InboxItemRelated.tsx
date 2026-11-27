@@ -1,10 +1,14 @@
 import { Inbox, MessageSquare } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, useHref } from "react-router";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
-import { OutboundLink } from "../components/OutboundLink";
 import { conversationPath } from "../conversations/conversationRoutes";
+import {
+  MessageObjectsProvider,
+  PreviewLinksProvider,
+  TranscriptAnchor,
+} from "../display-text/DisplayText";
 import { dashboardInlineLinkClass } from "../styles";
 import { useLinkedConversationTitles } from "./queries";
 import { inboxRowPath, inboxItemSubjectHref } from "./inboxItemFormat";
@@ -59,16 +63,16 @@ function EntryList(props: { entries: Entry[] }) {
   );
 }
 
+// The objects API names a Conversation by its full dashboard URL, as a link
+// in message text does. Server rendering has no origin, so the path stays.
 function ConversationLink(props: { conversationId: string; label: string }) {
+  const path = useHref(conversationPath(props.conversationId));
+  const origin = globalThis.location?.origin;
   return (
-    <Link
-      className={dashboardInlineLinkClass}
-      title={props.conversationId}
-      to={conversationPath(props.conversationId)}
-    >
+    <TranscriptAnchor href={origin ? new URL(path, origin).href : path}>
       <MessageSquare aria-hidden="true" className={iconClass} />
       {props.label}
-    </Link>
+    </TranscriptAnchor>
   );
 }
 
@@ -104,9 +108,7 @@ export function InboxItemRelated(props: { item: InboxItemPayload }) {
               label={entry.label}
             />
           ) : href ? (
-            <OutboundLink className={dashboardInlineLinkClass} href={href}>
-              {entry.label}
-            </OutboundLink>
+            <TranscriptAnchor href={href}>{entry.label}</TranscriptAnchor>
           ) : (
             entry.label
           )}
@@ -144,5 +146,13 @@ export function InboxItemRelated(props: { item: InboxItemPayload }) {
     seen.add(entry.key);
     return true;
   });
-  return <EntryList entries={entries} />;
+  // Links show as in the item's text, with a hover card for each object,
+  // and resolve in one request.
+  return (
+    <MessageObjectsProvider>
+      <PreviewLinksProvider value>
+        <EntryList entries={entries} />
+      </PreviewLinksProvider>
+    </MessageObjectsProvider>
+  );
 }

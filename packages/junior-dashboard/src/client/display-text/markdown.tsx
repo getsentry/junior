@@ -517,7 +517,11 @@ function PlainParagraph(props: { children: ReactNode }) {
   );
 }
 
-function TranscriptAnchor(props: {
+/**
+ * Show a link as message text does: a link that names an object, such as a
+ * pull request or a Conversation, opens its hover card.
+ */
+export function TranscriptAnchor(props: {
   bare?: boolean;
   children: ReactNode;
   href?: string | undefined;

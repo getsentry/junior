@@ -1,5 +1,6 @@
 import type { Locator } from "@playwright/test";
 import { openAsk } from "./askSheet";
+import { digest, mockInboxItems } from "./inbox/inbox-fixture";
 import { distanceFromBottom } from "./long-transcript-fixture";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -89,5 +90,34 @@ test("an Inbox question row shows its related links and items", async ({
   await link.click();
   await expect(
     page.getByRole("region", { name: "Checkout p95 rose after payments-v42" }),
+  ).toBeVisible();
+});
+
+test("a related link to an object opens its hover card", async ({
+  dashboard,
+  page,
+}) => {
+  const notice = {
+    ...digest,
+    request: {
+      related: [
+        {
+          label: "Sidebar tabs",
+          url: "https://github.com/getsentry/junior/pull/3052",
+        },
+      ],
+    },
+  };
+  await page.setViewportSize(desktop);
+  await mockInboxItems(page, { open: [notice] });
+  await page.goto(`${dashboard.baseURL}/inbox?item=${notice.id}`);
+  await page
+    .getByRole("region", { name: "Related" })
+    .getByRole("link", { name: "Sidebar tabs" })
+    .hover();
+  await expect(
+    page.getByRole("region", {
+      name: "Pull request: feat(dashboard): Tabs in the dashboard sidebar",
+    }),
   ).toBeVisible();
 });
