@@ -9,10 +9,11 @@ const ARBITRARY_TEXT_COLOR_PATTERN = /text-\[#([\da-f]{3}|[\da-f]{6})\]/gi;
 // allowed for markdown that scales with its parent.
 const ARBITRARY_TEXT_SIZE_PATTERN =
   /(?<![\w-])(?:[a-z]{2,3}:)*text-\[(\d+(?:\.\d+)?)(rem|px|pt|pc|in|cm|mm|q|vh|vw|vmin|vmax|svh|svw|lvh|lvw|dvh|dvw)\]/g;
-// text-3xs is too small for anything but the two-letter glyph of a Space tile.
-const TILE_GLYPH_TEXT_SIZE_PATTERN = /(?<![\w-])(?:[a-z]{2,3}:)*text-3xs\b/;
-const TILE_GLYPH_TEXT_SIZE_OWNER =
-  "packages/junior-dashboard/src/client/spaces/SpaceTile.tsx";
+// text-3xs is too small for anything but the two-letter glyph of a
+// Conversation icon.
+const ICON_GLYPH_TEXT_SIZE_PATTERN = /(?<![\w-])(?:[a-z]{2,3}:)*text-3xs\b/;
+const ICON_GLYPH_TEXT_SIZE_OWNER =
+  "packages/junior-dashboard/src/client/conversations/ConversationIcon.tsx";
 // SVG/chart tick labels and similar absolute px sizes must stay at the compact 12px floor.
 const HARDCODED_FONT_SIZE_PATTERN =
   /\bfontSize\s*=\s*["'`](\d+(?:\.\d+)?)["'`]/g;
@@ -71,15 +72,15 @@ export function findArbitraryTextSizes(files) {
   );
 }
 
-/** Report the Space tile glyph size outside the Space tile. */
-export function findTileGlyphTextSizes(files) {
+/** Report the Conversation icon glyph size outside the Conversation icon. */
+export function findIconGlyphTextSizes(files) {
   return files
-    .filter((file) => file.path !== TILE_GLYPH_TEXT_SIZE_OWNER)
+    .filter((file) => file.path !== ICON_GLYPH_TEXT_SIZE_OWNER)
     .flatMap((file) =>
       file.contents
         .split("\n")
         .flatMap((line, index) =>
-          TILE_GLYPH_TEXT_SIZE_PATTERN.test(line)
+          ICON_GLYPH_TEXT_SIZE_PATTERN.test(line)
             ? [`${file.path}:${index + 1}: ${line.trim()}`]
             : [],
         ),
@@ -290,8 +291,8 @@ export async function run({ root, files: repoFiles }) {
       lines: findArbitraryTextSizes(files),
     },
     {
-      fix: "text-3xs is only for the two-letter glyph of a Space tile. Use text-2xs or larger.",
-      lines: findTileGlyphTextSizes(files),
+      fix: "text-3xs is only for the two-letter glyph of a Conversation icon. Use text-2xs or larger.",
+      lines: findIconGlyphTextSizes(files),
     },
     {
       fix: `Keep SVG and chart text at ${MIN_PRODUCT_FONT_SIZE_PX}px or larger. Make room in the layout instead of shrinking the text.`,

@@ -28,12 +28,12 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(
     spaces
       .getByRole("link", { name: "Pricing launch" })
-      .getByRole("img", { name: "Private Space" }),
+      .getByRole("img", { exact: true, name: "Private" }),
   ).toBeVisible();
   await expect(
     spaces
       .getByRole("link", { name: "Billing migration" })
-      .getByRole("img", { name: "Private Space" }),
+      .getByRole("img", { exact: true, name: "Private" }),
   ).toHaveCount(0);
   // A row in a Space links to it.
   const list = page.getByRole("region", { exact: true, name: "Conversations" });
@@ -460,7 +460,9 @@ test("creating a private Space shows its lock", async ({ dashboard, page }) => {
   await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}$/);
   // The lock shows on both private pane rows.
   await expect(
-    page.getByRole("img", { name: "Private Space" }).filter({ visible: true }),
+    page
+      .getByRole("img", { exact: true, name: "Private" })
+      .filter({ visible: true }),
   ).toHaveCount(2);
 });
 

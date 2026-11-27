@@ -92,7 +92,7 @@ import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
-import { SpaceChip } from "../spaces/SpaceTile";
+import { SpaceChip } from "../spaces/SpaceChip";
 import {
   itemConversationId,
   itemOwnerLinkLabel,

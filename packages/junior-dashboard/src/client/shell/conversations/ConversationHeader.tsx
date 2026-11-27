@@ -61,6 +61,8 @@ export function ConversationHeader(props: {
   onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
+  /** The Conversation's icon, right before the title. */
+  icon?: ReactNode;
   menu: ConversationMenu;
   /**
    * The Conversation is not created yet. Its actions stay inert until it
@@ -286,6 +288,7 @@ export function ConversationHeader(props: {
     <>
       <MobileHeaderTitlePortal>
         {props.state}
+        {props.icon}
         {props.view === "raw" && !rename?.editing ? (
           // Back leads to the conversation here, so the title is plain text.
           <h1 className="m-0 flex min-w-0 flex-1 items-center gap-1.5">
@@ -369,6 +372,7 @@ export function ConversationHeader(props: {
               <div className="shrink-0 empty:hidden">{props.sidebarToggle}</div>
             ) : null}
             {props.state}
+            {props.icon}
             {props.agentTree ? (
               <ConversationBreadcrumb current={title} nodes={props.agentTree} />
             ) : (

@@ -28,6 +28,10 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   ).toBeVisible();
   // Members share the Lead: another member's request is in it too.
   await expect(transcript.getByText("Avery Chen")).toBeVisible();
+  // The Lead is Junior, so its replies carry the agent's name.
+  await expect(
+    transcript.getByText("Junior", { exact: true }).first(),
+  ).toBeVisible();
   await expect(
     transcript.getByRole("separator", { name: "Today" }),
   ).toBeVisible();

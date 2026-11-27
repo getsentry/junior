@@ -21,7 +21,7 @@ import { useSheet } from "../components/ui/useSheet";
 import { DashboardApiError } from "../http";
 import { useMemberSpacesData, useMoveConversationToSpace } from "./queries";
 import type { MoveToSpaceDialogProps } from "./MoveToSpaceDialog";
-import { SpaceTile } from "./SpaceTile";
+import { ConversationIcon } from "../conversations/ConversationIcon";
 
 // The "No Space" row's value. Space ids are UUIDs, so it cannot clash.
 const NO_SPACE = "none";
@@ -139,7 +139,11 @@ export function MoveToSpaceDialogContent(props: MoveToSpaceDialogProps) {
                   row(
                     space.id,
                     space.name,
-                    <SpaceTile size="sm" space={space} />,
+                    <ConversationIcon
+                      iconId={space.id}
+                      name={space.name}
+                      size="sm"
+                    />,
                   ),
                 )}
               </CommandList>
