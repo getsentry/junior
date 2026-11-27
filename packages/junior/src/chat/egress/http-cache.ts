@@ -1,36 +1,47 @@
 /**
- * Junior's HTTP cache of provider GET responses. Each entry belongs to one
- * credential scope and one request, so a response that one credential read
- * never serves another credential. A fresh entry serves with no request. A
- * stale one asks the provider with its `ETag` or `Last-Modified`, and a
- * `304 Not Modified` stores it again. Many providers, such as GitHub, do
- * not count a 304 against the rate limit.
+ * Junior's HTTP cache of provider GET responses, through `@sentry/http`.
+ * Each entry belongs to one credential scope and one request, so a response
+ * that one credential read never serves another credential. A fresh entry
+ * serves with no request. A stale one asks the provider with its `ETag` or
+ * `Last-Modified`, and a `304 Not Modified` stores it again. Many
+ * providers, such as GitHub, do not count a 304 against the rate limit.
  *
- * Saved bodies are plaintext in the state adapter, under hashed keys. A
- * breach of that store exposes up to 6 hours of provider reads: object
- * card data that viewers and the system Actor read, and plugin webhook
- * reads, such as pull requests, their commits with author names and
- * emails, and collaborator roles. It exposes no token.
+ * Saved bodies are compressed but not encrypted in the state adapter, under
+ * hashed keys, next to their request URL. A breach of that store exposes up
+ * to 6 hours of provider reads: object card data that viewers and the
+ * system Actor read, and plugin webhook reads, such as pull requests, their
+ * commits with author names and emails, and collaborator roles. It exposes
+ * no token.
  */
 import { createHash } from "node:crypto";
+import { type CacheEntry, type CacheStore, fetchWithCache } from "@sentry/http";
+import { createBodyCodec } from "@sentry/http/codec";
 import * as z from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 
-/** How long an entry stays after its TTL, for revalidation and errors. */
+/** How long an entry stays after it goes stale, for revalidation and errors. */
 const RETAIN_MS = 6 * 60 * 60_000;
 
-/** Larger bodies, such as long commit lists, are not saved. */
-const MAX_SAVED_BODY_BYTES = 256 * 1024;
+/** Larger stored bodies, such as long commit lists, are not saved. */
+const MAX_STORED_BODY_BYTES = 256 * 1024;
 
-// Only the headers that readers of a cached body use.
-const KEPT_HEADERS = ["content-type", "etag", "last-modified", "link"];
+const codec = createBodyCodec();
 
-const entrySchema = z.object({
-  body: z.string(),
+// The state adapter holds JSON, so the encoded body bytes are base64.
+const storedEntrySchema = z.object({
+  url: z.string(),
+  identity: z.string(),
+  status: z.number(),
   headers: z.record(z.string(), z.string()),
-  storedAtMs: z.number(),
+  body: z.object({
+    bytes: z.string(),
+    encoding: z.enum(["zstd", "br", "identity"]),
+    dictId: z.string().optional(),
+    rawSize: z.number(),
+  }),
+  policy: z.unknown(),
+  createdAt: z.number(),
 });
-type Entry = z.output<typeof entrySchema>;
 
 /** One GET through the cache. */
 export interface HttpCacheRead {
@@ -44,7 +55,10 @@ export interface HttpCacheRead {
    * 5xx.
    */
   staleIfError: boolean;
-  /** How long an entry serves with no request. `0` revalidates each read. */
+  /**
+   * The longest that an entry serves with no request, also when the
+   * provider allows longer. `0` revalidates each read.
+   */
   ttlMs: number;
   /** The request, without validators. Its URL and `Accept` name the entry. */
   request: Request;
@@ -53,32 +67,49 @@ export interface HttpCacheRead {
   onStale?(storedAtMs: number): void;
 }
 
-function entryKey(read: HttpCacheRead): string {
-  const hash = createHash("sha256")
-    .update(
-      JSON.stringify([
-        read.scope,
-        read.request.url,
-        read.request.headers.get("accept") ?? "",
-      ]),
-    )
-    .digest("hex");
-  return `junior:http-cache:${hash}`;
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
-function cachedResponse(entry: Entry): Response {
-  return new Response(Buffer.from(entry.body, "base64"), {
-    headers: entry.headers,
-    status: 200,
-  });
+function stateKey(key: string): string {
+  return `junior:http-cache:${key}`;
 }
 
-function validators(entry: Entry | undefined): Record<string, string> {
-  const etag = entry?.headers["etag"];
-  const lastModified = entry?.headers["last-modified"];
+/**
+ * A `CacheStore` over the state adapter. It has no `deleteMatching`:
+ * hashed keys cannot be found by URL.
+ */
+function createStateCacheStore(): CacheStore {
+  const state = getStateAdapter();
   return {
-    ...(etag ? { "If-None-Match": etag } : undefined),
-    ...(lastModified ? { "If-Modified-Since": lastModified } : undefined),
+    async get(key) {
+      const stored = storedEntrySchema.safeParse(
+        await state.get(stateKey(key)),
+      );
+      if (!stored.success) return undefined;
+      const { body, policy, ...entry } = stored.data;
+      return {
+        ...entry,
+        body: { ...body, bytes: Buffer.from(body.bytes, "base64") },
+        policy,
+      } satisfies CacheEntry;
+    },
+    async set(key, entry, ttlMs) {
+      // Replace the older entry, so a later read cannot return it.
+      if (entry.body.bytes.byteLength > MAX_STORED_BODY_BYTES) {
+        await state.delete(stateKey(key));
+        return;
+      }
+      const bytes = Buffer.from(entry.body.bytes).toString("base64");
+      await state.set(
+        stateKey(key),
+        { ...entry, body: { ...entry.body, bytes } },
+        ttlMs,
+      );
+    },
+    async delete(key) {
+      await state.delete(stateKey(key));
+    },
   };
 }
 
@@ -89,75 +120,19 @@ function validators(entry: Entry | undefined): Record<string, string> {
 export async function readThroughHttpCache(
   read: HttpCacheRead,
 ): Promise<Response> {
-  const state = getStateAdapter();
-  const key = entryKey(read);
-  const saved = entrySchema.safeParse(
-    await state
-      .connect()
-      .then(async () => await state.get(key))
-      .catch(() => undefined),
-  ).data;
-  if (saved && Date.now() - saved.storedAtMs < read.ttlMs) {
-    return cachedResponse(saved);
-  }
-  const store = async (entry: Entry) =>
-    await state.set(key, entry, read.ttlMs + RETAIN_MS).catch(() => undefined);
-  const stale = () => {
-    if (!saved || !read.staleIfError) return undefined;
-    read.onStale?.(saved.storedAtMs);
-    return cachedResponse(saved);
-  };
-  let response: Response;
-  try {
-    response = await read.send(validators(saved));
-  } catch (error) {
-    const fallback = stale();
-    if (fallback) return fallback;
-    throw error;
-  }
-  if (response.status === 304 && saved) {
-    await store({ ...saved, storedAtMs: Date.now() });
-    return cachedResponse(saved);
-  }
-  // A rate limit or a server error says nothing about access, so it keeps
-  // the entry, and its validators, for later reads.
-  if (response.status === 429 || response.status >= 500) {
-    const fallback = stale();
-    if (fallback) {
-      // Some bodies, such as one that egress streams, finish cancelling
-      // only when their source does, so this does not wait.
-      void response.body?.cancel().catch(() => undefined);
-      return fallback;
-    }
-    return response;
-  }
-  if (response.status !== 200) {
-    // An answer such as 403 or 404 must not let a later error serve the
-    // entry to a credential that lost access.
-    if (saved) await state.delete(key).catch(() => undefined);
-    return response;
-  }
-  const body = Buffer.from(await response.arrayBuffer());
-  const headers = Object.fromEntries(
-    KEPT_HEADERS.flatMap((name) => {
-      const value = response.headers.get(name);
-      return value ? [[name, value]] : [];
-    }),
-  );
-  const revalidates = Boolean(headers["etag"] || headers["last-modified"]);
-  if (
-    body.byteLength <= MAX_SAVED_BODY_BYTES &&
-    (read.ttlMs > 0 || revalidates)
-  ) {
-    await store({
-      body: body.toString("base64"),
-      headers,
-      storedAtMs: Date.now(),
-    });
-  }
-  return new Response(body, {
-    headers: response.headers,
-    status: response.status,
-    statusText: response.statusText,
+  const accept = read.request.headers.get("accept") ?? "";
+  return await fetchWithCache({
+    store: createStateCacheStore(),
+    codec,
+    identity: sha256(read.scope),
+    url: read.request.url,
+    key: sha256(JSON.stringify([read.scope, read.request.url, accept])),
+    ...(accept ? { requestHeaders: { accept } } : undefined),
+    send: read.send,
+    ttlMs: read.ttlMs,
+    maxTtlMs: read.ttlMs,
+    retainMs: RETAIN_MS,
+    staleIfError: read.staleIfError,
+    ...(read.onStale ? { onStale: read.onStale } : undefined),
   });
 }
