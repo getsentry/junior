@@ -40,6 +40,9 @@ import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { getDb } from "@/chat/db";
 import { mcpCallGuardian } from "@/chat/plugins/mcp-call-guardian";
+import { pluginGuardianContext } from "@/chat/plugins/guardian-context";
+import { guardianContext } from "@/chat/guardian/call-facts";
+import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -59,6 +62,11 @@ export interface ToolActionReviewContext {
   rootConversation?: () => Promise<RootConversation>;
   /** Guardian reviews shell commands, which only the agent Guardian does. */
   reviewsShell?: boolean;
+  /**
+   * The repositories of the active Workspace. Set for the agent Guardian,
+   * which reads the plugins' `guardian.context`.
+   */
+  workspaceRepos?: () => Promise<Array<{ provider: string; repo: string }>>;
 }
 
 /** One exact tool call that the agent asked to run. */
@@ -501,9 +509,38 @@ function toolDenial(action: Action): Review | undefined {
   return tool?.decision === "deny"
     ? {
         decision: "deny",
-        reason: `Tool: deny. ${tool.reason ?? "The tool's own check denies this call."}`,
+        reason: `Tool: deny${tool.reason ? ` (${tool.reason})` : ""}. The tool's own check denies this call.`,
       }
     : undefined;
+}
+
+/** The plugins' facts about one call, for the agent Guardian. */
+async function callContext(
+  action: ToolAction,
+  tool: string,
+  context: ToolActionReviewContext,
+): Promise<Pick<Action, "context">> {
+  if (!context.workspaceRepos) return {};
+  const input =
+    action.toolName === "callMcpTool"
+      ? z
+          .record(z.string(), z.unknown())
+          .catch({})
+          .parse(action.input["arguments"])
+      : action.input;
+  const { workspaceRepos } = context;
+  const lines = await pluginGuardianContext({
+    call: { tool, input },
+    ctxFor: (plugin) => ({
+      ...guardianContext({
+        plugin,
+        conversationIds: async () =>
+          await readAncestorAndDescendantIds(getDb(), context.conversationId),
+      }),
+      workspaceRepos,
+    }),
+  });
+  return lines.length > 0 ? { context: lines } : {};
 }
 
 /** One action that Guardian must review, with the gate's proposal for it. */
@@ -570,6 +607,7 @@ async function prepareToolActionReview(
       ...(resolved?.serverHints
         ? { serverHints: resolved.serverHints }
         : undefined),
+      ...(await callContext(action, proposal.tool.name, context)),
     },
     proposal,
   };

@@ -30,6 +30,7 @@ import {
   serviceAccountOnly,
 } from "@/chat/credentials/service-account";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import { unlistedGuardianTools } from "@/chat/plugins/hooks/registry";
 import {
   estimateTextTokens,
   textCharsForTokens,
@@ -430,10 +431,18 @@ export class McpToolManager {
 
     try {
       const client = await this.getClient(plugin);
-      const listedTools = this.filterListedTools(
-        plugin,
-        await client.listTools(),
+      const serverTools = await client.listTools();
+      const unlisted = unlistedGuardianTools(
+        provider,
+        serverTools.map((tool) => tool.name),
       );
+      if (unlisted.length > 0) {
+        logWarn("mcp.guardian_tools.unlisted", {
+          "app.plugin.name": provider,
+          "app.guardian.unlisted_tools": unlisted.join(","),
+        });
+      }
+      const listedTools = this.filterListedTools(plugin, serverTools);
       this.assertWrappedToolsAvailable(plugin, listedTools);
       const tools = this.filterServiceAccountOnlyTools(plugin, listedTools);
       this.toolsByProvider.set(

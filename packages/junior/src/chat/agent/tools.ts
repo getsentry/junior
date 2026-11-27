@@ -571,7 +571,13 @@ export async function wireAgentTools(
         : undefined),
       // Only the agent Guardian reviews shell commands.
       ...(isExperimentalFeatureEnabled("guardian-agent")
-        ? { reviewsShell: true }
+        ? {
+            reviewsShell: true,
+            workspaceRepos: async () => {
+              const id = agentSandbox.sandboxRef()?.workspaceId;
+              return id ? ((await getWorkspace(getDb(), id))?.repos ?? []) : [];
+            },
+          }
         : undefined),
     },
     onDecision: ({ toolCallId, toolName, decision }) =>

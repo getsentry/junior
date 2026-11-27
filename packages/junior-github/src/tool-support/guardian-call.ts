@@ -56,7 +56,7 @@ export async function pullRequestCall(
   return {
     ...result,
     decision: "allow",
-    reason: `Only the text of ${result.target}, which this work created, changes.`,
+    reason: "own-pr-text",
   };
 }
 

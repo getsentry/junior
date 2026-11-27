@@ -724,8 +724,7 @@ describe("updatePullRequest call facts", () => {
       target: "getsentry/junior#691",
       audience: "internal",
       decision: "allow",
-      reason:
-        "Only the text of getsentry/junior#691, which this work created, changes.",
+      reason: "own-pr-text",
     });
   });
 

@@ -34,6 +34,17 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
     ) {
       throw new Error(`Plugin "${name}" events is invalid`);
     }
+    // `guardian.tools` is for remote tools with no definition in plugin code.
+    const guardianTools = Object.keys(plugin.hooks?.guardian?.tools ?? {});
+    const pluginTools =
+      guardianTools.length > 0 ? (plugin.hooks?.tools?.() ?? {}) : {};
+    for (const tool of guardianTools) {
+      if (Object.hasOwn(pluginTools, tool)) {
+        throw new Error(
+          `Plugin "${name}" defines tool "${tool}" in code and in guardian.tools`,
+        );
+      }
+    }
     for (const [taskName, task] of Object.entries(plugin.tasks ?? {})) {
       if (!PLUGIN_TASK_NAME_RE.test(taskName)) {
         throw new Error(
@@ -56,6 +67,23 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
     }
     seen.add(name);
   }
+}
+
+/**
+ * The `guardian.tools` keys of a provider's plugin that match no tool its
+ * MCP server lists. Such an entry never runs.
+ */
+export function unlistedGuardianTools(
+  provider: string,
+  listed: readonly string[],
+): string[] {
+  const names = new Set(listed);
+  const plugin = getPlugins().find(
+    (candidate) => candidate.manifest.name === provider,
+  );
+  return Object.keys(plugin?.hooks?.guardian?.tools ?? {}).filter(
+    (tool) => !names.has(tool),
+  );
 }
 
 /** Return the current runtime hook plugins without exposing mutable state. */

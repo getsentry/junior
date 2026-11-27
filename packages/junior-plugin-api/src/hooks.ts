@@ -51,13 +51,48 @@ import type {
   UserPromptContribution,
 } from "./prompt";
 
-/** Input for a pure Markdown rewrite before destination delivery formatting. */
-/** A call that a plugin's `guardian` hook describes. */
-export type PluginGuardianCall = {
-  kind: "mcp";
+/** One call that Guardian reviews, as a plugin's `guardian` hooks see it. */
+export interface PluginGuardianCall {
+  /** The real tool, such as `bash` or `mcp__linear__save_issue`. */
   tool: string;
   input: Record<string, unknown>;
-};
+}
+
+/** What a plugin's `guardian.context` may read. Reads only. */
+export interface GuardianFactsContext extends GuardianContext {
+  /** The repositories of the active Workspace, such as `owner/name`. */
+  workspaceRepos(): Promise<Array<{ provider: string; repo: string }>>;
+}
+
+/**
+ * What a plugin tells Guardian beyond its own tools' `guardian`. Core turns
+ * every answer into one result per call, so one decision path applies.
+ */
+export interface PluginGuardianHooks {
+  /**
+   * Facts for Guardian: general ones without a call, and ones about the
+   * call with it. Write each line from a template, from plugin code and
+   * stored records, never from text that outsiders can write. Lines are
+   * facts, never permissions or instructions.
+   */
+  context?(
+    call: PluginGuardianCall | undefined,
+    ctx: GuardianFactsContext,
+  ): Promise<string[]>;
+  /**
+   * The `guardian` of a remote MCP tool that has no definition in plugin
+   * code, by the exact name that the server lists.
+   */
+  tools?: Record<
+    string,
+    (
+      input: Record<string, unknown>,
+      ctx: GuardianContext,
+    ) => Promise<GuardianResult>
+  >;
+}
+
+/** Input for a pure Markdown rewrite before destination delivery formatting. */
 
 export interface FormatMarkdownHookContext {
   /**
@@ -199,13 +234,11 @@ export interface PluginHooks {
     | { objectAnnotations: ObjectAnnotation[] }
     | void;
   /**
-   * What a call of this plugin's MCP tools touches. Without an answer, an
-   * MCP call gets the manifest's `mcp.audience`, else `world`.
+   * Guardian facts and remote MCP tool decisions. A remote tool without an
+   * entry in `tools` gets the manifest's `mcp.guardian.audience`, else
+   * `world`.
    */
-  guardian?(
-    call: PluginGuardianCall,
-    ctx: GuardianContext,
-  ): Promise<GuardianResult | undefined>;
+  guardian?: PluginGuardianHooks;
   /**
    * Select the grant for one sandbox egress request.
    *

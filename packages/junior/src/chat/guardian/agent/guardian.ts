@@ -88,7 +88,7 @@ export function decide(
   const tool = action.toolDecision;
   const withTool = (text: string) =>
     tool
-      ? `Tool: ${tool.decision}. ${tool.reason ? `${tool.reason} ` : ""}${text}`
+      ? `Tool: ${tool.decision}${tool.reason ? ` (${tool.reason})` : ""}. ${text}`
       : text;
   const ruled = rule === "none" ? {} : { rule };
   if (rule !== "none" && isDenyRule(rule)) {

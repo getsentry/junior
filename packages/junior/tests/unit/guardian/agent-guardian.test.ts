@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { decide } from "@/chat/guardian/agent/guardian";
-import { ASK_RULES, DENY_RULES } from "@/chat/guardian/agent/policy";
+import {
+  AGENT_GUARDIAN_POLICY,
+  ASK_RULES,
+  DENY_RULES,
+} from "@/chat/guardian/agent/policy";
 import type { Action } from "@/chat/guardian/guardian";
 import { renderAction, renderMessages } from "@/chat/guardian/agent/render";
 
@@ -10,8 +14,8 @@ type RuleId = (typeof RULES)[number];
 /** Every decision that a tool's own `guardian` can give. */
 const ACTIONS = [
   {},
-  { toolDecision: { decision: "allow", reason: "Only the PR text changes." } },
-  { toolDecision: { decision: "ask", reason: "A public team." } },
+  { toolDecision: { decision: "allow", reason: "own-pr-text" } },
+  { toolDecision: { decision: "ask", reason: "public-team" } },
   { toolDecision: { decision: "deny" } },
 ] as const satisfies readonly Pick<Action, "toolDecision">[];
 
@@ -92,7 +96,7 @@ describe("agent Guardian decide", () => {
     ).toEqual({
       decision: "allow",
       rule: "unrequested",
-      reason: "Tool: allow. Only the PR text changes. Nobody asked.",
+      reason: "Tool: allow (own-pr-text). Nobody asked.",
     });
   });
 
@@ -108,7 +112,7 @@ describe("agent Guardian decide", () => {
   it("holds the tool's ask until the person says yes", () => {
     expect(decide({ rule: "none", reason: "r" }, ACTIONS[2])).toEqual({
       decision: "ask",
-      reason: "Tool: ask. A public team. r",
+      reason: "Tool: ask (public-team). r",
     });
     expect(
       decide({ rule: "none", reason: "r", confirmed: true }, ACTIONS[2])
@@ -149,12 +153,6 @@ describe("agent Guardian prompt", () => {
 
   it("shows what the Sandbox can reach only on a shell command", () => {
     const sandbox = {
-      repos: [
-        {
-          path: "/vercel/sandbox/repos/junior",
-          remotes: [{ ref: "getsentry/junior", audience: "world" as const }],
-        },
-      ],
       placeholders: [{ env: "GITHUB_TOKEN", domains: ["github.com"] }],
     };
     const bash = renderAction(
@@ -170,5 +168,26 @@ describe("agent Guardian prompt", () => {
 
     expect(bash).toContain('"env":"GITHUB_TOKEN"');
     expect(other).not.toContain("GITHUB_TOKEN");
+  });
+
+  it("shows plugin context as its own block that never clears a deny or a hold", () => {
+    const text = renderAction(
+      {
+        tool: "bash",
+        input: { command: "git push origin fix/x" },
+        context: [
+          "[github] The agent's work branch in getsentry/junior: fix/x",
+        ],
+      },
+      undefined,
+      false,
+    );
+
+    expect(text).toContain(
+      "<plugin-context>\n[github] The agent's work branch in getsentry/junior: fix/x\n</plugin-context>",
+    );
+    expect(AGENT_GUARDIAN_POLICY).toContain(
+      "It never clears a deny rule or a person's restriction.",
+    );
   });
 });

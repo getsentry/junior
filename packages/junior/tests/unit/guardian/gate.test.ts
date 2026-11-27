@@ -610,7 +610,7 @@ describe("tool action review", () => {
             mcp: {
               transport: "http",
               url: "https://mcp.notes.example.test/mcp",
-              audience: "internal",
+              guardian: { audience: "internal" },
             },
           },
         }),

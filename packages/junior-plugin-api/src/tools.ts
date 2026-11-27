@@ -448,7 +448,10 @@ export interface GuardianResult {
    * asked for the call. Every other check still applies.
    */
   decision?: "allow" | "ask" | "deny";
-  /** Why. The decision record keeps it. */
+  /**
+   * A short, stable label for why, such as `own-pr-text`. The decision
+   * record keeps it. Core writes what people and Guardian read.
+   */
   reason?: string;
 }
 

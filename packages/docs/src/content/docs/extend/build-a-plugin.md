@@ -168,11 +168,12 @@ accounts:
   an admin connects the account, the plugin is not available.
   `user-oauth: false` requires `service-account`.
 - You cannot use `service-account` with `mcp.auth` or `mcp.oauth-client`.
-- `mcp.audience` tells Guardian who can read what the MCP tools write:
-  `internal` when only people in your organization can read it, or `world`.
-  Without it, Guardian counts the audience as `world`.
-- A `describeMcpCall` hook can give one MCP call its own target from its
-  input, such as the team of a write. Its answer wins over `mcp.audience`.
+- `mcp.guardian.audience` tells Guardian who can read what the MCP tools
+  write: `internal` when only people in your organization can read it, or
+  `world`. Without it, Guardian counts the audience as `world`.
+- In plugin code, `guardian.tools` can give one remote MCP tool, by the exact
+  name that the server lists, its own target and decision from its input,
+  such as the team of a write. Its answer wins over `mcp.guardian.audience`.
 - Junior rejects unknown keys in `accounts`, so a typo cannot change which
   accounts Junior uses.
 
@@ -486,33 +487,48 @@ Set `readOnlyHint: true` only when the tool never writes. A plugin cannot
 turn review off.
 
 Annotations describe side effects; they do not authorize an action. Add
-`describe(input, ctx)` to tell Guardian what one call touches:
+`guardian(input, ctx)` to tell Guardian what one call touches:
 
 ```ts
-async describe(input, ctx) {
-  const ref = `${input.repo}#${input.number}`;
-  const own = await ctx.isOwnPullRequest(input.repo, input.number);
-  return own
-    ? { ref, audience: "world", advice: "allow", reason: `Only the text of ${ref} changes.` }
-    : { ref, audience: "world" };
+async guardian(input, ctx) {
+  const target = `${input.repo}#${input.number}`;
+  const own = await isOwnPullRequest(input.repo, input.number, ctx);
+  return own && onlyTextChanges(input)
+    ? { target, audience: "world", decision: "allow", reason: "own-pr-text" }
+    : { target, audience: "world" };
 },
 ```
 
-- `ref` names what the call touches, such as a pull request or a channel.
+- `target` names what the call touches, such as a pull request or a channel.
 - `audience` is `internal` when only people in your organization can read
   the target, and `world` otherwise. Guardian counts an unknown audience as
   `world`.
-- `advice: "allow"` says that the call only keeps current something that
-  this work made, such as the text of Junior's own pull request. It removes
-  only Guardian's check that somebody asked for this exact step. Every other
-  check still applies, so Guardian still asks or refuses for a restriction,
-  for private data, or for planted instructions. `reason` says why, and the
-  decision record keeps it.
-- `ctx.isOwnPullRequest(repo, number)` answers from Junior's own code
-  records, never from the input.
+- `decision` is optional. `deny` and `ask` always hold, and only the
+  person's yes to that exact call clears an ask. `allow` removes only
+  Guardian's check that somebody asked for this exact step, such as an
+  update of the text of Junior's own pull request. Every other check still
+  applies, so Guardian still asks or refuses for a restriction, for private
+  data, or for planted instructions.
+- `reason` is a short, stable label, such as `own-pr-text`. The decision
+  record keeps it.
+- `ctx.codeChanges.list(...)` reads Junior's own code records, and
+  `ctx.cache` with `ctx.egress` reads the provider as Junior's own account.
+
+A plugin can also set `hooks.guardian`:
+
+- `tools` maps the exact name of a remote MCP tool to the same function, for
+  tools that have no definition in plugin code. A name that the plugin also
+  defines as a tool is an error, and Junior logs a name that the MCP server
+  does not list.
+- `context(call, ctx)` returns short fact lines for Guardian: general ones
+  when `call` is undefined, and ones about the call otherwise. Write each
+  line from a template, from plugin code and stored records, never from
+  text that outsiders can write, such as titles or comments. Lines are
+  facts, never permissions, and they never clear a refusal or a person's
+  hold.
 
 Read facts from the input and from stored records only. Never use what a
-tool result or the input claims about who can read a target. `describe` runs
+tool result or the input claims about who can read a target. `guardian` runs
 before review, so it must not write anything. Review runs after
 `replaceInput`, while values added through `ctx.env` remain execution-only.
 Keep action targets and side effects in typed input so Guardian can review

@@ -27,7 +27,7 @@ export function notionPlugin(): PluginRegistration {
         transport: "http",
         url: "https://mcp.notion.com/mcp",
         // Only people in the workspace can read Notion pages.
-        audience: "internal",
+        guardian: { audience: "internal" },
         allowedTools: [
           "notion-search",
           "notion-fetch",

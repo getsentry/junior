@@ -1,6 +1,7 @@
 import {
   defineJuniorPlugin,
   type AfterMcpToolHookContext,
+  type GuardianResult,
   type PluginRegistration,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
@@ -201,6 +202,25 @@ function writeTeam(
   return key ? { named, key } : { named };
 }
 
+/**
+ * A write named by an exact team key gets that team's audience. A team
+ * name, a UUID, or no team could be any team, so it counts as `world`.
+ */
+function writeGuardian(
+  tool: "save_issue" | "save_comment",
+  input: Record<string, unknown>,
+  publicTeams: ReadonlySet<string>,
+): GuardianResult {
+  const team = writeTeam(tool, input);
+  if (!team) return { target: "Linear", audience: "world" };
+  return team.key
+    ? {
+        target: `Linear team ${team.key}`,
+        audience: publicTeams.has(team.key) ? "world" : "internal",
+      }
+    : { target: `Linear ${team.named}`, audience: "world" };
+}
+
 /** Register Linear's hosted MCP provider and conversation-link side effects. */
 export function linearPlugin(
   options: LinearPluginOptions = {},
@@ -263,18 +283,13 @@ export function linearPlugin(
     },
     hooks: {
       afterMcpTool: annotateSavedIssue,
-      // A write named by an exact team key gets that team's audience. A team
-      // name or a UUID could be any team, so it counts as `world`.
-      async guardian(call) {
-        const team =
-          call.kind === "mcp" ? writeTeam(call.tool, call.input) : undefined;
-        if (!team) return undefined;
-        return team.key
-          ? {
-              target: `Linear team ${team.key}`,
-              audience: publicTeams.has(team.key) ? "world" : "internal",
-            }
-          : { target: `Linear ${team.named}`, audience: "world" };
+      guardian: {
+        tools: {
+          save_issue: async (input) =>
+            writeGuardian("save_issue", input, publicTeams),
+          save_comment: async (input) =>
+            writeGuardian("save_comment", input, publicTeams),
+        },
       },
       routes(ctx) {
         return [

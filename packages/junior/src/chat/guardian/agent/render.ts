@@ -53,8 +53,10 @@ export function renderAction(
     tool: action.tool,
     ...(action.target ? { target: action.target } : undefined),
     ...(action.summary ? { summary: action.summary } : undefined),
+    // The plugin's reason is a label for records. The policy says what
+    // each decision means.
     ...(action.toolDecision
-      ? { toolDecision: action.toolDecision }
+      ? { toolDecision: action.toolDecision.decision }
       : undefined),
     input: action.input,
     ...(action.serverHints
@@ -67,7 +69,11 @@ export function renderAction(
   if (text.length > MAX_ACTION_CHARS) {
     throw new AgentGuardianActionTooLargeError(text.length);
   }
-  return renderTag("planned-action", {}, [text]);
+  const planned = renderTag("planned-action", {}, [text]);
+  // Plugin code wrote these lines from stored records (`guardian.context`).
+  return action.context
+    ? `${planned}\n\n${renderTag("plugin-context", {}, action.context.map(escapeTagText))}`
+    : planned;
 }
 
 /**

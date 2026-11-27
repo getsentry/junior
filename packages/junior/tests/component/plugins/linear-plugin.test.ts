@@ -25,8 +25,9 @@ describe("Linear plugin package", () => {
 
   it("gives each team write the audience of its team", async () => {
     const registration = linearPlugin({ publicTeams: ["PY"] });
+    const tools = registration.hooks!.guardian!.tools!;
     const guardian = (tool: string, input: Record<string, unknown>) =>
-      registration.hooks!.guardian!({ kind: "mcp", tool, input }, {} as never);
+      tools[tool]!(input, {} as never);
     const manifest = parseInlinePluginManifest(
       {
         ...registration.manifest,
@@ -50,8 +51,7 @@ describe("Linear plugin package", () => {
       target: "Linear 6f1c-uuid",
       audience: "world",
     });
-    await expect(
-      guardian("get_issue", { id: "PY-1" }),
-    ).resolves.toBeUndefined();
+    // A read has no entry, so it keeps the manifest default.
+    expect(Object.keys(tools)).toEqual(["save_issue", "save_comment"]);
   });
 });

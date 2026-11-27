@@ -131,14 +131,20 @@ export interface PluginMcpOAuthClientConfig {
   scope?: string;
 }
 
+/** The no-code Guardian facts of a plugin's MCP tools. */
+export interface PluginMcpGuardianConfig {
+  /**
+   * Who can read what this plugin's MCP tools write. Without it, the
+   * audience counts as `world`.
+   */
+  audience?: Audience;
+}
+
 export interface PluginMcpConfig {
   /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
-  /**
-   * Who can read what this plugin's MCP tools write, for Guardian. Without
-   * it, the audience counts as `world`.
-   */
-  audience?: Audience;
+  /** What Guardian knows about this plugin's MCP tools. */
+  guardian?: PluginMcpGuardianConfig;
   /** Bot auth: sign short-lived JWT assertions instead of per-actor OAuth. */
   auth?: PluginMcpAuthConfig;
   /** Request headers. Values may use `${NAME}` refs to declared env vars; Junior resolves them at connect time. */

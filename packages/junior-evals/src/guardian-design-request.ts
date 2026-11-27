@@ -3,7 +3,13 @@
  * stored records that the case gives (`facts-from-junior` in
  * `design/guardian.md`).
  */
-import type { GuardianContext } from "@sentry/junior-plugin-api";
+import type {
+  CodeChange,
+  GuardianContext,
+  GuardianFactsContext,
+} from "@sentry/junior-plugin-api";
+import { pluginGuardianContext } from "@/chat/plugins/guardian-context";
+import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
 import type { Action, Message, ReviewRequest } from "@/chat/guardian/guardian";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
@@ -64,7 +70,7 @@ function memoryCache(): GuardianContext["cache"] {
  */
 function designGuardianContext(
   facts: GuardianDesignFacts | undefined,
-): GuardianContext {
+): GuardianFactsContext {
   const privateRepos = new Set(
     (facts?.privateRepos ?? []).map((repo) => repo.toLowerCase()),
   );
@@ -73,11 +79,31 @@ function designGuardianContext(
     cache: memoryCache(),
     codeChanges: {
       async list({ repository }) {
-        const owned = (repository?.numbers ?? []).some((number) =>
-          own.has(`${repository?.name}#${number}`),
+        if (!repository) {
+          return [...own].map((ref): CodeChange => {
+            const [name = ref, number] = ref.split("#");
+            return {
+              closedAt: undefined,
+              conversationIds: [],
+              mergedAt: undefined,
+              number: Number(number),
+              providerId: ref,
+              repository: { name, providerId: name },
+              state: "open",
+            };
+          });
+        }
+        const owned = (repository.numbers ?? []).some((number) =>
+          own.has(`${repository.name}#${number}`),
         );
         return owned ? [{} as never] : [];
       },
+    },
+    async workspaceRepos() {
+      return (facts?.workspaceRepos ?? []).map((repo) => ({
+        provider: "github",
+        repo,
+      }));
     },
     async conversationIds() {
       return ["guardian-eval"];
@@ -85,6 +111,17 @@ function designGuardianContext(
     egress: {
       async fetch({ request }) {
         const url = new URL(request.url);
+        const pull = /^\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)$/.exec(
+          url.pathname,
+        );
+        const branch =
+          pull &&
+          facts?.pullRequestBranches?.[
+            `${decodeURIComponent(pull[1]!)}#${pull[2]}`
+          ];
+        if (url.hostname === "api.github.com" && branch) {
+          return Response.json({ head: { ref: branch } });
+        }
         const repo = /^\/repos\/([^/]+\/[^/]+)$/.exec(url.pathname)?.[1];
         if (url.hostname !== "api.github.com" || !repo) {
           return Response.json({ message: "Not Found" }, { status: 404 });
@@ -97,13 +134,25 @@ function designGuardianContext(
   };
 }
 
+const mcpArguments = z.record(z.string(), z.unknown()).catch({});
+
 /** One action as core builds it, with the facts that its tool gives. */
 async function designAction(
   proposal: ToolActionProposal,
-  ctx: GuardianContext,
+  ctx: GuardianFactsContext,
 ): Promise<Action> {
   const input = proposal.input as { command?: unknown };
   const described = await agentActionFacts(proposal.tool, proposal.input, ctx);
+  const context = await pluginGuardianContext({
+    call: {
+      tool: proposal.tool.name,
+      input:
+        proposal.tool.dispatcherName === "callMcpTool"
+          ? mcpArguments.parse(proposal.input["arguments"])
+          : proposal.input,
+    },
+    ctxFor: () => ctx,
+  });
   return {
     tool: proposal.tool.name,
     input: proposal.input,
@@ -114,6 +163,7 @@ async function designAction(
     ...(proposal.tool.serverHints
       ? { serverHints: proposal.tool.serverHints }
       : undefined),
+    ...(context.length > 0 ? { context } : undefined),
     summary:
       proposal.tool.name === "bash" && typeof input.command === "string"
         ? input.command

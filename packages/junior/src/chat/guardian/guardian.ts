@@ -40,6 +40,11 @@ export interface Action {
   /** Marks that a remote MCP server gives its tool. Untrusted hints. */
   serverHints?: Record<string, unknown>;
   /**
+   * Facts that plugin code wrote from stored records about this call
+   * (`guardian.context`). Context only: never permissions.
+   */
+  context?: string[];
+  /**
    * The decision of the tool's own code. `deny` and `ask` hold, and only
    * the person's yes to this exact action clears an ask. `allow` clears
    * only `unrequested`.

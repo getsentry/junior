@@ -50,6 +50,10 @@ export interface GuardianDesignFacts {
    * every other repository as public.
    */
   privateRepos?: string[];
+  /** The head branch of each own pull request, by `owner/repo#number`. */
+  pullRequestBranches?: Record<string, string>;
+  /** The GitHub repositories (`owner/name`) of the active Workspace. */
+  workspaceRepos?: string[];
 }
 
 /** One planned action, or the calls of one Code Mode batch, for Guardian. */
