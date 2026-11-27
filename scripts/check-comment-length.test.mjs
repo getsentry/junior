@@ -53,6 +53,15 @@ test("ignores blocks split by code, and comment text in strings", () => {
   assert.deepEqual(counts, { "block-lines": {}, "line-width": {} });
 });
 
+test("keeps trailing comments out of blocks", () => {
+  const trailing = Array.from(
+    { length: MAX_BLOCK_LINES + 3 },
+    (_, index) => `const v${index} = ${index}; // note`,
+  );
+  const counts = measure([...lineComments(MAX_BLOCK_LINES), ...trailing]);
+  assert.deepEqual(counts["block-lines"], {});
+});
+
 test("counts wide comment lines, except links and directives", () => {
   const long = "x".repeat(MAX_LINE_WIDTH);
   const counts = measure([

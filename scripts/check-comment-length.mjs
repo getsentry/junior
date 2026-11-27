@@ -62,22 +62,34 @@ export function measureComments(root, targets) {
     const match = JSON.parse(line);
     const file = match.file.split(path.sep).join("/");
     const ranges = rangesByFile.get(file) ?? [];
-    ranges.push([match.range.start.line, match.range.end.line]);
+    ranges.push(match.range);
     rangesByFile.set(file, ranges);
   }
   const counts = { "block-lines": {}, "line-width": {} };
   for (const [file, ranges] of rangesByFile) {
     const source = fs.readFileSync(path.join(root, file), "utf8").split("\n");
-    let excess = 0;
-    let wide = 0;
-    for (const [start, end] of mergeBlocks(ranges)) {
-      const lines = source.slice(start, end + 1);
-      const text = lines.filter((line) => !DELIMITER_LINE.test(line));
-      excess += Math.max(0, text.length - MAX_BLOCK_LINES);
-      wide += lines.filter(
-        (line) => line.length > MAX_LINE_WIDTH && !UNWRAPPABLE.test(line),
-      ).length;
+    const commentLines = new Set();
+    const ownLineRanges = [];
+    for (const { start, end } of ranges) {
+      for (let line = start.line; line <= end.line; line++) {
+        commentLines.add(line);
+      }
+      // A trailing comment after code is not part of a block.
+      if (!source[start.line].slice(0, start.column).trim()) {
+        ownLineRanges.push([start.line, end.line]);
+      }
     }
+    let excess = 0;
+    for (const [start, end] of mergeBlocks(ownLineRanges)) {
+      const text = source
+        .slice(start, end + 1)
+        .filter((line) => !DELIMITER_LINE.test(line));
+      excess += Math.max(0, text.length - MAX_BLOCK_LINES);
+    }
+    const wide = [...commentLines].filter(
+      (line) =>
+        source[line].length > MAX_LINE_WIDTH && !UNWRAPPABLE.test(source[line]),
+    ).length;
     if (excess > 0) counts["block-lines"][file] = excess;
     if (wide > 0) counts["line-width"][file] = wide;
   }
