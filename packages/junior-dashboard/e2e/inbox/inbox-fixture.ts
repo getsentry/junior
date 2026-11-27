@@ -170,6 +170,7 @@ export const answered = {
     values: { decision: ["Approve"], reason: ["MIT license, no change."] },
   },
   body: "The initech entry changed its license.",
+  answeredBy: viewer,
   closedAt: "2026-08-07T09:40:00.000Z",
   createdAt: "2026-08-07T09:30:00.000Z",
   closedBy: viewer,

@@ -391,6 +391,7 @@ describe("inbox item actions API", () => {
     expect(await submitted.json()).toMatchObject({
       status: "done",
       canAct: false,
+      answeredBy: { email: "ana@example.com" },
       closedBy: { email: "ana@example.com" },
       answer: { values: { decision: ["Reject"], reason: ["Not fair source"] } },
     });

@@ -21,6 +21,7 @@
     "addedByLabel",
     "addedByTurnId",
     "answer",
+    "answeredBy",
     "assignedToEveryone",
     "assignees",
     "automationId",

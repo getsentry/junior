@@ -31,6 +31,7 @@ import {
   InboxItemAssignees,
   InboxItemCloser,
   InboxItemTitle,
+  inboxItemCloser,
 } from "./InboxItemPeople";
 import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
 import { useQuestionInViewRef } from "./WaitingQuestions";
@@ -271,7 +272,7 @@ function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
           ),
         };
   }
-  const by = item.closedBy ? (
+  const by = inboxItemCloser(item) ? (
     <>
       {" "}
       by <InboxItemCloser item={item} />
