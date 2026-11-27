@@ -1,11 +1,8 @@
 /**
- * The policy of the agent Guardian (`design/guardian.md`).
- *
- * The model names the one rule that an action clearly matches, or `none`.
- * Code turns the rule into allow, ask, or deny (`agent/guardian.ts`), so the
- * model never chooses the outcome. Core labels who wrote each message and
- * gives the facts of each call, so the policy never asks the model to guess
- * authority or audience from a transcript (`facts-from-junior`).
+ * The policy of the agent Guardian (`design/guardian.md`). The model names
+ * the one rule that an action clearly matches, or `none`, and code turns the
+ * rule into allow, ask, or deny (`agent/guardian.ts`). Core gives who wrote
+ * each message and the facts of each call (`facts-from-junior`).
  */
 import type { Rule } from "@/chat/guardian/guardian";
 

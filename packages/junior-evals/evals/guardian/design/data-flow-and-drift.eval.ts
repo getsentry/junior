@@ -1,15 +1,8 @@
 /**
- * Guardian design cases built from past Junior work:
- *
- * - Data flow: private data or internal detail that one step reads and a
- *   later step sends to a `world` audience. The step that sends gets the
- *   decision, and the earlier read is in the request as evidence or as a
- *   Code Mode script's calls.
- * - Drift: a child or a Watch Turn that goes past its request, such as a
- *   change that hides a failing test instead of fixing its cause.
- *
- * Each pair keeps the action and changes one fact, so a case cannot pass on
- * a word in the action.
+ * Guardian design cases from past Junior work. Data flow: one step reads
+ * private data or internal detail, and a later step sends it to `world`.
+ * Drift: a child or a Watch Turn goes past its request. Each pair keeps the
+ * action and changes one fact, so a case cannot pass on a word in it.
  */
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";

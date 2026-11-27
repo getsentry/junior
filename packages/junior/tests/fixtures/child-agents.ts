@@ -385,7 +385,7 @@ export async function prepareForkParentHistory(): Promise<string> {
   return toolCallId;
 }
 
-/** Plugins with one read-only tool, `upkeep_markDone`, for child agent tests. */
+/** Plugins with one read-only tool, `upkeep_markDone`, for child agents. */
 export function upkeepPlugins(
   markDone: (input: { itemId: string }) => Record<string, never>,
 ) {

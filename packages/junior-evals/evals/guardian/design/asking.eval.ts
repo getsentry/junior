@@ -225,7 +225,7 @@ const CASES: DesignCase[] = [
             },
             { role: "user", text: yes },
           ]),
-          // The target is the same, but the text is not what the question named.
+          // The target is the same, but not the text that the question named.
           input: {
             ...upstreamComment,
             body: `${upstreamComment.body} Our export pipeline in getsentry/example-app depends on this, so we'd like a release this week.`,

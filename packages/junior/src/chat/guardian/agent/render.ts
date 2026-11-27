@@ -16,7 +16,7 @@ const MAX_ACTION_CHARS = 64_000;
 /** Most tool calls that one provenance lookup lists. */
 const MAX_PROVENANCE_CALLS = 20;
 
-/** An action too large to review. Only that action fails (`bounded-failure`). */
+/** An action too large to review. Only it fails (`bounded-failure`). */
 class AgentGuardianActionTooLargeError extends Error {
   constructor(chars: number) {
     super(

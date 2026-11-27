@@ -1,12 +1,8 @@
 /**
- * What a shell command can reach, which Guardian reads when it reviews one
- * (`sandbox-boundary` in `design/guardian.md`).
- *
- * Code only reads facts here. The Git remotes come from the Sandbox, a
- * plugin's `describeUrl` hook types each one, and the plugin manifests say
- * which credential placeholder goes to which domains. For a push, the
- * commits that no remote has yet show what a `world` checkout publishes:
- * edits and commits stay in the Sandbox, so the push is where they leave.
+ * What a shell command can reach, for Guardian (`sandbox-boundary`). The
+ * remotes come from the Sandbox, and `describeUrl` types each one. Before a
+ * push to a `world` checkout, the commits that no remote has show what the
+ * push publishes, since edits and commits stay in the Sandbox until then.
  */
 import type {
   DescribeReadContext,

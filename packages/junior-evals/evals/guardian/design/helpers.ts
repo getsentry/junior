@@ -149,7 +149,7 @@ export function agentMessageContext(args: {
   );
 }
 
-/** Context of the parent's Turn that a child agent's result starts, as an Event. */
+/** The parent's Turn that a child agent's result starts, as an Event. */
 export function childResultContext(
   result: string,
 ): ToolActionProposal["context"] {
@@ -191,7 +191,7 @@ export function automationContext(
   });
 }
 
-/** A Code Mode script with the earlier calls that it made, as core bounds it. */
+/** A Code Mode script with its earlier calls, as core bounds them. */
 export function script(
   source: string,
   calls: Array<{ input: unknown; toolName: string }>,

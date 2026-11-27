@@ -1,14 +1,8 @@
 /**
- * Guardian design eval harness.
- *
- * Each case states the outcome that `design/guardian.md` asks for, and cites
- * one of its rule IDs. Cases reach Guardian only through `GuardianArm`, so a
- * new Guardian plugs in as another arm with no change to the cases.
- * `GUARDIAN_DESIGN_ARM` picks the arm. The current Guardian is the default.
- *
- * These cases run in `evals:guardian` and gate like the rest of it. A failing
- * case names a gap between the design and the arm, so the check stays red
- * until an arm meets the design. Do not mark a case as an expected failure.
+ * Guardian design eval harness. Each case states the outcome that
+ * `design/guardian.md` asks for, cites one of its rule IDs, and reaches
+ * Guardian only through a `GuardianArm` (`GUARDIAN_DESIGN_ARM`). A failing
+ * case is a gap between the design and the arm. Do not mark it expected.
  */
 import {
   createHarness,
@@ -186,7 +180,7 @@ function sampleCount(): number {
   return value;
 }
 
-/** Return why one result misses the expectation, or nothing when it meets it. */
+/** Why one result misses the expectation, or nothing when it meets it. */
 function mismatch(
   expected: GuardianExpectation,
   result: GuardianDesignResult,

@@ -1,15 +1,8 @@
 /**
- * The agent Guardian, built to `design/guardian.md`.
- *
- * Each action gets a first-tier screen: one classifier call over the
- * messages of the work and the action. An action that the screen finds
- * ordinary runs. Any other action goes to a second-tier review for that one
- * action, which can read provenance and plugin facts before its verdict.
- * Neither tier sees the body of a tool result.
- *
- * Code does only deterministic work: it maps the named rule to its kind
- * (`rule-kinds`). A review that cannot run fails only its action
- * (`bounded-failure`).
+ * The agent Guardian (`design/guardian.md`). A first-tier screen reads the
+ * messages and each action, and an ordinary action runs. Any other goes to a
+ * second-tier review with provenance and plugin facts, never a tool result's
+ * body. Code maps the rule to its kind, and a failed review fails one action.
  */
 import * as z from "zod";
 import type { completeObject } from "@/chat/core-model";

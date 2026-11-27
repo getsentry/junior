@@ -113,7 +113,7 @@ export type ToolActionReviewResult =
  * through `reviewToolActions`, which owns the batch limit.
  */
 export interface ToolActionReview {
-  /** Whether this review may send the action to Guardian, before its metadata resolves. */
+  /** Whether the review may send the action to Guardian, before metadata. */
   mayReview(action: ToolAction): boolean;
   /** Review a batch of actions. The result has one entry per `toolCallId`. */
   review(
@@ -471,7 +471,7 @@ function mayNeedReview(tool: AnyToolDefinition): boolean {
   );
 }
 
-/** Whether the gate sends a call of `tool` to Guardian, given its resolved metadata. */
+/** Whether the gate sends a call of `tool` to Guardian, given its metadata. */
 export function toolActionNeedsReview(
   tool: AnyToolDefinition,
   resolved: ToolApprovalResolution | undefined,

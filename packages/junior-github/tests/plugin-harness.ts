@@ -41,7 +41,7 @@ export function signedRequest(input: {
   });
 }
 
-/** An in-memory plugin cache with no TTL, so a test can read what a hook wrote. */
+/** A plugin cache in memory with no TTL, so a test reads what a hook wrote. */
 export function memoryCache(): HeartbeatHookContext["cache"] {
   const cacheEntries = new Map<string, unknown>();
   return {

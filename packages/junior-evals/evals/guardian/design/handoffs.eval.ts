@@ -1,15 +1,8 @@
 /**
- * Guardian design cases: work that one agent hands to another
- * (`design/guardian.md`, "Authority follows the work").
- *
- * Guardian checks a brief once, when the sender hands it over, against the
- * sender's own thread (`handoff-check`). The receiver judges its own actions
- * against its own thread, which starts with that brief
- * (`brief-is-instruction`). Nothing else carries authority to the receiver
- * (`no-inheritance`), and what comes back is context (`results-are-context`).
- *
- * The receiver's cases give no lines of the person: every brief that reaches
- * a receiver passed the hand-off check.
+ * Guardian design cases: work that one agent hands to another. Guardian
+ * checks a brief once, at hand-off (`handoff-check`). The receiver's thread
+ * starts with that brief (`brief-is-instruction`), so its cases give no
+ * lines of the person, and what comes back is context (`results-are-context`).
  */
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";

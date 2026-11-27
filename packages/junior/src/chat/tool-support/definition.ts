@@ -40,7 +40,7 @@ export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 
 /** Approval metadata that core and plugin tools declare. */
 export interface ToolApprovalMetadata {
-  /** Optional declared approval mode; the owning tool boundary selects defaults. */
+  /** Declared approval mode. The owning tool boundary selects defaults. */
   approvalMode?: ToolApprovalMode | undefined;
   annotations?: ToolAnnotations;
 }
@@ -123,7 +123,7 @@ export interface ToolDefinition<
 > extends BaseToolDefinition<Static<TInputSchema>, TInputSchema> {}
 
 /**
- * Schema-erased view for heterogeneous registries after Pi validates tool input.
+ * Schema-erased view for mixed registries, after Pi validates tool input.
  */
 export interface AnyToolDefinition extends ToolApprovalMetadata {
   /**
@@ -182,7 +182,7 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
     | undefined;
 }
 
-/** Name-indexed heterogeneous tool definitions accepted by the agent runtime. */
+/** Name-indexed mixed tool definitions that the agent runtime accepts. */
 export type ToolRegistry = Record<string, AnyToolDefinition>;
 
 /** Distinguish legacy TypeBox schemas from JSON Schema projected from Zod. */
