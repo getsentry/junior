@@ -286,7 +286,7 @@ function assertAuthoritativeContext(
   }
 }
 
-/** Build the bounded wire proposal without treating tool metadata as authority. */
+/** Build the bounded wire proposal. Tool metadata is not authority. */
 function buildProposal(
   toolName: string,
   tool: AnyToolDefinition,
@@ -430,7 +430,7 @@ function projectedRejection(
   };
 }
 
-/** A core tool stays outside review unless it opts in. Plugin tools default to `auto`. */
+/** Core tools skip review unless they opt in; plugin tools default `auto`. */
 function mayNeedReview(tool: AnyToolDefinition): boolean {
   return tool.approvalMode !== undefined && tool.approvalMode !== "approve";
 }
@@ -441,7 +441,7 @@ interface PreparedReview {
   proposal: ToolActionProposal;
 }
 
-/** Prepare the exact action that Guardian must review, when review is required. */
+/** Prepare the exact action that Guardian must review, when it must. */
 async function prepareToolActionReview(
   action: ToolAction,
   context: ToolActionReviewContext,
@@ -487,7 +487,7 @@ async function prepareToolActionReview(
  */
 export const MAX_TOOL_ACTION_BATCH = 10;
 
-/** Most actions of one batch that the gate prepares or records at the same time. */
+/** Most actions of one batch that the gate prepares or records at once. */
 const MAX_CONCURRENT_PREPARATIONS = 4;
 
 /** Outcome of the review step of one action, before gate state changes. */
@@ -510,7 +510,7 @@ function unavailableStep(error: unknown): ReviewStep {
   };
 }
 
-/** Create the core review path that prepares actions and enforces Guardian decisions. */
+/** Create the review path that prepares actions and enforces decisions. */
 export function createToolActionReview(options: {
   context: ToolActionReviewContext;
   /** Make the Guardian that decides the actions of one batch. */

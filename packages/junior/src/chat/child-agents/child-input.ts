@@ -216,18 +216,14 @@ export async function readChildInputDropFacts(
 }
 
 /**
- * Return whether a Conversation drops one input, so it starts no work.
- * Routing and the child agent status both read this, so they agree on which
- * input starts work. `facts` must come from `readChildInputDropFacts` for
- * this input.
- *
- * A parent message is dropped when it does not come from the stored parent,
- * or when it was sent before the child's stop. A stop drops a child's unread
+ * Return whether a Conversation drops one input, so it starts no work. Routing
+ * and child status both read it, so they agree. `facts` are from
+ * `readChildInputDropFacts`. A parent message is dropped when it is not from
+ * the stored parent, or was sent before the child's stop. A stop drops unread
  * replies from the parent's mailbox. One sent before the stop can reach the
- * mailbox after that drop, so while the sending child is stopped, a reply
- * that it sent after the stop is dropped too. A stopped Conversation never
- * reads other automated input: `enqueueAutomatedInput` and the stop hold it
- * first.
+ * mailbox after that drop, so while the sending child is stopped, a reply that
+ * it sent after the stop is dropped too. A stopped Conversation never reads
+ * other automated input: `enqueueAutomatedInput` and the stop hold it first.
  */
 export function isDroppedChildInput(
   message: InboundMessage,

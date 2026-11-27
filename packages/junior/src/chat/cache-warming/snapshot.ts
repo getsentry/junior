@@ -1,21 +1,9 @@
 /**
- * Storage format of the idle-period snapshot: the exact Pi context of the
- * request that ended a Turn, which each idle warmup sends again.
- *
- * Base64 image data does not compress, so one screenshot can make a snapshot
- * too large to store. The data of each image part moves to its own state key,
- * named by its SHA-256 hash, and the snapshot keeps `sha256:<hash>` in its
- * place. Base64 has no `:`, so a reference cannot be image data.
- * The next Turn's snapshot often holds the same images, so it writes the same
- * keys again and refreshes their TTL. A loaded snapshot gets each image's
- * data back at the same JSON position, so the warmup request is the same as
- * the original request and reads its cached prefix. A snapshot with a missing
- * image does not load: a changed request would write a new cache entry.
- * Deleting a snapshot keeps its images, because the next snapshot of the
- * Conversation likely holds them. They expire with their TTL.
- * A snapshot whose images are over their own limit is not stored, so one
- * Conversation cannot keep an unbounded amount of image data in state.
- * Removing its images would change the request, so it would miss the cache.
+ * Storage format of the idle-period snapshot: the exact Pi context that each
+ * idle warmup resends. Image data moves to keys named by its SHA-256, and the
+ * snapshot keeps `sha256:<hash>` (base64 has no `:`). A missing image or
+ * images over their limit load or store nothing: a changed request would miss
+ * the cache. Deleting a snapshot keeps its images for the next one.
  */
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";

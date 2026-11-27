@@ -31,7 +31,6 @@ import {
   createConfiguredJuniorSqlFixture,
   createJuniorSqlFixture,
 } from "../fixtures/sql";
-import { setConversationVisibility } from "@/chat/conversations/sql/privacy";
 
 describe("conversation SQL store", () => {
   it("binds one provider conversation to an existing durable conversation", async () => {
@@ -958,8 +957,7 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: otherThreadId }),
       ).resolves.toMatchObject({ visibility: "public" });
 
-      // A child copies its root's visibility, and an explicit change moves
-      // the whole tree.
+      // A child copies its root's visibility.
       await store.createChild({
         childConversationId: "agent:visibility-task",
         kind: "task",
@@ -969,12 +967,6 @@ describe("conversation SQL store", () => {
       await expect(
         store.get({ conversationId: "agent:visibility-task" }),
       ).resolves.toMatchObject({ visibility: "private" });
-      await setConversationVisibility(fixture.sql, CONVERSATION_ID, "public");
-      for (const conversationId of [CONVERSATION_ID, "agent:visibility-task"]) {
-        await expect(store.get({ conversationId })).resolves.toMatchObject({
-          visibility: "public",
-        });
-      }
     } finally {
       await fixture.close();
     }

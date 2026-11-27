@@ -124,8 +124,8 @@ export const juniorConversations = pgTable(
     // Who may read the Conversation (policies/conversation-access.md).
     // Public: anyone. Private: only its root's Participants. Every row of a
     // tree has the same value: a child copies its root's when it is created,
-    // and `setConversationVisibility` changes the whole tree at once. A root
-    // takes the first known visibility of its Destination or Space. Null
+    // and it never changes after that. A root takes the first known
+    // visibility of its Destination or Space. Null
     // reads as private: no known visibility yet, or a writer of an older
     // deploy left it null.
     visibility: text("visibility").$type<ConversationPrivacy>(),

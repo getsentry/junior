@@ -68,10 +68,8 @@ export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
 
 /**
  * Cost of a warmup per prefix token, as a multiple of the cache read price.
- * A warmup also pays for its output token and the request overhead. Measured
- * warmups cost $0.22/MTok of prefix on Anthropic Opus, where a read costs
- * $0.2/MTok. With a $5/MTok write, a warmup pays when the chance of a return
- * in the next interval is at least 0.22/4.8, about 4.6%.
+ * A warmup also pays for its output token and the request overhead
+ * (`design/cache-warming.md`).
  */
 const WARMUP_COST_PER_READ = 1.1;
 
@@ -82,35 +80,18 @@ export function warmupPrice(cacheReadPrice: number): number {
 
 /**
  * Junior watches an idle period for this long, unless it waits on a child
- * agent (`CHILD_WAIT_IDLE_HORIZON_MS`). A person who replies later
- * counts as a person who did not reply. The reply chance of a warmup counts
- * only replies before this time. For a cache that outlives the horizon, this
- * is less than the real chance, so Junior warms less, never more.
- *
- * The horizon rarely stops warming. For most Conversations, the return chance
- * per interval falls below breakeven after about 18 minutes, so
- * `unlikely_return` stops nearly all warming first. A backtest without the
- * cap changed almost nothing: late returns exist, but they are too rare to
- * pay for warming every Conversation that long.
- *
- * A horizon message is signed when it is sent, and a queue signature is
- * valid for 60 minutes (`QUEUE_SIGNATURE_MAX_AGE_MS`). The other 5 minutes
- * let a late horizon still record its no-reply gap. A longer idle horizon
- * sends its horizon in steps of this length.
+ * agent. A later reply counts as no reply, so Junior warms less, never more.
+ * A queue signature is valid for 60 minutes (`QUEUE_SIGNATURE_MAX_AGE_MS`),
+ * so the other 5 minutes let a late horizon still record its no-reply gap.
+ * A longer idle horizon sends its horizon in steps of this length.
  */
 export const IDLE_HORIZON_MS = 55 * MINUTE_MS;
 
 /**
- * Idle horizon of an idle period that waits on a child agent. The child's
- * result starts a Turn, so a return stays likely long after people stop
- * replying. In a backtest, the return chance per interval stayed well above
- * breakeven for most of the time past the default horizon. The return
- * chance still stops warming once the gaps of the child segment show that
- * returns get rare. Two horizons, 110 minutes, cover the late returns and
- * limit the cost of a child agent that never returns.
- *
- * An Inbox item wait keeps `IDLE_HORIZON_MS`: its return chance in the same
- * backtest was borderline.
+ * Idle horizon of an idle period that waits on a child agent. Its result
+ * starts a Turn, so a return stays likely past the default horizon. Two
+ * horizons limit the cost of a child agent that never returns. An Inbox item
+ * wait keeps `IDLE_HORIZON_MS` (`design/cache-warming.md`).
  */
 export const CHILD_WAIT_IDLE_HORIZON_MS = 2 * IDLE_HORIZON_MS;
 
@@ -138,11 +119,9 @@ export const TIMER_START_DELAY_MS = 2 * MINUTE_MS;
 
 /**
  * Latest timer due time, as idle time, that the timer floor warms for. A
- * warmup costs a bit more than one cache read (`WARMUP_COST_PER_READ`), and a
- * miss costs one write minus one read, so the floor sends fewer warmups than
- * the miss costs in warmups. The cache of the last warmup must last until the
- * timer's Turn starts. A later timer changes nothing: warming for it costs
- * more than it saves.
+ * warmup costs a bit more than one read and a miss costs one write minus one
+ * read, so the floor sends fewer warmups than one miss costs. The cache of
+ * the last warmup must last until the timer's Turn starts.
  */
 export function timerFloorMaxDueIdleMs(prices: {
   cacheReadPrice: number;
@@ -263,18 +242,9 @@ export interface GapSegmentInput {
 
 /**
  * Pick the gap histogram for an idle period. Return chances differ most by
- * who started the Turn and by how many Turns the Conversation had before it.
- * Turns that no person started rarely get a quick reply. In 30 days of
- * production data, segments by these two keys saved more than one histogram.
- * Local time of day did not improve the result, so it is not a key. A
- * finer per-Conversation hazard rule, segmented by what the idle period
- * waits on, the work state, how the Turn ended, the Turn depth, and the
- * prefix size, only matched these segments in a backtest.
- *
- * The work state lets the histograms learn how often anything returns after
- * the work is done. An event does not restore an archived Conversation, so
- * most returns to one are events, not people. Its segment has only the work
- * state, which keeps the number of segments small.
+ * who started the Turn and how many Turns came before it. The work state
+ * learns how often anything returns after work is done. Most returns to an
+ * archived Conversation are events, so its segment has only the work state.
  */
 export function gapSegment(input: GapSegmentInput): string {
   if (input.archived) return `archived:${input.workState}`;
@@ -413,31 +383,11 @@ export interface WarmupDecision {
 }
 
 /**
- * Decide whether to send the next warmup.
- *
- * A warmup costs one cache read of the prefix and a little more
- * (`WARMUP_COST_PER_READ`). A return to a warm cache saves one write minus
- * one read. So warming pays when the expected returns per warmup are above
- * warmup/(write − read). Earlier warmups are already paid, so the threshold
- * is the same for each warmup. Both sides scale with the prefix size, so the
- * size cancels out of the threshold. It matters only through the segment.
- *
- * One warmup alone can be useless when people return a little after the next
- * TTL, while two or three warmups in a row would reach them. So the decision
- * compares plans of 1, 2, ... warmups up to the horizon. Each plan sends its
- * next warmup only while nobody returned. Junior warms when the best plan
- * pays, and decides again at the next warmup.
- *
- * The timer floor: while the cache would expire before a timer's Turn
- * starts, Junior warms even when no plan pays and after the horizon (reason
- * `timer`). The timer's Turn then reads the cache. The floor only adds
- * warmups, so it never warms less than the decision without a timer.
- *
- * In a backtest, warming for a fixed 20, 30, 55, or 90 minutes lost to this
- * rule, and a longer fixed time lost more. Most of the loss that is left is
- * returns after warming stopped. That is the expected price of the stop
- * rule, not a cache failure: in nearly all sampled late returns, the last
- * warmup read the cache.
+ * Decide whether to send the next warmup: warm when the best plan of 1, 2,
+ * ... warmups up to the horizon has expected returns per warmup above
+ * warmup/(write − read) (`design/cache-warming.md`). One warmup alone misses
+ * returns just after the next TTL. The timer floor also warms while the cache
+ * would expire before a timer's Turn starts, even past the horizon.
  */
 export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const savedPerReturn = input.cacheWritePrice - input.cacheReadPrice;
@@ -551,27 +501,11 @@ export interface IdleCompactionChoiceResult {
 }
 
 /**
- * Choose what a warmup slot does when a ready summary could replace the
- * full prefix P with a compacted prefix C. It uses the return chances of
- * `decideWarmup`. Only returns in the idle horizon count. Each option's cost
- * is the expected price of the warmups and of the first request of a return:
- *
- * - `warm`: a warmup costs `warmupPrice` of P, and a return before the next
- *   slot reads P.
- *   At the next slot, the choice runs again with the same three options.
- * - `compact`: a return writes C. No more warmups.
- * - `stop`: a return before the cache expires reads P, a later one writes P.
- *   After a prompt change (`prefixChanged`), each return writes P.
- *
- * The cheapest option wins. On a tie, compact wins, because a return after
- * the horizon also writes less. So a likely quick return, such as a child
- * agent's result, warms first and compacts at a later slot.
- *
- * Two cases do not use the costs. A slot that the timer floor of
- * `decideWarmup` covers warms, so the timer's Turn reads the cache that the
- * floor keeps. With too few gaps to trust the curve, `decideWarmup` stops
- * warming, so a later return writes P either way. Then compact wins, because
- * it writes C in place of P.
+ * Choose what a warmup slot does when a ready summary could replace the full
+ * prefix P with a compacted prefix C, with the return chances of
+ * `decideWarmup`. The options, the tie rule, and the timer floor and thin-gap
+ * cases follow `design/context-compaction.md`. After a prompt change
+ * (`prefixChanged`), `stop` writes P on each return.
  */
 export function chooseIdleCompaction(
   input: IdleCompactionChoiceInput,

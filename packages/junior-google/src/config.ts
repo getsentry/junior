@@ -11,28 +11,11 @@ export const GOOGLE_ACCOUNT_EMAIL_ENV = "GOOGLE_WORKSPACE_ACCOUNT_EMAIL";
 export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
 
 /**
- * API scopes the tools need. A connected grant must have all of them. Request
- * nothing broader.
- *
- * - `calendar.events.freebusy`: availability for `findMeetingTimes`.
- * - `calendar.events.readonly`: events that Junior's account can see on other
- *   people's calendars, for `listCalendarEvents`. Google sharing settings
- *   still decide how much detail each calendar shows.
- * - `calendar.events.owned`: create and change events on Junior's own
- *   calendar.
- * - `documents`: create Docs and edit Docs that Junior's account can already
- *   edit, through the Docs API. It gives no access to other Drive files and
- *   cannot change sharing.
- * - `drive.file`: make the requester the owner of a Doc or presentation that
- *   Junior created, then remove Junior's own access to a Doc. It only covers
- *   files this OAuth client created, so it cannot change sharing on other
- *   files. Full `drive` is not needed.
- * - `drive.readonly`: search Drive, export Docs, read Sheets and Slides, and
- *   read comments. The Drive comments API accepts no narrower read scope. The
- *   Sheets and Slides APIs also accept this scope.
- * - `presentations`: create presentations and edit Slides that Junior's
- *   account can already edit, through the Slides API. Like `documents`, it
- *   cannot change sharing.
+ * API scopes the tools need; a grant must have all and nothing broader.
+ * `drive.file` covers only files this client created, so Junior hands over
+ * its Docs without sharing rights on other files. `drive.readonly` is the
+ * narrowest scope the comments API accepts. `documents` and `presentations`
+ * cannot change sharing. Calendar stays at free/busy, read, and own events.
  */
 export const GOOGLE_API_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.freebusy",

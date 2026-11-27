@@ -1,11 +1,8 @@
 /**
- * The current Guardian behind the `Guardian` interface.
- *
- * It sends each action of the request to the model reviewer with the
- * proposal that the gate built for it, and keeps the reviewer's decision
- * and reason. The proposal holds the evidence that its prompt reads and
- * the request does not carry, such as recent tool calls and the credential,
- * so its decisions stay the same.
+ * The current Guardian behind the `Guardian` interface. It sends each action
+ * to the model reviewer with the proposal that the gate built for it. The
+ * proposal holds evidence that the request does not carry, such as recent
+ * tool calls and the credential, so its decisions stay the same.
  */
 import { mapBounded } from "@/chat/fan-out";
 import type { GuardianBatch } from "@/chat/guardian/gate";

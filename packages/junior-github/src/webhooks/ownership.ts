@@ -29,7 +29,7 @@ export function botLoginFromEmail(
   return parseGitHubBotIdentity(value)?.login;
 }
 
-/** Check whether a GitHub login is the bot encoded in the configured bot email. */
+/** Whether a GitHub login is the bot that the configured bot email encodes. */
 export function isBotLogin(
   login: string | null | undefined,
   botEmail: string | undefined,
@@ -73,23 +73,11 @@ function hasHtmlQuote(token: Token): boolean {
 }
 
 /**
- * Split a comment into the text that its author wrote (`own`) and the rest
- * (`other`), such as quotes. Each part is undefined when it is empty. This is
- * the one parser for a GitHub author's own text.
- *
- * A quote repeats text that someone else wrote, so it is never the author's
- * own words. Markdown quotes and HTML are removed, also in lists and tables.
- * An HTML quote has no reliable end: Markdown splits it at blank lines, and a
- * closing tag can hide in an HTML comment or attribute. So the block with the
- * first HTML quote tag and all text after it are removed. Each rule removes
- * text, so a parse that GitHub renders differently can only drop the
- * author's words, never add words that someone else wrote.
- *
- * Code stays, because an instruction can name a command. `withoutCode` also
- * removes code, where text in code does not count, such as a mention.
- *
- * The removed text goes to `other`, so it is shown once, as text that the
- * author did not write.
+ * Split a comment into the author's own text (`own`) and the rest (`other`),
+ * such as quotes, so the rest shows once as not theirs. The one parser for a
+ * GitHub author's text. Quotes and HTML go, also in lists and tables; an HTML
+ * quote has no reliable end, so all text from it on goes. Rules only remove,
+ * so a misparse drops the author's words, never adds others'. Code stays.
  */
 export function splitCommentText(
   text: string | null | undefined,
