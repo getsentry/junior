@@ -97,9 +97,7 @@ function changedFiles() {
   } catch {
     return undefined;
   }
-  return git("diff", "--name-only", "-z", base)
-    .split("\0")
-    .filter(Boolean);
+  return git("diff", "--name-only", "-z", base).split("\0").filter(Boolean);
 }
 
 /** Return the oxlint step for the changed files, or `undefined` for none. */
