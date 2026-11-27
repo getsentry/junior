@@ -89,6 +89,12 @@ test("mounts only the rows near the viewport of a long transcript", async ({
   await expect(
     transcript.getByText("Transcript message 1239 "),
   ).toBeInViewport();
+  // The arrows step too, and keep focus in the search box.
+  await page.getByRole("button", { name: "Next match" }).click();
+  await expect(page.getByText("1/11", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Previous match" }).click();
+  await expect(page.getByText("11/11", { exact: true })).toBeVisible();
+  await expect(search).toBeFocused();
 
   // A second press goes to the browser's find.
   await page.evaluate(() => {

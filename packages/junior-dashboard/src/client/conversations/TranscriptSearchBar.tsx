@@ -1,5 +1,5 @@
-import { X } from "lucide-react";
-import type { RefObject } from "react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
+import type { ReactNode, RefObject } from "react";
 
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
@@ -8,8 +8,8 @@ import type { TranscriptSearchMatch } from "./transcriptSearch";
 
 /**
  * Float transcript search over the transcript, below the positioned header
- * that holds it, so opening search does not move the conversation. Enter
- * and Shift+Enter step through the matches. Escape closes it.
+ * that holds it, so opening search does not move the conversation. The
+ * arrows, Enter, and Shift+Enter step through the matches. Escape closes it.
  */
 export function TranscriptSearchBar(props: {
   /** Horizontal placement and width inside the header. */
@@ -58,6 +58,20 @@ export function TranscriptSearchBar(props: {
             : `${props.match.index + 1}/${props.match.count}`}
         </span>
       ) : null}
+      <StepButton
+        disabled={props.match.count === 0}
+        label="Previous match"
+        onClick={() => props.match.step(-1)}
+      >
+        <ChevronUp aria-hidden="true" size={14} strokeWidth={2} />
+      </StepButton>
+      <StepButton
+        disabled={props.match.count === 0}
+        label="Next match"
+        onClick={() => props.match.step(1)}
+      >
+        <ChevronDown aria-hidden="true" size={14} strokeWidth={2} />
+      </StepButton>
       <Button
         aria-label="Close search"
         onClick={props.onClose}
@@ -68,5 +82,28 @@ export function TranscriptSearchBar(props: {
         <X aria-hidden="true" size={14} strokeWidth={2} />
       </Button>
     </div>
+  );
+}
+
+function StepButton(props: {
+  children: ReactNode;
+  disabled: boolean;
+  label: string;
+  onClick(): void;
+}) {
+  return (
+    <Button
+      aria-label={props.label}
+      className="size-7"
+      disabled={props.disabled}
+      onClick={props.onClick}
+      // Keep focus in the search box, so typing and Enter still work.
+      onMouseDown={(event) => event.preventDefault()}
+      size="icon"
+      title={props.label}
+      variant="ghost"
+    >
+      {props.children}
+    </Button>
   );
 }
