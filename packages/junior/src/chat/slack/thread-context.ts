@@ -37,6 +37,14 @@ function isTakeOrDismissOnly(message: ConversationMessage): boolean {
   );
 }
 
+// The cap counts the text that the model sees, after whitespace collapses.
+function capMessageText(text: string): string {
+  const compact = text.replace(/\s+/g, " ");
+  return compact.length > CONTEXT_MAX_MESSAGE_CHARS
+    ? `${compact.slice(0, CONTEXT_MAX_MESSAGE_CHARS)}${TRUNCATED_MESSAGE_NOTE}`
+    : compact;
+}
+
 function renderThreadContextMessage(
   message: ConversationMessage,
   conversation: ThreadConversationState,
@@ -59,9 +67,7 @@ function renderThreadContextMessage(
         renderConversationMessageLine(
           message,
           conversation,
-          message.text.length > CONTEXT_MAX_MESSAGE_CHARS
-            ? `${message.text.slice(0, CONTEXT_MAX_MESSAGE_CHARS)}${TRUNCATED_MESSAGE_NOTE}`
-            : message.text,
+          capMessageText(message.text),
         ),
       ],
     ),

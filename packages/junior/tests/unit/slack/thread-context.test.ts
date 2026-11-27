@@ -217,6 +217,19 @@ describe("buildConversationContext", () => {
     expect(context).not.toContain("first line\nsecond line");
   });
 
+  it("caps a Message by its compact text", () => {
+    const conversation = coerceThreadConversationState({});
+    // 9,000 raw characters that collapse to 6,000.
+    const text = "ab\n\n\n".repeat(1_800);
+    conversation.messages = [
+      { id: "msg-1", role: "assistant", text, createdAtMs: 1000 },
+    ];
+
+    const context = buildConversationContext(conversation).text;
+    expect(context).toContain(`${"ab ".repeat(1_799)}ab`);
+    expect(context).not.toContain("[truncated:");
+  });
+
   it("escapes ambient message bodies so tag text cannot close the envelope", () => {
     const conversation = coerceThreadConversationState({});
     conversation.messages = [
