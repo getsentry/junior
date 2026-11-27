@@ -155,7 +155,7 @@ describe("inbox item tools", () => {
     expect(replayed.item.id).toBe(added.item.id);
     // Each add asks a new question, with its own id.
     expect(added.item.subject).toEqual({
-      id: expect.stringMatching(/^ask:/),
+      id: "askUserQuestion:call-1",
       kind: "question",
     });
     // Each question is its own field, and nothing is asked above them.
