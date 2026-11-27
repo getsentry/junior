@@ -293,7 +293,7 @@ describe("advanceTurn", () => {
       storedReply(reply),
     ]);
     const events = await harness.events();
-    // LEGACY COMPAT: main's visible message and turn_started come first.
+    // Compat: main's visible message and turn_started come first.
     expect(events.map((event) => event.idempotencyKey)).toEqual([
       `message:inbox:${inputId}`,
       `turn:${turnId}:started`,

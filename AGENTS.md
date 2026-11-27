@@ -18,6 +18,7 @@ the check first. A rule that only review enforces is a judgment call.
 | Search every consumer before you change a shared signature, error contract, or name. Use a hard cutover unless compatibility is required. | `pnpm typecheck` |
 | Let unexpected failures reach the owning boundary. Retry only expected transient failures. | `tool-error-classification:check` for tools, review elsewhere |
 | Core owns the runtime and provider-neutral plugin contracts. Plugins own provider routes, API fields, permissions, errors, and formatting. | ast-grep `no-core-plugin-*` |
+| Code that exists only so main's readers keep working beside the core Turn engine is named `compat__*` and lives in `compat__*.ts` files; delete it when those readers read `junior_turns`. Code that reads rows from main's retired features is named `legacy*` and stays until no such rows remain. | ast-grep `no-compat-rows-outside-compat-files` |
 | No mutable runtime globals. No test-only singleton mutation APIs. | `test-architecture:check` for tests, review elsewhere |
 | Query tables with the Drizzle query builder. Use `sql` only for expressions inside a builder query, or for statements without a table. | oxlint `junior/no-raw-sql-queries` |
 | Store money in Postgres as whole micro-USD: a `bigint` column or an integer metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`. | `money-units:check` |
