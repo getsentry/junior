@@ -457,6 +457,20 @@ describe("chat config", () => {
     ).toThrow("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
   });
 
+  it("runs Turns on main unless the Turn engine is core", () => {
+    expect(loadConfig({ env: BASE_ENV }).turnEngine).toBe("main");
+    expect(
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_TURN_ENGINE: "core" } })
+        .turnEngine,
+    ).toBe("core");
+  });
+
+  it("rejects an unknown Turn engine", () => {
+    expect(() =>
+      loadConfig({ env: { ...BASE_ENV, JUNIOR_TURN_ENGINE: "next" } }),
+    ).toThrow("JUNIOR_TURN_ENGINE must be main or core");
+  });
+
   it("uses a 30 second SQL statement timeout by default", () => {
     const config = loadConfig({ env: BASE_ENV });
     expect(config.sql.statementTimeoutMs).toBe(30_000);

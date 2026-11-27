@@ -56,6 +56,7 @@ import {
 } from "./history";
 import type { VisibleMessage } from "./judge";
 import { createInProcessQueue } from "./queue";
+import { startCoreTurnQueue } from "./turn-queue";
 import {
   BEFORE_FIRST_EVENT,
   combinedRun,
@@ -190,6 +191,11 @@ export async function createFixtureAgent(
       waitUntil: (task) => track(typeof task === "function" ? task() : task),
     });
   let app = await deploy(options);
+  // On the core Turn engine, core's Turn messages reach the current app.
+  const turnQueue = await startCoreTurnQueue({
+    fetch: async (request) => await app.request(request),
+    track,
+  });
   // The dashboard mounts the same API after sign-in. Each request signs in
   // as the person in `x-fixture-viewer`, or as the web person by default.
   const api = new Hono<JuniorApiEnv>();
@@ -211,6 +217,7 @@ export async function createFixtureAgent(
     }
     if (!closed) {
       closed = true;
+      await turnQueue?.close();
       await blob.close();
       // Each Slack person is also a dashboard person with their email. A web
       // Actor id is the User id.

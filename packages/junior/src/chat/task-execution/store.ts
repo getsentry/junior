@@ -1,8 +1,10 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
+import { getChatConfig } from "@/chat/config";
 import { getConversationStore } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { scheduleInboundMessage } from "@/turn-steps/ingress";
 import {
   CONVERSATION_QUEUE_SCHEMA_VERSION,
   type ConversationWorkQueue,
@@ -349,7 +351,10 @@ async function enqueueAfterAppend(args: {
   };
 }
 
-/** Persist inbound work and ensure a worker wake-up. */
+/**
+ * Persist inbound work and ensure a worker wake-up. On the core Turn engine,
+ * schedule it as a core input instead.
+ */
 export async function appendAndEnqueueInboundMessage(args: {
   message: InboundMessage;
   conversationStore?: ConversationStore | undefined;
@@ -361,6 +366,9 @@ export async function appendAndEnqueueInboundMessage(args: {
   replaceExistingWake?: true;
   state?: StateAdapter | undefined;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
+  if (getChatConfig().turnEngine === "core") {
+    return await scheduleInboundMessage(args.message);
+  }
   const nowMs = args.nowMs ?? now();
   const result = await enqueueAfterAppend({
     ...args,
@@ -378,7 +386,10 @@ export async function appendAndEnqueueInboundMessage(args: {
   return result;
 }
 
-/** Persist exclusive inbound work and wake its worker when admitted. */
+/**
+ * Persist exclusive inbound work and wake its worker when admitted. On the
+ * core Turn engine, schedule it as a core input instead.
+ */
 export async function appendAndEnqueueExclusiveInboundMessage(args: {
   message: InboundMessage;
   conversationStore?: ConversationStore;
@@ -387,6 +398,10 @@ export async function appendAndEnqueueExclusiveInboundMessage(args: {
   replaceExistingWake?: true;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
+  // Core has no exclusive input: the message joins or waits like any other.
+  if (getChatConfig().turnEngine === "core") {
+    return await scheduleInboundMessage(args.message);
+  }
   const nowMs = args.nowMs ?? now();
   return await enqueueAfterAppend({
     ...args,
