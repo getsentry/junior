@@ -10,7 +10,7 @@ import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import { guardianMessages } from "@/chat/guardian/request";
 import {
   credentialPlaceholders,
-  isGitPush,
+  gitCommandFacts,
   sandboxFacts,
 } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
@@ -125,13 +125,14 @@ async function designSandbox(
   const commands = proposals.filter(({ tool }) => tool.name === "bash");
   if (commands.length === 0) return undefined;
   const checkouts = facts?.checkouts ?? [];
-  const pushes = commands.some(({ input }) => isGitPush(input));
+  const git = commands.map(({ input }) => gitCommandFacts(input));
   return await sandboxFacts({
-    repos: checkouts.map(({ path, remote }) => ({ path, remote })),
+    repos: checkouts.map(({ path, remotes }) => ({ path, remotes })),
+    urls: git.flatMap((facts) => facts.urls),
     placeholders: credentialPlaceholders(
       getPlugins().map((plugin) => plugin.manifest),
     ),
-    ...(pushes
+    ...(git.some((facts) => facts.pushes)
       ? {
           unpushed: async (path: string) =>
             checkouts.find((checkout) => checkout.path === path)?.unpushed ??

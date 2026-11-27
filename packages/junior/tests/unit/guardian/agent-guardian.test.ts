@@ -105,7 +105,7 @@ describe("agent Guardian prompt", () => {
       repos: [
         {
           path: "/vercel/sandbox/repos/junior",
-          target: { ref: "getsentry/junior", audience: "world" as const },
+          remotes: [{ ref: "getsentry/junior", audience: "world" as const }],
         },
       ],
       placeholders: [{ env: "GITHUB_TOKEN", domains: ["github.com"] }],

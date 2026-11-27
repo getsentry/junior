@@ -37,7 +37,7 @@ import type {
 import { guardianMessages } from "@/chat/guardian/request";
 import {
   credentialPlaceholders,
-  isGitPush,
+  gitCommandFacts,
   sandboxFacts,
   type SandboxRepo,
 } from "@/chat/guardian/sandbox-facts";
@@ -670,9 +670,11 @@ export function createToolActionReview(options: {
       const commands = request.actions.filter((a) => a.tool === "bash");
       // A shell command is reviewed by what the Sandbox can reach.
       if (sandboxRepos && commands.length > 0) {
-        const pushes = commands.some((a) => isGitPush(a.input));
+        const git = commands.map((a) => gitCommandFacts(a.input));
+        const pushes = git.some((facts) => facts.pushes);
         request.sandbox = await sandboxFacts({
           repos: await sandboxRepos(),
+          urls: git.flatMap((facts) => facts.urls),
           placeholders: credentialPlaceholders(
             getPlugins().map((plugin) => plugin.manifest),
           ),

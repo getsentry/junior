@@ -656,9 +656,13 @@ describe("tool action review", () => {
         sandboxRepos: async () => [
           {
             path: "/vercel/sandbox/repos/demo",
-            remote: "https://example.com/demo.git",
+            remotes: [
+              "https://example.com/demo.git",
+              "https://example.com/upstream.git",
+            ],
           },
         ],
+        sandboxUnpushed: async () => "commit abc123 fix: Page the export",
       },
       guardian: () => ({
         review: async (request) => {
@@ -678,7 +682,10 @@ describe("tool action review", () => {
       "bash",
       // Like the real bash tool, it has no approval mode.
       definition(),
-      { command: "git push", cwd: "/vercel/sandbox/repos/demo" },
+      {
+        command:
+          "git -C /vercel/sandbox/repos/demo push https://example.com/mirror.git fix/export:main",
+      },
       actionReview,
     );
 
@@ -690,9 +697,15 @@ describe("tool action review", () => {
       repos: [
         {
           path: "/vercel/sandbox/repos/demo",
-          target: { ref: "https://example.com/demo.git", audience: "world" },
+          remotes: [
+            { ref: "https://example.com/demo.git", audience: "world" },
+            { ref: "https://example.com/upstream.git", audience: "world" },
+          ],
+          // A push that can reach the world shows what it may publish.
+          unpushed: "commit abc123 fix: Page the export",
         },
       ],
+      urls: [{ ref: "https://example.com/mirror.git", audience: "world" }],
       placeholders: [],
     });
   });

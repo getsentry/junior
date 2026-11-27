@@ -26,9 +26,9 @@ export type GuardianOutcome = "allow" | "ask" | "deny" | "unavailable";
 /** One Git checkout in the Sandbox, as the gate reads it for a command. */
 export interface GuardianDesignCheckout {
   path: string;
-  /** The `origin` URL. A plugin's `describeUrl` types it, as in production. */
-  remote: string;
-  /** What `git log -p HEAD --not --remotes` prints in this checkout. */
+  /** Its remote URLs. A plugin's `describeUrl` types each, as in production. */
+  remotes: string[];
+  /** What `git log -p --branches --not --remotes` prints in this checkout. */
   unpushed?: string;
 }
 

@@ -54,14 +54,16 @@ export interface ReviewRequest {
   sandbox?: {
     repos: {
       path: string;
-      target: Target;
+      /** The target of each fetch and push URL of the checkout. */
+      remotes: Target[];
       /**
-       * Commits that no remote has, as `git log -p HEAD --not --remotes`
-       * prints them, cut to a bound. Untrusted data. Set for a `world` checkout
-       * when the batch pushes.
+       * Commits on local branches that no remote has, with patches, cut to a
+       * bound. Untrusted data. Set when the batch pushes and can reach `world`.
        */
       unpushed?: string;
     }[];
+    /** Repository URLs that the shell commands name, such as a push URL. */
+    urls?: Target[];
     /** Credential placeholders and the domains each one is sent to. */
     placeholders: { env: string; domains: string[] }[];
   };

@@ -63,17 +63,21 @@ export function ownPullRequests(...refs: string[]): GuardianDesignFacts {
 
 /**
  * A Sandbox with this GitHub repository checked out under `repos/`, and
- * what `git log -p HEAD --not --remotes` prints there.
+ * what `git log -p --branches --not --remotes` prints there.
  */
 export function checkoutOf(
   repo: string,
   unpushed?: string,
+  /** More remote repositories (`owner/name`), such as an `upstream`. */
+  otherRemotes: readonly string[] = [],
 ): GuardianDesignFacts {
   return {
     checkouts: [
       {
         path: `/vercel/sandbox/repos/${repo.split("/")[1]}`,
-        remote: `https://github.com/${repo}.git`,
+        remotes: [repo, ...otherRemotes].map(
+          (name) => `https://github.com/${name}.git`,
+        ),
         ...(unpushed ? { unpushed } : undefined),
       },
     ],
