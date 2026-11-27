@@ -14,12 +14,23 @@ import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useFailedInboxItemAnswer, useInboxItemAction } from "./queries";
 import { InboxItemRelated } from "./InboxItemRelated";
-import { itemKindActions } from "./inboxModel";
 import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
 import { DismissNote, RowDismissButton } from "./RowDismissButton";
+
+/**
+ * The actions of an item's subject kind that the viewer can take, such as
+ * Resume. An item added with a question before kinds had actions shows that
+ * question's choice instead.
+ */
+export function itemKindActions(
+  item: InboxItemPayload,
+): NonNullable<InboxItemPayload["subject"]["actions"]> {
+  if (!item.canAct || inboxItemQuestion(item.request)) return [];
+  return item.subject.actions ?? [];
+}
 
 // Only an open card snoozes from here, so its snooze code stays out of the
 // first load.

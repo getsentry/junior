@@ -48,7 +48,8 @@ import {
   CodeChangeTitle,
 } from "./CodeChangeTitle";
 import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
-import { inboxItemKind, itemKindActions } from "./inboxModel";
+import { inboxItemKind } from "./inboxModel";
+import { itemKindActions } from "./InboxItemActions";
 import {
   INBOX_ROW_META_CLASS,
   inboxCardClass,

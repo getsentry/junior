@@ -290,18 +290,6 @@ export function textRepeatsHead(item: InboxItemPayload, text: string): boolean {
 }
 
 /**
- * The actions of an item's subject kind that the viewer can take, such as
- * Resume. An item added with a question before kinds had actions shows that
- * question's choice instead.
- */
-export function itemKindActions(
-  item: InboxItemPayload,
-): NonNullable<InboxItemPayload["subject"]["actions"]> {
-  if (!item.canAct || inboxItemQuestion(item.request)) return [];
-  return item.subject.actions ?? [];
-}
-
-/**
  * What one item is, as its row says: Question, Approval, the pull request
  * state that a plugin ask names, To do for you, or FYI. A closed item says
  * how it closed.
