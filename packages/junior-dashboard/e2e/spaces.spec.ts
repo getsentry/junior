@@ -74,6 +74,37 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
 });
 
+test("the command palette finds a Space by its name and opens its page", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await palette.getByRole("combobox").fill("billing");
+  // The Space shows apart from the Conversation in it that also matches.
+  const space = palette
+    .getByRole("group", { name: "Spaces" })
+    .getByRole("option", { name: "Billing migration" });
+  await expect(space).toBeVisible();
+  await expect(
+    palette
+      .getByRole("group", { name: "Conversations" })
+      .getByRole("option", { name: /Plan the billing migration/ }),
+  ).toBeVisible();
+  await screenshot(page, "palette-space", {
+    target: palette,
+    view: "desktop",
+  });
+
+  await space.click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}${BILLING}`);
+  await expect(
+    page.getByRole("heading", { name: "Billing migration" }),
+  ).toBeVisible();
+});
+
 test("the pane marks the Space of an open Conversation", async ({
   dashboard,
   page,

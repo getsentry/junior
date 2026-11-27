@@ -17,6 +17,7 @@ import {
   type ActorIdentity,
   type ConversationDetailReport,
   type ConversationFeed,
+  type ConversationFeedItem,
   type ConversationReportEvent,
   type SpaceRefReport,
   type SpaceReport,
@@ -28,6 +29,7 @@ import {
   NOW_MS,
   readMockConversationDetail,
   readMockConversationFeed,
+  readMockLeadFeedRows,
   setMockConversationArchived,
 } from "./fixtures";
 import { mockLeadEvents } from "./lead-transcript";
@@ -205,6 +207,27 @@ export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
       };
     }),
   };
+}
+
+/**
+ * The Leads that a search may find: those of the Spaces that the viewer may
+ * read, labeled with their Space, as in the API.
+ */
+export function readMockSearchedLeads(): ConversationFeedItem[] {
+  return readMockLeadFeedRows().flatMap((row) => {
+    const space = readMockSpace(mockLeadSpaceId(row.conversationId) ?? "");
+    return space
+      ? [
+          {
+            ...row,
+            archivedAt: space.archivedAt,
+            displayTitle: space.name,
+            space: { id: space.id, name: space.name },
+            visibility: space.visibility,
+          },
+        ]
+      : [];
+  });
 }
 
 /** Keep the feed rows of one Space. */

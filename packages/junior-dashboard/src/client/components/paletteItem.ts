@@ -1,4 +1,8 @@
 import type { LucideIcon } from "lucide-react";
+import type {
+  SpaceRefReport,
+  SpaceVisibilityReport,
+} from "@sentry/junior/api/schema";
 
 import type { ReplyFocusState } from "../conversations/conversationRoutes";
 import { quickOpenMatch } from "./quickOpenMatch";
@@ -6,7 +10,6 @@ import { quickOpenMatch } from "./quickOpenMatch";
 /** One command palette row: a place to go, or an action to run. */
 export type PaletteItem = {
   group: string;
-  icon: LucideIcon;
   id: string;
   label: string;
   /** Label indices that the typed text matched. */
@@ -15,7 +18,15 @@ export type PaletteItem = {
   score: number;
   /** Navigation state for the destination page. */
   state?: ReplyFocusState;
-} & ({ run(): void; to?: undefined } | { run?: undefined; to: string });
+} & (
+  | { icon: LucideIcon; space?: undefined }
+  /** A Space row shows the Space's tile in place of an icon. */
+  | {
+      icon?: undefined;
+      space: SpaceRefReport & { visibility?: SpaceVisibilityReport };
+    }
+) &
+  ({ run(): void; to?: undefined } | { run?: undefined; to: string });
 
 // Below any label match, so rows that match only other text rank last.
 const TEXT_MATCH_SCORE = 1;

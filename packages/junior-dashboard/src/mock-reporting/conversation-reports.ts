@@ -20,6 +20,7 @@ import { mockLeadSpaceId } from "./sends";
 import {
   filterMockConversationsBySpace,
   mockTreeState,
+  readMockSearchedLeads,
   withMockSpace,
   withMockSpaces,
 } from "./spaces";
@@ -76,11 +77,12 @@ export function readMockConversationFeedPage(
   if (!query.q) return respond(report);
   const archived = readFeed("archived");
   const search = query.q.toLowerCase();
+  // The viewer's search also finds Spaces, by their Leads.
+  const leads = repositoryId || spaceId ? [] : readMockSearchedLeads();
   const conversations = new Map(
-    [...report.conversations, ...archived.conversations].map((conversation) => [
-      conversation.conversationId,
-      conversation,
-    ]),
+    [...report.conversations, ...archived.conversations, ...leads].map(
+      (conversation) => [conversation.conversationId, conversation],
+    ),
   );
   return respond({
     ...report,
