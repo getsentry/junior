@@ -54,7 +54,12 @@ export function useKeyboardBand(): MobileViewportMetrics | undefined {
     const viewport = window.visualViewport;
     if (!viewport) return;
     const mobile = window.matchMedia(MOBILE_LAYOUT_QUERY);
-    let restingLayoutHeight = Math.round(window.innerHeight);
+    // A sheet can mount while the keyboard is open. iOS 18 then shrinks
+    // `innerHeight` but keeps `documentElement.clientHeight` tall, so start
+    // from the taller of the two.
+    let restingLayoutHeight = Math.round(
+      Math.max(window.innerHeight, document.documentElement.clientHeight),
+    );
     let frame: number | undefined;
     const sync = () => {
       if (frame !== undefined) return;
