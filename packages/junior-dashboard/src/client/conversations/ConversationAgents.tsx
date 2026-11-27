@@ -1,12 +1,3 @@
-import {
-  Circle,
-  CircleAlert,
-  CircleCheck,
-  CircleX,
-  Clock,
-  Eye,
-  type LucideIcon,
-} from "lucide-react";
 import { type ReactNode, useContext, useState } from "react";
 import {
   isAgentUpdateEventType,
@@ -16,11 +7,8 @@ import {
   type ConversationWatch,
 } from "@sentry/junior/api/schema";
 
-import { statusToneClass } from "../components/StatusChip";
 import { DropdownMenuItem } from "../components/ui/dropdown-menu";
-import { Spinner } from "../components/ui/spinner";
 import { DisplayText } from "../display-text/DisplayText";
-import { cn } from "../styles";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useArchiveConversation } from "./conversationArchive";
 import {
@@ -28,7 +16,6 @@ import {
   useConversationChildAgents,
 } from "./ConversationChildAgents";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
-import { ConversationStateIcon } from "./ConversationStateIcon";
 import { conversationPath } from "./conversationRoutes";
 import {
   useConversationWatches,
@@ -41,6 +28,7 @@ import {
   DetailsSection,
 } from "./DetailsList";
 import { FeedThreads } from "./feedThreads";
+import { StatusIndicator, statusIndicatorState } from "./StatusIndicator";
 
 /** Where a child Conversation stands, from its own run only. */
 export type ChildState =
@@ -113,59 +101,15 @@ function childTitle(
   return feedTitle || child.title || child.name || kind;
 }
 
-const stateLabels: Record<ChildState, string> = {
-  blocked: "Blocked",
-  done: "Done",
-  failed: "Failed",
-  needs_you: "Waiting on you",
-  paused: "Paused",
-  running: "Running",
-  stopped: "Stopped",
-  watching: "Watching",
-};
-
-const stateIcons: Record<
-  Exclude<ChildState, "needs_you" | "running">,
-  LucideIcon
-> = {
-  blocked: CircleAlert,
-  done: CircleCheck,
-  failed: CircleX,
-  paused: Clock,
-  stopped: Circle,
-  watching: Eye,
-};
-
-/**
- * Mark where a child stands with the sidebar's icons for a wait on the
- * viewer and a run, or with the colors of the transcript's child chip for
- * blocked and failed.
- */
-function ChildStateIcon(props: { state: ChildState }) {
-  const label = stateLabels[props.state];
-  if (props.state === "needs_you") {
-    return <ConversationStateIcon className="size-4" state="needs_you" />;
-  }
-  if (props.state === "running") {
-    return (
-      <Spinner aria-label={label} className="size-4 text-dashboard-accent" />
-    );
-  }
-  const Icon = stateIcons[props.state];
-  return (
-    <Icon
-      aria-label={label}
-      className={cn(
-        "size-4",
-        props.state === "blocked"
-          ? statusToneClass.warning
-          : props.state === "failed"
-            ? statusToneClass.danger
-            : "text-dashboard-text-muted",
-      )}
-      role="img"
-    />
-  );
+/** Read a child's status indicator from its own run and its tree. */
+function childIndicatorState(child: ConversationChildAgent) {
+  const state = childState(child);
+  return statusIndicatorState({
+    archivedAt: child.archivedAt,
+    latestTurnFailed: state === "failed",
+    treeState: child.treeState,
+    turnActive: state === "running",
+  });
 }
 
 /**
@@ -254,7 +198,12 @@ function ChildRow(props: {
     ) : null;
   return (
     <DetailsRow
-      icon={<ChildStateIcon state={props.state} />}
+      icon={
+        <StatusIndicator
+          className="size-4"
+          state={childIndicatorState(child)}
+        />
+      }
       menu={menu}
       title={title}
       {...childOpener(child, props.onOpenTask)}

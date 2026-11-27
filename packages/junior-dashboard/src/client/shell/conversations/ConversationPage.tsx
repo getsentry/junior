@@ -31,10 +31,7 @@ import { useLeaveConversation } from "../../conversations/useLeaveConversation";
 import { LeaveConversationDialog } from "../../conversations/LeaveConversationDialog";
 import { useConversationDelivery } from "../../conversations/useConversationDelivery";
 import { useRenameConversation } from "../../conversations/useRenameConversation";
-import {
-  conversationShowsThinking,
-  isChildConversation,
-} from "../../conversations/transcript";
+import { conversationShowsThinking } from "../../conversations/transcript";
 import {
   ConversationCatchUpContext,
   useConversationCatchUp,
@@ -85,11 +82,10 @@ import {
 } from "../../conversations/TranscriptTurnContextView";
 import { DashboardApiError } from "../../http";
 import { ConversationForkLinks } from "../../conversations/ConversationForkLinks";
-import { ChildPageStatusPill } from "../../conversations/ChildConversationStatus";
 import {
-  ConversationStateIcon,
-  conversationDisplayState,
-} from "../../conversations/ConversationStateIcon";
+  StatusIndicator,
+  statusIndicatorState,
+} from "../../conversations/StatusIndicator";
 import { useInboxItemData } from "../../inbox/queries";
 import {
   itemConversationId,
@@ -396,8 +392,8 @@ export function ConversationPage(props: {
     { conversation, detail: conversationDetail },
     lead ? leadSpace : undefined,
   );
-  const displayState = conversation
-    ? conversationDisplayState(conversation)
+  const indicatorState = conversation
+    ? statusIndicatorState(conversation)
     : undefined;
   const links = conversationLinks(conversationDetail);
   // A Lead's title is its Space's name, which a rename sets at once.
@@ -797,13 +793,8 @@ export function ConversationPage(props: {
                 ) : null
               }
               state={
-                displayState ? (
-                  <ConversationStateIcon state={displayState} />
-                ) : null
-              }
-              status={
-                isChildConversation(conversationDetail) && conversation ? (
-                  <ChildPageStatusPill conversation={conversation} />
+                indicatorState ? (
+                  <StatusIndicator state={indicatorState} />
                 ) : null
               }
               title={title}

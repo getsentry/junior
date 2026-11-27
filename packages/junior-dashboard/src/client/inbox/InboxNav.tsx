@@ -15,9 +15,9 @@ import {
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
 import { conversationPath } from "../conversations/conversationRoutes";
 import {
-  ConversationStateIcon,
-  conversationDisplayState,
-} from "../conversations/ConversationStateIcon";
+  StatusIndicator,
+  statusIndicatorState,
+} from "../conversations/StatusIndicator";
 import {
   PinnedConversationOrder,
   usePinnedRowDrag,
@@ -92,9 +92,9 @@ function InFlightRow(props: {
           </span>
           {/* The `⋯` takes the state's place while it shows. Phones show
               both. */}
-          <ConversationStateIcon
+          <StatusIndicator
             className="sm:group-focus-within:invisible sm:group-hover:invisible sm:group-has-data-popup-open:invisible"
-            state={conversationDisplayState(conversation)}
+            state={statusIndicatorState(conversation)}
           />
         </Link>
         <DropdownMenu modal={false} onOpenChange={actions.onMenuOpenChange}>

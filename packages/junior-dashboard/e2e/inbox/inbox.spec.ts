@@ -95,6 +95,8 @@ test.describe("new UI", () => {
         /Billing migration$/,
         /Mobile app$/,
         /Pricing launch$/,
+        // In flight: a failed Turn needs the viewer, then work.
+        /^Deployment investigation failed$/,
         new RegExp(checkout),
       ]);
       // Like the badge: the "Pull request ready for review" notice does not

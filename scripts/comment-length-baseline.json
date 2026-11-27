@@ -508,7 +508,7 @@
     "packages/junior-dashboard/src/client/conversations/queries.ts": 5,
     "packages/junior-dashboard/src/client/conversations/sidebarThreads.ts": 1,
     "packages/junior-dashboard/src/client/conversations/toolCallPreview.ts": 1,
-    "packages/junior-dashboard/src/client/conversations/transcript.ts": 3,
+    "packages/junior-dashboard/src/client/conversations/transcript.ts": 2,
     "packages/junior-dashboard/src/client/conversations/transcriptBottomPinning.ts": 7,
     "packages/junior-dashboard/src/client/conversations/transcriptCopy.ts": 1,
     "packages/junior-dashboard/src/client/conversations/transcriptEventRuns.ts": 1,

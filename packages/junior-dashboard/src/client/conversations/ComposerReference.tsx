@@ -2,14 +2,14 @@ import { Bot, Brain, FileText, MessageSquare } from "lucide-react";
 
 import { cn } from "../styles";
 import { codeChangeTone } from "./ConversationMeta";
-import { ConversationStateIcon } from "./ConversationStateIcon";
 import { GitHubMark } from "./GitHubMark";
+import { StatusIndicator } from "./StatusIndicator";
 import { codeChangeLabel, type ComposerReference } from "./composerReferences";
 
 /**
- * The icon of a reference: the state of a Conversation, a bot for a Task or
- * Thread, a brain for a memory, a file, or the GitHub mark in the color of
- * the pull request state. A channel has none: its `#` says what it is.
+ * The icon of a reference: the status indicator of a Conversation, a bot for
+ * a Task or Thread, a brain for a memory, a file, or the GitHub mark in the
+ * color of the pull request state. A channel has none: its `#` says what it is.
  */
 export function ReferenceIcon(props: {
   className?: string;
@@ -21,10 +21,7 @@ export function ReferenceIcon(props: {
     case "conversation":
       return reference.state ? (
         // It has its own size.
-        <ConversationStateIcon
-          className={props.className}
-          state={reference.state}
-        />
+        <StatusIndicator className={props.className} state={reference.state} />
       ) : (
         <MessageSquare aria-hidden="true" className={className} />
       );

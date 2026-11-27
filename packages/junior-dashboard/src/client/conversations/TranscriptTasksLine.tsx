@@ -1,10 +1,9 @@
 import { Bot } from "lucide-react";
 
-import { statusDotToneClass } from "../components/StatusDot";
 import { Button } from "../components/ui/button";
 import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
-import { subagentStatusTone } from "./ConversationChildAgents";
+import { StatusIndicator, statusIndicatorState } from "./StatusIndicator";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { HighlightText } from "./transcriptSearch";
 
@@ -64,13 +63,11 @@ function TaskChip(props: {
       <span className="min-w-0 truncate">
         <HighlightText text={label} />
       </span>
-      {/* Color only: the running step is the one thing that moves. */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          "size-1.5 shrink-0 rounded-full",
-          statusDotToneClass[subagentStatusTone(part.status)],
-        )}
+      <StatusIndicator
+        state={statusIndicatorState({
+          latestTurnFailed: part.status === "error",
+          turnActive: part.status === "running",
+        })}
       />
     </>
   );

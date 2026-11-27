@@ -554,8 +554,6 @@ test.describe("new UI", () => {
     await expect(pinned).toBeVisible();
     await expect(unpinned).toBeVisible();
     await expect(list.getByRole("region", { name: /^Pinned/ })).toHaveCount(0);
-    // Only the pin has the pin marker.
-    await expect(list.getByRole("img", { name: "Pinned" })).toHaveCount(1);
 
     // Pinned is a tab of the state filters, which start on All.
     const rows = list.getByRole("navigation", {

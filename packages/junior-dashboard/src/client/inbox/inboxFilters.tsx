@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import { ScopeTabs, type ScopeTab } from "../components/filters/ScopeTabs";
-import { conversationDisplayState } from "../conversations/ConversationStateIcon";
+import { statusIndicatorState } from "../conversations/StatusIndicator";
 import type { Conversation } from "../types";
 import {
   isCodeChangeItem,
@@ -235,10 +235,9 @@ export function listFiltersOf(
 }
 
 /**
- * Say whether a Conversation is in a state, as its row shows it. Needs you
- * is an ask that waits on the viewer, `waitsOnViewer`, or a tree that needs
- * them. Done is a tree with nothing running, watching, or waiting on the
- * viewer, also when it is pinned.
+ * Say whether a Conversation is in a state, as its status indicator shows
+ * it, with Watching for a tree that watches and shows Done. Done is the
+ * rest, also when it is pinned or archived.
  */
 export function inConversationState(
   conversation: Conversation | undefined,
@@ -246,14 +245,12 @@ export function inConversationState(
   state: ConversationStateFilter,
 ): boolean {
   if (state === "all") return true;
-  const shown = conversation
-    ? conversationDisplayState(conversation)
-    : undefined;
+  const shown = statusIndicatorState({ ...conversation, waitsOnViewer });
   const current =
-    waitsOnViewer || shown === "needs_you"
-      ? "needs_you"
-      : shown === "working" || shown === "watching"
-        ? shown
+    shown === "needs_you" || shown === "working"
+      ? shown
+      : conversation?.watching
+        ? "watching"
         : "done";
   return current === state;
 }

@@ -159,12 +159,12 @@ test("each pane row shows what its Space's Conversations need", async ({
     await expect(
       row("Billing migration").getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
-    // A failure outranks work that still runs.
+    // A failure needs the member too, also while work still runs.
     await expect(
-      row("Mobile app").getByRole("img", { name: "A Thread failed" }),
+      row("Mobile app").getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
     await expect(
-      row("Pricing launch").getByRole("status", { name: "Working" }),
+      row("Pricing launch").getByRole("img", { name: "Working" }),
     ).toBeVisible();
   };
   await page.setViewportSize(desktop);

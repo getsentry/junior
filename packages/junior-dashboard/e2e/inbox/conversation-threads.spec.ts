@@ -3,14 +3,12 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { waitForOutlineRead } from "../harness";
-import { mockFeedPage } from "../mock-reports";
 
 test.describe("new UI", () => {
   const ROOT_ID = "internal:dashboard-qa";
   const THREAD_ID = "junior:internal:dashboard-qa:thread";
   const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
   const TASK_ID = "junior:internal:dashboard-qa:advisor-plan";
-  const BLOCKED_TASK_ID = "junior:internal:dashboard-qa:advisor-review";
   const ARCHIVED_THREAD_ID = "junior:internal:dashboard-qa:archived-thread";
 
   /** The Conversations bundle, which nests each Thread under its parent. */
@@ -72,7 +70,9 @@ test.describe("new UI", () => {
     const archived = work.getByRole("link", { name: /Compare sidebar badges/ });
     await expect(archived).toHaveCount(0);
     await work.getByRole("button", { name: "Show finished" }).click();
-    await expect(archived.getByRole("img", { name: "Done" })).toBeVisible();
+    // It shows no status.
+    await expect(archived).toBeVisible();
+    await expect(archived.getByRole("img", { name: "Done" })).toHaveCount(0);
     await work.getByRole("button", { name: "Hide finished" }).click();
     await expect(archived).toHaveCount(0);
   });
@@ -359,9 +359,8 @@ test.describe("new UI", () => {
       "href",
       `/conversations/${encodeURIComponent(THREAD_ID)}`,
     );
-    await expect(threadCard).toContainText("Done");
-    // The feed leaves out an archived Thread, so its card shows the status
-    // that the parent recorded.
+    await expect(threadCard.getByRole("img", { name: "Done" })).toBeVisible();
+    // The feed leaves out an archived Thread, so its card shows no status.
     const archivedCard = transcript.getByRole("link", {
       name: /Compare sidebar badges/,
     });
@@ -369,7 +368,7 @@ test.describe("new UI", () => {
       "href",
       `/conversations/${encodeURIComponent(ARCHIVED_THREAD_ID)}`,
     );
-    await expect(archivedCard).toContainText("Done");
+    await expect(archivedCard.getByRole("img")).toHaveCount(0);
 
     // Each Task is a chip under the reply. A chip opens the drawer.
     await screenshot(page, "conversation-task-line");
@@ -497,10 +496,10 @@ test.describe("new UI", () => {
     await expect(
       breadcrumb.getByRole("link", { name: "Dashboard QA edge cases" }),
     ).toHaveAttribute("href", `/conversations/${encodeURIComponent(ROOT_ID)}`);
-    // The pill shows the status that the API derives from runtime state.
+    // The indicator shows the status that the API derives from runtime state.
     const header = page.locator("header").filter({ has: breadcrumb });
     await expect(
-      header.getByText("Done").filter({ visible: true }),
+      header.getByRole("img", { name: "Done" }).filter({ visible: true }),
     ).toBeVisible();
 
     // The parent agent started the first Turn; a person started the next.
@@ -524,10 +523,6 @@ test.describe("new UI", () => {
     await expect(
       breadcrumb.getByRole("heading", { name: "Recheck pin order in Safari" }),
     ).toBeVisible();
-    // Its own Inbox item waits on a person.
-    await expect(
-      header.getByText("Needs input").filter({ visible: true }),
-    ).toBeVisible();
     await breadcrumb
       .getByRole("link", { name: "Check pinned row order" })
       .click();
@@ -550,55 +545,9 @@ test.describe("new UI", () => {
     ).toBeVisible();
     const header = page.locator("header").filter({ has: breadcrumb });
     await expect(
-      header.getByText("Done").filter({ visible: true }),
+      header.getByRole("img", { name: "Done" }).filter({ visible: true }),
     ).toBeVisible();
     await screenshot(page, "conversation-task-page");
-
-    // A blocked Task is done with its work. Its parent's report says how
-    // its last Turn ended.
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(BLOCKED_TASK_ID)}`,
-    );
-    await expect(
-      breadcrumb.getByRole("heading", { name: "reviewer" }),
-    ).toBeVisible();
-    await expect(
-      header.getByText("Blocked").filter({ visible: true }),
-    ).toBeVisible();
-  });
-
-  test("a running row that needs input shows both", async ({
-    page,
-    dashboard,
-  }) => {
-    // An open action item reads `needs_input` while a Turn runs.
-    await page.route(
-      (url) => url.pathname === "/api/conversations",
-      async (route) => {
-        const feed = await mockFeedPage(route);
-        await route.fulfill({
-          json: {
-            ...feed,
-            conversations: feed.conversations.map(
-              (row: { conversationId: string }) =>
-                row.conversationId === ROOT_ID
-                  ? { ...row, status: "needs_input", turnActive: true }
-                  : row,
-            ),
-          },
-        });
-      },
-    );
-    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-
-    const row = page
-      .getByRole("region", { exact: true, name: "Conversations" })
-      .getByRole("listitem")
-      .filter({
-        has: page.getByRole("link", { name: /Dashboard QA edge cases/ }),
-      });
-    await expect(row.getByText("Needs input")).toBeVisible();
-    await expect(row.getByRole("status", { name: "Working" })).toBeVisible();
   });
 });
 

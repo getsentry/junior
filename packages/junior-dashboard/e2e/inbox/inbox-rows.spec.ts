@@ -329,7 +329,7 @@ test.describe("new UI", () => {
     });
   });
 
-  test("a row's actions sit beside its time and pin, and never hide them", async ({
+  test("a row's actions sit beside its time and status, and never hide them", async ({
     dashboard,
     page,
   }) => {
@@ -342,7 +342,9 @@ test.describe("new UI", () => {
     // The actions take their own room in the meta's cell, so they cover
     // neither the title nor the summary, and the state stays in view.
     await meta.getByRole("button", { name: /^Pin Triage Sentaur/ }).click();
-    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
+    await expect(
+      meta.getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
     await expect(meta.getByRole("button", { name: /^Unpin / })).toHaveAttribute(
       "aria-pressed",
@@ -350,7 +352,9 @@ test.describe("new UI", () => {
     );
     // With the pointer on the row's own Threads, the row keeps its state.
     await row.getByRole("link", { name: /Read the canary agent logs/ }).hover();
-    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
+    await expect(
+      meta.getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
   });
 

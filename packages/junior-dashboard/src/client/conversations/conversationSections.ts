@@ -1,5 +1,5 @@
 import type { Conversation } from "../types";
-import { conversationDisplayState } from "./ConversationStateIcon";
+import { statusIndicatorState } from "./StatusIndicator";
 import {
   calendarDay,
   calendarDaysAgo,
@@ -75,21 +75,19 @@ function attentionSort<T>(
 }
 
 /**
- * Read a feed row's attention from its tree state and last Message. A failed
- * latest Turn needs the viewer, as on the Space's own row. A tree that
- * watches for an Event or a Timer waits. A pin does not change the group.
+ * Read a feed row's attention from its status indicator and last Message. A
+ * tree that watches for an Event or a Timer waits. A pin does not change the
+ * group.
  */
 function conversationAttention(conversation: Conversation): Attention {
-  const state = conversationDisplayState(conversation);
+  const state = statusIndicatorState(conversation);
   return {
     group:
-      state === "needs_you" || conversation.latestTurnFailed
-        ? "needs_you"
-        : state === "working"
-          ? "working"
-          : state === "watching"
-            ? "waiting"
-            : "done",
+      state === "needs_you" || state === "working"
+        ? state
+        : conversation.watching
+          ? "waiting"
+          : "done",
     time: activityTime(conversation),
   };
 }

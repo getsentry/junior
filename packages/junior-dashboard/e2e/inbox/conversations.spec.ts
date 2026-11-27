@@ -679,7 +679,7 @@ test.describe("new UI", () => {
     });
     const work = details.getByRole("region", { exact: true, name: "Agents" });
     await expect(
-      work.getByRole("button", { name: /^Blocked reviewer/ }),
+      work.getByRole("button", { name: /^Done reviewer/ }),
     ).toContainText("The reviewer needs access to the dashboard repository.");
     await work.getByRole("button", { name: "Show finished" }).click();
     await expect(
@@ -687,7 +687,7 @@ test.describe("new UI", () => {
     ).toBeVisible();
     await screenshot(page, "conversation-subagents");
     // A row opens the same Task transcript drawer as the transcript row.
-    await work.getByRole("button", { name: /^Blocked reviewer/ }).click();
+    await work.getByRole("button", { name: /^Done reviewer/ }).click();
     const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
     await expect(
       reviewerDrawer.getByText("blocked", { exact: true }),

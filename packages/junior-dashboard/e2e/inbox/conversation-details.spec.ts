@@ -41,11 +41,11 @@ test.describe("new UI", () => {
             name: "Investigate checkout latency",
           }),
         })
-        .getByRole("status", { name: "Working" }),
+        .getByRole("img", { name: "Working" }),
     ).toBeVisible();
-    await expect(
-      publicRow.getByRole("status", { name: "Working" }),
-    ).toHaveCount(0);
+    await expect(publicRow.getByRole("img", { name: "Working" })).toHaveCount(
+      0,
+    );
     await openRow(publicConversation);
     await expect(page).toHaveURL(
       `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
@@ -462,9 +462,11 @@ test.describe("new UI", () => {
       applyToChildren: true,
       archived: true,
     });
-    // An archived child stays listed, with nothing left to change.
+    // An archived child stays listed, with nothing left to change and no
+    // status.
     await expect(menu).toHaveCount(0);
-    await expect(child.getByRole("img", { name: "Done" })).toBeVisible();
+    await expect(child).toBeVisible();
+    await expect(child.getByRole("img", { name: "Done" })).toHaveCount(0);
   });
 
   test("Needs you lists a child's Inbox items on its parent", async ({
@@ -655,7 +657,7 @@ test.describe("new UI", () => {
     // A Task opens over the details, and Back goes back to them.
     const reviewerRow = details
       .getByRole("region", { exact: true, name: "Agents" })
-      .getByRole("button", { name: /^Blocked reviewer/ });
+      .getByRole("button", { name: /^Done reviewer/ });
     await reviewerRow.click();
     const reviewer = page.getByRole("dialog", { name: "reviewer" });
     await expect(

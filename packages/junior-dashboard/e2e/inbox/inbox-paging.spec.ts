@@ -446,7 +446,10 @@ test.describe("new UI", () => {
       }
       const body = await mockFeedPage(route);
       const done = body.conversations.filter(
-        (conversation) => !conversation.pinnedAt && !conversation.turnActive,
+        (conversation) =>
+          !conversation.pinnedAt &&
+          !conversation.turnActive &&
+          !conversation.latestTurnFailed,
       );
       await route.fulfill({
         json: { ...body, conversations: done, nextCursor: "older" },
