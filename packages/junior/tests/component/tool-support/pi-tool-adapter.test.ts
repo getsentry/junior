@@ -431,8 +431,8 @@ describe("Pi tool adapter", () => {
           arguments: { workspace: "preview-42" },
         },
         tool: expect.objectContaining({
-          annotations: managedTool.annotations,
           dispatcherName: "callMcpTool",
+          serverHints: managedTool.annotations,
           name: managedTool.name,
         }),
       }),

@@ -58,6 +58,8 @@ jobs:
               - 'packages/junior/src/chat/identities/lookup-providers.ts'
               - 'packages/junior-github/src/**'
               - 'packages/junior-google/src/**'
+              - 'packages/junior-linear/src/**'
+              - 'packages/junior-notion/src/**'
               - 'packages/junior-vercel/src/**'
       - id: decision
         env:

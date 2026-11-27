@@ -525,7 +525,7 @@ async function callContext(
     action.toolName === "callMcpTool"
       ? z
           .record(z.string(), z.unknown())
-          .catch({})
+          .catch(() => ({}))
           .parse(action.input["arguments"])
       : action.input;
   const { workspaceRepos } = context;

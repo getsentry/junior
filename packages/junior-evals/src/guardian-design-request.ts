@@ -134,7 +134,7 @@ function designGuardianContext(
   };
 }
 
-const mcpArguments = z.record(z.string(), z.unknown()).catch({});
+const mcpArguments = z.record(z.string(), z.unknown()).catch(() => ({}));
 
 /** One action as core builds it, with the facts that its tool gives. */
 async function designAction(
