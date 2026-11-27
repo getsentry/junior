@@ -2,7 +2,7 @@ import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { describe, expect, it } from "vitest";
 
 import {
-  agentMessageConversation,
+  agentMessageConversationTitle,
   receivedAgentMessage,
   sentAgentMessage,
 } from "../src/client/conversations/agentMessage";
@@ -91,13 +91,7 @@ describe("receivedAgentMessage", () => {
     expect(
       receivedAgentMessage({
         fromParentAgent: true,
-        parentMessageText: "Check the cache too.",
-        parts: [
-          {
-            text: "<parent-agent-task>\nReviewer instructions.\n\nCheck the cache too.\n</parent-agent-task>",
-            type: "text",
-          },
-        ],
+        parts: [{ text: "Check the cache too.", type: "text" }],
         role,
       }),
     ).toEqual({
@@ -105,19 +99,6 @@ describe("receivedAgentMessage", () => {
       text: "Check the cache too.",
       to: "parent",
     });
-    // A message saved before the parent's own words were kept.
-    expect(
-      receivedAgentMessage({
-        fromParentAgent: true,
-        parts: [
-          {
-            text: "<parent-agent-task>\nFirst.\n</parent-agent-task>\n\n<parent-agent-task>\nSecond.\n</parent-agent-task>",
-            type: "text",
-          },
-        ],
-        role,
-      })?.text,
-    ).toBe("First.\n\nSecond.");
     // A Watch Event that reached the child is not one.
     expect(
       receivedAgentMessage({
@@ -154,7 +135,7 @@ describe("receivedAgentMessage", () => {
   });
 });
 
-describe("agentMessageConversation", () => {
+describe("agentMessageConversationTitle", () => {
   const subagent = (
     data: Partial<
       Extract<ConversationReportEvent["data"], { type: "subagent" }>
@@ -178,51 +159,50 @@ describe("agentMessageConversation", () => {
     { conversationId: "self", kind: "task" as const, label: "Self" },
   ];
 
-  it("finds an ancestor in the agent tree", () => {
-    const parent = { conversationId: "parent-1", title: "Plan" };
+  it("names an ancestor from the agent tree", () => {
     expect(
-      agentMessageConversation(
+      agentMessageConversationTitle(
         { agentTree: tree, events: [] },
         { conversationId: "parent-1", to: "parent" },
       ),
-    ).toEqual(parent);
-    // A message to `parent` has no id before its result, and a Parent
-    // message has none.
+    ).toBe("Plan");
+  });
+
+  it("names the parent of a message to `parent` before its result", () => {
     expect(
-      agentMessageConversation(
+      agentMessageConversationTitle(
         { agentTree: tree, events: [] },
         { to: "parent" },
       ),
-    ).toEqual(parent);
+    ).toBe("Plan");
   });
 
-  it("finds a child by id or by its agent name", () => {
+  it("names a child by id or by its agent name", () => {
     const events = [subagent({ agentName: "reviewer", title: "Review it" })];
-    const child = { conversationId: "child-1", title: "Review it" };
     expect(
-      agentMessageConversation(
+      agentMessageConversationTitle(
         { events },
         { conversationId: "child-1", to: "child-1" },
       ),
-    ).toEqual(child);
+    ).toBe("Review it");
     // A sending call has no result yet, only the name it used.
-    expect(agentMessageConversation({ events }, { to: "reviewer" })).toEqual(
-      child,
+    expect(agentMessageConversationTitle({ events }, { to: "reviewer" })).toBe(
+      "Review it",
     );
     expect(
-      agentMessageConversation(
+      agentMessageConversationTitle(
         { events: [subagent({ agentName: "reviewer" })] },
         { to: "reviewer" },
-      ).title,
+      ),
     ).toBe("reviewer");
   });
 
   it("uses a neutral label for a Conversation this transcript does not name", () => {
     expect(
-      agentMessageConversation(
+      agentMessageConversationTitle(
         { events: [subagent({ title: "Review it" })] },
         { conversationId: "root-9", to: "root-9" },
       ),
-    ).toEqual({ conversationId: "root-9", title: "Conversation" });
+    ).toBe("Conversation");
   });
 });

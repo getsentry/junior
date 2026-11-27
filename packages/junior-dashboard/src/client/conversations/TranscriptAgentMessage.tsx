@@ -6,7 +6,7 @@ import { ClampedDisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
-  agentMessageConversation,
+  agentMessageConversationTitle,
   receivedAgentMessage,
   type AgentMessage,
   type AgentMessageDelivery,
@@ -39,10 +39,7 @@ export function TranscriptAgentMessage(props: {
 }) {
   const { message } = props;
   const sent = message.direction === "sent";
-  const { conversationId, title } = useAgentMessageConversation(
-    props.conversation,
-    message,
-  );
+  const title = useAgentMessageTitle(props.conversation, message);
   const label = `${sent ? "Message to" : "Message from"} ${title}`;
   return (
     <TranscriptRailEvent
@@ -52,8 +49,8 @@ export function TranscriptAgentMessage(props: {
       <div aria-label={label} className="grid min-w-0 gap-0.5" role="group">
         <div className="flex min-h-6 min-w-0 items-center gap-1.5 font-sans text-xs text-dashboard-text-muted">
           <span className="shrink-0">{sent ? "To" : "From"}</span>
-          {conversationId ? (
-            <ConversationLink id={conversationId} title={title} />
+          {message.conversationId ? (
+            <ConversationLink id={message.conversationId} title={title} />
           ) : (
             <span className="min-w-0 truncate font-medium text-dashboard-text">
               {title}
@@ -120,18 +117,17 @@ function ConversationLink(props: { id: string; title: string }) {
 }
 
 /**
- * The other Conversation, with its own title when the feed lists it, as the
- * sidebar does. Otherwise the name that this transcript recorded for it.
+ * The other Conversation's own title when the feed lists it, as the sidebar
+ * does. Otherwise the name that this transcript recorded for it.
  */
-function useAgentMessageConversation(
+function useAgentMessageTitle(
   conversation: ConversationTranscript,
   message: AgentMessage,
-): { conversationId?: string | undefined; title: string } {
+): string {
   const feedThreads = useContext(FeedThreads);
-  const found = agentMessageConversation(conversation, message);
-  const id = found.conversationId;
-  return {
-    conversationId: id,
-    title: (id ? feedThreads.get(id)?.displayTitle : undefined) ?? found.title,
-  };
+  const id = message.conversationId;
+  return (
+    (id ? feedThreads.get(id)?.displayTitle : undefined) ??
+    agentMessageConversationTitle(conversation, message)
+  );
 }

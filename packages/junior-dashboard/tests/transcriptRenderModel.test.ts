@@ -743,13 +743,11 @@ describe("canonical event transcript reduction", () => {
       { key: "tool:message-1" },
       { key: "9:message:0" },
     ]);
-    // A Lead's message ends after its call's page: the server names the
-    // tool, so the ended marker alone starts no card.
-    const ended = marker(8, 5, "message-1", "blocked");
-    if (ended.data.type === "subagent") {
-      ended.data.parentToolName = "messageAgent";
-    }
-    expect(rows([ended, update])).toEqual([{ key: "9:message:0" }]);
+    // A marker whose call is not loaded starts no card, as when a Lead's
+    // message ends a page after its call.
+    expect(rows([marker(8, 5, "message-1", "blocked"), update])).toEqual([
+      { key: "9:message:0" },
+    ]);
   });
 
   it("renders a completed subagent when its start is outside the page", () => {

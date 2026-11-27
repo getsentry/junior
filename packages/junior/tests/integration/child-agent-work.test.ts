@@ -298,7 +298,6 @@ describe("child agent task work", () => {
         expect.objectContaining({
           fromParentAgent: true,
           reply: "Durable child result",
-          text: slackSpawnInput.input,
         }),
       ]);
       const eventPage = conversationEventPageSchema.parse(
@@ -314,7 +313,7 @@ describe("child agent task work", () => {
           messageId: taskMessageId,
           fromParentAgent: true,
           // The dashboard shows the parent's words, not the model's tag.
-          parentMessageText: slackSpawnInput.input,
+          text: slackSpawnInput.input,
         }),
       );
       expect(run).toHaveBeenCalledOnce();

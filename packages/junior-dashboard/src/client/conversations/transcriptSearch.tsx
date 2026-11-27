@@ -13,7 +13,6 @@ import {
   messageRawText,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
-import { receivedAgentMessage } from "./agentMessage";
 import { transcriptFailureSearchText } from "./transcriptFailure";
 import { stringifyPartValue } from "../format";
 import { isPlatformShortcut } from "../keyboard";
@@ -243,11 +242,7 @@ export function entryMatchesSearch(
     return (
       textContains(entry.message.trustedSummary, normalizedQuery) ||
       textContains(entry.message.eventType, normalizedQuery) ||
-      textContains(
-        receivedAgentMessage(entry.message)?.text ??
-          messageRawText(entry.message),
-        normalizedQuery,
-      )
+      textContains(messageRawText(entry.message), normalizedQuery)
     );
   }
 

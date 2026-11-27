@@ -116,8 +116,6 @@ export type TranscriptViewMessage = {
   actorIdentity?: ActorIdentity;
   /** Set on input that a parent agent wrote, not a person. */
   fromParentAgent?: true;
-  /** The parent's own words, without the child model's tags. */
-  parentMessageText?: string;
   /** Identity id of the author. Conversation `authors` maps it to the person. */
   actorIdentityId?: string;
   contexts?: TranscriptViewTurnContext[];

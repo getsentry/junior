@@ -1,7 +1,6 @@
 import type { ConversationOutline } from "@sentry/junior/api/schema";
 import { displayPlainText } from "../display-text/plainText";
 import type { TranscriptViewMessage } from "../types";
-import { receivedAgentMessage } from "./agentMessage";
 
 /** The fields that name the author of a transcript message. */
 export type ConversationOutlineAuthor = Pick<
@@ -98,10 +97,7 @@ function outlineAuthor(
   };
 }
 
-// A message from another agent shows only its words, so its item does too.
 function messageText(message: TranscriptViewMessage): string {
-  const agentText = receivedAgentMessage(message)?.text;
-  if (agentText !== undefined) return agentText;
   return message.parts
     .map((part) => (part.type === "text" ? (part.text ?? "") : ""))
     .join("\n");
