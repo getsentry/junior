@@ -4,17 +4,24 @@ import {
   inboxItemRequestSchema,
 } from "@/chat/inbox-items/request";
 import { actorIdentitySchema } from "./conversation";
-import { inboxItemAnswerSchema } from "./inbox-item";
+import { inboxItemAnswerSchema, personSchema } from "./inbox-item";
 
 /**
  * One question or notice that an agent gave a person in the Conversation,
- * with its answer. Whether it waits on the viewer is an Inbox fact, so it is
- * not here.
+ * with its answer and when it closed. Who it waits on is an Inbox fact, so
+ * it is not here.
  */
 export const conversationQuestionSchema = z
   .object({
     answer: inboxItemAnswerSchema.optional(),
+    answeredAt: z.string().datetime().optional(),
+    /** Who answered. Unset when no known person did. */
+    answeredBy: personSchema
+      .pick({ displayName: true, email: true, userId: true })
+      .optional(),
     body: z.string(),
+    /** When it was answered, done, or dismissed. Unset while it is open. */
+    closedAt: z.string().datetime().optional(),
     createdAt: z.string().datetime(),
     id: z.string().min(1),
     /** People that the title, body, and question mention. */

@@ -4,6 +4,7 @@ import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-
 import {
   conversationIsActiveSql,
   conversationWaitsOnUserSql,
+  questionWaitsSql,
 } from "@/chat/conversations/sql/status";
 import {
   conversationSubtree,
@@ -28,10 +29,9 @@ export type ConversationTreeRead = {
 
 /**
  * Read the tree state of each Conversation for one viewer, over its whole
- * tree. It reads only Conversation data; clients overlay the Inbox items
- * that wait on the viewer. Input that waits on another person is not shown,
- * and an archived child and its descendants count for nothing, since the
- * feed hides them. A viewer who can see the row may see its tree state.
+ * tree. A waiting question shows to every viewer; a sign-in or start that
+ * waits on another person does not. An archived child and its descendants
+ * count for nothing, since the feed hides them.
  */
 export async function readConversationTreeStates(
   db: JuniorDatabase,
@@ -40,12 +40,13 @@ export async function readConversationTreeStates(
 ): Promise<Map<string, ConversationTreeRead>> {
   if (conversationIds.length === 0) return new Map();
   const scopeId = conversationSubtreeColumns.scopeConversationId;
+  const asked = questionWaitsSql(juniorConversations.conversationId);
   const needsViewer = viewerUserId
-    ? sql<boolean>`bool_or(${awaitsAuthorizationFrom(
+    ? sql<boolean>`bool_or(${asked} or ${awaitsAuthorizationFrom(
         juniorConversations.conversationId,
         viewerUserId,
       )} or ${conversationWaitsOnUserSql(juniorConversations, viewerUserId)})`
-    : sql<boolean>`false`;
+    : sql<boolean>`bool_or(${asked})`;
   const rows = await db
     .select({
       conversationId: scopeId,

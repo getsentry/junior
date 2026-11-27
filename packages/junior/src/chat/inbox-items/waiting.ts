@@ -1,5 +1,4 @@
 import { and, count, eq, not, sql, type SQL } from "drizzle-orm";
-import { conversationAncestorsOrSelf } from "@/chat/conversations/sql/subtree";
 import { inboxItemOwnerConversationId } from "@/chat/inbox-items/owner";
 import {
   inboxItemSnoozedBy,
@@ -22,9 +21,6 @@ import { INBOX_SUBJECT_KINDS, subjectKindPlugin } from "./subjects";
 
 /** One open Inbox item that a Conversation waits on a User for. */
 type WaitingItem = {
-  /** The Conversation that the item links, or that owns a To-do's item. */
-  conversationId: string;
-  id: string;
   /** The plugin that added the item, such as `github`. Unset for an agent. */
   plugin?: string;
   title: string;
@@ -33,15 +29,8 @@ type WaitingItem = {
 /** One Conversation that waits on a User, with its open Inbox items. */
 export type WaitingConversation = {
   conversationId: string;
-  /**
-   * The Conversations of the tree that wait on the User: each one that an
-   * item links, and their ancestors, the root among them.
-   */
-  conversationIds: string[];
   /** Open Inbox items on this Conversation that need the User, newest first. */
   items: WaitingItem[];
-  /** The Space of the root, so a client can mark the Space too. */
-  spaceId?: string;
   /** When the oldest of those items was added: when the wait began. */
   waitingSince: string;
 };
@@ -140,14 +129,7 @@ function waitingItemsQuery(db: JuniorDatabase, userId: string) {
     title: inboxItemTitle.as("title"),
   };
   return db
-    .select({
-      conversationId: waitingRootId,
-      linkedConversationId:
-        sql<string>`${juniorInboxItemConversations.conversationId}`.as(
-          "linked_conversation_id",
-        ),
-      ...columns,
-    })
+    .select({ conversationId: waitingRootId, ...columns })
     .from(juniorInboxItemConversations)
     .innerJoin(
       juniorInboxItems,
@@ -164,14 +146,7 @@ function waitingItemsQuery(db: JuniorDatabase, userId: string) {
     .where(inboxItemNeedsUserNow(userId))
     .union(
       db
-        .select({
-          conversationId: waitingTodoRootId(),
-          linkedConversationId:
-            sql<string>`${inboxItemOwnerConversationId()}`.as(
-              "linked_conversation_id",
-            ),
-          ...columns,
-        })
+        .select({ conversationId: waitingTodoRootId(), ...columns })
         .from(juniorInboxItems)
         .leftJoin(juniorQuestions, itemQuestion)
         .leftJoin(
@@ -212,8 +187,6 @@ export async function isConversationWaitingOnUser(
  * List the root Conversations that wait on a User: each root or one of its
  * child conversations is linked to, or owns a To-do's, open item that needs
  * the User now (`inboxItemNeedsUserNow`), so a snoozed item leaves it out.
- * Each root names the Conversations of its tree that wait and its Space, so
- * a client can mark a Thread, a child agent, or the Space too.
  */
 export async function listWaitingConversations(
   db: JuniorDatabase,
@@ -224,56 +197,21 @@ export async function listWaitingConversations(
       right.createdAt.getTime() - left.createdAt.getTime() ||
       right.itemId.localeCompare(left.itemId),
   );
-  const linkedIds = [...new Set(rows.map((row) => row.linkedConversationId))];
-  const tree =
-    linkedIds.length === 0
-      ? []
-      : await db
-          .select({
-            conversationId: juniorConversations.conversationId,
-            rootConversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
-            spaceId: juniorConversations.spaceId,
-          })
-          .from(juniorConversations)
-          .where(
-            sql<boolean>`${juniorConversations.conversationId} in ${conversationAncestorsOrSelf(
-              sql.join(
-                linkedIds.map((id) => sql`${id}`),
-                sql`, `,
-              ),
-            )}`,
-          );
   const waiting = new Map<string, WaitingConversation>();
   for (const row of rows) {
     const plugin = subjectKindPlugin(row.subjectKind);
-    const item = {
-      conversationId: row.linkedConversationId,
-      id: row.itemId,
-      title: row.title,
-      ...(plugin ? { plugin } : undefined),
-    };
+    const item = { title: row.title, ...(plugin ? { plugin } : undefined) };
     const current = waiting.get(row.conversationId);
-    // Rows come newest first, so each later row is older. An item that
-    // links two Conversations of one tree is one item.
+    // Rows come newest first, so each later row is older.
     if (current) {
-      if (!current.items.some((other) => other.id === item.id)) {
-        current.items.push(item);
-      }
+      current.items.push(item);
       current.waitingSince = row.createdAt.toISOString();
     } else
       waiting.set(row.conversationId, {
         conversationId: row.conversationId,
-        conversationIds: [row.conversationId],
         items: [item],
         waitingSince: row.createdAt.toISOString(),
       });
-  }
-  for (const member of tree) {
-    const entry = waiting.get(member.rootConversationId);
-    if (entry && !entry.conversationIds.includes(member.conversationId)) {
-      entry.conversationIds.push(member.conversationId);
-    }
-    if (entry && member.spaceId) entry.spaceId = member.spaceId;
   }
   return [...waiting.values()].sort((left, right) =>
     left.conversationId.localeCompare(right.conversationId),

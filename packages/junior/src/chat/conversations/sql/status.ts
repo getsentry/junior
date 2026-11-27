@@ -20,7 +20,9 @@ import {
   juniorConversationReadPositions,
   juniorConversations,
   juniorIdentities,
+  juniorQuestions,
 } from "@/db/schema";
+import { questionWaits } from "@/db/schema/questions";
 
 /** The `junior_conversations` columns, or an alias's, that status reads. */
 export interface ConversationStatusColumns {
@@ -247,13 +249,21 @@ function conversationWaitsOnStarterSql(
 }
 
 /**
+ * SQL: one of the Conversation's questions waits for an answer, through
+ * `junior_questions_waiting_idx`.
+ */
+export function questionWaitsSql(conversationId: AnyPgColumn): SQL<boolean> {
+  return sql<boolean>`exists (select 1 from ${juniorQuestions} where ${juniorQuestions.conversationId} = ${conversationId} and ${questionWaits(juniorQuestions)})`;
+}
+
+/**
  * SQL for the status of one Conversation's own work, shared by everyone.
  * This is the only place that derives it; readers, counts, and feed tokens
- * select it. It reads no Inbox item. When more than one applies:
- * `needs_input` > `working` > `done`.
+ * select it. When more than one applies: `needs_input` > `working` >
+ * `done`.
  *
- * - `needs_input`: a Turn waits on a person to sign in
- *   (`awaitsAuthorization`), or the work waits on its starter
+ * - `needs_input`: a question waits (`questionWaitsSql`), a Turn waits on a
+ *   sign-in (`awaitsAuthorization`), or the work waits on its starter
  *   (`conversationWaitsOnStarterSql`).
  * - `working`: a Turn is queued or running (`conversationIsActiveSql`).
  * - `done`: anything else, such as a read answer, a stop, or an idle
@@ -263,7 +273,7 @@ export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
   return sql<ConversationReportStatus>`case
-    when ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'
+    when ${questionWaitsSql(conversation.conversationId)} or ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'
     when ${conversationIsActiveSql(conversation)} then 'working'
     else 'done'
   end`;

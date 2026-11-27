@@ -32,6 +32,18 @@ export function questionFuzzyTitle(table: { title: AnyPgColumn }): SQL {
 }
 
 /**
+ * SQL: the question waits for an answer. It asks something, which a notice
+ * does not, and it is not closed. Its Conversation needs input, the same for
+ * every viewer. `junior_questions_waiting_idx` has this predicate.
+ */
+export function questionWaits(table: {
+  closedAt: AnyPgColumn;
+  request: AnyPgColumn;
+}): SQL {
+  return sql`(${table.closedAt} is null and ${table.request} ? 'question')`;
+}
+
+/**
  * One question or notice that an agent gave a person in a Conversation. It
  * belongs to that Conversation and holds its title, body, request (the form
  * and the related links), and its answer, who gave it, and when. Its Inbox
@@ -60,11 +72,16 @@ export const juniorQuestions = pgTable(
       { onDelete: "set null" },
     ),
     answeredAt: timestamptz("answered_at"),
+    /** When its Inbox item closed: answered, done, or dismissed. */
+    closedAt: timestamptz("closed_at"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
     index("junior_questions_conversation_idx").on(table.conversationId),
+    index("junior_questions_waiting_idx")
+      .on(table.conversationId)
+      .where(questionWaits(table)),
     index("junior_questions_search_idx").using(
       "gin",
       questionSearchDocument(table),

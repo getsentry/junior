@@ -1,9 +1,9 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, getTableColumns } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { loadConversationSlackTenantIds } from "@/chat/conversations/sql/event-actor";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
-import { juniorQuestions } from "@/db/schema";
+import { juniorQuestions, juniorUsers } from "@/db/schema";
 import { throwApiError } from "../http";
 import { resolveMentions } from "../mentions";
 import type { ConversationQuestionsReport } from "../schema/conversation-questions";
@@ -23,8 +23,19 @@ export async function requireConversationQuestions(
   const [access, rows, tenants] = await Promise.all([
     readConversationAccessFromSql(getDb(), [conversationId], viewer),
     getDb()
-      .select()
+      .select({
+        ...getTableColumns(juniorQuestions),
+        answeredBy: {
+          displayName: juniorUsers.displayName,
+          email: juniorUsers.primaryEmail,
+          userId: juniorUsers.id,
+        },
+      })
       .from(juniorQuestions)
+      .leftJoin(
+        juniorUsers,
+        eq(juniorUsers.id, juniorQuestions.answeredByUserId),
+      )
       .where(eq(juniorQuestions.conversationId, conversationId))
       .orderBy(asc(juniorQuestions.createdAt), asc(juniorQuestions.id)),
     loadConversationSlackTenantIds(executor, [conversationId]),
@@ -49,6 +60,21 @@ export async function requireConversationQuestions(
       title: row.title,
       updatedAt: row.updatedAt.toISOString(),
       ...(row.answer ? { answer: row.answer } : undefined),
+      ...(row.answeredAt
+        ? { answeredAt: row.answeredAt.toISOString() }
+        : undefined),
+      ...(row.answeredBy
+        ? {
+            answeredBy: {
+              email: row.answeredBy.email,
+              userId: row.answeredBy.userId,
+              ...(row.answeredBy.displayName
+                ? { displayName: row.answeredBy.displayName }
+                : undefined),
+            },
+          }
+        : undefined),
+      ...(row.closedAt ? { closedAt: row.closedAt.toISOString() } : undefined),
       ...(mentions[index]!.length > 0
         ? { mentions: mentions[index] }
         : undefined),

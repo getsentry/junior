@@ -51,6 +51,7 @@ import {
 import {
   conversationIsActiveSql,
   conversationTurnFailedSql,
+  questionWaitsSql,
 } from "@/chat/conversations/sql/status";
 import { nestFeedThreads, readFeedThreadRecords } from "./threads";
 import {
@@ -359,12 +360,12 @@ export function conversationFeedVersionQuery(
 ) {
   const pin = juniorConversationParticipants;
   const conversationId = juniorConversations.conversationId;
-  // The Inbox items that wait on the viewer have their own token in
-  // `/api/versions`, so a feed row's state is its Conversation's alone.
+  // A running Conversation hides its version, so its state holds whether a
+  // question waits. An ask or a close moves the version of any other one.
   const rowState = (row: typeof juniorConversations) =>
     sql`case
       when ${conversationIsActiveSql(row)}
-      then 'active'
+      then concat('active:', ${questionWaitsSql(row.conversationId)})
       else ${row.detailVersion}::text
     end`;
   // The tree's members, and the state of each one but the root, which its
@@ -381,6 +382,7 @@ export function conversationFeedVersionQuery(
         count(*),
         sum(${feedTree.detailVersion}) filter (where ${child} and not ${active}),
         count(*) filter (where ${child} and ${active}),
+        count(*) filter (where ${child} and ${active} and ${questionWaitsSql(feedTree.conversationId)}),
         count(*) filter (where ${child} and ${active} and ${feedTree.archivedAt} is not null),
         md5(string_agg(${feedTree.title}, ',' order by ${feedTree.conversationId}) filter (
           where ${child} and ${active} and ${feedTree.kind} = 'thread'

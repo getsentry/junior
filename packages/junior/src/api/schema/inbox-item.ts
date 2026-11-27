@@ -22,7 +22,8 @@ export const inboxItemAnswerSchema = z
   })
   .strict();
 
-const personSchema = z
+/** A person that an Inbox item or a question names. */
+export const personSchema = z
   .object({
     /** Junior API path of the profile photo. */
     avatarUrl: z.string().min(1).optional(),
@@ -305,19 +306,11 @@ export const inboxItemWaitingConversationsSchema = z
       z
         .object({
           conversationId: z.string().min(1),
-          /**
-           * The Conversations of the tree that wait on the viewer: each one
-           * that an item links, and their ancestors, the root among them.
-           */
-          conversationIds: z.array(z.string().min(1)).min(1),
           /** Open items that need the viewer, newest first. */
           items: z
             .array(
               z
                 .object({
-                  /** The Conversation that the item links. */
-                  conversationId: z.string().min(1),
-                  id: z.string().min(1),
                   /** The plugin that added the item, such as `github`. */
                   plugin: z.string().min(1).optional(),
                   title: z.string().min(1),
@@ -325,8 +318,6 @@ export const inboxItemWaitingConversationsSchema = z
                 .strict(),
             )
             .min(1),
-          /** The Space of the root, when it is in one. */
-          spaceId: z.string().min(1).optional(),
           /** When the oldest of those items was added: when the wait began. */
           waitingSince: z.string().datetime(),
         })

@@ -1,3 +1,4 @@
+import { closeItemQuestions } from "./question-close";
 import { randomUUID } from "node:crypto";
 import {
   and,
@@ -661,18 +662,13 @@ export async function closeInboxItem(
         subjectId: juniorInboxItems.subjectId,
         subjectKind: juniorInboxItems.subjectKind,
       });
-    const item = closed[0];
-    if (input.answer && item?.subjectKind === INBOX_SUBJECT_KINDS.question) {
-      await tx
-        .update(juniorQuestions)
-        .set({
-          answer: input.answer,
-          answeredAt: now,
-          answeredByUserId: input.closedByUserId ?? null,
-          updatedAt: now,
-        })
-        .where(eq(juniorQuestions.id, item.subjectId));
-    }
+    await closeItemQuestions(tx, closed, {
+      ...(input.answer ? { answer: input.answer } : undefined),
+      ...(input.closedByUserId
+        ? { answeredByUserId: input.closedByUserId }
+        : undefined),
+      now,
+    });
     await touchConversationDetail(tx, ownerConversationIds(closed));
     return closed;
   });
@@ -699,36 +695,45 @@ export async function dismissOpenInboxItems(
 ): Promise<void> {
   if ("ids" in input && input.ids.length === 0) return;
   const now = new Date(input.nowMs);
-  const dismissed = await db
-    .update(juniorInboxItems)
-    .set({
-      closeReason: input.reason,
-      closedAt: now,
-      status: "dismissed",
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(juniorInboxItems.status, "open"),
-        "ids" in input
-          ? inArray(juniorInboxItems.id, [...input.ids])
-          : "automationId" in input
-            ? inboxItemAddedByAutomation(input.automationId)
-            : and(
-                inArray(inboxItemOwnerConversationId(), [
-                  ...input.ownerConversationIds,
-                ]),
-                not(inboxItemAddedByAnyAutomation()),
-              ),
-      ),
-    )
-    .returning({ ...ownerColumns(), id: juniorInboxItems.id });
+  const dismissed = await db.transaction(async (tx) => {
+    const items = await tx
+      .update(juniorInboxItems)
+      .set({
+        closeReason: input.reason,
+        closedAt: now,
+        status: "dismissed",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(juniorInboxItems.status, "open"),
+          "ids" in input
+            ? inArray(juniorInboxItems.id, [...input.ids])
+            : "automationId" in input
+              ? inboxItemAddedByAutomation(input.automationId)
+              : and(
+                  inArray(inboxItemOwnerConversationId(), [
+                    ...input.ownerConversationIds,
+                  ]),
+                  not(inboxItemAddedByAnyAutomation()),
+                ),
+        ),
+      )
+      .returning({
+        ...ownerColumns(),
+        id: juniorInboxItems.id,
+        subjectId: juniorInboxItems.subjectId,
+        subjectKind: juniorInboxItems.subjectKind,
+      });
+    await closeItemQuestions(tx, items, { now });
+    await touchConversationDetail(tx, ownerConversationIds(items));
+    return items;
+  });
   await clearInboxItemDeliveries(
     db,
     dismissed.map((item) => item.id),
     input.nowMs,
   );
-  await touchConversationDetail(db, ownerConversationIds(dismissed));
 }
 
 /**
