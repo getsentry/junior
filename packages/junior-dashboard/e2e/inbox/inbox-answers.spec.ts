@@ -34,12 +34,10 @@ test.describe("new UI", () => {
     { height: 900, name: "desktop", width: 1440 },
     { height: 844, name: "phone", width: 390 },
   ]) {
-    test(`an answer shows no toast, then shows on its row (${view.name})`, async ({
+    test(`an answer shows no toast (${view.name})`, async ({
       dashboard,
       page,
     }) => {
-      // The mock's own items: its rollout question closes with its answer.
-      const ask = "I need your go-ahead before I roll out to every region.";
       let release = () => {};
       const held = new Promise<void>((resolve) => (release = resolve));
       // Hold the answer, so the row leaves before the server answers.
@@ -58,8 +56,7 @@ test.describe("new UI", () => {
       if (phone) await expect(page.getByRole("dialog")).toHaveCount(0);
       expect(await toasts(page).count()).toBe(0);
 
-      // Its Conversation's row says the answer in place of the ask, and
-      // after a reload too.
+      // The test ends after the answer that it held.
       const answered = page.waitForResponse(
         (response) =>
           /\/api\/inbox-items\/[^/]+\/actions$/.test(response.url()) &&
@@ -67,17 +64,6 @@ test.describe("new UI", () => {
       );
       release();
       expect((await answered).ok()).toBe(true);
-      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-      const summary = rollout(page).locator('[data-inbox-slot="summary"]');
-      await expect(summary).toHaveText("You answered Hold");
-      await expect(page.getByText(ask)).toHaveCount(0);
-      // The summaries read the cards of their links.
-      const cardsRead = page.waitForResponse(
-        (response) => new URL(response.url()).pathname === "/api/objects",
-      );
-      await page.reload();
-      await expect(summary).toHaveText("You answered Hold");
-      await cardsRead;
     });
   }
 

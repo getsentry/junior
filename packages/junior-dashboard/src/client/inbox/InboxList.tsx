@@ -66,7 +66,6 @@ import { eventSnoozeOf } from "./snoozeChoices";
 import { useInboxItemData, useInboxItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import {
-  conversationAnswerLine,
   type InboxBundle,
   itemNeedsViewer,
   itemOwnerPath,
@@ -394,7 +393,6 @@ export function InboxList(props: {
   const bundleRow = (
     row: InboxBundle,
     options: {
-      answered?: string;
       conversation?: Conversation;
       itemRow?: boolean;
       key?: string;
@@ -437,7 +435,6 @@ export function InboxList(props: {
         };
     return (
       <InboxRow
-        answered={options.answered}
         bundle={row}
         cardActions={cardActions(acted, options)}
         // Conversations rows keep their Pin and Archive.
@@ -583,19 +580,14 @@ export function InboxList(props: {
   };
   const conversationRow = (row: ConversationRow) => {
     const key = `conversation:${row.conversationId}`;
-    const answered = row.conversation
-      ? conversationAnswerLine(row.conversation)
-      : undefined;
     if (row.bundle)
       return bundleRow(row.bundle, {
-        answered,
         conversation: row.conversation,
         key,
         time: row.time,
       });
     return (
       <InboxRow
-        answered={answered}
         conversation={row.conversation}
         conversationId={row.conversationId}
         expanded={state.expandedKey === key}

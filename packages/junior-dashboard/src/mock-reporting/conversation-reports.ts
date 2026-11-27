@@ -9,14 +9,12 @@ import type { z } from "zod";
 import { filterMockConversationsByRepository } from "./code-repository";
 import { mockConversationFeedPage } from "./feed-page";
 import {
-  NOW_MS,
   readMockConversationChildAgents,
   readMockConversationDetail,
   readMockConversationFeed,
   readMockConversationPendingMessages,
   withMockImageOrigin,
 } from "./fixtures";
-import { withMockViewerAnswers } from "./inbox-items";
 import { withMockReadPosition } from "./read-positions";
 import { mockLeadSpaceId } from "./sends";
 import {
@@ -59,11 +57,10 @@ export function readMockConversationFeedPage(
     const feed = withMockSpaces(
       readMockConversationFeed(query.actorEmail, status),
     );
-    // Like the API, only the viewer's own feed says what they answered.
     if (repositoryId)
       return filterMockConversationsByRepository(feed, repositoryId);
     if (spaceId) return filterMockConversationsBySpace(feed, spaceId);
-    return query.actorEmail ? feed : withMockViewerAnswers(feed, NOW_MS);
+    return feed;
   };
   const respond = (feed: ConversationFeed) => {
     const page = mockConversationFeedPage(feed, {
