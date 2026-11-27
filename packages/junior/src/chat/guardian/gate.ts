@@ -4,7 +4,6 @@
  * Deterministic host checks establish authority before the model evaluates
  * untrusted action evidence.
  */
-import type { TurnWatch } from "@/chat/events/watch-creator";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -68,8 +67,6 @@ export interface ToolActionReviewContext {
   rootConversation?: () => Promise<RootConversation>;
   /** Guardian reviews shell commands, which only the agent Guardian does. */
   reviewsShell?: boolean;
-  /** The Watch that started the Turn. Set for the agent Guardian only. */
-  watch?: TurnWatch | undefined;
   /**
    * The repositories of the active Workspace. Set for the agent Guardian,
    * which reads the plugins' `guardian.context`.
@@ -345,7 +342,6 @@ function buildProposal(
       ...(context.lead ? { lead: true as const } : undefined),
       source: context.source,
       userIntent: context.userIntent(),
-      ...(context.watch ? { watch: context.watch } : undefined),
     },
     ...(context.evidence ? { evidence: context.evidence() } : undefined),
     input,

@@ -34,26 +34,6 @@ function proposal(userIntent: string): ToolActionProposal {
   };
 }
 
-const watchProposal = (
-  watch: NonNullable<ToolActionProposal["context"]["watch"]>,
-): ToolActionProposal => {
-  const base = proposal("<task>GitHub PR acme/app#1 was approved.</task>");
-  return {
-    ...base,
-    context: {
-      ...base.context,
-      source: {
-        kind: "event",
-        eventKey: "pull_request.review.approved:1",
-        eventType: "pull_request.review.approved",
-        identifier: "acme/app#1",
-        namespace: "github",
-      },
-      watch,
-    },
-  };
-};
-
 describe("guardianMessages", () => {
   it("gives another top-level agent's brief as the instruction, without its data notice", () => {
     const text = "Close #301 & #307 <now>.";
@@ -70,34 +50,6 @@ describe("guardianMessages", () => {
     const input = `${agentMessage("Close #301.")}\nextra`;
     expect(guardianMessages(proposal(input))).toEqual([
       { from: "instruction", text: input },
-    ]);
-  });
-
-  it("names who set the Watch and keeps its instructions as context", () => {
-    const intent = "Maintain acme/app#1. When it is approved, merge it.";
-    const person = { platform: "slack", teamId: "T1", userId: "U1" } as const;
-    expect(
-      guardianMessages(
-        watchProposal({ creator: { actor: person }, intents: [intent] }),
-      ).slice(0, 2),
-    ).toEqual([
-      {
-        from: "context",
-        text: "[The requester's Turn set the Watch that started this Turn. Its instructions:]",
-      },
-      { from: "context", text: intent },
-    ]);
-    expect(
-      guardianMessages(watchProposal({ creator: {}, intents: [intent] })).slice(
-        0,
-        2,
-      ),
-    ).toEqual([
-      {
-        from: "context",
-        text: "[An agent's brief set the Watch that started this Turn. Its instructions:]",
-      },
-      { from: "context", text: intent },
     ]);
   });
 });

@@ -63,14 +63,9 @@ export function ownPullRequests(...refs: string[]): GuardianDesignFacts {
 
 const EVENT_ACTOR = { platform: "system", name: "event" } as const;
 
-/**
- * Context of a Turn that a Watch Event started. Core stores who set the
- * Watch: by default the person whose Turn set it, or an agent whose brief
- * did (`creator: "agent"`).
- */
+/** Context of a Turn that a Watch Event started, as core runs it today. */
 export function watchTurnContext(args: {
   about: string;
-  creator?: "person" | "agent";
   authorText?: Parameters<typeof renderTaskInput>[0]["authorText"];
   doneBy?: { handle: string; mention: string };
   eventType: string;
@@ -89,14 +84,9 @@ export function watchTurnContext(args: {
     trustedSummary: args.trustedSummary,
     ...(args.externalText ? { externalText: args.externalText } : undefined),
   });
-  const person = slackContext("").actor;
   return slackContext(userIntent, {
     actor: EVENT_ACTOR,
     credential: { actor: EVENT_ACTOR },
-    watch: {
-      creator: args.creator === "agent" ? {} : { actor: person },
-      intents: [args.intent],
-    },
     source: {
       kind: "event",
       eventKey: `${args.eventType}:1`,

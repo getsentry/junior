@@ -1,6 +1,5 @@
 import type { MessageAttachment } from "@/chat/attachments/input";
 /** Input for one Run through Junior's agent. */
-import type { TurnWatch } from "@/chat/events/watch-creator";
 import type { AgentTools } from "@/chat/conversations/kind-behavior";
 import type {
   Destination,
@@ -176,8 +175,6 @@ export type AgentInstruction = {
   /** Host-owned turn context shown to the model near the instruction. */
   context?: string | undefined;
   actor?: AgentInstructionActor;
-  /** The Watch whose Events started this Turn, when it has a creator. */
-  watch?: TurnWatch;
 };
 
 /** Dispatch identity carried on plugin-authored runs. */

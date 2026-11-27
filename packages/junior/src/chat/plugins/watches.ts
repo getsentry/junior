@@ -5,7 +5,6 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { createWatch, listWatches, turnEvents } from "@/chat/events/store";
-import type { WatchCreator } from "@/chat/events/watch-creator";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 /**
@@ -15,7 +14,6 @@ import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support
 export function createPluginWatches(
   plugin: PluginRegistration,
   conversationId: string,
-  creator?: WatchCreator,
 ): PluginEventToolContext {
   const pluginName = plugin.manifest.name;
   const canSubscribe =
@@ -44,7 +42,6 @@ export function createPluginWatches(
       }
       const subscription = await createWatch({
         conversationId,
-        creator,
         events: input.events,
         expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
         guidance: input.guidance,

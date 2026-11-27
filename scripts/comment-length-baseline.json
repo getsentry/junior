@@ -212,7 +212,7 @@
     "packages/junior/src/chat/agent/context-summary.ts": 4,
     "packages/junior/src/chat/agent/index.ts": 5,
     "packages/junior/src/chat/agent/skills.ts": 1,
-    "packages/junior/src/chat/agent/tools.ts": 12,
+    "packages/junior/src/chat/agent/tools.ts": 13,
     "packages/junior/src/chat/agent/types.ts": 5,
     "packages/junior/src/chat/artifacts/sync.ts": 2,
     "packages/junior/src/chat/attachments/download.ts": 4,

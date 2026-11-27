@@ -157,11 +157,7 @@ export function getPluginTools(
       plugin: pluginName,
     });
     const mcp = pluginMcpContext(plugin, context);
-    const events = createPluginWatches(
-      plugin,
-      context.conversationId,
-      context.watchCreator,
-    );
+    const events = createPluginWatches(plugin, context.conversationId);
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
     const onCost = createPluginModelCostRecorder({

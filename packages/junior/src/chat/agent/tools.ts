@@ -8,7 +8,6 @@
  * control tools). Auth pauses raised while restoring providers are thrown
  * here so the run parks before prompting.
  */
-import { watchCreatorFor } from "@/chat/events/watch-creator";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
   promptModeTurnTools,
@@ -479,11 +478,6 @@ export async function wireAgentTools(
 
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
-    watchCreator: watchCreatorFor({
-      actor: args.currentActor,
-      provenance: args.run.instruction.provenance,
-      watch: args.run.instruction.watch,
-    }),
     turnId: args.run.turnId,
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
@@ -546,9 +540,6 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
-  const agentWatch = isExperimentalFeatureEnabled("guardian-agent")
-    ? args.run.instruction.watch
-    : undefined;
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
@@ -562,25 +553,22 @@ export async function wireAgentTools(
       // The Run's Conversation labels each message with its real author, so
       // the requester's earlier messages can authorize. The requester is the
       // Actor of the Run's instructions, or nothing when an agent writes
-      // them. An event Turn keeps only the unlabeled evidence, unless its
-      // instructions have their own provenance, or, for the agent Guardian,
-      // its Watch has a creator. Read for each action.
+      // them. A Run of a system Actor, such as an event Turn, is not the
+      // author of the person's messages, so it keeps only the unlabeled
+      // evidence, unless its instructions have their own provenance. Read
+      // for each action.
       ...(args.run.instruction.provenance ||
-      (args.currentActor && args.currentActor.platform !== "system") ||
-      agentWatch
+      (args.currentActor && args.currentActor.platform !== "system")
         ? {
             rootConversation: async () =>
               await readRootConversation({
                 actor: args.run.instruction.provenance
                   ? args.run.instruction.provenance.actor
-                  : args.currentActor?.platform !== "system"
-                    ? args.currentActor
-                    : agentWatch?.creator.actor,
+                  : args.currentActor,
                 conversationId: args.run.conversationId,
               }),
           }
         : undefined),
-      ...(agentWatch ? { watch: agentWatch } : undefined),
       // Only the agent Guardian reviews shell commands.
       ...(isExperimentalFeatureEnabled("guardian-agent")
         ? {

@@ -218,7 +218,6 @@ export function createWatchEventsTool(
       const nowMs = Date.now();
       const subscription = await createWatch({
         conversationId: context.conversationId,
-        creator: context.watchCreator,
         events,
         expiresAtMs: nowMs + ttlMs(input),
         intent,
