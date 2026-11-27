@@ -172,7 +172,7 @@ export async function actOnInboxItem(args: {
     if (item.status !== "open") {
       throw new InboxItemActionError("conflict", "Inbox item is closed.");
     }
-    if (!canActOnInboxItem(item, user.id)) {
+    if (!canAnswerInboxItem(item, user.id)) {
       throw new InboxItemActionError(
         "forbidden",
         "Only an assignee can take this item.",
@@ -228,13 +228,7 @@ export async function actOnInboxItem(args: {
   }
 
   if (!closedNow && item.status === "open") {
-    // Anyone who can see a public question can answer it. Dismiss keeps the
-    // assignee rule (`canAnswerInboxItem`).
-    const allowed =
-      action === "submit"
-        ? canAnswerInboxItem(item, user.id)
-        : canActOnInboxItem(item, user.id);
-    if (!allowed) {
+    if (!canAnswerInboxItem(item, user.id)) {
       throw new InboxItemActionError(
         "forbidden",
         "Only an assignee can act on this item.",

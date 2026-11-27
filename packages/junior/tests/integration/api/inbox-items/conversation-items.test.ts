@@ -118,6 +118,15 @@ describe("inbox items of a Conversation", () => {
       },
       {},
     );
+    const { item: other } = await (tool as any).execute(
+      {
+        kind: "action",
+        title: "Delete the release branch?",
+        body: "The release shipped.",
+        request: REQUEST,
+      },
+      {},
+    );
     const ids = async (viewer: User, path: string) =>
       (await (await api(fixture, viewer).get(path)).json()).items.map(
         (listed: any) => listed.id,
@@ -126,22 +135,36 @@ describe("inbox items of a Conversation", () => {
     // Ana is not assigned, so the item is not in her Inbox. She is
     // still a Participant, so the Conversation view shows it.
     expect(await ids(ana, "")).toEqual([]);
-    expect(await ids(ana, "?conversationId=local:web:shared")).toEqual([
-      item.id,
-    ]);
+    expect(await ids(ana, "?conversationId=local:web:shared")).toEqual(
+      expect.arrayContaining([item.id, other.id]),
+    );
     expect((await api(fixture, ana).get(`/${item.id}`)).status).toBe(200);
     // Cal can view the public Conversation but does not take part in it.
-    // He sees its public question and can answer it, but only an assignee
-    // dismisses or takes it.
+    // He sees its public questions and can answer, dismiss, or take them,
+    // like an assignee. They still do not wait on him.
     const calView = await (
       await api(fixture, cal).get("?conversationId=local:web:shared")
     ).json();
-    expect(calView.items).toMatchObject([
-      { id: item.id, canAct: false, canAnswer: true, canTake: false },
-    ]);
-    expect(
-      (await api(fixture, cal).act(item.id, { action: "dismiss" })).status,
-    ).toBe(403);
+    expect(calView.items).toEqual(
+      expect.arrayContaining(
+        [item.id, other.id].map((id) =>
+          expect.objectContaining({
+            id,
+            canAct: false,
+            canAnswer: true,
+            canTake: true,
+          }),
+        ),
+      ),
+    );
+    const dismissed = await api(fixture, cal).act(other.id, {
+      action: "dismiss",
+    });
+    expect(dismissed.status).toBe(200);
+    expect(await dismissed.json()).toMatchObject({
+      closedBy: { email: "cal@example.com" },
+      status: "dismissed",
+    });
     const answered = await api(fixture, cal).act(item.id, {
       action: "submit",
       answer: { values: { decision: ["Approve"] } },
