@@ -6,6 +6,8 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { DisplayText } from "../display-text/DisplayText";
+import { ToggleSheet } from "../components/BottomSheet";
+import { useMobileLayout } from "../layoutMedia";
 import { cn } from "../styles";
 import {
   INBOX_ROW_DETAIL_CLASS,
@@ -44,6 +46,9 @@ function DoneRow(props: {
   title?: string;
 }) {
   const { item } = props;
+  // A phone opens the row in a sheet, and the row itself stays closed.
+  const mobile = useMobileLayout();
+  const expanded = props.expanded && !mobile;
   const dismissed = item.status === "dismissed";
   const outcome = outcomeOf(item);
   const question = inboxItemQuestion(item.request);
@@ -53,15 +58,54 @@ function DoneRow(props: {
       : question.question;
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
+  const detail = (
+    <div
+      aria-label={`${inboxItemTitleText(item)}: how it closed`}
+      className={cn(
+        // The sheet's header already rules it off.
+        mobile ? "grid min-w-0 p-4" : INBOX_ROW_DETAIL_CLASS,
+        "gap-4 font-sans text-sm",
+      )}
+      id={regionId}
+      role="region"
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border pb-3">
+        <span
+          className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
+          ref={fadeWhenOverflowing}
+        >
+          {props.title}
+        </span>
+        <Link
+          className="ml-auto inline-flex items-center gap-1.5 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
+          to={itemOwnerPath(item, { askItemId: item.id })}
+        >
+          {itemOwnerLinkLabel(item)}
+          <ArrowUpRight aria-hidden="true" size={14} />
+        </Link>
+      </div>
+      <InboxItemObjects conversationId={itemConversationId(item)}>
+        <DisplayText mentions={item.mentions} text={text} />
+        {item.subject.url ? (
+          <InboxItemSubjectPreview
+            conversationId={itemConversationId(item)}
+            subject={item.subject}
+          />
+        ) : null}
+      </InboxItemObjects>
+      {/* A closed item shows who closed it, when, and the answer. */}
+      <InboxItemActions item={item} />
+    </div>
+  );
   return (
     <li
-      className={inboxCardClass(props.expanded)}
-      data-expanded={props.expanded || undefined}
+      className={inboxCardClass(expanded)}
+      data-expanded={expanded || undefined}
     >
       <button
         aria-controls={regionId}
-        aria-expanded={props.expanded}
-        className={inboxRowButtonClass(props.expanded)}
+        aria-expanded={expanded}
+        className={inboxRowButtonClass(expanded)}
         data-inbox-row={item.id}
         onClick={props.onToggle}
         type="button"
@@ -105,40 +149,18 @@ function DoneRow(props: {
           {formatRelativeTime(item.closedAt ?? item.updatedAt)}
         </span>
       </button>
-      {props.expanded ? (
-        <div
-          aria-label={`${inboxItemTitleText(item)}: how it closed`}
-          className={cn(INBOX_ROW_DETAIL_CLASS, "gap-4 font-sans text-sm")}
-          id={regionId}
-          role="region"
+      {mobile ? (
+        <ToggleSheet
+          label={inboxItemTitleText(item)}
+          onDismiss={props.onToggle}
+          open={props.expanded}
+          size="content"
+          title={<InboxItemTitle item={item} />}
         >
-          <div className="flex flex-wrap items-center gap-2 border-b border-dashboard-border pb-3">
-            <span
-              className={cn(fadeOverflowClass, "text-dashboard-text-muted")}
-              ref={fadeWhenOverflowing}
-            >
-              {props.title}
-            </span>
-            <Link
-              className="ml-auto inline-flex items-center gap-1.5 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
-              to={itemOwnerPath(item, { askItemId: item.id })}
-            >
-              {itemOwnerLinkLabel(item)}
-              <ArrowUpRight aria-hidden="true" size={14} />
-            </Link>
-          </div>
-          <InboxItemObjects conversationId={itemConversationId(item)}>
-            <DisplayText mentions={item.mentions} text={text} />
-            {item.subject.url ? (
-              <InboxItemSubjectPreview
-                conversationId={itemConversationId(item)}
-                subject={item.subject}
-              />
-            ) : null}
-          </InboxItemObjects>
-          {/* A closed item shows who closed it, when, and the answer. */}
-          <InboxItemActions item={item} />
-        </div>
+          {detail}
+        </ToggleSheet>
+      ) : expanded ? (
+        detail
       ) : null}
     </li>
   );
@@ -146,8 +168,9 @@ function DoneRow(props: {
 
 /**
  * Done: the closed Inbox items, newest closed first, in
- * Today, This week, and Earlier. It is read-only. A row expands in place;
- * only the link to its Conversation or Automation leaves the Inbox.
+ * Today, This week, and Earlier. It is read-only. A row expands in place,
+ * or opens in a sheet on a phone; only the link to its Conversation or
+ * Automation leaves the Inbox.
  */
 export function InboxDoneView(props: {
   collapsed: ReadonlySet<string>;
