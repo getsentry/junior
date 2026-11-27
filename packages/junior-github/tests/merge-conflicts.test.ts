@@ -836,6 +836,28 @@ describe("merge conflict check on webhook events", () => {
       expect(conflicts()).toHaveLength(published);
     });
 
+    it("adds no fix for a conflict check during Resume after a repository rename", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      // The opener's row keeps the name from when Junior opened it.
+      await fixture
+        .db()
+        .update(juniorGitHubPullRequestRequesters)
+        .set({ repositoryFullName: "getsentry/junior-old" });
+      pullRequest.head.sha = "1".repeat(40);
+      const published = conflicts().length;
+      // The check of a new head runs while Resume reads the pull request.
+      vi.setSystemTime(resume.nowMs);
+      duringPullRequestRead = () => checkAt(resume.nowMs, "2");
+      await h.answer(resume);
+      expect(duringPullRequestRead).toBeUndefined();
+      expect(
+        conflicts()
+          .slice(published)
+          .every((event) => event.eventKey.endsWith(":resume:item-1")),
+      ).toBe(true);
+    });
+
     it("lets the next conflict ask again when Resume finds no pull request", async () => {
       await askedInSlack();
       await fixThatDoesNotLand();

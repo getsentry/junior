@@ -22,6 +22,7 @@ import {
 } from "../db/schema.js";
 import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
 import {
+  findGitHubPullRequestConversation,
   type GitHubPullRequestOpener,
   listGitHubPullRequestOpeners,
   recordGitHubPullRequestOpenerId,
@@ -265,9 +266,8 @@ function gitHubConflictAction(input: {
 /** Ask the requester to resume a fix that did not land. */
 async function addUnlandedItem(args: {
   conflict: GitHubMergeConflict;
-  conversationId: string;
   db: GitHubDb;
-  opener: GitHubPullRequestOpener;
+  opener: GitHubPullRequestOpener & { conversationId: string };
   /** GitHub's id of the pull request, the id of its item. */
   pullRequestId: string;
   ref: GitHubPullRequestRef;
@@ -276,13 +276,13 @@ async function addUnlandedItem(args: {
   const { conflict, opener, ref } = args;
   if (!opener.pullRequestId) {
     await recordGitHubPullRequestOpenerId(args.db, {
-      conversationId: args.conversationId,
+      conversationId: opener.conversationId,
       number: ref.number,
       pullRequestId: args.pullRequestId,
       repositoryFullName: ref.repositoryFullName,
     });
   }
-  await args.inboxItems.forConversation(args.conversationId).upsert({
+  await args.inboxItems.forConversation(opener.conversationId).upsert({
     // The policy asks once per Resume, so each upsert is a new ask.
     askedIdentityIds: [opener.identityId],
     assigneeIdentityIds: [opener.identityId],
@@ -333,8 +333,12 @@ export async function applyGitHubConflictPolicy(args: {
       repositoryFullName: args.ref.repositoryFullName,
     })
   ).get(args.ref.number);
-  // Only a pull request that a person asked for has a Conversation.
-  const conversationId = opener?.conversationId;
+  // Only a pull request that a person asked for has a Conversation. The
+  // opener's row keeps the name from when Junior opened it, so the id finds
+  // the item history after a rename.
+  const conversationId =
+    opener?.conversationId ??
+    (await findGitHubPullRequestConversation(args.db, change.providerId));
   const items = conversationId
     ? await args.inboxItems
         .forConversation(conversationId)
@@ -369,13 +373,13 @@ export async function applyGitHubConflictPolicy(args: {
       .where(pullRequest);
     return args.events;
   }
-  if (!opener || !conversationId) return [];
+  // Ask only in the opener's Conversation, as found by name.
+  if (!opener?.conversationId) return [];
   try {
     // The item is the ask, so a failed item is asked again.
     await addUnlandedItem({
       ...args,
-      conversationId,
-      opener,
+      opener: { ...opener, conversationId: opener.conversationId },
       pullRequestId: change.providerId,
     });
   } catch (error) {
