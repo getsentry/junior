@@ -117,17 +117,27 @@ untrusted text set up, does not run.
   from and what each call does, targets, and who can read the target.
   Guardian does not guess them from the transcript. For each call of its
   tools, a plugin gives the target, which is what the call changes, such
-  as `getsentry/junior#12`, and the target's audience. A plugin can give
-  one audience for all of its MCP tools, such as `internal` for Notion.
-  A target with no audience counts as `world`.
+  as `getsentry/junior#12`, and the target's audience. A tool that the
+  plugin defines gives them in a `guardian` function on its definition. A
+  remote MCP tool gets them from the plugin's `guardian.tools` map, keyed
+  by the tool's exact name, or from one audience for all of the plugin's
+  MCP tools, such as `internal` for Notion. A name in both places is a
+  load error, and a map name that the MCP server does not list is
+  reported. A target with no audience counts as `world`.
 - `plugin-decision` A plugin can also give a decision for a call of its
-  tool, with the reason. A plugin's ask or deny holds, and Guardian does
-  not overrule it. The person's yes to that exact action still clears an
-  ask (`answer-is-a-line`). A plugin's allow clears only `unrequested`.
-  Every other rule still applies. The decision record keeps the plugin's
-  decision and reason. So a wrong plugin decision fails safe.
+  tool, with the reason, in the same place as the target. A plugin's ask
+  or deny holds, and Guardian does not overrule it. The person's yes to
+  that exact action still clears an ask (`answer-is-a-line`). A plugin's
+  allow clears only `unrequested`. Every other rule still applies. The
+  decision record keeps the plugin's decision and reason. So a wrong
+  plugin decision fails safe.
   - Example: the GitHub plugin allows a text edit of Junior's own PR. The
     Vercel plugin denies a public preview when SSO protection is off.
+- `plugin-context` A plugin can give Guardian facts as context: facts
+  about the work, and facts about one call, such as Junior's work branch
+  for a shell command. They come from plugin code and stored records,
+  never from text that someone outside the organization can write, such
+  as an issue body. Context never clears a deny or a person's restriction.
 - `fresh-decision` An earlier decision is context, not precedent. A changed
   action, such as a retry with the private data removed, gets a fresh
   decision.
@@ -209,9 +219,11 @@ not sync is `internal`, and it is allowed.
 
 **Bash.** Alice asks Junior to fix a flaky test in getsentry/junior and open
 a PR. Guardian judges `git push origin fix-flaky-test` from the command.
-A push of the work branch is a conventional step of the requested PR, so
-it is allowed (`conventional-steps`). A push to the default branch, which
-nobody asked for, asks (`unrequested`).
+The GitHub plugin's context says that `fix-flaky-test` is Junior's work
+branch for this PR (`plugin-context`). A push of the work branch is a
+conventional step of the requested PR, so it is allowed
+(`conventional-steps`). A push to the default branch, which nobody asked
+for, asks (`unrequested`).
 
 **GitHub.** Junior opened getsentry/junior#12 for Alice.
 
@@ -262,6 +274,8 @@ nobody asked for, asks (`unrequested`).
 - `internal-disclosure`, `sandbox-boundary`: Guardian does not see what a
   `git push` publishes, so a commit that carries internal detail to a
   public repo runs with no ask.
+- `no-exposure`: Guardian does not see what an image shows, so a
+  requested screenshot with personal data can be published.
 - `sandbox-boundary`: an action that stays in the Sandbox, such as
   deleting a checkout, can destroy unpushed work that the person asked
   for, and no rule catches it.
