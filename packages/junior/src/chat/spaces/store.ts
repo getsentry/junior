@@ -234,42 +234,34 @@ export async function updateSpace(
   },
 ): Promise<void> {
   const executor = getSqlExecutor();
-  await executor
-    .db()
-    .update(juniorSpaces)
-    .set({
-      ...(changes.description !== undefined
-        ? { description: changes.description }
-        : undefined),
-      ...(changes.name !== undefined ? { name: changes.name } : undefined),
-      updatedAt: new Date(),
-    })
-    .where(eq(juniorSpaces.id, spaceId));
-  if (changes.name === undefined) return;
-  const [lead] = await executor
-    .db()
-    .select({ id: juniorConversations.conversationId })
-    .from(juniorConversations)
-    .where(
-      and(
-        eq(juniorConversations.kind, "lead"),
-        eq(juniorConversations.spaceId, spaceId),
-      ),
-    )
-    .limit(1);
-  if (lead) await setConversationTitle(executor, lead.id, changes.name);
-}
-
-/**
- * Keep the archive time that 0.316.0 reads, so a rollback to it sees the
- * Space's archive. The Lead's archive time is the one this release reads.
- */
-export async function writeLegacySpaceArchive(
-  spaceId: string,
-  archivedAt: Date | null,
-): Promise<void> {
-  await getDb()
-    .update(juniorSpaces)
-    .set({ archivedAt })
-    .where(eq(juniorSpaces.id, spaceId));
+  // One transaction, so a failed rename does not keep a new description.
+  // It writes the Lead before the Space row, in the order that an archive
+  // writes them, so the two cannot deadlock.
+  await executor.transaction(async () => {
+    if (changes.name !== undefined) {
+      const [lead] = await executor
+        .db()
+        .select({ id: juniorConversations.conversationId })
+        .from(juniorConversations)
+        .where(
+          and(
+            eq(juniorConversations.kind, "lead"),
+            eq(juniorConversations.spaceId, spaceId),
+          ),
+        )
+        .limit(1);
+      if (lead) await setConversationTitle(executor, lead.id, changes.name);
+    }
+    await executor
+      .db()
+      .update(juniorSpaces)
+      .set({
+        ...(changes.description !== undefined
+          ? { description: changes.description }
+          : undefined),
+        ...(changes.name !== undefined ? { name: changes.name } : undefined),
+        updatedAt: new Date(),
+      })
+      .where(eq(juniorSpaces.id, spaceId));
+  });
 }
