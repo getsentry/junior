@@ -25,7 +25,10 @@ export async function postSlackMovedNotice(args: {
   const conversation = await args.conversationStore.get({
     conversationId: args.conversationId,
   });
-  if (!conversation || conversation.destination?.platform === "slack") return;
+  // A moved Conversation always has a Destination. A missing one means it
+  // never moved, so it gets no notice.
+  const destination = conversation?.destination;
+  if (!destination || destination.platform === "slack") return;
   const url = getDashboardConversationLink(args.conversationId);
   if (!url) return;
   const added = await addConversationNote({
