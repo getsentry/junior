@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationDetailReportSchema,
+  conversationFeedSchema,
   conversationInviteResponseSchema,
   userSearchReportSchema,
   setConversationSpaceResponseSchema,
@@ -121,6 +122,24 @@ async function listNames(
     .spaces.map((space) => space.name);
 }
 
+/** The Spaces that the viewer's Conversation search finds, by their Leads. */
+async function searchedSpaces(app: Hono<JuniorApiEnv>, q: string) {
+  const response = await request(
+    app,
+    "GET",
+    `/conversations?${new URLSearchParams({ q })}`,
+  );
+  expect(response.status).toBe(200);
+  return conversationFeedSchema
+    .parse(await response.json())
+    .conversations.flatMap((row) => {
+      if (row.kind !== "lead") return [];
+      // The palette shows only the Space, so its Threads are not read.
+      expect(row.threads).toBeUndefined();
+      return [row.space?.name];
+    });
+}
+
 /** A Slack channel's configuration, kept in memory. */
 function memoryStorage(): LocationConfigurationStorage {
   const entries = new Map<string, ConfigEntry>();
@@ -164,6 +183,8 @@ describe("Spaces API", () => {
     expect(await listNames(bo, "?membership=all")).toContain(
       "Billing migration",
     );
+    // Search finds a public Space for anyone, by its name.
+    expect(await searchedSpaces(bo, "billing")).toEqual(["Billing migration"]);
 
     const read = spaceSchema.parse(
       await (await send(bo, "GET", `/${space.id}`)).json(),
@@ -539,6 +560,8 @@ describe("Spaces API", () => {
       "Payroll audit",
     );
     expect((await send(bo, "GET", `/${space.id}`)).status).toBe(404);
+    expect(await searchedSpaces(bo, "payroll")).toEqual([]);
+    expect(await searchedSpaces(ana, "payroll")).toEqual(["Payroll audit"]);
     const lead = await leadOf(ana, space.id);
     expect((await postMessage(bo, lead, "payroll-bo-join")).status).toBe(403);
 
@@ -602,6 +625,7 @@ describe("Spaces API", () => {
     expect(
       (await spaceFeed(bo, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
+    expect(await searchedSpaces(bo, "payroll")).toEqual(["Payroll audit"]);
 
     // Data stays in the Space: Conversations in it read each other, and a
     // Conversation outside it reads none of them. Nothing moves in, and its
@@ -626,6 +650,7 @@ describe("Spaces API", () => {
     expect((await leave(bo, lead)).status).toBe(200);
     expect(await spaceFeed(bo, space.id)).toEqual([]);
     expect(await detailSpace(bo, inSpace)).toBeNull();
+    expect(await searchedSpaces(bo, "payroll")).toEqual([]);
   });
 
   it("keeps a Slack Conversation out of a private Space and tells its thread once when it moves", async () => {

@@ -19,6 +19,7 @@ import type { JuniorDatabase } from "@/db/db";
 import { listedConversation } from "@/chat/conversations/sql/listed";
 import { conversationAncestorsOrSelf } from "@/chat/conversations/sql/subtree";
 import { spaceLeadIds } from "@/chat/spaces/tree-space";
+import { feedRowShowsThreads } from "@/chat/conversations/kind-behavior";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
@@ -191,6 +192,7 @@ async function conversationRows(
     query,
     querySubjects = [],
     space,
+    spaces = false,
     status,
     waitingForUserId,
   }: {
@@ -211,6 +213,8 @@ async function conversationRows(
     querySubjects?: readonly InboxItemSubject[];
     /** Read only the roots of this Space, in place of membership. */
     space?: { id: string; viewerUserId?: string };
+    /** With `query`, also find the Leads that the viewer may read. */
+    spaces?: boolean;
     status: "active" | "archived" | "all";
     /** Read only the root conversations that wait on this user. */
     waitingForUserId?: string;
@@ -245,9 +249,19 @@ async function conversationRows(
         // Every other feed lists roots that are not a Lead.
         space
           ? conversationSpaceFilter(space.id, status, space.viewerUserId)
-          : and(
-              listedConversation(),
-              conversationFeedMembershipFilter(status, filter),
+          : or(
+              and(
+                listedConversation(),
+                conversationFeedMembershipFilter(status, filter),
+              ),
+              // The viewer's search also finds each Space that they may
+              // read, by its Lead, whose title is the Space's name.
+              spaces && query && filter?.kind === "viewer"
+                ? and(
+                    eq(juniorConversations.kind, "lead"),
+                    rootVisibleToViewer(filter.userId),
+                  )
+                : undefined,
             ),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
@@ -544,6 +558,8 @@ export async function readConversationFeedFromSql(
     onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     spaceId?: string | undefined;
+    /** A search also finds the Spaces that the viewer may read. */
+    spaces?: boolean;
     status?: "active" | "archived";
     viewer?: User;
   } = {},
@@ -597,6 +613,7 @@ export async function readConversationFeedFromSql(
     includePrivateMatches: filter?.kind === "viewer",
     query,
     querySubjects,
+    spaces: options.spaces,
     status,
   };
   const firstPage = pinsFirst && !cursor;
@@ -726,7 +743,11 @@ export async function readConversationFeedFromSql(
     readFeedThreadRecords(
       db,
       conversations
-        .filter((conversation) => conversation.archivedAtMs === undefined)
+        .filter(
+          (conversation) =>
+            conversation.archivedAtMs === undefined &&
+            feedRowShowsThreads(conversation.kind),
+        )
         .map(({ conversationId }) => conversationId),
       options.viewer?.id,
     ),
@@ -915,10 +936,10 @@ export async function readConversationFeedFromSql(
 /**
  * Load a bounded feed with an optional viewer-primary linked-user filter.
  *
- * With `viewer` and without `codeRepositoryId`, the feed holds only root
- * Conversations that the viewer started or takes part in, for every `q` and
- * `status`. The `actorEmail` filter and `codeRepositoryId` give no such
- * guarantee, so they are not an authorization boundary.
+ * With `viewer` and without `codeRepositoryId`, the feed holds only roots
+ * that the viewer started or takes part in, or with `spaces` a Lead that
+ * they may read, for every `q` and `status`. `actorEmail` and
+ * `codeRepositoryId` are no such authorization boundary.
  */
 export async function readConversationFeed(
   options: {
@@ -929,6 +950,7 @@ export async function readConversationFeed(
     onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     spaceId?: string | undefined;
+    spaces?: boolean;
     status?: "active" | "archived";
     viewer?: User;
   } = {},

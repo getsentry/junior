@@ -171,6 +171,8 @@ export function createConversationRoutes(
         },
         ...(q ? { q } : undefined),
         ...(spaceId ? { spaceId } : undefined),
+        // The dashboard's search shows a Space as a Space.
+        spaces: true,
         status,
         ...(viewer ? { viewer } : undefined),
       });

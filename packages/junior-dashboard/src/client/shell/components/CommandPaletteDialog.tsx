@@ -5,6 +5,7 @@ import type {
   SearchInboxItem,
   SearchSource,
   SearchTodo,
+  SpaceRefReport,
 } from "@sentry/junior/api/schema";
 import { cn, dashboardCountClass } from "../../styles";
 import {
@@ -71,6 +72,8 @@ import {
   CommandList,
 } from "../../components/ui/command";
 import { Kbd } from "../../components/ui/kbd";
+import { spacePath } from "../../spaces/spaceRoutes";
+import { SpaceTile } from "../../spaces/SpaceTile";
 import { formatCompactAge } from "../../time";
 import { fadeTextClass } from "../../textFade";
 
@@ -272,7 +275,6 @@ function CommandPaletteBody(props: {
         {groups.map(([group, groupItems]) => (
           <CommandGroup heading={group} key={group}>
             {groupItems.map((item) => {
-              const Icon = item.icon;
               return (
                 <CommandItem
                   key={item.id}
@@ -283,7 +285,11 @@ function CommandPaletteBody(props: {
                   }}
                   value={item.id}
                 >
-                  <Icon aria-hidden="true" />
+                  {item.space ? (
+                    <SpaceTile size="sm" space={item.space} />
+                  ) : (
+                    <item.icon aria-hidden="true" />
+                  )}
                   <span className={cn(fadeTextClass, "flex-1")}>
                     <MatchedLabel label={item.label} matches={item.matches} />
                   </span>
@@ -307,9 +313,9 @@ function CommandPaletteBody(props: {
  * With no typed text: recent rows of that tab, then the most recently
  * active conversations, actions, and pages. With typed text: matches of
  * each kind, ranked; conversations and pages put the group with the best
- * match first, then open Inbox items and To-dos, closed ones under Done,
- * automations, and server matches outside the feed. The open conversation
- * is never a row.
+ * match first, then Spaces, open Inbox items and To-dos, closed ones under
+ * Done, automations, and server matches outside the feed. The open
+ * conversation is never a row.
  */
 function paletteItems(input: {
   actions: PaletteAction[];
@@ -453,8 +459,17 @@ function paletteItems(input: {
     ...input.feed.map((conversation) => conversation.id),
     ...inRepository,
   ]);
+  // A Space is its Lead, which only the server search finds.
+  const matchedSpaces = others(input.searched).flatMap((conversation) =>
+    conversation.kind === "lead" && conversation.space
+      ? [spaceItem(conversation, conversation.space, query)]
+      : [],
+  );
   const more = others(input.searched)
-    .filter((conversation) => !shown.has(conversation.id))
+    .filter(
+      (conversation) =>
+        conversation.kind !== "lead" && !shown.has(conversation.id),
+    )
     .slice(0, MORE_LIMIT)
     .map((conversation) =>
       conversationItem(conversation, "More conversations", query),
@@ -490,6 +505,7 @@ function paletteItems(input: {
       ...(pagesFirst
         ? [matchedPages, conversations]
         : [conversations, matchedPages]),
+      matchedSpaces,
       matchedInbox,
       matchedTodos,
       matchedDone,
@@ -562,6 +578,25 @@ function automationItem(
     matches: match?.indices,
     score: match?.score ?? 0,
     to: automationSelectPath(automation),
+  };
+}
+
+function spaceItem(
+  lead: Conversation,
+  space: SpaceRefReport,
+  query: string,
+): PaletteItem {
+  const match = quickOpenMatch(space.name, query);
+  return {
+    group: "Spaces",
+    id: `space-${space.id}`,
+    label: space.name,
+    matches: match?.indices,
+    meta: lead.archivedAt ? "Archived" : undefined,
+    // The server matched the Lead's text, so the row stays.
+    score: match?.score ?? 1,
+    space: { ...space, visibility: lead.visibility },
+    to: spacePath(space.id),
   };
 }
 

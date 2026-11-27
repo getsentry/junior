@@ -2693,6 +2693,13 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
   };
 }
 
+/** The mock Leads as feed rows. Only a search finds them, as in the API. */
+export function readMockLeadFeedRows(): ConversationFeedItem[] {
+  return mockConversations(NOW_MS)
+    .filter((conversation) => conversation.kind === "lead")
+    .map(feedItemFromConversation);
+}
+
 /**
  * Active root summaries used by mock aggregates and directories. Like the
  * feed, they leave out unlisted Conversations.
