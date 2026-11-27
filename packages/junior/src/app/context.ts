@@ -18,6 +18,8 @@ export interface AppContext {
   queueProvider: QueueProviderState;
   /** Slack workspace domains that this instance looked up. */
   slackTeamDomains: SlackTeamDomainCache;
+  /** The Slack team id of each bot token, looked up once per token. */
+  slackBotTeamIds: Map<string, Promise<string>>;
 }
 
 /** Build the long-lived app state from resolved plugin wiring. */
@@ -39,6 +41,7 @@ export function createAppContext(
     catalog,
     queueProvider: {},
     slackTeamDomains: { entries: new Map(), inflight: new Map() },
+    slackBotTeamIds: new Map(),
   };
 }
 
