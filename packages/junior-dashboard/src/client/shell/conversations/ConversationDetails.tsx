@@ -32,11 +32,7 @@ import {
 } from "../../conversations/ConversationDrawer";
 import { automationPath } from "../../format";
 import { useMobileLayout } from "../../layoutMedia";
-import {
-  fadeOverflowClass,
-  fadeTextClass,
-  fadeWhenOverflowing,
-} from "../../textFade";
+import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 import { cn } from "../../styles";
 
 type DetailsView = "details" | "memories" | "usage";
@@ -126,7 +122,12 @@ export function ConversationDetails(props: {
           </h2>
         }
       >
-        <div className="grid min-w-0 content-start gap-6 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <div
+          className={cn(
+            "grid min-w-0 content-start gap-6 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3",
+            bodyInset(panel),
+          )}
+        >
           {view === "usage" ? (
             props.usage
           ) : memoryList ? (
@@ -157,7 +158,12 @@ export function ConversationDetails(props: {
       }
       onClose={props.onClose}
     >
-      <div className="grid min-w-0 content-start gap-8 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+      <div
+        className={cn(
+          "grid min-w-0 content-start gap-8 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3",
+          bodyInset(panel),
+        )}
+      >
         {origin || detail?.summary || props.context ? (
           <div className="grid min-w-0 gap-2">
             {origin ? <ConversationOrigin origin={origin} /> : null}
@@ -287,6 +293,12 @@ function conversationOrigin(
   };
 }
 
+// The panel header starts its title 20px in, and the phone sheet 16px in.
+// The body text starts on the same edge.
+function bodyInset(panel: boolean) {
+  return panel ? "px-5" : "px-4";
+}
+
 /** Name where a Conversation came from in one muted line. */
 function ConversationOrigin(props: { origin: ConversationOriginLink }) {
   const { origin } = props;
@@ -294,7 +306,9 @@ function ConversationOrigin(props: { origin: ConversationOriginLink }) {
   const content = (
     <>
       <Icon aria-hidden="true" className="size-3.5 shrink-0" />
-      <span className={fadeTextClass}>{origin.label}</span>
+      <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+        {origin.label}
+      </span>
     </>
   );
   const className =
