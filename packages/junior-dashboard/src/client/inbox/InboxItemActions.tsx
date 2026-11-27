@@ -14,6 +14,7 @@ import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useFailedInboxItemAnswer, useInboxItemAction } from "./queries";
 import { InboxItemRelated } from "./InboxItemRelated";
+import { itemKindActions } from "./inboxModel";
 import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
@@ -151,12 +152,10 @@ export function InboxItemActions(props: {
   }
 
   // A To-do for the viewer closes with Mark done, its main action. A plugin
-  // kind can bring its own, such as Resume. An item added with a question
-  // before kinds had actions shows that question's choice instead.
+  // kind can bring its own, such as Resume.
   const todo = item.todoId !== undefined;
   const question = inboxItemQuestion(item.request);
-  const kindActions =
-    item.canAct && !question ? (item.subject.actions ?? []) : [];
+  const kindActions = itemKindActions(item);
   // A person who may only answer, such as a reader of a public question,
   // gets no Dismiss or Snooze.
   const dismiss = item.canAct && (props.dismiss ?? true);
@@ -206,8 +205,6 @@ export function InboxItemActions(props: {
           onClick={() =>
             void run({ action: "done", id: kindAction.id }).catch(() => {})
           }
-          // The subject's link stays the main action, as for a choice.
-          variant="outline"
         >
           {kindAction.label}
         </Button>

@@ -173,14 +173,16 @@ function controls(item: InboxItem): Button[] {
   if (item.kind === "notice") return quiet;
   const question = inboxItemQuestion(item.request);
   if (!question) {
-    // The item's kind can put its own buttons on it, such as Resume. The
-    // plugin does the work and reads no words.
+    // The item's kind can put its own buttons on it, such as Resume. Each
+    // is the card's main action. The plugin does the work and reads no
+    // words.
     return [
       ...quiet,
       ...subjectKindActions(item.subject.kind, getPlugins()).map(
         (action): Button => ({
           type: "button",
           action_id: `${KIND_ACTION_ID_PREFIX}${action.id}`,
+          style: "primary",
           text: plainText(action.label),
           value: item.id,
         }),
