@@ -100,9 +100,10 @@ export function DetailsSection(props: {
 }
 
 /**
- * Lay out one details row: a 16px icon, a title of up to two lines, and optional
- * muted lines under it. A row with `href` opens that link in a new tab, a
- * row with `to` opens a dashboard page, and an `onClick` row is a button.
+ * Lay out one details row: a 16px icon, a title of up to two lines, and
+ * optional muted lines under it. A row with `href` opens that link in a new
+ * tab, a row with `to` opens a dashboard page, and an `onClick` row is a
+ * button.
  * `menu` shows at the end of the row on hover or focus.
  */
 export function DetailsRow(props: {
