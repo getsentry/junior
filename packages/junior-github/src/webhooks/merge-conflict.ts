@@ -225,6 +225,7 @@ export async function loadGitHubMergeConflictEvents(args: {
         now: new Date(),
         ref,
         inboxItems: args.inboxItems,
+        state: args.state,
       });
     } catch (error) {
       // The delivered events still publish without the conflict check.

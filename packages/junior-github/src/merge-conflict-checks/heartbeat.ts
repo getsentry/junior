@@ -114,6 +114,7 @@ async function checkConflict(
     now: args.now,
     ref: input.ref,
     inboxItems: args.inboxItems,
+    state: args.state,
   })) {
     // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
     await args.events.publish(event);

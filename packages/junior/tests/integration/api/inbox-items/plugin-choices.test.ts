@@ -3,6 +3,7 @@ import {
   type InboxItemAnsweredHookContext,
   type User,
 } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
@@ -150,18 +151,20 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     visibility: "public",
   });
   const ana = await person("ana@example.com");
-  await ownedPluginInboxItems({
+  const items = ownedPluginInboxItems({
     conversationId: CONVERSATION_ID,
     plugin: "deploys",
     show: async () => {},
-  }).upsert({
+  });
+  const notice = {
     askedIdentityIds: [ana.identityId],
     assigneeIdentityIds: [ana.identityId],
     body: "Deploys of `api` stopped after 3 failures.",
     choices: [{ label: "Resume" }],
     subject: { id: "api", kind: "deploy_stopped" },
     title: "Deploys stopped · api",
-  });
+  };
+  await items.upsert(notice);
 
   // The choice is one button: an action that waits on Ana.
   const [row] = await getDb().select().from(juniorInboxItems);
@@ -200,6 +203,22 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     status: "done",
   });
   expect(watching).toEqual([false, true]);
+  // The item history keeps the Resume, also after a new ask opens, so the
+  // plugin keeps no record of what Ana did.
+  await items.upsert(notice);
+  const [asked] = await getDb()
+    .select()
+    .from(juniorInboxItems)
+    .where(eq(juniorInboxItems.status, "open"));
+  expect(await items.history(notice.subject)).toEqual([
+    { id: asked!.id, status: "open" },
+    {
+      choice: "Resume",
+      closedAtMs: expect.any(Number),
+      id: row!.id,
+      status: "done",
+    },
+  ]);
   expect(await listWatches({ conversationId: CONVERSATION_ID })).toEqual([
     expect.objectContaining({
       events: ["deploy.stopped"],

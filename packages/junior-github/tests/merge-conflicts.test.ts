@@ -849,7 +849,9 @@ describe("merge conflict check on webhook events", () => {
       await fixThatDoesNotLand();
       expect(h.notices).toHaveLength(1);
       pullRequest.head.sha = "1".repeat(40);
-      duringPullRequestRead = () => checkAt(pushedAt + day + hour, "1");
+      // The check runs minutes after the click, while Resume reads.
+      vi.setSystemTime(resume.nowMs);
+      duringPullRequestRead = () => checkAt(resume.nowMs, "1");
       await h.answer(resume);
       expect(duringPullRequestRead).toBeUndefined();
       expect(h.notices).toHaveLength(1);

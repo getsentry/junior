@@ -9,7 +9,9 @@ import type {
   EventInput,
   PluginCodeChanges,
   PluginConversationInboxItems,
+  PluginInboxItemRecord,
   PluginLogger,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import pLimit from "p-limit";
@@ -21,6 +23,7 @@ import {
 } from "../db/schema.js";
 import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
 import {
+  type GitHubPullRequestOpener,
   listGitHubPullRequestOpeners,
   recordGitHubPullRequestOpenerId,
 } from "../pull-request-requesters/store.js";
@@ -29,6 +32,7 @@ import {
   pullRequestSubject,
 } from "../inbox-subjects.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
+import { isResumingGitHubConflictFixes } from "./resuming.js";
 import type {
   GitHubMergeConflict,
   GitHubPullRequestRef,
@@ -170,6 +174,37 @@ export function withGitHubConflictFix(
   );
 }
 
+/** What people did on the merge conflict items of one pull request. */
+export interface GitHubConflictAsks {
+  /**
+   * The latest ask is open, or a person dismissed it. Junior asks once
+   * after each Resume, so a Dismiss ends the asks.
+   */
+  holds: boolean;
+  /** The latest Resume that started a fix: its item, and when it closed. */
+  resume?: { atMs: number; itemId: string };
+}
+
+/**
+ * Read the asks from the item history of one pull request, newest first.
+ * A Resume counts only when it started a fix, so one that started none,
+ * such as on a draft, lets the next conflict ask again at once.
+ */
+export function gitHubConflictAsks(
+  items: PluginInboxItemRecord[],
+  fixes: GitHubConflictFix[],
+): GitHubConflictAsks {
+  const latest = items[0]?.status;
+  const holds = latest === "open" || latest === "dismissed";
+  const itemId = [...fixes].reverse().find((fix) => fix.itemId)?.itemId;
+  const resume = items.find(
+    (item) => item.id === itemId && item.choice === GITHUB_CONFLICT_RESUME,
+  );
+  return resume?.closedAtMs === undefined
+    ? { holds }
+    : { holds, resume: { atMs: resume.closedAtMs, itemId: resume.id } };
+}
+
 /**
  * `retry` publishes a fix that started already again. `ask` adds the Review
  * item for a fix that did not land.
@@ -178,38 +213,33 @@ type GitHubConflictAction = "ask" | "fix" | "retry" | "skip";
 
 /** Decide what a conflict on one open Junior pull request does. */
 function gitHubConflictAction(input: {
-  askedAtMs: number | undefined;
+  asks: GitHubConflictAsks;
   fixes: GitHubConflictFix[];
   headSha: string;
   history: GitHubConflictHistory;
   nowMs: number;
-  resumedAtMs: number | undefined;
 }): GitHubConflictAction {
-  const { askedAtMs, fixes, nowMs, resumedAtMs } = input;
+  const { asks, fixes, nowMs } = input;
   const { approved } = input.history;
+  const resumedAtMs = asks.resume?.atMs ?? 0;
   // A Resume counts as activity by a person.
-  const activeAtMs = Math.max(input.history.activeAtMs, resumedAtMs ?? 0);
+  const activeAtMs = Math.max(input.history.activeAtMs, resumedAtMs);
   // Upkeep follows people: an idle pull request gets no fix and no ask.
   if (nowMs - activeAtMs > ACTIVE_MS && !approved) return "skip";
-  // A Resume that has not saved its fix yet is starting one.
-  const resuming =
-    resumedAtMs === activeAtMs && fixes.every(({ atMs }) => atMs < resumedAtMs);
-  const started = resuming
-    ? resumedAtMs
-    : fixes.find(({ headSha }) => headSha === input.headSha)?.atMs;
-  if (started !== undefined) {
+  const started = fixes.find(({ headSha }) => headSha === input.headSha);
+  if (started) {
     // A fix changes the head commit. So with the same head a day later, the
-    // fix did not land. Ask once after each Resume, so Dismiss ends the
-    // asks.
-    if (nowMs - started >= FIX_INTERVAL_MS) {
-      return askedAtMs !== undefined && askedAtMs > (resumedAtMs ?? 0)
-        ? "skip"
-        : "ask";
+    // fix did not land.
+    if (nowMs - started.atMs >= FIX_INTERVAL_MS) {
+      return asks.holds ? "skip" : "ask";
     }
     // The policy's event key names the head commit, and core delivers each
     // key once, so its event publishes again: a publish that failed gets
     // another try. A Resume's event has its own key.
-    return resuming || started === resumedAtMs ? "skip" : "retry";
+    return started.itemId !== undefined &&
+      started.itemId === asks.resume?.itemId
+      ? "skip"
+      : "retry";
   }
   // The fix that Resume started counts as the first in a row. The next
   // activity by a person starts the count again.
@@ -217,40 +247,31 @@ function gitHubConflictAction(input: {
     return "skip";
   }
   // Only a pull request that is not approved waits a day between fixes.
-  const fixedAtMs = Math.max(
-    resumedAtMs ?? 0,
-    ...fixes.map(({ atMs }) => atMs),
-  );
+  const fixedAtMs = Math.max(resumedAtMs, ...fixes.map(({ atMs }) => atMs));
   return !approved && nowMs - fixedAtMs < FIX_INTERVAL_MS ? "skip" : "fix";
 }
 
 /** Ask the requester to resume a fix that did not land. */
 async function addUnlandedItem(args: {
   conflict: GitHubMergeConflict;
+  conversationId: string;
   db: GitHubDb;
+  opener: GitHubPullRequestOpener;
   /** GitHub's id of the pull request, the id of its item. */
   pullRequestId: string;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
 }): Promise<void> {
-  const { conflict, ref } = args;
-  const opener = (
-    await listGitHubPullRequestOpeners(args.db, {
-      numbers: [ref.number],
-      repositoryFullName: ref.repositoryFullName,
-    })
-  ).get(ref.number);
-  // Only a pull request that a person asked for has a Conversation.
-  if (!opener?.conversationId) return;
+  const { conflict, opener, ref } = args;
   if (!opener.pullRequestId) {
     await recordGitHubPullRequestOpenerId(args.db, {
-      conversationId: opener.conversationId,
+      conversationId: args.conversationId,
       number: ref.number,
       pullRequestId: args.pullRequestId,
       repositoryFullName: ref.repositoryFullName,
     });
   }
-  await args.inboxItems.forConversation(opener.conversationId).upsert({
+  await args.inboxItems.forConversation(args.conversationId).upsert({
     // The policy asks once per Resume, so each upsert is a new ask.
     askedIdentityIds: [opener.identityId],
     assigneeIdentityIds: [opener.identityId],
@@ -282,6 +303,7 @@ export async function applyGitHubConflictPolicy(args: {
   now: Date;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
+  state: PluginState;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
   const change = await findGitHubPullRequest(args.codeChanges, args.ref);
@@ -289,24 +311,41 @@ export async function applyGitHubConflictPolicy(args: {
   const t = juniorGitHubPullRequests;
   const pullRequest = eq(t.pullRequestId, change.providerId);
   const [row] = await args.db
-    .select({
-      askedAt: t.conflictFixAskedAt,
-      fixes: t.conflictFixes,
-      resumedAt: t.conflictFixesResumedAt,
-    })
+    .select({ fixes: t.conflictFixes })
     .from(t)
     .where(pullRequest)
     .limit(1);
   // A pull request that Junior did not open goes to its Watch as before.
   if (!row) return args.events;
+  // A Resume that has not saved its fix yet is starting one.
+  if (await isResumingGitHubConflictFixes(args.state, change.providerId)) {
+    return [];
+  }
+  const opener = (
+    await listGitHubPullRequestOpeners(args.db, {
+      numbers: [args.ref.number],
+      repositoryFullName: args.ref.repositoryFullName,
+    })
+  ).get(args.ref.number);
+  // Only a pull request that a person asked for has a Conversation.
+  const conversationId = opener?.conversationId;
+  const items = conversationId
+    ? await args.inboxItems
+        .forConversation(conversationId)
+        .history(
+          pullRequestSubject(
+            GITHUB_INBOX_SUBJECTS.mergeConflict,
+            change.providerId,
+          ),
+        )
+    : [];
   const nowMs = args.now.getTime();
   const action = gitHubConflictAction({
-    askedAtMs: row.askedAt?.getTime(),
+    asks: gitHubConflictAsks(items, row.fixes),
     fixes: row.fixes,
     headSha: args.conflict.headSha,
     history: parseGitHubConflictHistory(await args.loadHistory(args.ref)),
     nowMs,
-    resumedAtMs: row.resumedAt?.getTime(),
   });
   if (action === "skip") return [];
   if (action === "retry") return args.events;
@@ -322,13 +361,15 @@ export async function applyGitHubConflictPolicy(args: {
       .where(pullRequest);
     return args.events;
   }
+  if (!opener || !conversationId) return [];
   try {
-    await addUnlandedItem({ ...args, pullRequestId: change.providerId });
-    // Save the ask after the item, so a failed item is asked again.
-    await args.db
-      .update(t)
-      .set({ conflictFixAskedAt: args.now })
-      .where(pullRequest);
+    // The item is the ask, so a failed item is asked again.
+    await addUnlandedItem({
+      ...args,
+      conversationId,
+      opener,
+      pullRequestId: change.providerId,
+    });
   } catch (error) {
     logFailOpenFailure(args.log, "GitHub merge conflict item failed", error, {
       number: args.ref.number,
@@ -408,22 +449,14 @@ export async function closeGitHubConflictItems(args: {
     pullRequestId: string,
   ) => {
     try {
-      const closed = await args.inboxItems
-        .forConversation(conversationId)
-        .close({
-          subject: pullRequestSubject(
-            GITHUB_INBOX_SUBJECTS.mergeConflict,
-            pullRequestId,
-          ),
-          reason: args.reason,
-          status: args.status,
-        });
-      if (closed) {
-        await args.db
-          .update(juniorGitHubPullRequests)
-          .set({ conflictFixAskedAt: null })
-          .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId));
-      }
+      await args.inboxItems.forConversation(conversationId).close({
+        subject: pullRequestSubject(
+          GITHUB_INBOX_SUBJECTS.mergeConflict,
+          pullRequestId,
+        ),
+        reason: args.reason,
+        status: args.status,
+      });
     } catch (error) {
       logFailOpenFailure(
         args.log,

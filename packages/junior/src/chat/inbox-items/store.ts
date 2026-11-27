@@ -462,6 +462,22 @@ export async function getOpenInboxItemBySubject(
   return (await hydrate(db, rows))[0];
 }
 
+/** Read every Inbox item of one subject, open and closed, newest first. */
+export async function listInboxItemsBySubject(
+  db: JuniorDatabase,
+  subject: InboxItemSubject,
+): Promise<InboxItem[]> {
+  const rows = await selectItemRows(db)
+    .where(
+      and(
+        eq(juniorInboxItems.subjectKind, subject.kind),
+        eq(juniorInboxItems.subjectId, subject.id),
+      ),
+    )
+    .orderBy(desc(juniorInboxItems.createdAt), desc(juniorInboxItems.id));
+  return await hydrate(db, rows);
+}
+
 /**
  * Add one open Inbox item. Return undefined when another open item already
  * has its subject. `owner` is the owner that the subject names: a question

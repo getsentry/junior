@@ -133,11 +133,29 @@ export interface PluginReviewNotice {
 }
 
 /**
+ * One item of a subject as the Inbox records it. A closed item keeps how
+ * and when it closed, so a subject's items say what people did on it.
+ */
+export interface PluginInboxItemRecord {
+  /** The label of the choice that a person picked to close it. */
+  choice?: string;
+  /** Unset while the item is open. */
+  closedAtMs?: number;
+  id: string;
+  status: "open" | "done" | "dismissed";
+}
+
+/**
  * Inbox items that a plugin adds and closes from its own events. Each item
  * belongs to one Conversation. Core owns visibility, assignment rules, and
  * the Slack cards.
  */
 export interface PluginInboxItems {
+  /**
+   * The items of the subject, newest first: the open one, if any, then the
+   * closed ones.
+   */
+  history(subject: PluginInboxItemSubject): Promise<PluginInboxItemRecord[]>;
   /** Add an open item, or change the open one of the subject. */
   upsert(notice: PluginReviewNotice): Promise<void>;
   /**

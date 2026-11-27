@@ -4,6 +4,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 import { mapBounded } from "@/chat/fan-out";
 import {
   PluginInboxItemOwnerError,
+  type PluginInboxItemRecord,
   type PluginInboxItemSubject,
   type PluginInboxItems,
   type PluginReviewNotice,
@@ -19,6 +20,7 @@ import {
   closeInboxItem,
   getOpenInboxItemBySubject,
   insertInboxItem,
+  listInboxItemsBySubject,
   ownerConversationId,
   updateInboxItemContent,
   type InboxItem,
@@ -273,6 +275,24 @@ export function createPluginInboxItems(args: {
       : { itemId };
   };
   return {
+    async history(subject) {
+      const items = await listInboxItemsBySubject(
+        getDb(),
+        pluginItemSubject(args.plugin, subject),
+      );
+      // The subject names the owner, so one check covers every item.
+      if (items[0]) requireOwner(items[0], conversationId);
+      return items.map((item) => {
+        const record: PluginInboxItemRecord = {
+          id: item.id,
+          status: item.status,
+        };
+        if (item.closedAt) record.closedAtMs = item.closedAt.getTime();
+        const choice = item.answer?.values[PLUGIN_CHOICE_FIELD_ID]?.[0];
+        if (choice) record.choice = choice;
+        return record;
+      });
+    },
     async upsert(notice) {
       const subject = pluginItemSubject(args.plugin, notice.subject);
       if (!subjectKindLabel(subject.kind, getPlugins())) {
