@@ -34,9 +34,11 @@ import { mockEmbeddings } from "../../fixtures/retrieval-models";
 import { expectResponseBudget } from "../../fixtures/response-budget";
 import {
   expectNoFullScan,
+  expectPlanCost,
   expectSqlBudget,
   measureSql,
 } from "../../fixtures/sql-budget";
+import { seedDashboardScale } from "../../fixtures/dashboard-scale";
 
 const TEAM_ID = "T123";
 const VIEWER = { email: "ana@example.com", slackUserId: "UANA" };
@@ -596,13 +598,19 @@ describe("search API", () => {
     const search = signedIn(viewer);
     const sources = "inboxItems,automations,memories,todos";
 
+    await seedDashboardScale();
     const response = await expectResponseBudget(
       () =>
-        expectNoFullScan(() =>
-          expectSqlBudget(() => search("deploy", sources), {
-            statements: 7,
-            serialRounds: 1,
-          }),
+        expectPlanCost(
+          () =>
+            expectNoFullScan(() =>
+              expectSqlBudget(() => search("deploy", sources), {
+                statements: 7,
+                serialRounds: 1,
+              }),
+            ),
+          // About 9,800.
+          15_000,
         ),
       { automations: 155, inboxItems: 272, memories: 176, todos: 300 },
     );

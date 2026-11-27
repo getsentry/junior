@@ -23,7 +23,8 @@ import {
   recordSlackRoot,
 } from "../../../fixtures/conversation-status";
 import { expectResponseBudget } from "../../../fixtures/response-budget";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
+import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
 
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
 
@@ -126,6 +127,7 @@ describe("conversation list API response budget", () => {
 
   it("keeps each row of a heavy viewer's feed inside a size budget", async () => {
     const fixture = await createStatusFixture();
+    await seedDashboardScale();
     // Waiting rows older than the page join the first page after it.
     const waitingIds: string[] = [];
     for (let index = 0; index < 3; index += 1) {
@@ -161,12 +163,19 @@ describe("conversation list API response budget", () => {
       pinnedIds.push(conversationId);
     }
 
+    // About 390,000, mostly the starter check of each tree row. An owner
+    // check of the open Inbox items on each tree row costs about seven times
+    // as much.
     const response = await expectResponseBudget(
       () =>
-        expectSqlBudget(
-          () => fixture.request("/api/conversations?include=links,media"),
-          // Threads' tree states wait for the Thread read: one more round.
-          { statements: 18, serialRounds: 4 },
+        expectPlanCost(
+          () =>
+            expectSqlBudget(
+              () => fixture.request("/api/conversations?include=links,media"),
+              // Threads' tree states wait for the Thread read: one more round.
+              { statements: 18, serialRounds: 4 },
+            ),
+          600_000,
         ),
       // Pins are not paged, so the body has no budget.
       {

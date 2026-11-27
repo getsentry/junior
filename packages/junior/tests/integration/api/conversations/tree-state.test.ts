@@ -22,14 +22,17 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/child-agents";
 import {
+  expectNoFullScan,
   expectPlanCost,
   expectSqlBudget,
   explainNodes,
+  TODO_OWNER_SCAN,
 } from "../../../fixtures/sql-budget";
 import {
   closeConversationFixture,
@@ -692,25 +695,12 @@ describe("conversation tree state", () => {
 
     // The Space list reads its top-level Conversations through indexes,
     // however many other Conversations there are. Its tree states cost
-    // about 27,000 today. Their To-do check may hash `todo_owner` once.
-    await getSqlExecutor().execute(
-      `insert into junior_conversations
-        (conversation_id, root_conversation_id, created_at, last_activity_at,
-         updated_at, execution_status)
-      select 'slack:CSPACEOTHER:' || n, 'slack:CSPACEOTHER:' || n, now(), now(),
-        now(), 'idle'
-      from generate_series(1, 5000) n`,
+    // about 53,000. An owner check of the open Inbox items on each tree row
+    // costs about five times as much.
+    await seedDashboardScale();
+    await expectPlanCost(
+      () => expectNoFullScan(asViewer, { todoOwner: TODO_OWNER_SCAN }),
+      80_000,
     );
-    await getSqlExecutor().execute("analyze junior_conversations");
-    await expectPlanCost(asViewer, 40_000);
-    expect(
-      (await explainNodes(asViewer))
-        .flat()
-        .filter(
-          (node) =>
-            node["Node Type"] === "Seq Scan" &&
-            node.Alias === "junior_conversations",
-        ),
-    ).toEqual([]);
   });
 });

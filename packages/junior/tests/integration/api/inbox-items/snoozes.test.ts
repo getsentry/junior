@@ -35,6 +35,8 @@ import {
   useGitHubRepository,
   user,
 } from "../../../fixtures/snoozes";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
+import { expectPlanCost } from "../../../fixtures/sql-budget";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -147,7 +149,9 @@ describe("snoozes", () => {
     expect((await readCountAgain()).status).toBe(200);
     expect((await readListAgain()).status).toBe(200);
     expect(await feedWaitingIds(ana.id)).toEqual([]);
-    const snoozed = await asAna.snoozed();
+    await seedDashboardScale();
+    // About 480.
+    const snoozed = await expectPlanCost(() => asAna.snoozed(), 750);
     expect(snoozed.count).toBe(2);
     expect([...snoozed.items].sort()).toEqual(awake.inbox);
     expect(await asAna.versions()).not.toBe(versionBefore);

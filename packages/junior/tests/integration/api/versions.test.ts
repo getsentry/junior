@@ -579,6 +579,12 @@ describe("versions API", () => {
               serialRounds: 1,
             }),
           {
+            detailTreesOnSmallData: {
+              reason:
+                "On this small data Postgres hashes the Conversations of the detail trees. At scale it reads them through an index.",
+              statement: '"conversation_versions"',
+              table: "junior_conversations",
+            },
             inboxItemsNeedingUser: {
               reason:
                 "The Inbox token reads every open action item to find the ones assigned to the viewer. It needs a fix of its own.",

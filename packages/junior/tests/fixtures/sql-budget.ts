@@ -216,6 +216,7 @@ const BIG_TABLES = [
   "junior_automations",
   "junior_code_changes",
   "junior_conversation_metrics",
+  "junior_conversations",
   "junior_inbox_items",
   "junior_memory_embeddings",
   "junior_memory_memories",
@@ -230,6 +231,17 @@ type FullScanAllowance = {
   table: string;
   statement: string;
   reason: string;
+};
+
+/**
+ * The To-do check of Inbox item access reads `junior_conversations` as
+ * `todo_owner` with no index condition, for each item that it checks.
+ */
+export const TODO_OWNER_SCAN: FullScanAllowance = {
+  reason:
+    "The To-do check of an Inbox item finds its owner with no index. It needs a fix of its own.",
+  statement: '"todo_owner"',
+  table: "junior_conversations",
 };
 
 /**
@@ -268,8 +280,9 @@ export async function expectNoFullScan<T>(
         used.add(allowance[0]);
         continue;
       }
+      const as = node.Alias && node.Alias !== table ? ` as ${node.Alias}` : "";
       failures.push(
-        `statement ${index} reads ${table} in full (${node["Node Type"]}): ${text}`,
+        `statement ${index} reads ${table}${as} in full (${node["Node Type"]}): ${text}`,
       );
     }
   }
