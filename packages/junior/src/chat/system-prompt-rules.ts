@@ -274,7 +274,7 @@ const LEAD_CONTEXT_TRUST_RULES = [
  * agent gets the answers to its own questions, so it needs the same meaning.
  */
 const QUESTION_ANSWER_TRUST_RULE =
-  "- A `<question-answer tool_use_id>` is the person's answer to your `askUserQuestion` call with that id. Continue the work that asked it, as the answer says.";
+  "- A `<question-answer tool_use_id>` is an answer to your `askUserQuestion` call with that id, from the person on its `Answered by` line, who may not be an assignee. Continue the work that asked it, as the answer says.";
 
 /** Block 3 line that says which inputs of a person's Turn are the job. */
 const CONVERSATION_JOB_TRUST_RULE =

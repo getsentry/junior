@@ -21,6 +21,7 @@ import {
 } from "@/chat/inbox-items/user-input-request";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { InboxItemChangeRecord } from "./change-record";
+import { personName } from "./messages";
 import { getInboxItem, type InboxItem } from "./store";
 import {
   ASK_SUBJECT_PREFIX,
@@ -85,23 +86,27 @@ function askToolUseId(item: InboxItem): string | undefined {
 }
 
 // Render one answer to a question as a prompt input. Only an action item
-// with a request takes an answer.
+// with a request takes an answer. It names the person who closed the item,
+// who need not be an assignee. Without the name the model guesses one.
 function renderInboxItemAnswer(
   item: InboxItem,
 ): RuntimeInstructionInput | undefined {
   const request = inboxItemQuestion(item.request);
   if (!request || !item.answer) return undefined;
   const requestText = typedAnswerText(request, item.answer);
+  const by = item.closedBy;
   const text = renderTag(
     "question-answer",
     { tool_use_id: askToolUseId(item) },
-    (request.question
-      ? [
-          `Question: ${shortQuestion(request.question)}`,
-          formatUserInputAnswer(request, item.answer),
-        ]
-      : questionAnswerLines(request, item.answer)
-    ).map(escapeTagText),
+    [
+      ...(by ? [`Answered by: ${personName(by)}`] : []),
+      ...(request.question
+        ? [
+            `Question: ${shortQuestion(request.question)}`,
+            formatUserInputAnswer(request, item.answer),
+          ]
+        : questionAnswerLines(request, item.answer)),
+    ].map(escapeTagText),
   );
   return {
     kind: "runtime",

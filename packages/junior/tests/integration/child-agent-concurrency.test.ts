@@ -743,6 +743,7 @@ describe("child agent identity and concurrency", () => {
       expect(requests[1]!.instruction.text).toBe(
         [
           '<question-answer tool_use_id="toolu_owner">',
+          "Answered by: alice@example.com",
           'The person has answered your questions: "Who should own the login bug?"="Bob"',
           "You can now continue with their answers in mind.",
           "</question-answer>",

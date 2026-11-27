@@ -55,7 +55,8 @@ export function inboxItemChangeRecord(
     : undefined;
 }
 
-function personName(user: User): string {
+/** Name a person as the agent reads them: their name and email. */
+export function personName(user: Pick<User, "displayName" | "email">): string {
   return user.displayName ? `${user.displayName} (${user.email})` : user.email;
 }
 
