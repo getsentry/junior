@@ -175,6 +175,9 @@ untrusted text set up, does not run.
 
 ## Gaps
 
+- `review-by-default`, `sandbox-boundary`: core `bash` is not reviewed, so
+  a command whose effect leaves the Sandbox, such as a push or a network
+  write, runs without review.
 - `rule-kinds`: Guardian asks on high risk with weak authorization, also
   when no rule matches. A rule asks until the person
   names a required detail, even when their words name the exact action.
