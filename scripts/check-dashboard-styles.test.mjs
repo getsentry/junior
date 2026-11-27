@@ -11,7 +11,7 @@ import {
   findNewUiEllipsis,
   findNonstandardNeutralTextColors,
   findPxBreakpoints,
-  findTileGlyphTextSizes,
+  findIconGlyphTextSizes,
   findUndersizedHardcodedFontSizes,
   findUnknownDashboardColorTokens,
 } from "./check-dashboard-styles.mjs";
@@ -120,12 +120,12 @@ test("reports absolute arbitrary text sizes and allows relative em", () => {
   );
 });
 
-test("reports the Space tile glyph size outside the Space tile", () => {
+test("reports the Conversation icon glyph size outside the Conversation icon", () => {
   const contents = 'const glyph = "text-3xs tracking-tighter";';
   assert.deepEqual(
-    findTileGlyphTextSizes([
+    findIconGlyphTextSizes([
       {
-        path: "packages/junior-dashboard/src/client/spaces/SpaceTile.tsx",
+        path: "packages/junior-dashboard/src/client/conversations/ConversationIcon.tsx",
         contents,
       },
       { path: "src/example.tsx", contents },

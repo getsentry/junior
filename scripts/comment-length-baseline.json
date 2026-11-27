@@ -563,7 +563,6 @@
     "packages/junior-dashboard/src/client/shell/pages/locations/LocationsPage.tsx": 1,
     "packages/junior-dashboard/src/client/shell/pages/people/PeopleDirectory.tsx": 1,
     "packages/junior-dashboard/src/client/shell/primaryNav.ts": 1,
-    "packages/junior-dashboard/src/client/spaces/spaceTileMark.ts": 1,
     "packages/junior-dashboard/src/client/styles.ts": 4,
     "packages/junior-dashboard/src/client/time.ts": 2,
     "packages/junior-dashboard/src/client/types.ts": 3,

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  spaceInitials,
-  spaceTileColor,
-} from "../src/client/spaces/spaceTileMark";
+  conversationInitials,
+  conversationIconColor,
+} from "../src/client/conversations/conversationIconMark";
 
-describe("spaceInitials", () => {
+describe("conversationInitials", () => {
   it("tells apart names that share a leading word", () => {
     const names = [
       "Junior Spaces",
@@ -14,41 +14,41 @@ describe("spaceInitials", () => {
       "Junior Evals Nightly",
     ];
 
-    expect(names.map(spaceInitials)).toEqual(["JS", "JE", "JI", "JN"]);
+    expect(names.map(conversationInitials)).toEqual(["JS", "JE", "JI", "JN"]);
   });
 
   it("uses one initial for a one-word name", () => {
-    expect(spaceInitials("junior")).toBe("J");
-    expect(spaceInitials("  Infra  ")).toBe("I");
+    expect(conversationInitials("junior")).toBe("J");
+    expect(conversationInitials("  Infra  ")).toBe("I");
   });
 
   it("splits on the separators that names use for spaces", () => {
-    expect(spaceInitials("junior-evals")).toBe("JE");
-    expect(spaceInitials("sdk/python")).toBe("SP");
-    expect(spaceInitials("ops_on.call")).toBe("OC");
+    expect(conversationInitials("junior-evals")).toBe("JE");
+    expect(conversationInitials("sdk/python")).toBe("SP");
+    expect(conversationInitials("ops_on.call")).toBe("OC");
   });
 
   it("skips words with no letter or digit, and leading punctuation", () => {
-    expect(spaceInitials("Billing & payments")).toBe("BP");
-    expect(spaceInitials("(beta) Launch")).toBe("BL");
-    expect(spaceInitials("Q3 roadmap 🚀")).toBe("QR");
+    expect(conversationInitials("Billing & payments")).toBe("BP");
+    expect(conversationInitials("(beta) Launch")).toBe("BL");
+    expect(conversationInitials("Q3 roadmap 🚀")).toBe("QR");
   });
 
   it("keeps letters outside ASCII", () => {
-    expect(spaceInitials("équipe données")).toBe("ÉD");
+    expect(conversationInitials("équipe données")).toBe("ÉD");
   });
 
   it("shows the first character of a name with no letter or digit", () => {
-    expect(spaceInitials("🚀")).toBe("🚀");
-    expect(spaceInitials("")).toBe("");
+    expect(conversationInitials("🚀")).toBe("🚀");
+    expect(conversationInitials("")).toBe("");
   });
 });
 
-describe("spaceTileColor", () => {
-  it("gives a Space the same color on every call", () => {
+describe("conversationIconColor", () => {
+  it("gives an ID the same color on every call", () => {
     const id = "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21";
 
-    expect(spaceTileColor(id)).toBe(spaceTileColor(id));
+    expect(conversationIconColor(id)).toBe(conversationIconColor(id));
   });
 
   it("spreads IDs that differ in one character over the palette", () => {
@@ -59,7 +59,7 @@ describe("spaceTileColor", () => {
     );
     const counts = new Map<string, number>();
     for (const id of ids) {
-      const color = spaceTileColor(id);
+      const color = conversationIconColor(id);
       counts.set(color, (counts.get(color) ?? 0) + 1);
     }
 

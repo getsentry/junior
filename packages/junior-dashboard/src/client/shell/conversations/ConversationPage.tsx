@@ -58,7 +58,9 @@ import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
 import { leadMenuState } from "../../spaces/leadMenuState";
 import { useSpaceActions } from "../../spaces/SpaceActions";
 import { useSpaceData } from "../../spaces/queries";
-import { SpaceChip } from "../../spaces/SpaceTile";
+import { SpaceChip } from "../../spaces/SpaceChip";
+import { ConversationIcon } from "../../conversations/ConversationIcon";
+import { conversationIconId } from "../../conversations/conversationIconMark";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import { ConversationDock } from "./ConversationDock";
 import { useConversationDetailsOpen } from "./useConversationDetailsOpen";
@@ -396,8 +398,11 @@ export function ConversationPage(props: {
     { conversation, detail: conversationDetail },
     lead ? leadSpace : undefined,
   );
+  // A Lead has no pin, so its header shows no pin state.
   const displayState = conversation
-    ? conversationDisplayState(conversation)
+    ? conversationDisplayState(
+        lead ? { ...conversation, pinnedAt: null } : conversation,
+      )
     : undefined;
   const links = conversationLinks(conversationDetail);
   // A Lead's title is its Space's name, which a rename sets at once.
@@ -718,6 +723,17 @@ export function ConversationPage(props: {
                   openDetails();
                 }
               }}
+              icon={
+                // A Lead shows the icon that its Space shows elsewhere. No
+                // other Conversation shows its icon yet.
+                lead && detail.data ? (
+                  <ConversationIcon
+                    iconId={conversationIconId(detail.data)}
+                    name={title}
+                    size="md"
+                  />
+                ) : null
+              }
               forks={
                 detail.data?.forkedFromConversationId ||
                 detail.data?.forks?.length ? (

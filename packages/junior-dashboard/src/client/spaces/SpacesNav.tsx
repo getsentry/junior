@@ -16,7 +16,7 @@ import { useMemberSpacesData } from "./queries";
 import { useSpaceActions } from "./SpaceActions";
 import { spacePath } from "./spaceRoutes";
 import { SpaceStateIcon, spaceDisplayState } from "./SpaceStateIcon";
-import { SpaceTile } from "./SpaceTile";
+import { ConversationIcon } from "../conversations/ConversationIcon";
 
 // The dialog opens only after a click, so it loads with the first open
 // instead of with every page.
@@ -53,7 +53,13 @@ function SpaceNavRow(props: {
           data-row-menu=""
           to={spacePath(space.id)}
         >
-          <SpaceTile className="justify-self-center" size="sm" space={space} />
+          <ConversationIcon
+            className="justify-self-center"
+            iconId={space.id}
+            name={space.name}
+            size="sm"
+            visibility={space.visibility}
+          />
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
             {space.name}
           </span>

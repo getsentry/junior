@@ -92,7 +92,8 @@ import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
-import { SpaceChip } from "../spaces/SpaceTile";
+import { SpaceChip } from "../spaces/SpaceChip";
+import { canPinConversation } from "../conversations/conversationMenuItems";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
@@ -298,7 +299,7 @@ function ConversationInboxRow(
           tooltip={actions.archived ? "Restore" : "Archive"}
         />
       ) : null}
-      {participant && !actions.archived ? (
+      {participant && !actions.archived && canPinConversation(conversation) ? (
         <RowActionButton
           disabled={actions.pending.pin}
           icon={
@@ -927,7 +928,8 @@ function ExpandedActions(props: {
           <ButtonLabel look={props.look}>Wake</ButtonLabel>
         </Button>
       ) : null}
-      {props.conversation?.isParticipant ? (
+      {props.conversation?.isParticipant &&
+      canPinConversation(props.conversation) ? (
         <ExpandedPin conversation={props.conversation} look={props.look} />
       ) : null}
       {props.open ? <RowOwnerLink look={props.look} open={props.open} /> : null}

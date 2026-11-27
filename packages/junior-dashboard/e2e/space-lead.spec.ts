@@ -28,6 +28,10 @@ test("a Space page shows its Lead and the Conversations it started", async ({
   ).toBeVisible();
   // Members share the Lead: another member's request is in it too.
   await expect(transcript.getByText("Avery Chen")).toBeVisible();
+  // The Lead is Junior, so its replies carry the agent's name.
+  await expect(
+    transcript.getByText("Junior", { exact: true }).first(),
+  ).toBeVisible();
   await expect(
     transcript.getByRole("separator", { name: "Today" }),
   ).toBeVisible();
@@ -146,11 +150,12 @@ test("the Lead's own link shows the Conversation header", async ({
     page.getByRole("heading", { name: "Billing migration" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Conversation menu" }),
-  ).toBeVisible();
-  await expect(
     page.getByRole("complementary", { name: "Conversation details" }),
   ).toBeVisible();
+  // A Space is always in the pane, so its menu has no Pin or Unpin.
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(conversationMenuRow(page, "Rename")).toBeVisible();
+  await expect(conversationMenuRow(page, /^(Pin|Unpin)$/)).toHaveCount(0);
 });
 
 test("home opens the Inbox, and the pane has no Lead", async ({

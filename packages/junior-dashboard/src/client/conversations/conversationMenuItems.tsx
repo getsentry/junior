@@ -75,6 +75,16 @@ export type ConversationMenu = {
   };
 };
 
+/**
+ * Whether the dashboard offers Pin and Unpin for a Conversation. A Space is
+ * always in the pane, so its Lead has neither.
+ */
+export function canPinConversation(
+  conversation: Pick<Conversation, "kind"> | undefined,
+): boolean {
+  return conversation?.kind !== "lead";
+}
+
 /** The API takes pins, renames, and other changes only from participants. */
 export function isConversationParticipant(
   menu: Pick<ConversationMenu, "conversation" | "detail">,
@@ -120,7 +130,7 @@ export function useConversationMenuItems(
   ];
   // A pin restores an archived conversation for everyone, so archived
   // conversations restore first.
-  if (!archived) {
+  if (!archived && canPinConversation(conversation)) {
     actItems.push({
       // Threads and Tasks use their root's pin.
       disabled:
