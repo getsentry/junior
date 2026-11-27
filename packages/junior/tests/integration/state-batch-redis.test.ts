@@ -26,10 +26,13 @@ const previousEnv = vi.hoisted(() => {
 
 // Later files in the same worker must not run on this file's Redis state.
 afterAll(async () => {
-  await disconnectStateAdapter();
-  for (const [key, value] of Object.entries(previousEnv)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
+  try {
+    await disconnectStateAdapter();
+  } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 });
 
