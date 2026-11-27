@@ -66,6 +66,7 @@ function buildPlugin(
   name = "demo",
   options: {
     allowedTools?: string[];
+    skipReview?: string[];
     wrappedTools?: string[];
   } = {},
 ): PluginDefinition {
@@ -85,6 +86,9 @@ function buildPlugin(
           : undefined),
         ...(options.wrappedTools
           ? { wrappedTools: options.wrappedTools }
+          : undefined),
+        ...(options.skipReview
+          ? { guardian: { skipReview: options.skipReview } }
           : undefined),
       },
     },
@@ -468,6 +472,30 @@ describe("McpToolManager", () => {
       "mcp__notion__notion-search",
       "mcp__notion__notion-fetch",
     ]);
+  });
+
+  it("skips review only for the exact remote tool names that the plugin lists", async () => {
+    const plugin = buildPlugin("notion", { skipReview: ["notion-search"] });
+    listToolsMock.mockResolvedValue(
+      ["notion-search", "notion-search-v2", "notion-create-pages"].map(
+        (name) => ({
+          name,
+          description: name,
+          inputSchema: { type: "object", properties: {} },
+          annotations: { readOnlyHint: true },
+        }),
+      ),
+    );
+
+    const manager = new McpToolManager([plugin]);
+    await manager.activateProvider("notion");
+
+    expect(
+      manager
+        .getResolvedActiveTools()
+        .filter((tool) => tool.skipReview)
+        .map((tool) => tool.rawName),
+    ).toEqual(["notion-search"]);
   });
 
   it("exposes the provider tool catalog once a provider is active, without requiring a skill", async () => {

@@ -568,6 +568,30 @@ describe("plugin manifest API headers", () => {
     ).toThrow(message);
   });
 
+  it("parses the MCP tools that skip Guardian review", () => {
+    const source = (skipReview: string) =>
+      [
+        "name: example",
+        "display-name: Example",
+        "description: Example MCP access",
+        "mcp:",
+        "  url: https://mcp.example.com/mcp",
+        "  allowed-tools:",
+        "    - search",
+        "    - create",
+        "  guardian:",
+        "    skip-review:",
+        `      - ${skipReview}`,
+      ].join("\n");
+
+    expect(
+      parsePluginManifest(source("search"), "/tmp/example").mcp?.guardian,
+    ).toEqual({ skipReview: ["search"] });
+    expect(() => parsePluginManifest(source("delete"), "/tmp/example")).toThrow(
+      "Plugin example mcp.guardian.skip-review must be listed in mcp.allowed-tools or mcp.wrapped-tools: delete",
+    );
+  });
+
   it("parses accounts with a service account", () => {
     const manifest = parsePluginManifest(
       [
