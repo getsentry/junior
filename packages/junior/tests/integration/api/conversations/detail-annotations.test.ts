@@ -29,6 +29,10 @@ import {
   stubGraphql,
   T0,
 } from "../../../fixtures/github-objects";
+import {
+  readLiveCards,
+  recordOutboundRequests,
+} from "../../../fixtures/object-cards";
 import { createPluginTaskQueueTestAdapter } from "../../../fixtures/plugin-task-queue";
 import { signedInViewer } from "../../../fixtures/user";
 import { mswServer } from "../../../msw/server";
@@ -99,7 +103,7 @@ describe("conversation detail annotations", () => {
     });
   });
 
-  it("reads each annotation's object live for the viewer, and shows only its label to a viewer who cannot read it", async () => {
+  it("shows each annotation's cached object only to a viewer whose access is cached, and reads no provider", async () => {
     // createApp installs its plugins; the next test starts without them.
     useAppContext();
     stubGitHubApp();
@@ -147,10 +151,36 @@ describe("conversation detail annotations", () => {
       url: `${GITHUB_REPO}/pull/35`,
     });
 
+    const alice = await signedInViewer("alice@example.com");
+    const outbound = recordOutboundRequests();
     try {
-      const member = await readConversationDetail(conversationId, {
-        viewer: await signedInViewer("alice@example.com"),
+      // Nothing holds Alice's access yet, so the page shows the stored
+      // title and the link, and asks GitHub nothing.
+      const unknown = await readConversationDetail(conversationId, {
+        viewer: alice,
       });
+      expect(unknown?.annotations).toEqual([
+        {
+          createdAt: expect.any(String),
+          key: "getsentry/junior#35",
+          kind: "object",
+          label: "getsentry/junior#35",
+          objectType: "code_change",
+          plugin: "github",
+          title: "Draft title",
+          updatedAt: expect.any(String),
+          url: `${GITHUB_REPO}/pull/35`,
+        },
+      ]);
+      expect(outbound.urls).toEqual([]);
+
+      // A live read, such as an Attach, caches her access and the object.
+      await readLiveCards(alice, [`${GITHUB_REPO}/pull/35`]);
+      outbound.urls.length = 0;
+      const member = await readConversationDetail(conversationId, {
+        viewer: alice,
+      });
+      expect(outbound.urls).toEqual([]);
       expect(member?.annotations).toEqual([
         expect.objectContaining({
           key: "getsentry/junior#35",
@@ -183,27 +213,18 @@ describe("conversation detail annotations", () => {
         source: "github",
       });
 
-      // A reader without access to the repository sees the label that
-      // GitHub makes from the link, and the link.
+      // A reader without access to the repository sees only the stored
+      // title and the link, never what the App read.
       const outsider = await readConversationDetail(conversationId, {
         viewer: await signedInViewer("bob@example.com"),
       });
-      expect(outsider?.annotations).toEqual([
-        {
-          createdAt: expect.any(String),
-          key: "getsentry/junior#35",
-          kind: "resource_link",
-          label: "getsentry/junior#35",
-          objectType: "code_change",
-          plugin: "github",
-          updatedAt: expect.any(String),
-          url: `${GITHUB_REPO}/pull/35`,
-        },
-      ]);
-      expect(JSON.stringify(outsider?.sidebarAnnotations)).not.toMatch(
-        /Draft title|Saved label|Show screenshots|merged|open/,
+      expect(outsider?.annotations).toEqual(unknown?.annotations);
+      expect(JSON.stringify(outsider)).not.toMatch(
+        /Show screenshots|merged|user-attachments/,
       );
+      expect(outbound.urls).toEqual([]);
     } finally {
+      outbound.stop();
       vi.unstubAllEnvs();
     }
   });
@@ -331,7 +352,7 @@ describe("conversation detail annotations", () => {
 });
 
 // A public Conversation that annotates pull request `number`, and a poll
-// of its detail page as a GitHub-linked viewer.
+// of its detail page as a GitHub-linked viewer whose access is cached.
 async function annotatedPullRequestPage(number: number) {
   await linkGitHubMember();
   const conversationId = `local:test:provider-change-${number}`;
@@ -356,6 +377,8 @@ async function annotatedPullRequestPage(number: number) {
     url: `${GITHUB_REPO}/pull/${number}`,
   });
   const viewer = await signedInViewer("alice@example.com");
+  // A live read, such as an Attach, caches her access and the object.
+  await readLiveCards(viewer, [`${GITHUB_REPO}/pull/${number}`]);
   const api = new Hono<JuniorApiEnv>();
   api.use("*", async (context, next) => {
     context.set("viewer", viewer);

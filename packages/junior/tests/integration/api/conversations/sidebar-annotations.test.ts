@@ -19,6 +19,10 @@ import {
   pullRequest,
   stubGitHubApp,
 } from "../../../fixtures/github-objects";
+import {
+  readLiveCards,
+  recordOutboundRequests,
+} from "../../../fixtures/object-cards";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 import { signedInViewer } from "../../../fixtures/user";
 import { mswServer } from "../../../msw/server";
@@ -238,7 +242,7 @@ describe("conversation list sidebar annotations", () => {
     }
   });
 
-  test("shows each row's objects as the viewer can read them now, with its child agents' objects", async () => {
+  test("shows each row's objects from the caches, with its child agents' objects, and reads no provider", async () => {
     stubGitHubApp();
     mswServer.use(
       http.get(`${GITHUB_API}/pulls/36`, () =>
@@ -303,6 +307,27 @@ describe("conversation list sidebar annotations", () => {
         (await readConversationFeedFromSql({ viewer })).conversations.find(
           (row) => row.conversationId === rootId,
         )?.sidebarAnnotations;
+      const titleOnly = [
+        {
+          key: "getsentry/junior#36",
+          label: "junior",
+          objectType: "code_change",
+          title: "Draft: retry uploads",
+          url: `${GITHUB_REPO}/pull/36`,
+        },
+      ];
+      const outbound = recordOutboundRequests();
+      // The feed looks up a Slack workspace's domain once a day. No card
+      // reads a provider.
+      const cardReads = () =>
+        outbound.urls.filter((url) => !url.endsWith("/api/team.info"));
+      // Nothing holds Alice's access yet, so her row shows the stored
+      // title and asks GitHub nothing.
+      await expect(chips(alice)).resolves.toEqual(titleOnly);
+      expect(cardReads()).toEqual([]);
+      // A live read, such as an Attach, caches her access and the object.
+      await readLiveCards(alice, [`${GITHUB_REPO}/pull/36`]);
+      outbound.urls.length = 0;
       await expect(chips(alice)).resolves.toEqual([
         {
           key: "getsentry/junior#36",
@@ -313,15 +338,10 @@ describe("conversation list sidebar annotations", () => {
           url: `${GITHUB_REPO}/pull/36`,
         },
       ]);
-      // A reader who cannot see the repository gets only the label.
-      await expect(chips(bob)).resolves.toEqual([
-        {
-          key: "getsentry/junior#36",
-          label: "junior",
-          objectType: "code_change",
-          url: `${GITHUB_REPO}/pull/36`,
-        },
-      ]);
+      // A reader who cannot see the repository gets only the stored title.
+      await expect(chips(bob)).resolves.toEqual(titleOnly);
+      expect(cardReads()).toEqual([]);
+      outbound.stop();
     } finally {
       vi.unstubAllEnvs();
       await closeDb();

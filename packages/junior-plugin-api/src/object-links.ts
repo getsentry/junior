@@ -236,6 +236,14 @@ export interface ObjectLinkContext extends PluginContext {
    * that read asks the provider as usual.
    */
   prefetchOutcome?: ObjectLinkPrefetchOutcome;
+  /**
+   * True when a page load, a poll, or a hover reads the card. Read only
+   * what your cache already holds, such as objects that webhooks keep, and
+   * make no provider call. `egress`, `viewerEgress`, and `viewerMcp` throw.
+   * Return false or nothing on a miss. Junior calls a link type in this
+   * read only when it sets `cacheOnlyReads`.
+   */
+  cacheOnly?: true;
 }
 
 /**
@@ -250,6 +258,12 @@ export interface PluginObjectLinkDefinition {
    * last card when a read fails.
    */
   cacheCards?: true;
+  /**
+   * Set true when `canView` and `resolve` honor `ctx.cacheOnly`. Without
+   * it, a cache-only read shows only the card that `cacheCards` kept, or no
+   * card.
+   */
+  cacheOnlyReads?: true;
   /**
    * Return whether `ctx.viewer` may see the object. Junior calls it before
    * each card read and again on each Attach. Return true for a public

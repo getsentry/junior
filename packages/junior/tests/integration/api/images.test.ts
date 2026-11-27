@@ -19,6 +19,7 @@ import { MAX_IMAGE_BYTES } from "@/chat/images/fetch";
 import { imagePath, type ImageRef } from "@/chat/images/ids";
 import { juniorIdentities } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
+import { readLiveCards } from "../../fixtures/object-cards";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
 
@@ -468,14 +469,13 @@ describe("image API", () => {
         }),
       ]),
     });
-    const cards = await signedInApi(testViewer("member@example.com")).request(
-      `http://localhost/api/objects?${new URLSearchParams({ url: "https://files.example.com/f/report" })}`,
-    );
-    const [resolved] = (await cards.json()).objects;
-    const path = resolved.object.facts.thumbnailUrl;
-    expect(path).toBe(
-      imagePath({ ref: "report", source: "file-host" }, 640, "7"),
-    );
+    const {
+      objects: [resolved],
+    } = await readLiveCards(testViewer("member@example.com"), [
+      "https://files.example.com/f/report",
+    ]);
+    const path = imagePath({ ref: "report", source: "file-host" }, 640, "7");
+    expect(resolved?.object.facts).toMatchObject({ thumbnailUrl: path });
 
     await expectWebp(await requestImage(path, "member@example.com"), {
       height: 512,

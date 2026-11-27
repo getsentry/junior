@@ -15,14 +15,31 @@ import { objectLinksReportSchema } from "@/api/schema";
 import { getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { readLiveCards } from "./object-cards";
 import { linkSlackUser } from "./slack-user";
 import { signedInViewer } from "./user";
 import { mswServer } from "../msw/server";
 
 /**
- * Read `/api/objects` as one signed-in viewer. Returns the cards by URL.
+ * Read cards live as one signed-in viewer, as an Attach does. Returns the
+ * cards by URL.
  */
 export async function viewerApi(email: string) {
+  const viewer = await signedInViewer(email);
+  return async (...urls: string[]) => {
+    const { body, objects } = await readLiveCards(viewer, urls);
+    return {
+      body,
+      objects: new Map(objects.map((item) => [item.url, item.object])),
+    };
+  };
+}
+
+/**
+ * Read `/api/objects` as one signed-in viewer, as the dashboard does when a
+ * link shows or is hovered. Returns the cards by URL.
+ */
+export async function viewerPageApi(email: string) {
   const viewer = await signedInViewer(email);
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
@@ -37,15 +54,11 @@ export async function viewerApi(email: string) {
     // The browser may keep a card as long as the server cache does.
     expect(response.headers.get("cache-control")).toBe("private, max-age=60");
     expect(response.headers.get("vary")).toBe("Authorization, Cookie");
-    const body = await response.text();
-    return {
-      body,
-      objects: new Map(
-        objectLinksReportSchema
-          .parse(JSON.parse(body))
-          .objects.map((item) => [item.url, item.object]),
-      ),
-    };
+    return new Map(
+      objectLinksReportSchema
+        .parse(await response.json())
+        .objects.map((item) => [item.url, item.object]),
+    );
   };
 }
 

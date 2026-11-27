@@ -3,16 +3,13 @@ import {
   type IssueCredentialHookContext,
   type User,
 } from "@sentry/junior-plugin-api";
-import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, expect, it, vi } from "vitest";
-import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
-import type { JuniorApiEnv } from "@/api/route";
-import { objectLinksReportSchema } from "@/api/schema";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { closeDb } from "@/chat/db";
 import { defineJuniorPlugins } from "@/plugins";
+import { readLiveCards } from "../../fixtures/object-cards";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
 
@@ -87,20 +84,8 @@ it("reads link cards through plugin-owned credentials as a system Actor", async 
         : new HttpResponse(null, { status: 401 }),
     ),
   );
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    context.set("viewer", testViewer("alice@example.com"));
-    await next();
-  });
-  app.route("/", createJuniorApi());
-
-  const response = await app.request(
-    `http://localhost/api/objects?url=${encodeURIComponent("https://docs.test/d/1")}`,
-  );
-
-  expect(response.status).toBe(200);
   expect(
-    objectLinksReportSchema.parse(await response.json()).objects,
+    await readCards(testViewer("alice@example.com"), "https://docs.test/d/1"),
   ).toMatchObject([
     {
       url: "https://docs.test/d/1",
@@ -205,19 +190,7 @@ it("checks link access with only the viewer's own OAuth token", async () => {
     scope: "read",
   });
   const url = "https://tracker.test/t/1";
-  const read = async (viewer: User) => {
-    const app = new Hono<JuniorApiEnv>();
-    app.use("*", async (context, next) => {
-      context.set("viewer", viewer);
-      await next();
-    });
-    app.route("/", createJuniorApi());
-    const response = await app.request(
-      `http://localhost/api/objects?url=${encodeURIComponent(url)}`,
-    );
-    expect(response.status).toBe(200);
-    return objectLinksReportSchema.parse(await response.json()).objects;
-  };
+  const read = async (viewer: User) => await readCards(viewer, url);
 
   expect(await read(alice)).toMatchObject([
     { url, object: { plugin: "tracker", title: "Fix the login page" } },
@@ -230,19 +203,9 @@ it("checks link access with only the viewer's own OAuth token", async () => {
   expect(statuses).toEqual([200, 401]);
 });
 
-/** Read `/api/objects` for one URL as one viewer. */
+/** Read the card of one URL live as one viewer. */
 async function readCards(viewer: User, url: string) {
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    context.set("viewer", viewer);
-    await next();
-  });
-  app.route("/", createJuniorApi());
-  const response = await app.request(
-    `http://localhost/api/objects?url=${encodeURIComponent(url)}`,
-  );
-  expect(response.status).toBe(200);
-  return objectLinksReportSchema.parse(await response.json()).objects;
+  return (await readLiveCards(viewer, [url])).objects;
 }
 
 /** The docs plugin, whose card reads the file title as the system Actor. */

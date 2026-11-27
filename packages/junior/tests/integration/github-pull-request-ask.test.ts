@@ -31,6 +31,10 @@ import {
   slackSpawnInput,
   slackParentConversationId,
 } from "../fixtures/child-agents";
+import {
+  readLiveCards,
+  recordOutboundRequests,
+} from "../fixtures/object-cards";
 import { seedLinkedPerson } from "../fixtures/slack-user";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { signedInViewer } from "../fixtures/user";
@@ -453,16 +457,23 @@ describe("the ask of a Junior pull request", () => {
         await next();
       });
       api.route("/", createJuniorApi());
+      // A page reads only the caches. A live read, such as the Inbox tools
+      // make, caches Pat's access and the card.
+      const readCard = () => readLiveCards(viewer, [PULL_URL]);
+      await readCard();
+      const outbound = recordOutboundRequests();
       const response = await api.request(
         "http://localhost/api/inbox-items?for=viewer",
       );
+      outbound.stop();
+      expect(outbound.urls).toEqual([]);
       expect(response.status).toBe(200);
       const { items } = (await response.json()) as {
         items: Array<{ id: string; subject: Record<string, unknown> }>;
       };
-      // The label is the viewer's ask on the live pull request. The title
-      // is GitHub's title now, from one read for the page, and no Inbox
-      // column stores it.
+      // The label is the viewer's ask on the cached pull request. The
+      // title is GitHub's title from the last read, and no Inbox column
+      // stores it.
       expect(items).toMatchObject([
         {
           id: review!.id,
@@ -480,10 +491,10 @@ describe("the ask of a Junior pull request", () => {
       expect(items[0]!.subject).not.toHaveProperty("dismissNote");
       expect(cardReads).toBe(1);
 
-      // Pat's approval is dismissed while a page waits on the card read
-      // that a new review started. GitHub answered that read before the
-      // dismissal, so its approval does not stay, and the next page reads
-      // the decision again.
+      // Pat's approval is dismissed while a live read waits on the card
+      // read that a new review started. GitHub answered that read before
+      // the dismissal, so its approval does not stay, and the next read
+      // asks for the decision again.
       await sendGitHubWebhook("pull_request_review", {
         action: "submitted",
         pull_request: { number: 1592, user: { login: BOT } },
@@ -498,6 +509,7 @@ describe("the ask of a Junior pull request", () => {
         });
       };
       const label = async () => {
+        await readCard();
         const page = await api.request(
           "http://localhost/api/inbox-items?for=viewer",
         );
@@ -915,8 +927,10 @@ describe("the ask of a Junior pull request", () => {
       });
 
       // Out sees the item and the pull request, but not the private
-      // Conversation.
+      // Conversation. A live read, such as the Inbox tools make, caches
+      // Out's access and the card, and the page reads only the caches.
       const viewer = await signedInViewer("out@example.com");
+      await readLiveCards(viewer, [PULL_URL]);
       const api = new Hono<JuniorApiEnv>();
       api.use("*", async (context, next) => {
         context.set("viewer", viewer);

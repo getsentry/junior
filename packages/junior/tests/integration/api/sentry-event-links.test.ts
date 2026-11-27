@@ -1,17 +1,14 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { sentryPlugin } from "@sentry/junior-sentry";
-import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
-import type { JuniorApiEnv } from "@/api/route";
-import { objectLinksReportSchema } from "@/api/schema";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { closeDb } from "@/chat/db";
 import { defineJuniorPlugins } from "@/plugins";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
+import { readLiveCards } from "../../fixtures/object-cards";
 
 const SENTRY_SCOPE =
   "alerts:write event:write member:read org:read project:releases project:write team:write";
@@ -78,23 +75,6 @@ async function connectSentry(viewer: User, name: string) {
   });
 }
 
-async function readCards(viewer: User, urls: string[]) {
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    context.set("viewer", viewer);
-    await next();
-  });
-  app.route("/", createJuniorApi());
-  const query = new URLSearchParams(urls.map((url) => ["url", url]));
-  const response = await app.request(`http://localhost/api/objects?${query}`);
-  expect(response.status).toBe(200);
-  const body = await response.text();
-  return {
-    body,
-    objects: objectLinksReportSchema.parse(JSON.parse(body)).objects,
-  };
-}
-
 describe("Sentry event link cards", () => {
   beforeEach(async () => {
     vi.stubEnv("SENTRY_READ_TOKEN", ORG_READ_TOKEN);
@@ -114,7 +94,7 @@ describe("Sentry event link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    const { body, objects } = await readCards(alice, [EVENT_URL]);
+    const { body, objects } = await readLiveCards(alice, [EVENT_URL]);
 
     expect(objects).toEqual([
       {
@@ -158,7 +138,7 @@ describe("Sentry event link cards", () => {
       `https://sentry.io/sentry/checkout/events/${EVENT_ID}/`,
     ];
 
-    const { objects } = await readCards(alice, urls);
+    const { objects } = await readLiveCards(alice, urls);
 
     expect(objects.map(({ object }) => object.key)).toEqual([
       `event:sentry/checkout:${EVENT_ID}`,
@@ -174,8 +154,8 @@ describe("Sentry event link cards", () => {
     await connectSentry(bob, "bob");
 
     // Alice's cached event must not reach Bob.
-    expect((await readCards(alice, [EVENT_URL])).objects).toHaveLength(1);
-    const { body, objects } = await readCards(bob, [EVENT_URL]);
+    expect((await readLiveCards(alice, [EVENT_URL])).objects).toHaveLength(1);
+    const { body, objects } = await readLiveCards(bob, [EVENT_URL]);
 
     expect(objects).toEqual([]);
     for (const text of ["cart.total", "checkout@4.2.0", "submitOrder"]) {
@@ -193,7 +173,7 @@ describe("Sentry event link cards", () => {
     });
     await connectSentry(testViewer("alice@example.com"), "alice");
 
-    const { objects } = await readCards(testViewer("carol@example.com"), [
+    const { objects } = await readLiveCards(testViewer("carol@example.com"), [
       EVENT_URL,
     ]);
 
@@ -206,8 +186,8 @@ describe("Sentry event link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    await readCards(alice, [EVENT_URL]);
-    const { objects } = await readCards(alice, [EVENT_URL]);
+    await readLiveCards(alice, [EVENT_URL]);
+    const { objects } = await readLiveCards(alice, [EVENT_URL]);
 
     expect(objects).toHaveLength(1);
     expect(queries).toHaveLength(1);

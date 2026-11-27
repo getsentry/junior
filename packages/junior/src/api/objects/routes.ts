@@ -20,9 +20,12 @@ export function createObjectRoutes(): Hono<JuniorApiEnv> {
       jsonResponse(
         objectLinksReportSchema,
         {
+          // The dashboard reads cards as links show or are hovered, so
+          // the read makes no provider call.
           objects: await resolveObjectLinks(
             context.get("viewer"),
             context.req.valid("query").url,
+            { cacheOnly: true },
           ),
         },
         // Each card holds only what this viewer may read. Only this browser

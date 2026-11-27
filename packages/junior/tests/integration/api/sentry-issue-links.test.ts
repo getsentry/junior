@@ -1,17 +1,14 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { sentryPlugin } from "@sentry/junior-sentry";
-import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
-import type { JuniorApiEnv } from "@/api/route";
-import { objectLinksReportSchema } from "@/api/schema";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { closeDb } from "@/chat/db";
 import { defineJuniorPlugins } from "@/plugins";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
+import { readLiveCards } from "../../fixtures/object-cards";
 
 const SENTRY_SCOPE =
   "alerts:write event:write member:read org:read project:releases project:write team:write";
@@ -130,23 +127,6 @@ async function connectSentry(viewer: User, name: string) {
   });
 }
 
-async function readCards(viewer: User, urls: string[]) {
-  const app = new Hono<JuniorApiEnv>();
-  app.use("*", async (context, next) => {
-    context.set("viewer", viewer);
-    await next();
-  });
-  app.route("/", createJuniorApi());
-  const query = new URLSearchParams(urls.map((url) => ["url", url]));
-  const response = await app.request(`http://localhost/api/objects?${query}`);
-  expect(response.status).toBe(200);
-  const body = await response.text();
-  return {
-    body,
-    objects: objectLinksReportSchema.parse(JSON.parse(body)).objects,
-  };
-}
-
 describe("Sentry issue link cards", () => {
   beforeEach(async () => {
     vi.stubEnv("SENTRY_READ_TOKEN", ORG_READ_TOKEN);
@@ -168,7 +148,7 @@ describe("Sentry issue link cards", () => {
     await connectSentry(alice, "alice");
     const url = "https://sentry.sentry.io/issues/4567/";
 
-    const { objects } = await readCards(alice, [url]);
+    const { objects } = await readLiveCards(alice, [url]);
 
     expect(objects).toEqual([
       {
@@ -224,7 +204,7 @@ describe("Sentry issue link cards", () => {
       "https://docs.sentry.sentry.io/issues/4567/",
     ];
 
-    const { objects } = await readCards(alice, [...urls, ...others]);
+    const { objects } = await readLiveCards(alice, [...urls, ...others]);
 
     expect(objects.map((card) => card.url)).toEqual(urls);
     expect(new Set(objects.map((card) => card.object.key))).toEqual(
@@ -253,7 +233,7 @@ describe("Sentry issue link cards", () => {
       "https://sentry.sentry.io/feedback/?feedbackSlug=7890",
     ];
 
-    const { body, objects } = await readCards(alice, [...urls, ...others]);
+    const { body, objects } = await readLiveCards(alice, [...urls, ...others]);
 
     expect(objects.map((card) => card.url)).toEqual(urls);
     expect(objects[0]?.object).toEqual({
@@ -284,7 +264,7 @@ describe("Sentry issue link cards", () => {
     const bob = testViewer("bob@example.com");
     await connectSentry(bob, "bob");
 
-    const { body, objects } = await readCards(bob, [
+    const { body, objects } = await readLiveCards(bob, [
       "https://sentry.sentry.io/issues/4567/",
     ]);
 
@@ -302,7 +282,7 @@ describe("Sentry issue link cards", () => {
     // Alice is connected. Her token must not stand in for Carol.
     await connectSentry(testViewer("alice@example.com"), "alice");
 
-    const { objects } = await readCards(testViewer("carol@example.com"), [
+    const { objects } = await readLiveCards(testViewer("carol@example.com"), [
       "https://sentry.sentry.io/issues/4567/",
     ]);
 
@@ -315,7 +295,7 @@ describe("Sentry issue link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    const { objects } = await readCards(alice, [
+    const { objects } = await readLiveCards(alice, [
       "https://sentry.sentry.io/issues/4567/",
       "https://acme-eu.sentry.io/issues/4567/",
     ]);
@@ -338,7 +318,7 @@ describe("Sentry issue link cards", () => {
     const alice = testViewer("alice@example.com");
     await connectSentry(alice, "alice");
 
-    const { objects } = await readCards(alice, [
+    const { objects } = await readLiveCards(alice, [
       "https://rogue.sentry.io/issues/4567/",
     ]);
 
@@ -362,12 +342,12 @@ describe("Sentry issue link cards", () => {
     await connectSentry(alice, "alice");
     const url = "https://sentry.sentry.io/issues/4567/";
 
-    expect((await readCards(alice, [url])).objects).toEqual([]);
+    expect((await readLiveCards(alice, [url])).objects).toEqual([]);
     refused = false;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + 61_000);
 
-    expect((await readCards(alice, [url])).objects).toHaveLength(1);
+    expect((await readLiveCards(alice, [url])).objects).toHaveLength(1);
     expect(orgReads).toEqual(["sentry"]);
   });
 
@@ -379,9 +359,9 @@ describe("Sentry issue link cards", () => {
     await connectSentry(dave, "dave");
     const url = "https://sentry.sentry.io/issues/4567/";
 
-    await readCards(alice, [url]);
-    await readCards(alice, [url]);
-    const { objects } = await readCards(dave, [url]);
+    await readLiveCards(alice, [url]);
+    await readLiveCards(alice, [url]);
+    const { objects } = await readLiveCards(dave, [url]);
 
     expect(objects).toHaveLength(1);
     expect(reads).toEqual([

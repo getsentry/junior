@@ -9,8 +9,10 @@ import {
   type ObjectType,
   type OwnedObjectAnnotation,
   type PluginCache,
+  type PluginEgress,
   type PluginObjectLinkDefinition,
   type PluginRegistration,
+  type PluginViewerMcp,
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDashboardLinkFilter } from "@/chat/dashboard-link";
@@ -61,6 +63,15 @@ const OBJECT_LINK_SYSTEM_ACTOR = {
   name: "object-link",
 } as const;
 
+// A cache-only read must not reach a provider, so a plugin that tries fails.
+const noProviderCall = () =>
+  Promise.reject(new Error("A cache-only card read called a provider"));
+const NO_PROVIDER_EGRESS: PluginEgress = { fetch: noProviderCall };
+const NO_PROVIDER_MCP: PluginViewerMcp = { callTool: noProviderCall };
+
+// The load of a card that a cache-only read did not find in the cache.
+const NOT_CACHED = new Error("The card is not cached");
+
 function coreLinkTypes(): ObjectLinkType[] {
   // Slack runtime is in core until Slack is a plugin.
   const slack: ObjectLinkType = {
@@ -89,6 +100,7 @@ function coreLinkTypes(): ObjectLinkType[] {
       // as a pause, shows at once.
       canView: canViewAutomationLink,
       filters: [automations],
+      cacheOnlyReads: true,
       label: () => "Automation",
       objectTypes: ["automation"],
       owner: "junior",
@@ -96,6 +108,7 @@ function coreLinkTypes(): ObjectLinkType[] {
     },
     {
       cacheCards: true,
+      cacheOnlyReads: true,
       canView: canViewConversationLink,
       filters: [conversations],
       objectTypes: ["conversation"],
@@ -104,6 +117,7 @@ function coreLinkTypes(): ObjectLinkType[] {
     },
     {
       // Person cards read the identity cache. A link or unlink clears it.
+      cacheOnlyReads: true,
       // Every signed-in viewer sees the People pages.
       canView: async () => true,
       filters: [people, { scheme: "mailto" }],
@@ -202,6 +216,14 @@ function objectLinkContext(
     viewerMcp: createViewerMcp(name, viewer.id),
     replaceSubjectId: (subject) =>
       replaceAnnotationSubjectId(getDb(), { ...subject, plugin: name }),
+    ...(read.cacheOnly
+      ? {
+          cacheOnly: true,
+          egress: NO_PROVIDER_EGRESS,
+          viewerEgress: NO_PROVIDER_EGRESS,
+          viewerMcp: NO_PROVIDER_MCP,
+        }
+      : undefined),
   };
 }
 
@@ -209,6 +231,7 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
   const name = plugin.manifest.name;
   return (plugin.objectLinks ?? []).map((link) => ({
     ...(link.cacheCards ? { cacheCards: true } : undefined),
+    ...(link.cacheOnlyReads ? { cacheOnlyReads: true } : undefined),
     canView: (viewer, url, prefetched, read) =>
       link.canView(
         objectLinkContext(name, link, viewer, prefetched, read),
@@ -272,12 +295,12 @@ async function resolveWithLinkType(
   viewer: User,
   url: URL,
   prefetched?: ObjectLinkPrefetchOutcome,
-  now?: true,
+  read: Pick<ObjectLinkRead, "cacheOnly" | "now"> = {},
 ): Promise<ResolvedObjectLink | null> {
-  const read = now ? { now } : {};
   if (!(await linkType.canView(viewer, url, prefetched, read))) {
-    // The web page card reads only what anyone can read signed out.
-    return linkType.webPageFallback
+    // The web page card reads only what anyone can read signed out. A
+    // cache-only read shows only the stored title and link instead.
+    return linkType.webPageFallback && !read.cacheOnly
       ? await resolveWithLinkType(webPageLinkType(), viewer, url)
       : null;
   }
@@ -321,8 +344,9 @@ export async function resolveObjectLinkNow(
   const linkType = findObjectLinkType(readObjectLinkTypes(), url);
   if (!linkType) return undefined;
   return (
-    (await resolveWithLinkType(linkType, viewer, url, undefined, true)) ??
-    undefined
+    (await resolveWithLinkType(linkType, viewer, url, undefined, {
+      now: true,
+    })) ?? undefined
   );
 }
 
@@ -381,11 +405,13 @@ async function prefetchLinks(
 /**
  * Resolve links to object cards for one viewer. A link without a link type,
  * without access, or with a failed read gets no card. Nothing is saved on a
- * Conversation.
+ * Conversation. `cacheOnly` reads, for a page load, a poll, or a hover, make
+ * no provider call: they show only what the caches hold.
  */
 export async function resolveObjectLinks(
   viewer: User,
   urls: readonly string[],
+  read: Pick<ObjectLinkRead, "cacheOnly"> = {},
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
   const links = [...new Set(urls)].flatMap((url) => {
@@ -393,8 +419,13 @@ export async function resolveObjectLinks(
     const linkType = parsed && findObjectLinkType(linkTypes, parsed);
     return parsed && linkType ? [{ linkType, parsed, url }] : [];
   });
-  const prefetched = await prefetchLinks(viewer, links);
+  // A prefetch loads from the provider, so a cache-only read skips it.
+  const prefetched = read.cacheOnly
+    ? new Map<ObjectLinkType, ReadonlyMap<string, ObjectLinkPrefetchOutcome>>()
+    : await prefetchLinks(viewer, links);
   const results = await mapBounded(links, async ({ linkType, parsed, url }) => {
+    // A link type that cannot read only its cache shows only a kept card.
+    const reads = !read.cacheOnly || linkType.cacheOnlyReads;
     // Each viewer has their own entry: a card holds only what they see.
     const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
     const resolve = async () =>
@@ -404,10 +435,12 @@ export async function resolveObjectLinks(
           viewer,
           parsed,
           prefetched.get(linkType)?.get(parsed.href),
+          read,
         )
       )?.object ?? null;
     try {
       if (!linkType.cacheCards) {
+        if (!reads) return [];
         const object = await resolve();
         return object ? [{ object, url }] : [];
       }
@@ -417,17 +450,23 @@ export async function resolveObjectLinks(
           fetchedAt = new Date(storedAtMs).toISOString();
         },
       });
-      const object = await cache.getOrLoad(key, async () => ({
-        // A failed read shows the last good card.
-        staleIfError: true,
-        value: await resolve(),
-        ttlMs: OBJECT_LINK_TTL_MS,
-      }));
+      const object = await cache.getOrLoad(
+        key,
+        reads
+          ? async () => ({
+              // A failed read shows the last good card.
+              staleIfError: true,
+              value: await resolve(),
+              ttlMs: OBJECT_LINK_TTL_MS,
+            })
+          : () => Promise.reject(NOT_CACHED),
+      );
       if (!object) return [];
       // A stale read inside the card is older than the card's entry.
       const age = object.fetchedAt ?? fetchedAt;
       return [{ object: age ? { ...object, fetchedAt: age } : object, url }];
     } catch (error) {
+      if (error === NOT_CACHED) return [];
       // One failed provider read must not hide the other cards.
       logException(error, "object_link.resolve.failed", {
         "app.plugin.name": linkType.owner,

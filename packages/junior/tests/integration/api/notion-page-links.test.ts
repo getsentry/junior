@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { createApp } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
-import { objectLinksReportSchema } from "@/api/schema";
 import { closeDb } from "@/chat/db";
 import {
   getMcpStoredOAuthCredentials,
@@ -19,6 +18,7 @@ import { getAppContext } from "@/app/context";
 import { defineJuniorPlugins } from "@/plugins";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
+import { readLiveCards } from "../../fixtures/object-cards";
 
 const MCP_ORIGIN = "https://mcp.notion.com";
 const MCP_URL = `${MCP_ORIGIN}/mcp`;
@@ -272,19 +272,6 @@ function signedInApi(viewer: User) {
   return app;
 }
 
-async function readCards(viewer: User, urls: string[]) {
-  const query = new URLSearchParams(urls.map((url) => ["url", url]));
-  const response = await signedInApi(viewer).request(
-    `http://localhost/api/objects?${query}`,
-  );
-  expect(response.status).toBe(200);
-  const body = await response.text();
-  return {
-    body,
-    objects: objectLinksReportSchema.parse(JSON.parse(body)).objects,
-  };
-}
-
 describe("Notion page link cards", () => {
   beforeEach(async () => {
     vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
@@ -304,7 +291,7 @@ describe("Notion page link cards", () => {
     const alice = testViewer("alice@example.com");
     await notion.connect(alice, "alice");
 
-    const { objects } = await readCards(alice, [LAUNCH_URL]);
+    const { objects } = await readLiveCards(alice, [LAUNCH_URL]);
 
     const thumbnailUrl =
       objects[0]?.object.facts?.type === "document"
@@ -335,7 +322,7 @@ describe("Notion page link cards", () => {
     ]);
     // The access check and the card share one `notion-fetch` call, and a
     // link with a trailing slash reads the same page from the cache.
-    const { objects: slashed } = await readCards(alice, [`${LAUNCH_URL}/`]);
+    const { objects: slashed } = await readLiveCards(alice, [`${LAUNCH_URL}/`]);
     expect(slashed.map((card) => card.object.title)).toEqual([
       "🚀 Launch plan",
     ]);
@@ -360,7 +347,7 @@ describe("Notion page link cards", () => {
     const bob = testViewer("bob@example.com");
     await notion.connect(bob, "bob");
 
-    const { body, objects } = await readCards(bob, [LAUNCH_URL]);
+    const { body, objects } = await readLiveCards(bob, [LAUNCH_URL]);
 
     // Notion shows a private page to nobody signed out, so no card shows.
     expect(objects).toEqual([]);
@@ -376,7 +363,7 @@ describe("Notion page link cards", () => {
     await notion.connect(testViewer("alice@example.com"), "alice");
     const carol = testViewer("carol@example.com");
 
-    const { objects } = await readCards(carol, [LAUNCH_URL, PUBLIC_URL]);
+    const { objects } = await readLiveCards(carol, [LAUNCH_URL, PUBLIC_URL]);
 
     expect(objects).toEqual([
       {
@@ -408,7 +395,7 @@ describe("Notion page link cards", () => {
     });
 
     const [cards, turnResult] = await Promise.all([
-      readCards(alice, [LAUNCH_URL]),
+      readLiveCards(alice, [LAUNCH_URL]),
       turnClient.callTool("notion-fetch", { id: RETRO_ID }),
     ]);
     await turnClient.close();

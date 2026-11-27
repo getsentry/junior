@@ -14,6 +14,8 @@ import {
  * entry served after its TTL was stored.
  */
 export interface ObjectLinkRead {
+  /** Read only cached state, with no provider call. */
+  cacheOnly?: true;
   now?: true;
   onStale?(storedAtMs: number): void;
 }
@@ -25,6 +27,8 @@ export interface ObjectLinkType {
    * for each viewer and URL.
    */
   cacheCards?: true;
+  /** True when `canView` and `resolve` honor `read.cacheOnly`. */
+  cacheOnlyReads?: true;
   /**
    * Whether the viewer may see the object. Called before `resolve`, with
    * the URL's prefetch outcome in a page read.

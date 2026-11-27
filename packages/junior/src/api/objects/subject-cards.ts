@@ -11,7 +11,11 @@ import type {
 import { getDb } from "@/chat/db";
 import { readSubjectLinks, subjectKey } from "@/chat/inbox-items/subject-links";
 import type { InboxItemSubject } from "@/chat/inbox-items/subjects";
-import { findObjectLinkType, type ObjectLinkType } from "./link-types";
+import {
+  findObjectLinkType,
+  type ObjectLinkRead,
+  type ObjectLinkType,
+} from "./link-types";
 import { readObjectLinkTypes, resolveObjectLinks } from "./resolve";
 
 /** One object to show: its subject, its stored link, and its owner. */
@@ -62,11 +66,13 @@ export function ownerLinkLabel(
  * Read the link and live card of each source for one viewer, in source
  * order, in one call for the page. The link is the subject link, else the
  * stored one. A source with no link or link type gets nothing. A viewer who
- * cannot read the object, or a failed read, gets only the link.
+ * cannot read the object, or a failed read, gets only the link. A
+ * `cacheOnly` read makes no provider call.
  */
 export async function resolveObjectCards(
   viewer: User | undefined,
   sources: readonly ObjectCardSource[],
+  mode: Pick<ObjectLinkRead, "cacheOnly"> = {},
 ): Promise<Array<ObjectCardView | undefined>> {
   const subjects = sources.flatMap(({ subject }) =>
     subject ? [{ subject }] : [],
@@ -99,10 +105,9 @@ export async function resolveObjectCards(
   const read = [...new Set(urls.filter((url) => url !== undefined))];
   const cards = new Map(
     viewer && read.length > 0
-      ? (await resolveObjectLinks(viewer, read)).map(({ object, url }) => [
-          url,
-          object,
-        ])
+      ? (await resolveObjectLinks(viewer, read, mode)).map(
+          ({ object, url }) => [url, object],
+        )
       : [],
   );
   return urls.map((url, index) => {
