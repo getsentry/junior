@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   checkDrizzleMigrationDirectory,
   drizzleKitCheckErrors,
+  drizzleLeafErrors,
 } from "./check-drizzle-migrations.mjs";
 
 function migrationFixture() {
@@ -69,4 +70,33 @@ test("reports drizzle-kit check conflicts and warnings", () => {
       "packages/example: drizzle-kit check failed:\nConflicting migrations detected",
     ],
   );
+});
+
+function writeSnapshot(directory, folder, id, prevIds) {
+  fs.mkdirSync(path.join(directory, folder));
+  fs.writeFileSync(
+    path.join(directory, folder, "snapshot.json"),
+    JSON.stringify({ id, prevIds }),
+  );
+}
+
+test("reports two migrations that follow the same parent", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "drizzle-leaves-"));
+  try {
+    writeSnapshot(directory, "20260101000000_initial", "a", [
+      "00000000-0000-0000-0000-000000000000",
+    ]);
+    writeSnapshot(directory, "20260102000000_left", "b", ["a"]);
+    writeSnapshot(directory, "20260103000000_right", "c", ["a"]);
+    assert.equal(drizzleLeafErrors(directory).length, 1);
+    assert.match(
+      drizzleLeafErrors(directory)[0],
+      /2 migrations have no child: 20260102000000_left, 20260103000000_right\./,
+    );
+
+    writeSnapshot(directory, "20260104000000_merge_leaves", "d", ["b", "c"]);
+    assert.deepEqual(drizzleLeafErrors(directory), []);
+  } finally {
+    fs.rmSync(directory, { force: true, recursive: true });
+  }
 });
