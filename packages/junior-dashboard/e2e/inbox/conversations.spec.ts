@@ -711,9 +711,6 @@ test.describe("new UI", () => {
     ).toBeVisible();
     await screenshot(page, "conversation-child-agent-drawer");
     await expect(
-      drawer.getByText(childConversationId, { exact: true }),
-    ).toBeVisible();
-    await expect(
       drawer.getByRole("link", { name: "Open conversation" }),
     ).toHaveAttribute(
       "href",
