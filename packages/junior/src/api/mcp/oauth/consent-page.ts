@@ -7,9 +7,11 @@
  */
 import { timingSafeEqual } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { escapeHtml, requestHasSameOrigin } from "@/api/html";
+import { escapeHtml, renderHtmlPage, requestHasSameOrigin } from "@/api/html";
 import {
   authorizationRedirect,
+  authorizationResponseUrl,
+  type AuthorizationResponse,
   bindMcpConsent,
   claimMcpAuthorization,
   readMcpAuthorization,
@@ -37,13 +39,42 @@ function blockedPage(): Response {
   });
 }
 
-// A custom-scheme redirect, such as the iOS app's, has the origin "null",
-// which matches nothing in CSP. Allow its scheme instead.
-function formActionSource(redirectUri: string): string {
+function isWebUrl(url: URL): boolean {
+  return url.protocol === "https:" || url.protocol === "http:";
+}
+
+// A web callback gets a redirect page, so the consent form only posts to
+// Junior. A custom-scheme callback, such as the iOS app's, still gets a 303,
+// so the form must reach its scheme. Its origin is "null", which matches
+// nothing in CSP.
+function formActionSource(redirectUri: string): string | undefined {
   const url = new URL(redirectUri);
-  return url.protocol === "https:" || url.protocol === "http:"
-    ? url.origin
-    : url.protocol;
+  return isWebUrl(url) ? undefined : url.protocol;
+}
+
+/*
+ * Chrome checks the consent page's `form-action` on every redirect after the
+ * POST, and a web callback can redirect again to an origin that Junior cannot
+ * know. A page that navigates to the callback ends the form submission at
+ * Junior, so those hops are ordinary navigations. A custom scheme hands off to
+ * the app with no later hop, and Safari can ignore a meta refresh to one.
+ */
+function authorizationResponse(args: AuthorizationResponse): Response {
+  const url = authorizationResponseUrl(args);
+  if (!isWebUrl(url)) return authorizationRedirect(args);
+  const href = escapeHtml(url.toString());
+  return renderHtmlPage({
+    bodyHtml: `    <p><a href="${href}">Continue to the app</a> if nothing happens.</p>`,
+    headHtml: `  <meta http-equiv="refresh" content="0;url=${href}" />`,
+    headers: {
+      "content-security-policy":
+        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'",
+      // The callback URL carries the code, so no page it reaches may see it.
+      "referrer-policy": "no-referrer",
+    },
+    status: 200,
+    title: "Redirecting…",
+  });
 }
 
 function consentPage(args: {
@@ -140,7 +171,7 @@ export async function handleMcpConsentPage(args: {
 
   const { issuer } = resolveMcpUrls(args.request, args.baseURL);
   if (form.action === "deny") {
-    return authorizationRedirect({
+    return authorizationResponse({
       issuer,
       params: {
         error: "access_denied",
@@ -159,7 +190,7 @@ export async function handleMcpConsentPage(args: {
     scope: authorization.scope,
     state: args.state,
   });
-  return authorizationRedirect({
+  return authorizationResponse({
     issuer,
     params: { code },
     redirectUri: authorization.redirectUri,

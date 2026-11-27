@@ -8,9 +8,8 @@ export function renderMcpPage(page: {
   /** HTML that follows the message. Callers escape every value in it. */
   bodyHtml?: string;
   /**
-   * Extra CSP source, an origin or a scheme, that a form on the page may
-   * reach. The consent form redirects to the client, and `form-action` also
-   * applies to that redirect.
+   * Extra CSP source, such as a URL scheme, that a form on the page may
+   * reach. `form-action` also applies to a redirect after the POST.
    */
   formActionSource?: string;
   message: string;
