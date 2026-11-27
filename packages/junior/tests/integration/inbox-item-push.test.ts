@@ -421,13 +421,15 @@ describe("inbox item push", () => {
     await items.upsert({
       ...review,
       body: "#946 is approved. Merge it.",
-      title: "Ready to merge · #946",
+      title: "#946 is approved…",
     });
     expect(pushes).toEqual([
       expect.objectContaining({ tag: item!.id }),
+      // A title that ends in "…" but is not the cut body keeps the body.
       expect.objectContaining({
+        body: "#946 is approved. Merge it.",
         tag: item!.id,
-        title: "Ready to merge · #946",
+        title: "#946 is approved…",
       }),
     ]);
     expect(

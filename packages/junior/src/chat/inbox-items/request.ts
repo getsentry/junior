@@ -56,3 +56,20 @@ export function inboxItemQuestion(
 ): InboxItemRequest | undefined {
   return request && "fields" in request ? request : undefined;
 }
+
+/**
+ * Tool names that ask a person a question. Turns from before
+ * `askUserQuestion` have an old name in their history, so readers of a
+ * transcript match every name.
+ */
+export const ASK_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "askUserQuestion",
+  "addInboxItem",
+  "addReviewItem",
+]);
+
+/**
+ * Subject id prefix of a question that `askUserQuestion` asked. The rest of
+ * the id is the id of that tool call, so its answer can name the call.
+ */
+export const ASK_SUBJECT_PREFIX = "ask:";

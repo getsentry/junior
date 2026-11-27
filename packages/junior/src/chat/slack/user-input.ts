@@ -5,15 +5,18 @@ import {
 } from "@/chat/slack/mrkdwn";
 import {
   buttonUserInputField,
+  fieldAnswerValues,
   type UserInputField,
   normalizeUserInputAnswer,
   USER_INPUT_LIMITS,
   USER_INPUT_NOTE,
+  USER_INPUT_OTHER_LABEL,
   type UserInputAnswer,
   type UserInputRequest,
 } from "@/chat/inbox-items/user-input-request";
 
 const FIELD_BLOCK_ID_PREFIX = "field:";
+const CUSTOM_BLOCK_ID_PREFIX = "custom:";
 const OTHER_BLOCK_ID = "other";
 const VALUE_ACTION_ID = "value";
 // Slack allows 75 characters in option descriptions and 3,000 in context
@@ -99,42 +102,68 @@ function toOption(option: {
   };
 }
 
+// The input of a choice field's own answer. Slack radio buttons and
+// checkboxes cannot hold text, so the Other choice is a text input after
+// them.
+function customInput(field: UserInputField): InputBlock {
+  return {
+    type: "input",
+    block_id: `${CUSTOM_BLOCK_ID_PREFIX}${field.id}`,
+    label: plainText(`${field.label}: ${USER_INPUT_OTHER_LABEL}`),
+    optional: true,
+    element: {
+      type: "plain_text_input",
+      action_id: VALUE_ACTION_ID,
+      max_length: USER_INPUT_LIMITS.maxTextChars,
+      multiline: true,
+    },
+  };
+}
+
 /**
- * Render a request as a Slack modal form: one input for each field and one
- * optional note input that goes with the answers. Every input is optional,
- * so a person can answer with free text only. `callbackId` and `privateMetadata` tell the submit
- * handler what the form answers.
+ * Render a request as a Slack modal form: one input for each field, an
+ * Other input after each choice field when `custom` is set, and one
+ * optional notes input that goes with the answers. Every input is optional,
+ * so a person can answer with free text only. `callbackId` and
+ * `privateMetadata` tell the submit handler what the form answers.
  */
 export function buildSlackUserInputForm(
   request: UserInputRequest,
-  form: { callbackId: string; privateMetadata: string },
+  form: { callbackId: string; custom: boolean; privateMetadata: string },
 ): ModalView {
-  const inputs: InputBlock[] = request.fields.map((field) => ({
-    type: "input",
-    block_id: `${FIELD_BLOCK_ID_PREFIX}${field.id}`,
-    label: plainText(field.label),
-    optional: true,
-    ...(field.description ? { hint: plainText(field.description) } : undefined),
-    element:
-      field.kind === "text"
-        ? {
-            type: "plain_text_input",
-            action_id: VALUE_ACTION_ID,
-            max_length: USER_INPUT_LIMITS.maxTextChars,
-            multiline: true,
-          }
-        : field.kind === "choice"
+  const inputs: InputBlock[] = request.fields.flatMap((field) => {
+    const input: InputBlock = {
+      type: "input",
+      block_id: `${FIELD_BLOCK_ID_PREFIX}${field.id}`,
+      label: plainText(field.label),
+      optional: true,
+      ...(field.description
+        ? { hint: plainText(field.description) }
+        : undefined),
+      element:
+        field.kind === "text"
           ? {
-              type: "radio_buttons",
+              type: "plain_text_input",
               action_id: VALUE_ACTION_ID,
-              options: field.options.map(toOption),
+              max_length: USER_INPUT_LIMITS.maxTextChars,
+              multiline: true,
             }
-          : {
-              type: "checkboxes",
-              action_id: VALUE_ACTION_ID,
-              options: field.options.map(toOption),
-            },
-  }));
+          : field.kind === "choice"
+            ? {
+                type: "radio_buttons",
+                action_id: VALUE_ACTION_ID,
+                options: field.options.map(toOption),
+              }
+            : {
+                type: "checkboxes",
+                action_id: VALUE_ACTION_ID,
+                options: field.options.map(toOption),
+              },
+    };
+    return form.custom && field.kind !== "text"
+      ? [input, customInput(field)]
+      : [input];
+  });
   return {
     type: "modal",
     callback_id: form.callbackId,
@@ -189,10 +218,14 @@ export function parseSlackUserInputSubmission(args: {
     return value.value ? [value.value] : [];
   };
   const values: Record<string, string[]> = {};
+  const custom: Record<string, string> = {};
   for (const field of args.request.fields) {
     values[field.id] = read(`${FIELD_BLOCK_ID_PREFIX}${field.id}`);
+    const own = read(`${CUSTOM_BLOCK_ID_PREFIX}${field.id}`).join("\n");
+    if (own) custom[field.id] = own;
   }
   return normalizeUserInputAnswer(args.request, {
+    custom,
     requestId: args.requestId,
     values,
     other: read(OTHER_BLOCK_ID).join("\n"),
@@ -214,19 +247,21 @@ export function slackUserInputAnswerNote(args: {
   const [choice, ...more] = buttonField
     ? (answer.values[buttonField.id] ?? [])
     : [];
-  if (choice && !more.length && !answer.other) {
+  if (choice && !more.length && !answer.other && !answer.custom) {
     return `${who} chose *${escapeSlackMrkdwnText(choice)}*`;
   }
   const lines = args.request.fields.flatMap((field) => {
-    const values = answer.values[field.id];
-    return values?.length
+    const values = fieldAnswerValues(field, answer);
+    return values.length
       ? [
           `*${escapeSlackMrkdwnText(field.label)}*: ${escapeSlackMrkdwnText(values.join(", "))}`,
         ]
       : [];
   });
   if (answer.other) {
-    lines.push(`*Other*: ${escapeSlackMrkdwnText(answer.other)}`);
+    lines.push(
+      `*${USER_INPUT_NOTE.label}*: ${escapeSlackMrkdwnText(answer.other)}`,
+    );
   }
   return truncate([`${who} answered`, ...lines].join("\n"), MAX_NOTE_CHARS);
 }

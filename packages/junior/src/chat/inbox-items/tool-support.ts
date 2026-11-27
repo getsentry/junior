@@ -190,7 +190,7 @@ export const questionsSchema = z
           .min(1)
           .max(12)
           .describe(
-            "A very short label for the question, at most 12 characters, such as `Approach`.",
+            "A very short label for the question, max 12 characters, such as `Approach`.",
           ),
         options: z
           .array(questionOptionSchema)
@@ -222,8 +222,11 @@ export interface QuestionContent {
   title: string;
 }
 
-function truncate(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+/** Cut text to the length of an item title, as a question's title is cut. */
+export function cutInboxItemTitle(text: string): string {
+  return text.length <= MAX_TITLE_CHARS
+    ? text
+    : `${text.slice(0, MAX_TITLE_CHARS - 1)}…`;
 }
 
 /**
@@ -255,11 +258,10 @@ export function questionContent(
   return {
     body: questions.map((entry) => entry.question).join("\n\n"),
     request,
-    title: truncate(
+    title: cutInboxItemTitle(
       questions.length === 1
         ? questions[0]!.question
         : questions.map((entry) => entry.header).join(" · "),
-      MAX_TITLE_CHARS,
     ),
   };
 }

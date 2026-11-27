@@ -437,12 +437,9 @@ export function InboxItemAskRow(props: {
           </p>
         </div>
       </div>
-      {waiting && !mobile ? (
-        <InboxItemActions
-          context={<InboxItemTurnMessage item={item} />}
-          item={item}
-        />
-      ) : null}
+      {/* The Turn's message is right above this card, so it shows only in
+          the phone sheet, which covers the transcript. */}
+      {waiting && !mobile ? <InboxItemActions item={item} /> : null}
       {sheet && mobile ? (
         <InboxItemSheet
           context={waiting ? <InboxItemTurnMessage item={item} /> : undefined}

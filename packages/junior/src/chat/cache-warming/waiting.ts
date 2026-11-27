@@ -7,6 +7,7 @@ import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import { listChildAgents } from "@/chat/child-agents/list";
 import { listWatches, type Watch } from "@/chat/events/store";
 import type { WaitingOn } from "./model";
+import { ASK_TOOL_NAMES } from "@/chat/inbox-items/request";
 
 /**
  * Idle time at which the earliest timer Watch of the Conversation is due,
@@ -22,14 +23,6 @@ export function earliestTimerDueIdleMs(
     Math.min(...watches.map((watch) => watch.firesAtMs ?? Infinity)) - sinceMs;
   return dueIdleMs <= maxDueIdleMs ? dueIdleMs : undefined;
 }
-
-// A Turn that started before `askUserQuestion` has an old tool name in its
-// history.
-const ASK_TOOL_NAMES = new Set([
-  "askUserQuestion",
-  "addInboxItem",
-  "addReviewItem",
-]);
 
 // Whether the Turn called `askUserQuestion` after its last user message. A
 // message that steers the Turn is a user message too, so only the calls

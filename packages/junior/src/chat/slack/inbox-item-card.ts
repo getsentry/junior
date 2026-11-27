@@ -21,6 +21,7 @@ import {
   slackUserInputText,
 } from "@/chat/slack/user-input";
 import { buttonUserInputField } from "@/chat/inbox-items/user-input-request";
+import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 import { safeLinkUrl } from "@/net/link-url";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
 import { SLACK_MAX_MARKDOWN_CHARS } from "./limits";
@@ -349,6 +350,8 @@ export function buildSlackInboxItemModal(
   if (!question) return undefined;
   return buildSlackUserInputForm(question, {
     callbackId: SLACK_INBOX_ITEM_VIEW_ID,
+    // Only a question that an agent asked offers its own Other choice.
+    custom: item.subject.kind === INBOX_SUBJECT_KINDS.question,
     privateMetadata: JSON.stringify(target),
   });
 }

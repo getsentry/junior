@@ -1,6 +1,7 @@
 /**
- * Prompt inputs for person answers to Inbox items. An answer is its own
- * prompt content part, keyed by the item id that `askUserQuestion` returned.
+ * Prompt inputs for person answers to questions. An answer is its own
+ * prompt content part, tied to the `askUserQuestion` call that asked it, as
+ * Claude Code ties a background task's notification to its tool call.
  * The runtime builds it from the stored change record and the item, so the
  * model never reads status prose. A question that `askUserQuestion` asked
  * reads like Claude Code's AskUserQuestion result: each question with its
@@ -17,6 +18,7 @@ import type {
 import { getDb } from "@/chat/db";
 import { escapeTagText, renderTag } from "@sentry/junior-plugin-api";
 import {
+  fieldAnswerValues,
   formatUserInputAnswer,
   normalizeUserInputAnswer,
   type UserInputAnswer,
@@ -25,21 +27,26 @@ import {
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { InboxItemChangeRecord } from "./change-record";
 import { getInboxItem, type InboxItem } from "./store";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import {
+  ASK_SUBJECT_PREFIX,
+  inboxItemQuestion,
+} from "@/chat/inbox-items/request";
 
 const QUESTION_MAX_LENGTH = 512;
 
-// The words that the person typed: text fields and the free-text answer.
-// Choice labels and the question are the agent's words.
+// The words that the person typed: text fields, their own answers, and the
+// additional notes. Choice labels and the question are the agent's words.
 function typedAnswerText(
   request: UserInputRequest,
   answer: UserInputAnswer,
 ): string {
   const normalized = normalizeUserInputAnswer(request, answer);
   return [
-    ...request.fields.flatMap((field) =>
-      field.kind === "text" ? (normalized.values[field.id] ?? []) : [],
-    ),
+    ...request.fields.flatMap((field) => {
+      if (field.kind === "text") return normalized.values[field.id] ?? [];
+      const own = normalized.custom?.[field.id];
+      return own ? [own] : [];
+    }),
     ...(normalized.other ? [normalized.other] : []),
   ].join("\n\n");
 }
@@ -59,10 +66,11 @@ function questionAnswerLines(
   request: UserInputRequest,
   answer: UserInputAnswer,
 ): string[] {
-  const { other, values } = normalizeUserInputAnswer(request, answer);
+  const normalized = normalizeUserInputAnswer(request, answer);
+  const { other } = normalized;
   const pairs = request.fields.map(
     (field) =>
-      `"${shortQuestion(field.description ?? field.label)}"="${values[field.id]?.join(", ") || "(no answer)"}"`,
+      `"${shortQuestion(field.description ?? field.label)}"="${fieldAnswerValues(field, normalized).join(", ") || "(no answer)"}"`,
   );
   return [
     `The person has answered your questions: ${pairs.join(", ")}`,
@@ -71,8 +79,18 @@ function questionAnswerLines(
   ];
 }
 
-// Render one answer to an Inbox item as a prompt input. Only an action
-// item with a request takes an answer.
+// The `askUserQuestion` call that asked a question, from its subject id.
+// Older questions came from another tool and have no call id.
+function askToolUseId(item: InboxItem): string | undefined {
+  const id = item.subject.id;
+  return id.startsWith(ASK_SUBJECT_PREFIX) &&
+    id.length > ASK_SUBJECT_PREFIX.length
+    ? id.slice(ASK_SUBJECT_PREFIX.length)
+    : undefined;
+}
+
+// Render one answer to a question as a prompt input. Only an action item
+// with a request takes an answer.
 function renderInboxItemAnswer(
   item: InboxItem,
 ): RuntimeInstructionInput | undefined {
@@ -80,8 +98,8 @@ function renderInboxItemAnswer(
   if (!request || !item.answer) return undefined;
   const requestText = typedAnswerText(request, item.answer);
   const text = renderTag(
-    "inbox-item-answer",
-    { id: item.id },
+    "question-answer",
+    { tool_use_id: askToolUseId(item) },
     (request.question
       ? [
           `Question: ${shortQuestion(request.question)}`,

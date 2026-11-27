@@ -20,7 +20,7 @@ import {
   isOnlyAssignee,
   isPluginInboxItem,
 } from "./access";
-import { subjectTodo } from "./subjects";
+import { INBOX_SUBJECT_KINDS, subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
 import { matchReplyToInboxItems } from "./reply-match";
@@ -108,7 +108,13 @@ function submittedAnswer(
       "Only an action item takes an answer.",
     );
   }
+  // Only a question that an agent asked offers its own Other choice.
+  const custom =
+    item.subject.kind === INBOX_SUBJECT_KINDS.question
+      ? answer?.custom
+      : undefined;
   const normalized = normalizeUserInputAnswer(question, {
+    custom,
     other: answer?.other,
     requestId: item.id,
     values: answer?.values ?? {},

@@ -4,6 +4,7 @@ import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
+import { ASK_SUBJECT_PREFIX } from "@/chat/inbox-items/request";
 import {
   questionSubject,
   readInboxItemAgentScope,
@@ -39,7 +40,7 @@ import {
 // Unlike Claude Code's AskUserQuestion, the call returns before the person
 // answers, so the result says that no answer exists yet. A model that reads
 // a finished call as an answer invents one.
-const ASKED_NEXT_STEP = `The questions were sent. There is no answer yet. The answer arrives in a later Turn as an \`<inbox-item-answer>\` with the item id; a dismiss comes as a note. Do not guess the answer. If your next step needs it, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Otherwise, finish the work that does not need it, then end the Turn.`;
+const ASKED_NEXT_STEP = `The questions were sent. There is no answer yet. The answer arrives in a later Turn as a \`<question-answer>\` with the id of this call; a dismiss comes as a note. Do not guess the answer. If your next step needs it, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Otherwise, finish the work that does not need it, then end the Turn.`;
 
 /**
  * Pick the assignees of a new item when the agent names none: the User of
@@ -69,7 +70,7 @@ async function defaultAssignees(
 
 export const askUserQuestionToolDefinition = zodToolDefinition({
   description:
-    "Ask a person one or more questions with choices. This is how you ask a person anything. The questions go in their Inbox and, in a Slack thread, show as a card. The person answers in a later Turn, not in this call. Returns the Inbox item and what to do until the answer comes.",
+    "Ask a person one or more questions with choices when you need their decision or input before you can go on. This is how you ask a person anything. Do not use it to report a result, an error, or an action that failed or was refused: say that in your reply. The questions go in their Inbox and, in a Slack thread, show as a card. The person answers in a later Turn, not in this call. Returns the Inbox item and what to do until the answer comes.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -103,8 +104,11 @@ export function createAskUserQuestionTool(
       const scope = await readInboxItemAgentScope(context);
       // Each call asks a new question. A retry of the same tool call keeps
       // the same question id, so it cannot add a second item.
+      // Its answer names the call, so a call without an id gets none.
       const subject = questionSubject(
-        `ask:${options.toolCallId ?? randomUUID()}`,
+        options.toolCallId
+          ? `${ASK_SUBJECT_PREFIX}${options.toolCallId}`
+          : `question:${randomUUID()}`,
       );
       // The item is as private as the Conversation that asks it.
       const visibility: InboxItemVisibility = scope.inPrivateConversation

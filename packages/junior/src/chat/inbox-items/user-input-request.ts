@@ -111,9 +111,15 @@ export const savedUserInputRequestSchema = z
  * every surface says that in the same words.
  */
 export const USER_INPUT_NOTE = {
-  label: "Anything else?",
-  description: "Optional. This note is sent together with your answers above.",
+  label: "Additional notes",
+  description: "Optional. Sent with your answers.",
 } as const;
+
+/**
+ * Label of the choice that each choice question of an agent's ask gets, so
+ * a person can write their own answer to it. The agent never lists it.
+ */
+export const USER_INPUT_OTHER_LABEL = "Other";
 
 /** One field of a user input request. */
 export type UserInputField = UserInputRequest["fields"][number];
@@ -123,10 +129,12 @@ export type UserInputRequest = z.output<typeof savedUserInputRequestSchema>;
 
 /**
  * A person's answer to one user input request. `values` maps field ids to
- * the picked option labels or the typed text. `other` is free text that the
- * person can always add.
+ * the picked option labels or the typed text. `custom` maps choice field ids
+ * to the person's own answer, their Other choice. `other` is the card's
+ * additional notes, which the person can always add.
  */
 export interface UserInputAnswer {
+  custom?: Record<string, string> | undefined;
   other?: string | undefined;
   requestId: string;
   values: Record<string, string[]>;
@@ -159,13 +167,15 @@ export function buttonUserInputField(
 
 /**
  * Keep only answer values that match the request: known field ids, known
- * option labels, one value for a `choice` field, and trimmed text.
+ * option labels, one value for a `choice` field, and trimmed text. A
+ * `choice` field's own answer replaces its pick.
  */
 export function normalizeUserInputAnswer(
   request: UserInputRequest,
   answer: UserInputAnswer,
 ): UserInputAnswer {
   const values: Record<string, string[]> = {};
+  const custom: Record<string, string> = {};
   for (const field of request.fields) {
     const raw = (answer.values[field.id] ?? [])
       .map((value) => value.trim())
@@ -175,18 +185,36 @@ export function normalizeUserInputAnswer(
       if (text) values[field.id] = [text];
       continue;
     }
+    const own = answer.custom?.[field.id]
+      ?.trim()
+      .slice(0, USER_INPUT_LIMITS.maxTextChars);
+    if (own) custom[field.id] = own;
     const picked = field.options
       .map((option) => option.label)
       .filter((label) => raw.includes(label));
-    const kept = field.kind === "choice" ? picked.slice(0, 1) : picked;
+    const kept =
+      field.kind === "choice" ? (own ? [] : picked.slice(0, 1)) : picked;
     if (kept.length) values[field.id] = kept;
   }
   const other = answer.other?.trim().slice(0, USER_INPUT_LIMITS.maxTextChars);
   return {
     requestId: answer.requestId,
     values,
+    ...(Object.keys(custom).length ? { custom } : undefined),
     ...(other ? { other } : undefined),
   };
+}
+
+/**
+ * Return what a normalized answer gives for one field: its picks or typed
+ * text, then the person's own answer.
+ */
+export function fieldAnswerValues(
+  field: UserInputField,
+  normalized: UserInputAnswer,
+): string[] {
+  const own = normalized.custom?.[field.id];
+  return [...(normalized.values[field.id] ?? []), ...(own ? [own] : [])];
 }
 
 /**
@@ -205,7 +233,11 @@ export function answeredChoices(
 
 /** Return true when an answer has no value and no free text. */
 export function isEmptyUserInputAnswer(answer: UserInputAnswer): boolean {
-  return !answer.other && Object.keys(answer.values).length === 0;
+  return (
+    !answer.other &&
+    Object.keys(answer.values).length === 0 &&
+    Object.keys(answer.custom ?? {}).length === 0
+  );
 }
 
 // Slack parses input text as mrkdwn, which drops list markers and blank
@@ -231,12 +263,12 @@ export function formatUserInputAnswer(
   const normalized = normalizeUserInputAnswer(request, answer);
   const lines: string[] = [];
   for (const field of request.fields) {
-    const values = normalized.values[field.id];
-    const value = values?.length ? values.join(", ") : "(no answer)";
+    const values = fieldAnswerValues(field, normalized);
+    const value = values.length ? values.join(", ") : "(no answer)";
     lines.push(answerLine(`${field.label} (${field.id}): ${value}`));
   }
   if (normalized.other) {
-    lines.push(answerLine(`Other: ${normalized.other}`));
+    lines.push(answerLine(`${USER_INPUT_NOTE.label}: ${normalized.other}`));
   }
   return lines.join("\n");
 }

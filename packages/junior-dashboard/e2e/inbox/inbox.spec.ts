@@ -182,7 +182,7 @@ test.describe("new UI", () => {
 
     const auditItem = asks.locator("[data-inbox-card]");
     await auditItem.getByRole("radio", { name: "Reject" }).click();
-    await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
+    await auditItem.getByLabel("Additional notes").fill("Ask legal first.");
     await screenshot(page, "inbox-row-answer", {
       lightTheme: true,
       view: "desktop",

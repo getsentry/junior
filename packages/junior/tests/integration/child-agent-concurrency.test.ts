@@ -677,7 +677,7 @@ describe("child agent identity and concurrency", () => {
     },
   );
 
-  it("gives a child the Inbox item tag for an answer to its item", async () => {
+  it("gives a child the answer to its own question, tied to its ask", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const harness = await createHarness(taskModel);
     try {
@@ -722,7 +722,7 @@ describe("child agent identity and concurrency", () => {
             },
           ],
         }),
-        {},
+        { toolCallId: "toolu_owner" },
       )) as { item: { id: string } };
       const id = added.item.id;
       await actOnInboxItem({
@@ -740,10 +740,10 @@ describe("child agent identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[1]!.instruction.text).toBe(
         [
-          `<inbox-item-answer id="${id}">`,
+          '<question-answer tool_use_id="toolu_owner">',
           'The person has answered your questions: "Who should own the login bug?"="Bob"',
           "You can now continue with their answers in mind.",
-          "</inbox-item-answer>",
+          "</question-answer>",
         ].join("\n"),
       );
     } finally {

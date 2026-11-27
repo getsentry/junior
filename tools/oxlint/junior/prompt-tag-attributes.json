@@ -27,7 +27,7 @@
     "tool": ["name"]
   },
   "packages/junior/src/chat/inbox-items/prompt-input.ts": {
-    "inbox-item-answer": ["id"]
+    "question-answer": ["tool_use_id"]
   },
   "packages/junior/src/chat/services/conversation-memory.ts": {
     "message": [

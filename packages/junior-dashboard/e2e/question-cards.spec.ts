@@ -62,13 +62,14 @@ for (const view of [desktop, mobile]) {
       "Roll out payments-v42 to every region?",
     );
     // Junior's message of that Turn is right above the card in the
-    // transcript, so the ask does not show it again.
-    await expect(
-      page.getByText("I need your go-ahead before I roll out to every region."),
-    ).toHaveCount(1);
+    // transcript, so the card does not show it again. A phone sheet covers
+    // the transcript, so the sheet shows it.
     await expect(
       ask.getByRole("region", { name: "Junior's message" }),
-    ).toHaveCount(0);
+    ).toHaveCount(view === mobile ? 1 : 0);
+    await expect(
+      page.getByText("I need your go-ahead before I roll out to every region."),
+    ).toHaveCount(view === mobile ? 2 : 1);
 
     // A click picks a choice. Only Send answers, with the note.
     const rollOut = ask.getByRole("button", { name: /Roll out/ });
@@ -77,7 +78,7 @@ for (const view of [desktop, mobile]) {
     await rollOut.click();
     await expect(rollOut).toHaveAttribute("aria-pressed", "true");
     await ask
-      .getByRole("textbox", { name: "Anything else?" })
+      .getByRole("textbox", { name: "Additional notes" })
       .fill("Start with us-east-1.");
     expect(actions).toEqual([]);
     await screenshot(page, "conversation-question-card", {
@@ -121,19 +122,59 @@ test("a second click takes the pick back, and a note alone answers", async ({
   await expect(hold).toHaveAttribute("aria-pressed", "false");
   const send = card.getByRole("button", { name: "Send", exact: true });
   await expect(send).toBeDisabled();
-  // Enter in the note line sends it.
-  const note = card.getByRole("textbox", { name: "Anything else?" });
+  // Enter adds a line to the notes. Cmd or Ctrl with Enter sends them.
+  const note = card.getByRole("textbox", { name: "Additional notes" });
   await note.fill("Wait for the EU team on Monday.");
   await note.press("Enter");
+  await note.pressSequentially("Then roll out.");
+  expect(actions).toEqual([]);
+  await note.press("ControlOrMeta+Enter");
   await expect
     .poll(() => actions)
     .toEqual([
       {
         action: "submit",
-        answer: { other: "Wait for the EU team on Monday.", values: {} },
+        answer: {
+          other: "Wait for the EU team on Monday.\nThen roll out.",
+          values: {},
+        },
       },
     ]);
   await expect(card).toContainText("Wait for the EU team on Monday.");
+});
+
+test("Other takes the reader's own answer in place of a pick", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  const actions = recordActions(page);
+  await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
+  const card = page.getByRole("region", {
+    name: "Asked Approve the payments-v42 rollout",
+  });
+  const hold = card.getByRole("button", { name: "Hold", exact: true });
+  await hold.click();
+  await expect(hold).toHaveAttribute("aria-pressed", "true");
+  // Writing an own answer takes the pick back, as one question has one
+  // answer.
+  await card
+    .getByRole("textbox", { name: /: Other$/ })
+    .fill("Roll out to the EU first.");
+  await expect(hold).toHaveAttribute("aria-pressed", "false");
+  await card.getByRole("button", { name: "Send", exact: true }).click();
+  await expect
+    .poll(() => actions)
+    .toEqual([
+      {
+        action: "submit",
+        answer: {
+          custom: { go: "Roll out to the EU first." },
+          values: {},
+        },
+      },
+    ]);
+  await expect(card).toContainText("Roll out to the EU first.");
 });
 
 // A phone shows each card as one line, so this short transcript fits on

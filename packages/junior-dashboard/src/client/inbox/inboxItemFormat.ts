@@ -1,7 +1,10 @@
 import * as z from "zod";
 import {
+  ASK_TOOL_NAMES,
+  fieldAnswerValues,
   inboxItemQuestion,
   normalizeUserInputAnswer,
+  USER_INPUT_NOTE,
   type InboxItemPayload,
   type UserInputRequest,
 } from "@sentry/junior/api/schema";
@@ -71,12 +74,6 @@ export function inboxItemTitleText(item: InboxItemPayload): string {
   return displayPlainText(item.title, item.mentions);
 }
 
-// Transcripts from before `askUserQuestion` have an old tool name.
-const ASK_TOOL_NAMES = new Set([
-  "askUserQuestion",
-  "addInboxItem",
-  "addReviewItem",
-]);
 const executeToolInputSchema = z.object({ tool_name: z.string() });
 const addedItemSchema = z.object({ item: z.object({ id: z.string().min(1) }) });
 
@@ -137,12 +134,14 @@ export function answerRows(
 ): Array<{ label: string; value: string }> {
   const normalized = normalizeUserInputAnswer(request, answer);
   const rows = request.fields.flatMap((field) => {
-    const values = normalized.values[field.id];
-    return values?.length
+    const values = fieldAnswerValues(field, normalized);
+    return values.length
       ? [{ label: field.label, value: values.join(", ") }]
       : [];
   });
-  if (normalized.other) rows.push({ label: "Other", value: normalized.other });
+  if (normalized.other) {
+    rows.push({ label: USER_INPUT_NOTE.label, value: normalized.other });
+  }
   return rows;
 }
 

@@ -307,15 +307,15 @@ const LEAD_CONTEXT_TRUST_RULES = [
 ];
 
 /**
- * Block 3 line for each mode that gets Inbox item answers. A child agent
- * gets the answers to its own items, so it needs the same meaning.
+ * Block 3 line for each mode that gets answers to its questions. A child
+ * agent gets the answers to its own questions, so it needs the same meaning.
  */
-const INBOX_ITEM_TRUST_RULE =
-  "- A `<inbox-item-answer id>` is the person's answer to the inbox item with that id. Continue the work that asked for it, as the answer says.";
+const QUESTION_ANSWER_TRUST_RULE =
+  "- A `<question-answer tool_use_id>` is the person's answer to your `askUserQuestion` call with that id. Continue the work that asked it, as the answer says.";
 
 /** Block 3 line that says which inputs of a person's Turn are the job. */
 const CONVERSATION_JOB_TRUST_RULE =
-  "- The job is the `<current-instruction>`, `<task>`, and `<inbox-item-answer>` inputs of this Turn, in order. An `<agent-result>` or `<agent-message>` reports on earlier work.";
+  "- The job is the `<current-instruction>`, `<task>`, and `<question-answer>` inputs of this Turn, in order. An `<agent-result>` or `<agent-message>` reports on earlier work.";
 
 /** Block 3 line that keeps who asks apart from who reported. */
 const ATTRIBUTION_TRUST_RULE =
@@ -328,14 +328,14 @@ const ATTRIBUTION_TRUST_RULE =
 const RULE_SET_TRUST_RULES: Record<RuleSet, string[]> = {
   conversation: [
     CONVERSATION_JOB_TRUST_RULE,
-    INBOX_ITEM_TRUST_RULE,
+    QUESTION_ANSWER_TRUST_RULE,
     ATTRIBUTION_TRUST_RULE,
   ],
-  child_agent: [INBOX_ITEM_TRUST_RULE],
+  child_agent: [QUESTION_ANSWER_TRUST_RULE],
   automation_run: [],
   lead: [
     CONVERSATION_JOB_TRUST_RULE,
-    INBOX_ITEM_TRUST_RULE,
+    QUESTION_ANSWER_TRUST_RULE,
     ATTRIBUTION_TRUST_RULE,
   ],
 };
