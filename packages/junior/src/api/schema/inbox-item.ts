@@ -42,6 +42,8 @@ export const inboxItemSchema = z
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
+    /** Who answered. Unset when no known person did. */
+    answeredBy: personSchema.optional(),
     /** True for an item for Everyone, also one with no assignees. */
     assignedToEveryone: z.boolean(),
     assignees: z.array(personSchema),

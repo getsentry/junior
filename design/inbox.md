@@ -87,9 +87,9 @@ groups and acts on its rows.
   about the same object changes, such as from review to merge, the same
   item shows the new ask.
 - A question belongs to the Conversation where Junior asked it, and holds
-  its title, body, form, related links, and answer. Its related links show
-  on the card, but they never decide the card or add related work to
-  another item.
+  its title, body, form, related links, and answer, with who answered it
+  and when. Its related links show on the card, but they never decide the
+  card or add related work to another item.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
 - The answer to an item that a plugin added goes to that plugin, which does

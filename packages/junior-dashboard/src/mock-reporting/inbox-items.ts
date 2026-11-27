@@ -25,7 +25,7 @@ import { readMockObjectLinks } from "./objects";
 
 type MockItemChange = Pick<
   InboxItemPayload,
-  "answer" | "closeReason" | "closedAt" | "closedBy" | "status"
+  "answer" | "answeredBy" | "closeReason" | "closedAt" | "closedBy" | "status"
 >;
 
 const changes = new Map<string, MockItemChange>();
@@ -260,6 +260,7 @@ function payload(
           closedBy: item.closedBy ?? viewer,
         }
       : undefined),
+    ...(item.answer ? { answeredBy: item.answeredBy ?? viewer } : undefined),
   };
 }
 
@@ -325,7 +326,7 @@ export function actOnMockInboxItem(
     closedBy: viewer,
     status: body.action === "dismiss" ? "dismissed" : "done",
     ...(body.action === "submit"
-      ? { answer: { ...body.answer, requestId: id } }
+      ? { answer: { ...body.answer, requestId: id }, answeredBy: viewer }
       : undefined),
   });
   return readMockInboxItem(nowMs, id);
@@ -347,6 +348,7 @@ export function answerMockInboxItemByReply(
   if (!item) return;
   changes.set(item.id, {
     answer: { other: text, requestId: item.id, values: {} },
+    answeredBy: viewer,
     closeReason: "Replied in the conversation.",
     closedAt: new Date(nowMs).toISOString(),
     closedBy: viewer,
