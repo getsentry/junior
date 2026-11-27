@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 
+import { useDashboardCoreData } from "../../api";
 import {
   ConversationJoinDock,
   ConversationPageDock,
@@ -22,6 +23,7 @@ export function ConversationDock(
   },
 ) {
   const { canReply, joining, onEngage, onJoin, view, ...dock } = props;
+  const viewerEmail = useDashboardCoreData().data?.me.user.email;
   if (canReply) {
     return (
       <div
@@ -42,12 +44,19 @@ export function ConversationDock(
     if (data.subscribed === false) {
       return <ConversationJoinDock joining={joining} onJoin={onJoin} />;
     }
+    // The person who started a Conversation is a Participant until they
+    // Leave. In a private one, only an Invite brings them back.
+    const left =
+      viewerEmail !== undefined &&
+      data.actorIdentity?.email?.toLowerCase() === viewerEmail.toLowerCase();
     return (
       <ConversationReadOnlyDock
         notice={
           data.visibility === "public"
             ? "Join the conversation this one started from to reply."
-            : "Only participants can reply to a private conversation."
+            : left
+              ? "You left this conversation. A participant can invite you back."
+              : "Only participants can reply to a private conversation."
         }
       />
     );

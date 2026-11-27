@@ -208,9 +208,6 @@ function ConversationDrawerContent(
               <ExternalLink aria-hidden="true" size={12} strokeWidth={2} />
             </Link>
           </div>
-          <code className="mt-1 block min-w-0 break-all font-mono text-xs text-dashboard-text-faint">
-            {props.target.conversationId}
-          </code>
           {props.details}
         </>
       }

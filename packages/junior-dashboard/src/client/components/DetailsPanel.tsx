@@ -61,6 +61,8 @@ export function DetailsPanel(props: {
       if (
         event.key === "Escape" &&
         !event.defaultPrevented &&
+        // A held Esc that closed a drawer does not close Details too.
+        !event.repeat &&
         !document.querySelector("[data-dashboard-modal]")
       ) {
         event.preventDefault();
