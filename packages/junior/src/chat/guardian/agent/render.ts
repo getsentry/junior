@@ -49,21 +49,24 @@ export function renderAction(
   sandbox: ReviewRequest["sandbox"],
   madeByScript: boolean,
 ): string {
+  const serverHints = hintsBesideAudience(action);
   const text = tagJson({
     tool: action.tool,
     ...(action.target ? { target: action.target } : undefined),
-    ...(action.summary ? { summary: action.summary } : undefined),
-    // The plugin's reason is a label for records. The policy says what
-    // each decision means.
+    // A summary that only repeats the tool name says nothing.
+    ...(action.summary && action.summary !== action.tool
+      ? { summary: action.summary }
+      : undefined),
+    // The plugin's reason says why it decided, such as `own-pr-text`.
     ...(action.toolDecision
-      ? { toolDecision: action.toolDecision.decision }
+      ? { toolDecision: action.toolDecision }
       : undefined),
     input: action.input,
-    ...(action.serverHints
-      ? { untrustedServerHints: action.serverHints }
-      : undefined),
+    ...(serverHints ? { untrustedServerHints: serverHints } : undefined),
     // The credential placeholders of the Sandbox (`placeholders`).
-    ...(sandbox && action.tool === "bash" ? { sandbox } : undefined),
+    ...(sandbox && sandbox.placeholders.length > 0 && action.tool === "bash"
+      ? { sandbox }
+      : undefined),
     ...(madeByScript ? { madeBy: "a Code Mode script" } : undefined),
   });
   if (text.length > MAX_ACTION_CHARS) {
@@ -74,6 +77,26 @@ export function renderAction(
   return action.context
     ? `${planned}\n\n${renderTag("plugin-context", {}, action.context.map(escapeTagText))}`
     : planned;
+}
+
+/**
+ * The server's hints without an `openWorldHint` that contradicts the
+ * target's audience, which plugin code gives from stored records.
+ */
+function hintsBesideAudience(
+  action: Action,
+): Record<string, unknown> | undefined {
+  const hints = action.serverHints;
+  if (!hints || !action.target) return hints;
+  const openWorld = hints["openWorldHint"];
+  if (
+    typeof openWorld !== "boolean" ||
+    openWorld === (action.target.audience === "world")
+  ) {
+    return hints;
+  }
+  const { openWorldHint: _contradicted, ...rest } = hints;
+  return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
 /**

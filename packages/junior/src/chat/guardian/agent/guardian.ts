@@ -30,7 +30,7 @@ const assessmentFields = {
   confirmed: z
     .boolean()
     .describe(
-      "True only when one of the `instruction` person's own lines says yes to a question that named this exact action.",
+      "True only when one of the `instruction` person's own lines says yes to a question that named this exact action. For internal detail to a `world` target, that question also showed the exact text.",
     ),
   rule: z.enum(AGENT_GUARDIAN_RULE_IDS),
 };

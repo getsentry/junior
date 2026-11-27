@@ -151,6 +151,31 @@ describe("agent Guardian prompt", () => {
     expect(text).toContain('"content":"report"');
   });
 
+  it("leaves out facts that repeat or contradict what code knows", () => {
+    const text = renderAction(
+      {
+        tool: "mcp__linear__save_issue",
+        summary: "mcp__linear__save_issue",
+        target: { ref: "Linear team PY", audience: "world" },
+        toolDecision: { decision: "ask", reason: "public-team" },
+        serverHints: { openWorldHint: false },
+        input: { team: "PY" },
+      },
+      undefined,
+      false,
+    );
+    const bash = renderAction(
+      { tool: "bash", input: { command: "git push" } },
+      { placeholders: [] },
+      false,
+    );
+
+    expect(text).not.toContain('"summary"');
+    expect(text).not.toContain("untrustedServerHints");
+    expect(text).toContain('"reason":"public-team"');
+    expect(bash).not.toContain("placeholders");
+  });
+
   it("shows what the Sandbox can reach only on a shell command", () => {
     const sandbox = {
       placeholders: [{ env: "GITHUB_TOKEN", domains: ["github.com"] }],

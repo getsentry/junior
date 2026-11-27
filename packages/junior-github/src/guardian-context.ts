@@ -1,9 +1,9 @@
 /**
- * What the GitHub plugin tells Guardian about a shell command: the agent's
- * open pull requests in this work with their work branches, and the
- * audience of each repository in the Workspace or in those pull requests.
- * Each line comes from a template over code-change records, the Workspace
- * record, and GitHub reads through the plugin cache.
+ * What the GitHub plugin tells Guardian about a call: for a shell command,
+ * the agent's open pull requests in this work with their work branches and
+ * the audience of each repository in the Workspace or in them. A GitHub
+ * call on one of those pull requests gets its own-work line. Each line
+ * comes from code-change records, the Workspace record, and GitHub reads.
  */
 import type {
   GuardianFactsContext,
@@ -63,11 +63,46 @@ function repository(name: string) {
   }
 }
 
+const pullRequestInputSchema = z.object({
+  repo: z.string(),
+  pull_request: z.number().int().positive(),
+});
+
+/**
+ * The own-work line of a GitHub call on one pull request: what core's
+ * code-change records say when this work created it.
+ */
+async function pullRequestCallContext(
+  input: Record<string, unknown>,
+  ctx: GuardianFactsContext,
+): Promise<string[]> {
+  const parsed = pullRequestInputSchema.safeParse(input);
+  const repo = parsed.success ? repository(parsed.data.repo) : undefined;
+  if (!parsed.success || !repo) return [];
+  const conversationIds = await ctx.conversationIds();
+  if (conversationIds.length === 0) return [];
+  const number = parsed.data.pull_request;
+  const changes = await ctx.codeChanges.list({
+    conversationIds,
+    repository: { name: repo.ref, numbers: [number] },
+  });
+  if (changes.length === 0) return [];
+  const branch = await headBranch(ctx, repo, number);
+  return [
+    branch
+      ? `The agent's open pull request ${repo.ref}#${number} in this work has work branch ${branch}.`
+      : `The agent's open pull request ${repo.ref}#${number} is in this work.`,
+  ];
+}
+
 /** The `guardian.context` hook of the GitHub plugin. */
 export async function githubGuardianContext(
   call: PluginGuardianCall | undefined,
   ctx: GuardianFactsContext,
 ): Promise<string[]> {
+  if (call?.tool.startsWith("github_")) {
+    return await pullRequestCallContext(call.input, ctx);
+  }
   if (call?.tool !== "bash") return [];
   const conversationIds = await ctx.conversationIds();
   const [changes, workspaceRepos] = await Promise.all([

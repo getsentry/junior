@@ -1,5 +1,6 @@
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { githubGuardianContext } from "../src/guardian-context";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
 import { guardianContext } from "./plugin-harness";
 
@@ -643,5 +644,27 @@ describe("updatePullRequest call facts", () => {
       target: "getsentry/junior#691",
       audience: "internal",
     });
+  });
+});
+
+describe("GitHub call context", () => {
+  async function contextOf(own: boolean, tool = "github_updatePullRequest") {
+    return await githubGuardianContext(
+      {
+        tool,
+        input: { repo: "getsentry/junior", pull_request: 691, state: "closed" },
+      },
+      { ...guardianContext({ own }), workspaceRepos: async () => [] },
+    );
+  }
+
+  it("says that a GitHub call is on this work's own pull request", async () => {
+    await expect(contextOf(true)).resolves.toEqual([
+      "The agent's open pull request getsentry/junior#691 is in this work.",
+    ]);
+  });
+
+  it("says nothing about another pull request", async () => {
+    await expect(contextOf(false)).resolves.toEqual([]);
   });
 });
