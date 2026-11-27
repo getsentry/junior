@@ -129,15 +129,16 @@ jobs:
           ARM: ${{ matrix.arm }}
         run: |
           set -uo pipefail
-          jail=packages/junior-evals/scripts/network-jail.sh
+          # With Roach off, model calls go direct, which the network jail
+          # blocks, so this step runs outside it.
           if [[ "$ARM" == "agent" ]]; then
             GUARDIAN_DESIGN_SAMPLES=3 GUARDIAN_ABLATIONS=all \
-              "$jail" pnpm --filter @sentry/junior-evals evals:guardian
+              pnpm --filter @sentry/junior-evals evals:guardian
             exit $?
           fi
           for sample in 1 2 3; do
             VITEST_EVALS_OUTPUT_FILE="guardian-results-$sample.json" \
-              "$jail" pnpm --filter @sentry/junior-evals evals:guardian \
+              pnpm --filter @sentry/junior-evals evals:guardian \
               evals/guardian/automation-actions.eval.ts evals/guardian/code-delivery.eval.ts \
               evals/guardian/lead-actions.eval.ts evals/guardian/scheduled-work.eval.ts \
               -t "posts its authorized findings after all preconditions|delivers a question on the bot|Lead starts work that the person did not ask for|routine scheduled reminder|omits credential mode" || true
