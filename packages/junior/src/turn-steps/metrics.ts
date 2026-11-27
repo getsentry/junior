@@ -1,6 +1,7 @@
 // The dashboard metrics of a core Turn: its duration, tokens and cost, with
 // the Turn as the Run. People spend reads the Turn's person from these rows.
 import { replaceConversationMetrics } from "@/chat/conversations/metrics";
+import { withConversationMutationLock } from "@/chat/conversations/sql/store";
 import type { EngineContext } from "@/core/engine-context";
 import { loadTurnAgentHistory } from "@/core/history/read";
 import { findTurnActor } from "@/core/turn/inbox";
@@ -26,7 +27,9 @@ export async function recordTurnMetrics(
   ]);
   const usage = await turnUsage(ctx, message.turnId, history);
   const { startedAt, endedAt } = turn;
-  await ctx.executor.transaction(() =>
+  // Each write sums every Run of the Conversation into its totals, so Turns
+  // that end at once take turns, as main's Run writes do.
+  await withConversationMutationLock(ctx.executor, message.conversationId, () =>
     replaceConversationMetrics(ctx.executor, {
       actorIdentityId,
       conversationId: message.conversationId,
