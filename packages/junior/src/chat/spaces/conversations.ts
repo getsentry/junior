@@ -73,12 +73,10 @@ export interface SpaceMoveTarget {
 
 /**
  * Put one public `thread`, a root or a Lead's child, in a public Space, or
- * take it out of its Space with null. In a Space it is a child of the Lead
- * and, like every child, stores its parent's Destination and Location, so a
- * Slack thread no longer gets its replies. Out of one it is a root again,
- * with its own Destination. Its child agents move with it. The caller checks
- * who may move it out of `fromSpaceId`, the Space that it read before the
- * move.
+ * take it out with null. In a Space it is a child of the Lead and stores its
+ * parent's Destination and Location, so a Slack thread no longer gets its
+ * replies. Out of one it is a root with its own Destination. Child agents
+ * move with it. The caller checks who may move it out of `fromSpaceId`.
  */
 export async function setConversationSpace(
   conversationId: string,
