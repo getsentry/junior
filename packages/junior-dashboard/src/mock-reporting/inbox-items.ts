@@ -4,10 +4,7 @@
  * like the API.
  */
 import {
-  answeredChoices,
   inboxItemQuestion,
-  type ConversationFeed,
-  type ConversationFeedViewerAnswer,
   type InboxItemActionBody,
   type InboxItemPayload,
   type InboxSnoozeCreateBody,
@@ -332,43 +329,6 @@ export function actOnMockInboxItem(
       : undefined),
   });
   return readMockInboxItem(nowMs, id);
-}
-
-/**
- * Put the viewer's newest answer on each feed row of the Conversation that
- * added it, like the API.
- */
-export function withMockViewerAnswers(
-  feed: ConversationFeed,
-  nowMs: number,
-): ConversationFeed {
-  const answers = new Map<string, ConversationFeedViewerAnswer>();
-  // Closed items come newest closed first, so the first one wins.
-  for (const item of readMockInboxItems(nowMs, { closed: true })) {
-    const conversationId =
-      item.owner.kind === "conversation" ? item.owner.id : undefined;
-    const question = inboxItemQuestion(item.request);
-    if (
-      !conversationId ||
-      !item.answer ||
-      !question ||
-      !item.closedAt ||
-      item.closedBy?.userId !== viewer.userId ||
-      answers.has(conversationId)
-    )
-      continue;
-    answers.set(conversationId, {
-      choices: answeredChoices(question, item.answer),
-      closedAt: item.closedAt,
-    });
-  }
-  return {
-    ...feed,
-    conversations: feed.conversations.map((conversation) => {
-      const viewerAnswer = answers.get(conversation.conversationId);
-      return viewerAnswer ? { ...conversation, viewerAnswer } : conversation;
-    }),
-  };
 }
 
 /**
