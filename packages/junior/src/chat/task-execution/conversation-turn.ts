@@ -39,7 +39,8 @@ import {
   type TurnAnswerText,
 } from "@/chat/conversations/turn-lifecycle";
 import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
-import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
+import { buildTurnThreadContext } from "@/chat/slack/thread-context";
+import { withHeldInput } from "@/chat/conversations/held-input";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -627,17 +628,28 @@ export function createConversationTurnWorker(
               turnId,
               runId: currentRunId,
               instruction: {
-                ...instructionInputs,
+                ...(await withHeldInput(
+                  {
+                    conversation,
+                    conversationId: context.conversationId,
+                    turnId,
+                  },
+                  instructionInputs,
+                )),
                 ...(instructionActor ? { actor: instructionActor } : undefined),
                 ...childTurn.instruction,
                 storedAttachments: attachments,
-                context: await buildTurnThreadContext({
-                  conversation,
-                  conversationId: context.conversationId,
-                  excludeMessageIds: inputMessageIds,
-                  hasHistory: history.messages.length > 0,
-                  turnId,
-                }),
+                // Only a Slack thread holds Messages that are not Turn input.
+                context:
+                  conversationLocation?.provider === "slack"
+                    ? await buildTurnThreadContext({
+                        conversation,
+                        conversationId: context.conversationId,
+                        excludeMessageIds: inputMessageIds,
+                        hasHistory: history.messages.length > 0,
+                        turnId,
+                      })
+                    : undefined,
               },
               history,
               ...childTurn.run,
