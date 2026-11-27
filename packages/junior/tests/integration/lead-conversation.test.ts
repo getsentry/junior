@@ -426,6 +426,25 @@ describe("Lead", () => {
       destinationId: rows[lead.conversationId]!.destinationId,
       location: null,
     });
+
+    // Out of the Space it is a plain root with its own local Destination,
+    // and later Slack input keeps that one.
+    await expect(setConversationSpace(slack, null, space.id)).resolves.toBe(
+      undefined,
+    );
+    const own = (await treeRows([slack]))[slack]!.destinationId;
+    expect(own).not.toBe(rows[lead.conversationId]!.destinationId);
+    await getConversationStore().recordActivity({
+      conversationId: slack,
+      destination: slackDestination,
+      nowMs: Date.now(),
+      source: "slack",
+    });
+    expect((await treeRows([slack]))[slack]).toMatchObject({
+      destinationId: own,
+      location: null,
+      parentConversationId: null,
+    });
   });
 
   it("starts a Lead Turn for each result of its child, as for any parent", async () => {

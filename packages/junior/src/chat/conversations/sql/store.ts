@@ -247,6 +247,18 @@ function assertSameConversationDestination(args: {
   );
 }
 
+/**
+ * Return whether a write keeps the stored Destination, whatever Destination
+ * it names. A child stores its parent's. A local one is final: Slack input
+ * in a thread that moved into a Space, or left one, does not reconnect it.
+ */
+function keepsStoredDestination(existing: Conversation | undefined): boolean {
+  return (
+    existing !== undefined &&
+    (!isTopLevel(existing) || existing.destination?.platform === "local")
+  );
+}
+
 export class SqlStore implements ConversationStore {
   private readonly executor: JuniorSqlDatabase;
 
@@ -376,9 +388,7 @@ export class SqlStore implements ConversationStore {
       const existing = await this.get({
         conversationId: args.conversationId,
       });
-      // A child stores its parent's Destination, so input that names
-      // another, such as Slack input after a move into a Space, keeps it.
-      if (existing && args.destination && isTopLevel(existing)) {
+      if (existing && args.destination && !keepsStoredDestination(existing)) {
         assertSameConversationDestination({
           conversationId: args.conversationId,
           current: existing.destination,
@@ -498,9 +508,7 @@ export class SqlStore implements ConversationStore {
             : undefined),
           ...(existing?.location ? { location: existing.location } : undefined),
           ...(args.channelName ? { channelName: args.channelName } : undefined),
-          // A child stores its parent's Destination. A Run's never
-          // replaces it.
-          ...(args.destination && (!existing || isTopLevel(existing))
+          ...(args.destination && !keepsStoredDestination(existing)
             ? { destination: args.destination }
             : undefined),
           ...(actor ? { actor } : undefined),
