@@ -6,30 +6,19 @@ import { fileURLToPath } from "node:url";
 import pLimit from "p-limit";
 
 /**
- * `pnpm lint`: run every lint step and fail when one fails.
- *
- * Type-aware oxlint takes the longest and uses every core, so it starts
- * first and the other steps run next to it, `OTHER_STEPS_AT_ONCE` at a time.
- * Each step runs its package.json script through `sh` with the package bins
- * on `PATH`, like `pnpm run` does, without the second of pnpm startup per
- * step. A step's output prints only when the step fails.
- *
- * oxlint runs its type-aware rules in tsgolint, a Go process. Go collects
- * garbage only when the heap doubles, so tsgolint grows past 5 GB on this
- * repo and an 8 GB machine runs out of memory. A soft limit at half the
- * machine's memory makes it collect sooner. `GOMEMLIMIT` in the environment
- * wins.
- *
- * `--changed`, which the pre-push hook passes, lints only what differs from
- * the merge base with origin/main. oxlint lints the changed files, unless a
- * change to its config, a tsconfig, or a package.json can change what it
- * reports in any file. A step with `when` runs only when a changed file
- * matches it. CI runs the full lint, which catches a type change that breaks
- * an unchanged file.
+ * `pnpm lint`: run every lint step and fail when one fails. Type-aware oxlint
+ * is slowest and uses every core, so it starts first and the other steps run
+ * next to it, `OTHER_STEPS_AT_ONCE` at a time. Each step runs its package.json
+ * script through `sh` with package bins on `PATH`, like `pnpm run` without
+ * its startup cost. A step's output prints only when the step fails.
  */
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OTHER_STEPS_AT_ONCE = 2;
+// tsgolint, oxlint's Go type checker, collects garbage only when its heap
+// doubles, so it grows past 5 GB here and runs an 8 GB machine out of memory.
+// A soft limit at half the memory makes it collect sooner. `GOMEMLIMIT` in
+// the environment wins.
 const GOMEMLIMIT = `${Math.floor(os.totalmem() / 2 / 2 ** 20)}MiB`;
 
 const OXLINT = { dir: ".", command: "oxlint" };
@@ -161,6 +150,11 @@ function runStep(step) {
   });
 }
 
+// `--changed` (the pre-push hook) lints only what differs from the merge base
+// with origin/main: oxlint gets the changed files unless its config, a
+// tsconfig, or a package.json changed, and a step with `when` runs only when a
+// changed file matches. CI runs the full lint, which catches a type change
+// that breaks an unchanged file.
 const scoped = process.argv.includes("--changed");
 const changed = scoped ? changedFiles() : undefined;
 if (scoped && !changed) {

@@ -51,8 +51,7 @@ import {
  *   they post in it, because starting it adds their Participant row.
  * - Given an archived root, when a Participant restores it (any Message that
  *   restores an archive, or Unarchive), then that person is subscribed
- *   again. A restored root never sits in no feed. A person who is not a
- *   Participant cannot restore it.
+ *   again, so it is never in no feed. Only a Participant can restore it.
  * - Given a Turn, when the agent changes the subscription with its tool,
  *   then only the person who started the Turn changes, in the current
  *   Conversation. The dashboard conversation menu, the agent tool, and the

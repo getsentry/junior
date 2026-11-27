@@ -501,11 +501,10 @@ export function isPersonInput(source: string | undefined): boolean {
 
 /**
  * Return the Actor that a child Turn's update carries to its parent, whose
- * Turn for it runs as that Actor. Only a Turn that agent work started, a
- * parent message or an Event such as a child result, keeps its Actor. Any
- * other Turn, such as a person's Turn in a Thread or a saved Turn with no
- * Source, reports as the Event system Actor, so the parent never gets a
- * person's access.
+ * Turn for it runs as that Actor. Only a Turn that agent work started (a
+ * parent message, or an Event such as a child result) keeps its Actor. Any
+ * other Turn, such as a person's Turn in a Thread or one with no Source,
+ * reports as the Event system Actor, so the parent never gets its access.
  */
 export function parentResultActor(
   actor: Actor,
