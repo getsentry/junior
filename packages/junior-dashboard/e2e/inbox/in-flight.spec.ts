@@ -44,6 +44,7 @@ test.describe("new UI", () => {
     await pinned.hover();
     await expect(pinnedState).toBeHidden();
     await screenshot(page, "inbox-in-flight-hover", {
+      hover: true,
       lightTheme: true,
       target: inFlight,
       view: "desktop",
