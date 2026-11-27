@@ -2,7 +2,7 @@
 // applies `createApp({ limits })` over them.
 import * as z from "zod";
 import { toOptionalTrimmed } from "@/chat/optional-string";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import {
   parseTurnReasoningLevel,
   TURN_REASONING_LEVELS,

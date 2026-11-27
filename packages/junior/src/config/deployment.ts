@@ -1,7 +1,10 @@
-// The deployment group: the public base URL and the Vercel deployment.
+// The deployment group: the public base URL, the Vercel deployment, and
+// install-wide defaults such as the timezone and the Sentry org.
 import * as z from "zod";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import type { Env } from "@/config/fields";
+
+const DEFAULT_TIMEZONE = "America/Los_Angeles";
 
 /** The public base URL and the Vercel deployment that runs this process. */
 export const deploymentSchema = z
@@ -15,6 +18,10 @@ export const deploymentSchema = z
     /** Vercel hostnames, for the base URL when none is configured. */
     vercelProductionUrl: z.string().optional(),
     vercelUrl: z.string().optional(),
+    /** Timezone for people whose timezone Junior does not know. */
+    timezone: z.string().default(DEFAULT_TIMEZONE),
+    /** Sentry org slug for links to Sentry. */
+    sentryOrgSlug: z.string().optional(),
   })
   .prefault({});
 
@@ -35,6 +42,8 @@ export function readDeploymentEnv(env: Env) {
       env["VERCEL_PROJECT_PRODUCTION_URL"],
     ),
     vercelUrl: toOptionalTrimmed(env["VERCEL_URL"]),
+    timezone: toOptionalTrimmed(env["JUNIOR_TIMEZONE"]),
+    sentryOrgSlug: toOptionalTrimmed(env["SENTRY_ORG_SLUG"]),
   };
 }
 
@@ -51,5 +60,7 @@ export function deriveDeployment(
     configuredBaseUrl: deployment.configuredBaseUrl,
     commitSha: deployment.commitSha,
     id: deployment.id,
+    timezone: deployment.timezone,
+    sentryOrgSlug: deployment.sentryOrgSlug,
   };
 }

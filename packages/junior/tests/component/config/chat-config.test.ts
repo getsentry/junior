@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadConfig, type ConfigInput } from "@/config";
 
@@ -834,5 +835,72 @@ describe("sandbox config", () => {
       extraCaCertsFile: "/etc/ca.pem",
     });
     expect(config.vercel).toEqual({ token: "tk", projectId: "pj" });
+  });
+});
+
+describe("misc config", () => {
+  it("reads development mode only from NODE_ENV=development", () => {
+    expect(loadConfig({ env: BASE_ENV }).development).toEqual({
+      enabled: false,
+      port: "3000",
+    });
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, NODE_ENV: "development", PORT: " 4000 " },
+      }).development,
+    ).toEqual({ enabled: true, port: "4000" });
+    expect(
+      loadConfig({ env: { ...BASE_ENV, NODE_ENV: "production", PORT: " " } })
+        .development,
+    ).toEqual({ enabled: false, port: "3000" });
+  });
+
+  it("splits SKILL_DIRS on the path delimiter and drops empty entries", () => {
+    expect(loadConfig({ env: BASE_ENV }).skills.dirs).toEqual([]);
+    expect(
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          SKILL_DIRS: ["/a", "", "/b"].join(path.delimiter),
+        },
+      }).skills.dirs,
+    ).toEqual(["/a", "/b"]);
+  });
+
+  it("trims the timezone and Sentry org slug, and treats blank as unset", () => {
+    expect(loadConfig({ env: BASE_ENV }).deployment).toMatchObject({
+      timezone: "America/Los_Angeles",
+      sentryOrgSlug: undefined,
+    });
+    expect(
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          JUNIOR_TIMEZONE: " Europe/Vienna ",
+          SENTRY_ORG_SLUG: " acme ",
+        },
+      }).deployment,
+    ).toMatchObject({ timezone: "Europe/Vienna", sentryOrgSlug: "acme" });
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_TIMEZONE: " ", SENTRY_ORG_SLUG: " " },
+      }).deployment,
+    ).toMatchObject({
+      timezone: "America/Los_Angeles",
+      sentryOrgSlug: undefined,
+    });
+  });
+
+  it("trims the conversation work topic and treats blank as unset", () => {
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC: " work " },
+      }).queue.conversationWorkTopic,
+    ).toBe("work");
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC: " " },
+      }).queue.conversationWorkTopic,
+    ).toBeUndefined();
   });
 });

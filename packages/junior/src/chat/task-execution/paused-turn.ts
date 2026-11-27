@@ -8,12 +8,7 @@
  */
 import { instructionActorFor } from "@/chat/agent/prompt";
 import { savedInputInstruction } from "@/chat/inbox-items/prompt-input";
-import {
-  buildTurnFailureResponse,
-  logException,
-  logWarn,
-  withLogContext,
-} from "@/chat/logging";
+import { logException, logWarn, withLogContext } from "@/chat/logging";
 import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -80,7 +75,10 @@ import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
 import { postsRunNotices } from "@/chat/conversations/kind-behavior";
-import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
+import {
+  buildTurnFailureResponse,
+  requireTurnFailureEventId,
+} from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
   createSlackResumeActor,

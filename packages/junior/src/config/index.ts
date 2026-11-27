@@ -28,6 +28,7 @@ import {
   encryptionSchema,
   readEncryption,
 } from "@/config/encryption";
+import { developmentSchema, readDevelopmentEnv } from "@/config/development";
 import type { Env } from "@/config/fields";
 import {
   functionMaxDurationSecondsSchema,
@@ -46,6 +47,7 @@ import {
 } from "@/config/sandbox";
 import { readSecretsEnv, secretsSchema } from "@/config/secrets";
 import { readSignInEnv, signInSchema } from "@/config/sign-in";
+import { readSkillsEnv, skillsSchema } from "@/config/skills";
 import { readSlackEnv, slackEnvNames, slackSchema } from "@/config/slack";
 import { deriveSql, readSqlEnv, sqlEnvNames, sqlSchema } from "@/config/sql";
 import { readStateEnv, stateEnvNames, stateSchema } from "@/config/state";
@@ -58,6 +60,7 @@ const configObjectSchema = z.strictObject({
   }),
   bot: botSchema.prefault({}),
   deployment: deploymentSchema,
+  development: developmentSchema,
   queue: queueSchema,
   functionMaxDurationSeconds: functionMaxDurationSecondsSchema,
   limits: limitsSchema.optional(),
@@ -69,6 +72,7 @@ const configObjectSchema = z.strictObject({
   sql: sqlSchema,
   slack: slackSchema,
   sandbox: sandboxSchema,
+  skills: skillsSchema,
   state: stateSchema,
 });
 
@@ -130,6 +134,7 @@ function readEnv(env: Env): ConfigInput {
     attachmentStorage: readAttachmentStorage(env),
     bot: readBotEnv(env),
     deployment: readDeploymentEnv(env),
+    development: readDevelopmentEnv(env),
     queue: readQueueEnv(env),
     ...readKillSwitchesEnv(env),
     encryption: readEncryption(env),
@@ -139,6 +144,7 @@ function readEnv(env: Env): ConfigInput {
     sql: readSqlEnv(env),
     slack: readSlackEnv(env),
     sandbox: readSandboxEnv(env),
+    skills: readSkillsEnv(env),
     state: readStateEnv(env),
   };
 }

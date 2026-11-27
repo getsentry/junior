@@ -82,7 +82,11 @@ describe("local OAuth credential sync integration", () => {
         "https://junior.example/api/internal/local-oauth-credentials",
       ),
     );
-    process.env["NODE_ENV"] = "production";
+    // Config is read once per module load, so install a production config.
+    const { installChatConfig, readChatConfig } = await import("@/chat/config");
+    installChatConfig(
+      readChatConfig({ ...process.env, NODE_ENV: "production" }),
+    );
     const productionResponse = await receiveLocalOAuthCredential(
       new Request("http://127.0.0.1:3000/api/internal/local-oauth-credentials"),
     );

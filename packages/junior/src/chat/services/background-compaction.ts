@@ -42,7 +42,8 @@ import {
   type AgentRequestStreamFn,
   withAgentRequest,
 } from "@/chat/pi/agent-history";
-import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import { getGatewayApiKey } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { QUEUE_SIGNATURE_MAX_AGE_MS } from "@/chat/queue/sign";
