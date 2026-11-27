@@ -1,23 +1,9 @@
 /**
  * Compaction on idle: at a warmup slot of a large prefix, a ready background
- * summary can replace the history instead of a warmup.
- *
- * At or above the background compaction mark, a return to the full prefix
- * is close to the compaction threshold and can compact within its Turn, and
- * each of its model calls reads the full prefix. Swapping the summary in costs no model call, ends the
- * warmups, and the returning Turn reads a much smaller prefix. A return
- * before the cache expires reads the full prefix from the cache, which costs
- * less than a write of the compacted prefix. So the swap runs at a warmup
- * slot, not at the start of the idle period. This also gives the summary
- * that the last model call requested time to get ready.
- *
- * Each slot with a ready summary picks the cheapest of warm, compact, and
- * stop (`chooseIdleCompaction`). A likely quick return can warm first and
- * compact at a later slot.
- *
- * The tradeoff: a Conversation that returns gets the summary in place of
- * history that it would have kept in that Turn. `design/context-compaction.md`
- * owns the rule, the cost math, and that tradeoff.
+ * summary can replace the history instead of a warmup. It waits for a slot
+ * because a return before the cache expires reads the full prefix for less
+ * than a write of the compacted one. Rule and cost math:
+ * `design/context-compaction.md`.
  */
 import { getChatConfig } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
@@ -27,14 +13,9 @@ import { withIdleConversation } from "@/chat/task-execution/store";
 import type { IdleCompactionChoice, IdleCompactionChoiceResult } from "./model";
 
 /**
- * `app.cache_warming.idle_compaction` of a warmup that tried to compact.
- * `applied`: the summary replaced the history, so the warmup skips with
- * `compacted_on_idle`. `deferred`: warming costs less for now, so the
- * warmup warms, and the next slot chooses again. `stopped`: neither pays,
- * so the warmup skips with `idle_compaction_stopped`. `not_ready`: no ready
- * summary, or it could not be used, such as one over the target. `busy`: a
- * Run holds the Conversation. `failed`: the swap threw. `not_ready`, `busy`,
- * and `failed` warm as before.
+ * Outcome of a warmup that tried to compact, as
+ * `app.cache_warming.idle_compaction`. Only `applied` and `stopped` skip the
+ * warmup. Every other outcome warms, and the next slot chooses again.
  */
 type IdleCompactionOutcome =
   | "applied"
@@ -85,12 +66,6 @@ export function mayCompactOnIdle(input: {
  * warmup, when `choose` picks compact. Return none when the idle period may
  * not try. A failure only loses the swap, so it is logged and the warmup
  * goes on.
- *
- * No warmup of the compacted prefix follows. That prefix is not in the
- * cache, so a warmup of it writes the cache instead of reading it. With the
- * warmup rule (`decideWarmup`), it pays when the returns per warmup are over
- * write/(write − read), which is more than 1. A return writes the prefix once
- * either way.
  */
 export async function compactOnIdle(
   input: IdleCompactionInput,

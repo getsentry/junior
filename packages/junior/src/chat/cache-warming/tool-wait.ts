@@ -1,21 +1,9 @@
 /**
- * Prompt cache warming while a tool runs.
- *
- * A model request that ends with tool calls is followed by the next request
- * when the tools return. When a tool runs longer than the cache TTL, that
- * request writes the full history again. The request is still in memory, so a
- * timer in the running agent sends the warmup. Losing the timer only loses the
- * warmup.
- *
- * The decision is the same cost model as idle warming (`decideWarmup`). The
- * "reply" is the next request of the run, and the gaps are tool waits: the
- * time from a request that ended with tool calls to the next request.
- *
- * Each tool wait that the next request ends counts in the savings counters,
- * as an idle period does. A run that ends during a wait, such as at a slice
- * yield, stores the wait, and the first request of the next run of the
- * Conversation ends it. An idle period starts only after a request that ends
- * the Turn, so the two never count the same pair of requests.
+ * Prompt cache warming while a tool runs longer than the cache TTL. The
+ * request is still in memory, so a timer in the running agent sends the
+ * warmup, and losing the timer only loses the warmup. A run that ends during
+ * a wait stores it for the next run's first request, and an idle period
+ * starts only at a Turn's end, so the two never count the same requests.
  */
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import * as z from "zod";
@@ -49,12 +37,11 @@ import {
 const TOOL_WAIT_GAPS_KEY = `${KEY_PREFIX}:gaps:tool_wait`;
 const TOOL_WAIT_GAPS_MAX = 2_000;
 const TOOL_WAIT_GAPS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
-// The first warmup runs at least 255 seconds after the request (the shortest
-// TTL, 5 minutes, minus the margin). The return chance at time t uses only
-// the gaps longer than the start of the histogram bin that holds t, which is
-// 4 minutes for 255 seconds. So waits under 2 minutes do not change a
-// decision, and are not recorded. This keeps the many short tool calls free
-// of state writes.
+// The first warmup runs at least 255 seconds after the request (5-minute TTL
+// minus the margin), and the return chance at t uses only gaps past the start
+// of t's histogram bin, 4 minutes for 255 seconds. So waits under 2 minutes
+// never change a decision, and skipping them keeps short tool calls free of
+// state writes.
 const MIN_RECORDED_TOOL_WAIT_MS = 2 * MINUTE_MS;
 // Warming never pays for a wait much longer than this, so a stored wait that
 // no run ended by then does not count.
@@ -89,12 +76,10 @@ export interface ToolWaitWarmer {
   toolsReturned(): void;
   /**
    * Stop warmups, because the run ended. Record a wait whose tools returned
-   * without a next request in this run, such as before a slice yield. A tool
-   * that is still running never returns to this run, so record its wait as
-   * `NO_REPLY_GAP_MS`. Without these waits, the return chance counts only
-   * the tools that returned. Store an open wait, so that the first request
-   * of the next run counts its savings, unless an answer tool ended the
-   * Turn: then the idle period counts them.
+   * without a next request, and a still-running tool's wait as
+   * `NO_REPLY_GAP_MS`, so the return chance does not count only returned
+   * tools. Store an open wait for the next run's savings, unless an answer
+   * tool ended the Turn: then the idle period counts them.
    */
   end(turnEnded?: boolean): Promise<void>;
 }
