@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LockKeyhole } from "lucide-react";
-import { useContext } from "react";
 import {
   conversationTodoSchema,
   conversationTodosReportSchema,
@@ -13,8 +12,6 @@ import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { DisplayText } from "../display-text/DisplayText";
 import { patch } from "../http";
 import { revalidatedJsonQuery } from "../revalidation";
-import { childTitle } from "./ConversationAgents";
-import { useConversationChildAgents } from "./ConversationChildAgents";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
   DetailsRow,
@@ -22,7 +19,6 @@ import {
   DetailsRowMenu,
   DetailsSection,
 } from "./DetailsList";
-import { FeedThreads } from "./feedThreads";
 import { todoStatusIcons } from "./todoStatusIcons";
 
 /** Load the open To-dos of one Conversation, then the latest closed ones. */
@@ -63,25 +59,20 @@ const statusLabels: Record<ConversationTodo["status"], string> = {
   dropped: "Dropped",
 };
 
-/**
- * Name who owns a To-do: "You", a person, the bot, or the child agent by
- * its title.
- */
-export function todoOwner(todo: ConversationTodo, agentTitle?: string): string {
+/** Name who owns a To-do that Details lists: "You", a person, or the bot. */
+export function todoOwner(todo: ConversationTodo): string {
   const { assignee } = todo;
-  if (assignee.kind === "self") return getDashboardAgentName();
-  if (assignee.kind === "agent") {
-    return agentTitle ?? assignee.name ?? "Child agent";
-  }
+  if (assignee.kind !== "user") return getDashboardAgentName();
   if (assignee.viewer) return "You";
   return assignee.name ?? "Person";
 }
 
 /**
- * List the To-dos of one Conversation, each with its owner and notes. The
- * viewer's open To-dos that Needs you shows stay out. Done and dropped
- * To-dos hide behind "Show finished". Participants change a To-do's status
- * from its menu.
+ * List the To-dos of one Conversation, each with its owner and notes. A
+ * To-do for a child agent stays out: Agents shows that child. So does a
+ * viewer's open To-do that Needs you shows. Done and dropped To-dos hide
+ * behind "Show finished". Participants change a To-do's status from its
+ * menu.
  */
 export function ConversationTodoList(props: {
   canEdit: boolean;
@@ -89,35 +80,18 @@ export function ConversationTodoList(props: {
   /** The viewer's To-dos that Needs you shows. */
   needsYouTodoIds: ReadonlySet<number>;
 }) {
-  const todos = useConversationTodos(props.conversationId).data?.todos ?? [];
-  const children =
-    useConversationChildAgents(props.conversationId).data?.agents ?? [];
-  const feedThreads = useContext(FeedThreads);
-  const row = (todo: ConversationTodo) => {
-    const { assignee } = todo;
-    const child =
-      assignee.kind === "agent"
-        ? children.find(
-            (candidate) => candidate.conversationId === assignee.conversationId,
-          )
-        : undefined;
-    return (
-      <TodoRow
-        canEdit={props.canEdit && !todo.redacted}
-        conversationId={props.conversationId}
-        key={todo.id}
-        owner={todoOwner(
-          todo,
-          child &&
-            childTitle(
-              child,
-              feedThreads.get(child.conversationId)?.displayTitle,
-            ),
-        )}
-        todo={todo}
-      />
-    );
-  };
+  const todos = (
+    useConversationTodos(props.conversationId).data?.todos ?? []
+  ).filter((todo) => todo.assignee.kind !== "agent");
+  const row = (todo: ConversationTodo) => (
+    <TodoRow
+      canEdit={props.canEdit && !todo.redacted}
+      conversationId={props.conversationId}
+      key={todo.id}
+      owner={todoOwner(todo)}
+      todo={todo}
+    />
+  );
   const closed = (todo: ConversationTodo) =>
     todo.status === "done" || todo.status === "dropped";
   return (

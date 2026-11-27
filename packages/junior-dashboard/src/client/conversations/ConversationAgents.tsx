@@ -104,7 +104,7 @@ export function childUpdateReasons(
 }
 
 /** Name a child Conversation: a Thread's own title first, then its task. */
-export function childTitle(
+function childTitle(
   child: ConversationChildAgent,
   feedTitle: string | undefined,
 ): string {

@@ -1,7 +1,6 @@
 import type {
   ConversationChildAgent,
   ConversationDetailReport,
-  ConversationTodo,
 } from "@sentry/junior/api/schema";
 import { describe, expect, it } from "vitest";
 
@@ -9,7 +8,6 @@ import {
   childState,
   childUpdateReasons,
 } from "../src/client/conversations/ConversationAgents";
-import { todoOwner } from "../src/client/conversations/ConversationTodos";
 
 function thread(
   title: string,
@@ -26,17 +24,6 @@ function thread(
     treeState: "done",
     updatedAt: "2026-08-03T00:00:00.000Z",
     watching: false,
-    ...fields,
-  };
-}
-
-function todo(fields: Partial<ConversationTodo> = {}): ConversationTodo {
-  return {
-    assignee: { kind: "self" },
-    id: 1,
-    status: "open",
-    title: "Confirm the rollback window",
-    updatedAt: "2026-08-03T00:00:00.000Z",
     ...fields,
   };
 }
@@ -123,30 +110,5 @@ describe("a child Conversation's state", () => {
       update(4, { eventType: "pull_request.merged", text: "Merged." }),
     ]);
     expect([...reasons]).toEqual([["internal:a", "Needs repo access."]]);
-  });
-});
-
-describe("a To-do's owner", () => {
-  it("names the viewer, a person, the bot, or the child agent", () => {
-    const person = todo({ assignee: { kind: "user", name: "Avery" } });
-    const viewer = todo({
-      assignee: { kind: "user", name: "Avery", viewer: true },
-    });
-    const agent = todo({
-      assignee: { conversationId: "internal:a", kind: "agent" },
-    });
-    expect([
-      todoOwner(viewer),
-      todoOwner(person),
-      todoOwner(todo()),
-      todoOwner(agent, "Fix the flaky test"),
-      todoOwner(agent),
-    ]).toEqual([
-      "You",
-      "Avery",
-      "Assistant",
-      "Fix the flaky test",
-      "Child agent",
-    ]);
   });
 });

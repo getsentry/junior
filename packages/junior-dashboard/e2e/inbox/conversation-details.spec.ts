@@ -319,6 +319,8 @@ test.describe("new UI", () => {
       .getByRole("region", { exact: true, name: "To-dos" });
     // To-dos have no count: closed To-dos are only the latest few.
     await expect(work.getByRole("heading")).toHaveText("To-dos");
+    // A child agent's To-do stays out: Agents shows that child.
+    await expect(work.getByText("Compare p95 with last week")).toHaveCount(0);
     const change = page.getByRole("button", {
       name: "Change Confirm the rollback window",
     });
