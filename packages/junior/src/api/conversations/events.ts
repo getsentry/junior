@@ -569,6 +569,17 @@ function reportSubagentLabel(
   };
 }
 
+// The name of the tool call that gave a child its work, when its start is
+// stored.
+function parentToolName(
+  toolStarts: ReadonlyMap<string, ToolStart>,
+  toolCallId: string | undefined,
+): { parentToolName: string } | undefined {
+  const name =
+    toolCallId === undefined ? undefined : toolStarts.get(toolCallId)?.name;
+  return name ? { parentToolName: name } : undefined;
+}
+
 // A child with no row, or a page counted before its kinds are read, shows as
 // a Task: only a Thread links to a page of its own.
 function childKind(
@@ -705,6 +716,7 @@ export function projectConversationReportEventPage(args: {
         ...(event.data.parentToolCallId
           ? { parentToolCallId: event.data.parentToolCallId }
           : undefined),
+        ...parentToolName(toolStarts, event.data.parentToolCallId),
       };
     } else if (event.data.type === "subagent_ended") {
       const started = subagentStarts.get(event.data.subagentInvocationId);
@@ -723,6 +735,7 @@ export function projectConversationReportEventPage(args: {
           ...(started.data.parentToolCallId
             ? { parentToolCallId: started.data.parentToolCallId }
             : undefined),
+          ...parentToolName(toolStarts, started.data.parentToolCallId),
           status:
             event.data.outcome === "success" ? "completed" : event.data.outcome,
         };

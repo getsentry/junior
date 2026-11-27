@@ -262,10 +262,32 @@ async function projectConversationEvents(
     ]);
 
   const subagentStartEvents = subagentStartRows.map(eventFromRow);
-  // Ended events name their child only through the start they resolve.
-  const threadIds = await readThreadIds(executor, [
-    ...events,
-    ...subagentStartEvents,
+  // Ended events name their child and tool call only through the start they
+  // resolve, so these reads wait for the starts.
+  const readToolIds = new Set(toolResultIds);
+  const parentToolIds = [
+    ...new Set(
+      [...events, ...subagentStartEvents].flatMap((event) =>
+        event.data.type === "subagent_started"
+          ? [event.data.parentToolCallId]
+          : [],
+      ),
+    ),
+  ].filter(
+    (toolCallId): toolCallId is string =>
+      toolCallId !== undefined && !readToolIds.has(toolCallId),
+  );
+  const [threadIds, parentToolStartRows] = await Promise.all([
+    readThreadIds(executor, [...events, ...subagentStartEvents]),
+    parentToolIds.length === 0
+      ? []
+      : readConversationEventRows(executor, {
+          conversationId: args.conversationId,
+          direction: "forward",
+          limit: parentToolIds.length,
+          toolCallIds: parentToolIds,
+          types: ["tool_execution_started"],
+        }),
   ]);
   return projectEventPage({
     canExposePayload: args.canExposePayload,
@@ -273,7 +295,9 @@ async function projectConversationEvents(
     ...(args.firstEvent ? { firstEvent: args.firstEvent } : undefined),
     subagentStartEvents,
     threadIds,
-    toolStartEvents: toolStartRows.map(eventFromRow),
+    toolStartEvents: [...toolStartRows, ...parentToolStartRows].map(
+      eventFromRow,
+    ),
     modelContextEvents: [...turnBoundaryRows, ...modelCallRows]
       .sort((left, right) => left.seq - right.seq)
       .map(eventFromRow),

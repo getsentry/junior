@@ -50,7 +50,8 @@ function eventMessage(
 
 /**
  * The tool calls that a child's card replaces: each one that a subagent
- * marker names, unless it sends an agent message. A message to a child,
+ * marker names, unless it sends an agent message. The server names the tool
+ * when its call may be on a page that is not loaded. A message to a child,
  * such as a later task or a Lead's message to a Conversation that moved into
  * its Space, stays a message row.
  */
@@ -68,7 +69,9 @@ function childCardToolIds(events: ConversationReportEvent[]): Set<string> {
     if (
       data.type === "subagent" &&
       data.parentToolCallId &&
-      !isAgentMessageTool(toolNames.get(data.parentToolCallId))
+      !isAgentMessageTool(
+        data.parentToolName ?? toolNames.get(data.parentToolCallId),
+      )
     ) {
       ids.add(data.parentToolCallId);
     }

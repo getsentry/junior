@@ -496,6 +496,15 @@ describe("conversation event list API", () => {
       parentConversationId: conversationId,
     });
     await getConversationEventStore().append(conversationId, [
+      // The tool call that started the child, also older than the page.
+      {
+        data: {
+          type: "tool_execution_started",
+          toolCallId: "advisor-before-page",
+          toolName: "startAgent",
+        },
+        createdAtMs: 1,
+      },
       {
         data: {
           type: "subagent_started",
@@ -524,7 +533,7 @@ describe("conversation event list API", () => {
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),
     );
-    expect(detail.events.map((event) => event.seq)).toEqual([2]);
+    expect(detail.events.map((event) => event.seq)).toEqual([3]);
     if (!detail.previousCursor) throw new Error("Expected a previous cursor");
 
     const historyResponse = await app.request(
@@ -538,12 +547,13 @@ describe("conversation event list API", () => {
       expect.objectContaining({
         data: {
           type: "subagent",
-          startedSeq: 0,
+          startedSeq: 1,
           startedAt: "1970-01-01T00:00:00.002Z",
           childConversationId: "child-before-page",
           childKind: "thread",
           subagentKind: "advisor",
           parentToolCallId: "advisor-before-page",
+          parentToolName: "startAgent",
           status: "error",
         },
       }),

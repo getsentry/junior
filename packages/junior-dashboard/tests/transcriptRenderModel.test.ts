@@ -656,7 +656,7 @@ describe("canonical event transcript reduction", () => {
       seq: number,
       startedSeq: number,
       parentToolCallId: string,
-      status: "completed" | "error" | "running",
+      status: "blocked" | "completed" | "error" | "running",
     ) =>
       event(seq, `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`, {
         type: "subagent",
@@ -743,6 +743,13 @@ describe("canonical event transcript reduction", () => {
       { key: "tool:message-1" },
       { key: "9:message:0" },
     ]);
+    // A Lead's message ends after its call's page: the server names the
+    // tool, so the ended marker alone starts no card.
+    const ended = marker(8, 5, "message-1", "blocked");
+    if (ended.data.type === "subagent") {
+      ended.data.parentToolName = "messageAgent";
+    }
+    expect(rows([ended, update])).toEqual([{ key: "9:message:0" }]);
   });
 
   it("renders a completed subagent when its start is outside the page", () => {

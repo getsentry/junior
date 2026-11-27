@@ -615,6 +615,12 @@ const conversationReportSubagentEventDataSchema = z
     task: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
     parentToolCallId: z.string().min(1).optional(),
+    /**
+     * The name of the tool that `parentToolCallId` names, when its start is
+     * stored. The dashboard tells a child's start from a message to it by
+     * this name, also when the call is on a page that is not loaded.
+     */
+    parentToolName: z.string().min(1).optional(),
     status: z.enum(["running", "completed", "blocked", "error", "aborted"]),
   })
   .strict();
