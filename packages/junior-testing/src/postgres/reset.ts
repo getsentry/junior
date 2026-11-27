@@ -38,6 +38,18 @@ ORDER BY tablename ASC
     const tableNames = tableRows.rows.map((row) => row.qualified_name);
     if (tableNames.length > 0) {
       await client.query(`TRUNCATE TABLE ${tableNames.join(", ")} CASCADE`);
+      // TRUNCATE keeps planner stats, such as from an ANALYZE in an earlier
+      // test, so statement costs would depend on the tests before. Deleting
+      // them needs a superuser, as CI and compose.yaml run Postgres.
+      await client.query(
+        `
+DELETE FROM pg_catalog.pg_statistic
+WHERE starelid IN (
+  SELECT oid FROM pg_catalog.pg_class WHERE relnamespace = $1::regnamespace
+)
+`,
+        [SCHEMA_NAME],
+      );
       await options.afterTruncate?.(client);
     }
 
