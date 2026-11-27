@@ -5,9 +5,10 @@ import {
   CircleX,
   Clock,
   Ellipsis,
+  Eye,
   type LucideIcon,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useContext, useState } from "react";
 import type {
   ConversationChildAgent,
   ConversationTodo,
@@ -23,6 +24,8 @@ import {
 import { Spinner } from "../components/ui/spinner";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
+import { formatRelativeTime } from "../time";
+import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useArchiveConversation } from "./conversationArchive";
 import {
   childAgentStatusLabel,
@@ -45,6 +48,7 @@ import {
   type WorkState,
 } from "./conversationWorkItems";
 import { DetailsRow, DetailsRowLine, DetailsSection } from "./DetailsList";
+import { FeedThreads } from "./feedThreads";
 
 const stateLabels: Record<WorkState, string> = {
   blocked: "Blocked",
@@ -66,16 +70,18 @@ const stateIcons: Record<Exclude<WorkState, "running">, LucideIcon> = {
 /**
  * Mark where one piece of work stands. Only running work has the accent,
  * and only blocked or failed work has the primary text color, so the rows
- * that need a look stand out without status colors.
+ * that need a look stand out without status colors. Work that waits on a
+ * Watch has the sidebar's eye.
  */
-function WorkStateIcon(props: { state: WorkState }) {
-  const label = stateLabels[props.state];
+function WorkStateIcon(props: { state: WorkState; watching?: boolean }) {
+  const watching = props.state === "waiting" && props.watching;
+  const label = watching ? "Watching" : stateLabels[props.state];
   if (props.state === "running") {
     return (
       <Spinner aria-label={label} className="size-4 text-dashboard-accent" />
     );
   }
-  const Icon = stateIcons[props.state];
+  const Icon = watching ? Eye : stateIcons[props.state];
   return (
     <Icon
       aria-label={label}
@@ -139,12 +145,15 @@ function WorkRow(props: {
   onOpenTask(target: ConversationDrawerTarget): void;
 }) {
   const { item } = props;
-  const icon = <WorkStateIcon state={item.state} />;
+  const feedThreads = useContext(FeedThreads);
   if (item.kind === "watch") {
     return (
       <DetailsRow
         href={item.watch.url}
-        icon={icon}
+        // A Timer keeps the clock. An event Watch has the eye.
+        icon={
+          <WorkStateIcon state={item.state} watching={!item.watch.firesAt} />
+        }
         menu={
           props.canEdit ? (
             <WatchMenu
@@ -154,22 +163,42 @@ function WorkRow(props: {
           ) : null
         }
         title={watchTitle(item.watch)}
-        tooltip={item.watch.label}
+        tooltip={watchTooltip(item.watch)}
       />
     );
   }
-  const child = item.child;
+  const { child, childWatches } = item;
   const open = child ? childOpener(child, props.onOpenTask) : undefined;
+  const icon = (
+    <WorkStateIcon
+      state={item.state}
+      watching={
+        child !== undefined &&
+        child.status !== "paused" &&
+        (child.watching || childWatches.length > 0)
+      }
+    />
+  );
+  const watchItems = props.canEdit ? (
+    <WatchCancelItems
+      conversationId={props.conversationId}
+      watches={childWatches}
+    />
+  ) : null;
   if (item.kind === "child") {
     return (
       <DetailsRow
         icon={icon}
         menu={
           props.canEdit && !item.child.redacted ? (
-            <ChildMenu child={item.child} />
+            <ChildMenu child={item.child}>{watchItems}</ChildMenu>
           ) : null
         }
-        title={childTitle(item.child)}
+        title={
+          (!item.child.redacted &&
+            feedThreads.get(item.child.conversationId)?.displayTitle) ||
+          childTitle(item.child)
+        }
         {...open}
       />
     );
@@ -180,7 +209,9 @@ function WorkRow(props: {
       icon={icon}
       menu={
         props.canEdit && !todo.redacted ? (
-          <TodoMenu conversationId={props.conversationId} todo={todo} />
+          <TodoMenu conversationId={props.conversationId} todo={todo}>
+            {watchItems}
+          </TodoMenu>
         ) : null
       }
       title={todo.title ?? "Private To-do"}
@@ -201,6 +232,14 @@ function WorkRow(props: {
 function watchTitle(watch: ConversationWatch): string {
   const resource = `${watch.namespace} ${watch.resourceType.replaceAll("_", " ")}`;
   return watch.intent ?? watch.label ?? `Private ${resource}`;
+}
+
+/** Name the resource of a Watch and when it fires or expires. */
+function watchTooltip(watch: ConversationWatch): string {
+  const when = watch.firesAt
+    ? `Fires ${formatRelativeTime(watch.firesAt)}`
+    : `Expires ${formatRelativeTime(watch.expiresAt)}`;
+  return watch.label ? `${watch.label} · ${when}` : when;
 }
 
 function childTitle(child: ConversationChildAgent): string {
@@ -247,14 +286,19 @@ function RowMenu(props: {
       >
         <Ellipsis aria-hidden="true" size={15} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-36">
+      <DropdownMenuContent align="end" className="min-w-36 max-w-72">
         {props.children}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function TodoMenu(props: { conversationId: string; todo: ConversationTodo }) {
+function TodoMenu(props: {
+  /** More entries, such as Cancel for the child's Watches. */
+  children?: ReactNode;
+  conversationId: string;
+  todo: ConversationTodo;
+}) {
   const setStatus = useSetTodoStatus(props.conversationId, props.todo.id);
   return (
     <RowMenu
@@ -269,6 +313,7 @@ function TodoMenu(props: { conversationId: string; todo: ConversationTodo }) {
           {action.label}
         </DropdownMenuItem>
       ))}
+      {props.children}
     </RowMenu>
   );
 }
@@ -287,24 +332,56 @@ function WatchMenu(props: {
   );
 }
 
-function ChildMenu(props: { child: ConversationChildAgent }) {
-  const archive = useArchiveConversation(props.child.conversationId);
-  const archived = Boolean(props.child.archivedAt);
+/** Offer Cancel for each Watch that a child owns. */
+function WatchCancelItems(props: {
+  conversationId: string;
+  watches: readonly ConversationWatch[];
+}) {
+  const cancel = useCancelConversationWatch(props.conversationId);
+  return props.watches.map((watch) => (
+    <DropdownMenuItem key={watch.id} onClick={() => cancel.mutate(watch)}>
+      Cancel {watchTitle(watch)}
+    </DropdownMenuItem>
+  ));
+}
+
+/** Archive a child after a confirm, or restore it at once. */
+function ChildMenu(props: {
+  /** More entries, such as Cancel for the child's Watches. */
+  children?: ReactNode;
+  child: ConversationChildAgent;
+}) {
+  const { child } = props;
+  const archive = useArchiveConversation(child.conversationId);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const archived = Boolean(child.archivedAt);
+  const setArchived = (value: boolean) =>
+    archive.mutate({ archived: value, lastSeenAt: child.updatedAt });
   return (
-    <RowMenu
-      disabled={archive.isPending}
-      label={`Change ${childTitle(props.child)}`}
-    >
-      <DropdownMenuItem
-        onClick={() =>
-          archive.mutate({
-            archived: !archived,
-            lastSeenAt: props.child.updatedAt,
-          })
-        }
+    <>
+      <RowMenu
+        disabled={archive.isPending}
+        label={`Change ${childTitle(child)}`}
       >
-        {archived ? "Restore" : "Archive"}
-      </DropdownMenuItem>
-    </RowMenu>
+        {props.children}
+        <DropdownMenuItem
+          onClick={() =>
+            archived ? setArchived(false) : setConfirmArchive(true)
+          }
+        >
+          {archived ? "Restore" : "Archive"}
+        </DropdownMenuItem>
+      </RowMenu>
+      {confirmArchive ? (
+        <ArchiveChildDialog
+          hasChildren={Boolean(child.childAgentTotals?.count)}
+          onClose={() => setConfirmArchive(false)}
+          onConfirm={() => {
+            setConfirmArchive(false);
+            setArchived(true);
+          }}
+        />
+      ) : null}
+    </>
   );
 }

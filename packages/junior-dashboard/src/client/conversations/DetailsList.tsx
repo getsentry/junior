@@ -118,6 +118,7 @@ export function DetailsRow(props: {
     props.href !== undefined ||
     props.to !== undefined ||
     props.onClick !== undefined;
+  const hasMenu = Boolean(props.menu);
   const render = props.href ? (
     <a href={props.href} rel="noreferrer" target="_blank" />
   ) : props.to ? (
@@ -127,7 +128,11 @@ export function DetailsRow(props: {
   ) : undefined;
   const row = (
     <Item
-      className={cn(interactive && "group")}
+      // A touch screen always shows the menu, so the title stops before it.
+      className={cn(
+        interactive && "group",
+        hasMenu && "[@media(hover:none)]:pe-8",
+      )}
       render={render}
       title={props.tooltip}
     >
@@ -141,12 +146,11 @@ export function DetailsRow(props: {
       </ItemContent>
     </Item>
   );
-  if (!props.menu) return row;
+  if (!hasMenu) return row;
   return (
     <div className="group/row relative min-w-0">
       {row}
-      {/* Over the row's end, so the row keeps its full width. A touch screen
-          has no hover, so it always shows the menu. */}
+      {/* Over the row's end, so the row keeps its full width on hover. */}
       <div className="absolute top-1 right-1 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 has-[[aria-expanded=true]]:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
         {props.menu}
       </div>

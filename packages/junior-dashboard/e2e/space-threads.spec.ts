@@ -78,14 +78,15 @@ test("a Space's Threads list in Work by state, finished ones last", async ({
     .getByRole("complementary", { name: "Conversation details" })
     .getByRole("region", { exact: true, name: "Work" });
 
-  // Failed, then running, then waiting. Each state keeps the loaded order,
-  // newest first, and finished Threads wait behind "Show finished".
+  // A wait on the viewer and a failure first, then running, then waiting.
+  // Each state keeps the loaded order, newest first, and finished Threads
+  // wait behind "Show finished".
   await expect(work.getByRole("link")).toHaveText([
+    /Approve the cutover window/,
     /Reconcile Stripe balances/,
     /Check refund webhooks/,
     /Migrate tax settings/,
     /Backfill invoice IDs/,
-    /Approve the cutover window/,
   ]);
   await screenshot(page, "space-threads", {
     lightTheme: true,
@@ -93,11 +94,11 @@ test("a Space's Threads list in Work by state, finished ones last", async ({
   });
   await work.getByRole("button", { name: "Show finished" }).click();
   await expect(work.getByRole("link")).toHaveText([
+    /Approve the cutover window/,
     /Reconcile Stripe balances/,
     /Check refund webhooks/,
     /Migrate tax settings/,
     /Backfill invoice IDs/,
-    /Approve the cutover window/,
     /Close out the dry run/,
     /Map plan IDs/,
   ]);
@@ -124,7 +125,7 @@ test("a phone shows a Space's Threads in its details sheet", async ({
     .getByRole("dialog", { name: "Conversation details" })
     .getByRole("region", { exact: true, name: "Work" });
   await expect(work.getByRole("link").first()).toHaveText(
-    /Reconcile Stripe balances/,
+    /Approve the cutover window/,
   );
   await screenshot(page, "space-threads", { lightTheme: true, view: "mobile" });
 });

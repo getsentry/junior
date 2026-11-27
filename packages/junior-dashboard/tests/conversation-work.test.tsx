@@ -3,11 +3,9 @@ import type {
   ConversationTodo,
   ConversationWatch,
 } from "@sentry/junior/api/schema";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { conversationWorkItems } from "../src/client/conversations/conversationWorkItems";
-import { SpaceStateIcon } from "../src/client/spaces/SpaceStateIcon";
 
 function thread(
   title: string,
@@ -133,24 +131,68 @@ describe("a Conversation's Work", () => {
     ).toEqual(["todo todo:1"]);
   });
 
-  it("leaves out child Watches and the viewer's own open To-dos", () => {
+  it("puts a child's Watches on its row and leaves out the viewer's open To-dos", () => {
+    const child = thread("Watch the deploy", 1, { watching: true });
+    const items = conversationWorkItems({
+      children: [child],
+      todos: [todo(1), todo(2), todo(3, { status: "done" })],
+      // Needs you shows open To-dos 1 and 3; a closed one stays in Work.
+      viewerTodoIds: new Set([1, 3]),
+      watches: [
+        watch("w1", { childAgent: { conversationId: child.conversationId } }),
+        // A grandchild's Watch keeps its own row.
+        watch("w2", { childAgent: { conversationId: "internal:grandchild" } }),
+        watch("w3"),
+      ],
+    });
+    expect(items.map((item) => `${item.state} ${item.key}`)).toEqual([
+      "waiting child:internal:watch-the-deploy",
+      "waiting watch:w2",
+      "waiting watch:w3",
+      "todo todo:2",
+      "done todo:3",
+    ]);
+    const childItem = items[0];
     expect(
-      keys({
-        children: [],
-        todos: [todo(1), todo(2), todo(3, { status: "done" })],
-        // Needs you shows open To-dos 1 and 3; a closed one stays in Work.
-        viewerTodoIds: new Set([1, 3]),
-        watches: [
-          watch("w1", { childAgent: { conversationId: "internal:child" } }),
-          watch("w2"),
-        ],
-      }),
-    ).toEqual(["waiting watch:w2", "todo todo:2", "done todo:3"]);
+      childItem?.kind === "child" &&
+        childItem.childWatches.map((item) => item.id),
+    ).toEqual(["w1"]);
   });
 
-  it("names a Space's failed child a Thread", () => {
-    expect(renderToStaticMarkup(<SpaceStateIcon state="failed" />)).toContain(
-      'aria-label="A Thread failed"',
-    );
+  it("marks a failed Thread that waits on the viewer as blocked", () => {
+    expect(
+      keys({
+        children: [
+          thread("Ship the release", 2, { status: "running" }),
+          thread("Retry the export", 1, {
+            lastResult: "failed",
+            treeState: "needs_you",
+          }),
+        ],
+        todos: [],
+        viewerTodoIds: new Set(),
+        watches: [],
+      }),
+    ).toEqual([
+      "blocked child:internal:retry-the-export",
+      "running child:internal:ship-the-release",
+    ]);
+  });
+
+  it("keeps a child's live state on its closed To-do", () => {
+    const child = thread("Fix the flaky test", 1, { status: "running" });
+    expect(
+      keys({
+        children: [child],
+        todos: [
+          todo(1, {
+            assignee: { conversationId: child.conversationId, kind: "agent" },
+            status: "done",
+          }),
+        ],
+        viewerTodoIds: new Set(),
+        watches: [],
+      }),
+    ).toEqual(["running todo:1"]);
   });
 });

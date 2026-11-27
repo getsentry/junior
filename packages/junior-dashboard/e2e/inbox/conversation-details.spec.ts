@@ -415,6 +415,70 @@ test.describe("new UI", () => {
     await expect(details).toBeVisible();
   });
 
+  test("a Needs you card opens its Inbox item in a dialog that acting closes", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:questions-qa")}`,
+    );
+    const needsYou = page
+      .getByRole("complementary", { exact: true, name: "Conversation details" })
+      .getByRole("region", { name: "Needs you" });
+    const card = needsYou.getByRole("button", {
+      name: /Handle the negative invoices/,
+    });
+    await card.click();
+    const item = page.getByRole("dialog", {
+      name: "Handle the negative invoices",
+    });
+    await expect(item.getByRole("button", { name: "Skip them" })).toBeVisible();
+    await item.getByRole("button", { exact: true, name: "Dismiss" }).click();
+    await expect(item).toHaveCount(0);
+    await expect(card).toHaveCount(0);
+  });
+
+  test("a review link opens the only Needs you item with its action", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}?review=open`,
+    );
+    // A To do for you opens with Done.
+    const item = page.getByRole("dialog", {
+      name: "Approve the preview deploy",
+    });
+    await item.getByRole("button", { exact: true, name: "Done" }).click();
+    await expect(item).toHaveCount(0);
+  });
+
+  test("an Automation run names its Automation above the summary", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("scheduler:daily-ops-digest")}`,
+    );
+    const details = page.getByRole("complementary", {
+      exact: true,
+      name: "Conversation details",
+    });
+    await expect(
+      details.getByRole("link", {
+        exact: true,
+        name: "Automation: Weekly project summary",
+      }),
+    ).toHaveAttribute("href", "/automations/scheduled-1");
+    // Its full instruction stays on the Automation page.
+    await expect(
+      details.getByText(/Send the weekly project summary/),
+    ).toHaveCount(0);
+  });
+
   test("on a phone, memories and Tasks open one step deeper in the details sheet", async ({
     dashboard,
     page,
