@@ -608,7 +608,7 @@ export function useWaitingConversations(): ReadonlyMap<
 
 /** What waits on the viewer, by Conversation and by Inbox item. */
 export type ViewerWaits = {
-  /** Every Conversation of a tree that waits: each item's, and its ancestors. */
+  /** Each Conversation of a waiting item, and its ancestors. */
   conversationIds: ReadonlySet<string>;
   itemIds: ReadonlySet<string>;
 };
