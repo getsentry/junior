@@ -202,9 +202,7 @@ test("opens a memory outside the loaded rows from the page around it", async ({
     name: "Conversation details",
     exact: true,
   });
-  await details
-    .getByRole("button", { name: "1 recalled · 2 captured" })
-    .click();
+  await details.getByRole("button", { name: "Memories", exact: true }).click();
   await details
     .getByRole("listitem")
     .filter({ hasText: "Dashboard transcript events should remain" })

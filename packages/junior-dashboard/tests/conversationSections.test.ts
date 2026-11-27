@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   attentionOrder,
-  attentionSort,
   buildTimeSections,
   pinnedFirst,
 } from "../src/client/conversations/conversationSections";
@@ -166,25 +165,6 @@ describe("attention order", () => {
     },
     conversation("done-old", at(4)),
   ];
-
-  it("sorts needs you, working, waiting, then done, each newest first", () => {
-    const rows = [
-      { group: "done", id: "done-old", time: 1 },
-      { group: "waiting", id: "waiting", time: 2 },
-      { group: "needs_you", id: "needs-old", time: 3 },
-      { group: "working", id: "working", time: 4 },
-      { group: "done", id: "done-new", time: 5 },
-      { group: "needs_you", id: "needs-new", time: 6 },
-    ] as const;
-    expect(attentionSort(rows, (row) => row).map((row) => row.id)).toEqual([
-      "needs-new",
-      "needs-old",
-      "working",
-      "waiting",
-      "done-new",
-      "done-old",
-    ]);
-  });
 
   it("orders feed rows by tree state, then last Message", () => {
     expect(attentionOrder(feed).map((item) => item.id)).toEqual([

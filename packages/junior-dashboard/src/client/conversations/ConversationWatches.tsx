@@ -1,42 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Bot,
-  ChevronRight,
-  CircleDot,
-  Eye,
-  FolderGit2,
-  GitPullRequest,
-  Hash,
-  LockKeyhole,
-  type LucideIcon,
-  Package,
-  Rocket,
-  Tag,
-  Timer,
-  Users,
-  X,
-} from "lucide-react";
-import type { ReactNode } from "react";
-import { Badge } from "../components/ui/badge";
+import { Clock, ExternalLink, Eye, LockKeyhole } from "lucide-react";
 import {
   conversationWatchesReportSchema,
   type ConversationWatch,
   type ConversationWatchesReport,
 } from "@sentry/junior/api/schema";
 
-import { DisplayText } from "../display-text/DisplayText";
-import { eventLabel } from "../eventLabel";
+import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { deleteDashboardResource } from "../http";
 import { revalidatedJsonQuery } from "../revalidation";
+import { formatRelativeTime, formatTime } from "../time";
+import { useConversationChildAgents } from "./ConversationChildAgents";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../components/ui/collapsible";
-import { dashboardDisclosureChevronClass } from "../styles";
-import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
-import { formatRelativeTime, formatTime } from "../time";
+  DetailsRow,
+  DetailsRowLine,
+  DetailsRowMenu,
+  DetailsSection,
+} from "./DetailsList";
 
 /** Load the active Watches that one Conversation owns. */
 export function useConversationWatches(conversationId: string) {
@@ -80,270 +61,120 @@ export function useCancelConversationWatch(conversationId: string) {
   });
 }
 
-/** Cancel one Watch. Absent when the viewer cannot act on the Conversation. */
-export type CancelWatch = (watch: ConversationWatch) => void;
+/** Name a Watch by what it waits for, or by its resource when private. */
+function watchTitle(watch: ConversationWatch): string {
+  const resource = `${watch.namespace} ${watch.resourceType.replaceAll("_", " ")}`;
+  return watch.intent ?? watch.label ?? `Private ${resource}`;
+}
+
+/** Offer Cancel for each Watch that a child owns, in the child's menu. */
+export function WatchCancelItems(props: {
+  conversationId: string;
+  watches: readonly ConversationWatch[];
+}) {
+  const cancel = useCancelConversationWatch(props.conversationId);
+  return props.watches.map((watch) => (
+    <DropdownMenuItem key={watch.id} onClick={() => cancel.mutate(watch)}>
+      Cancel {watchTitle(watch)}
+    </DropdownMenuItem>
+  ));
+}
 
 /**
- * Show what can wake this Conversation: one row per active Watch with its
- * intent, when it fires or expires, and Cancel. A line expands to show the
- * event types that deliver to it.
+ * List what one Conversation waits on: its own Watches and Timers, each with
+ * when it fires or expires. A child's Watch shows in that child's menu
+ * instead, unless the child is private or not listed, such as a grandchild.
  */
-export function ConversationWatches(props: {
-  onCancel?: CancelWatch | undefined;
-  watches: ConversationWatch[];
+export function ConversationWaitingOn(props: {
+  canEdit: boolean;
+  conversationId: string;
 }) {
+  const children =
+    useConversationChildAgents(props.conversationId).data?.agents ?? [];
+  const watches =
+    useConversationWatches(props.conversationId).data?.watches ?? [];
+  // A private child's row has no menu, so its Watches stay here to cancel.
+  const listed = new Set(
+    children
+      .filter((child) => !child.redacted)
+      .map((child) => child.conversationId),
+  );
+  const own = watches.filter(
+    (watch) =>
+      !watch.childAgent || !listed.has(watch.childAgent.conversationId),
+  );
   return (
-    <DetailsList
-      itemKey={(watch) => watch.id}
-      items={props.watches}
-      renderItem={(watch) => (
-        <WatchRow onCancel={props.onCancel} watch={watch} />
-      )}
+    <DetailsSection
+      rows={own.map((watch) => (
+        <WatchRow
+          canEdit={props.canEdit}
+          conversationId={props.conversationId}
+          key={watch.id}
+          watch={watch}
+        />
+      ))}
+      title="Waiting on"
     />
   );
 }
 
-const resourceIcons: Partial<Record<string, LucideIcon>> = {
-  channel: Hash,
-  deployment: Rocket,
-  deployment_source: Rocket,
-  issue: CircleDot,
-  pull_request: GitPullRequest,
-  release_source: Tag,
-  repository: FolderGit2,
-  team: Users,
-  timer: Timer,
-  workspace_snapshot: Package,
-};
-
-/**
- * Show one Watch as a row: what Junior will do, then when it fires or
- * expires. The label names the resource on hover. When the resource has a
- * web page, the line opens it and a chevron shows the details. Otherwise the
- * line itself shows the details.
- */
 function WatchRow(props: {
-  onCancel?: CancelWatch | undefined;
+  canEdit: boolean;
+  conversationId: string;
   watch: ConversationWatch;
 }) {
   const { watch } = props;
-  const Icon = watch.redacted
-    ? LockKeyhole
-    : (resourceIcons[watch.resourceType] ?? Eye);
-  const resource = `${watch.namespace} ${watch.resourceType.replaceAll("_", " ")}`;
-  const icon = <Icon aria-hidden="true" className="size-3.5" />;
-  const title = watch.intent ?? watch.label ?? `Private ${resource}`;
-  // The time takes its own line, so a long intent keeps the row width.
-  const time = (
-    <DetailsRowLine>
-      <WatchTime watch={watch} />
-    </DetailsRowLine>
-  );
-  const cancel = props.onCancel ? (
-    <WatchCancelButton onCancel={props.onCancel} title={title} watch={watch} />
-  ) : null;
-
-  return (
-    <Collapsible className="min-w-0">
-      {watch.url ? (
-        // The row opens the watched resource, like a linked work row. The
-        // chevron beside it shows the details.
-        <WatchDetailsRow action={cancel} label={title}>
-          <DetailsRow
-            href={watch.url}
-            icon={icon}
-            title={title}
-            tooltip={watch.label}
-          >
-            {time}
-          </DetailsRow>
-        </WatchDetailsRow>
-      ) : (
-        <div className="flex min-w-0 items-start gap-0.5">
-          <div className="min-w-0 flex-1">
-            <DetailsRow
-              disclosure
-              icon={icon}
-              meta={<WatchChevron />}
-              title={title}
-              tooltip={watch.label}
-            >
-              {time}
-            </DetailsRow>
-          </div>
-          {cancel}
-        </div>
-      )}
-      <WatchDetails watches={[watch]} />
-    </Collapsible>
-  );
-}
-
-/**
- * Place a link row beside a chevron that shows the Watch details under it,
- * and an optional `action` after the chevron. Use it inside a `Collapsible`
- * that also holds `WatchDetails`.
- */
-export function WatchDetailsRow(props: {
-  action?: ReactNode;
-  children: ReactNode;
-  label: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-start gap-0.5">
-      <div className="min-w-0 flex-1">{props.children}</div>
-      <CollapsibleTrigger
-        aria-label={`Details for ${props.label}`}
-        className="group grid size-8 shrink-0 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-      >
-        <WatchChevron />
-      </CollapsibleTrigger>
-      {props.action}
-    </div>
-  );
-}
-
-/**
- * Say when a Watch fires (a timer) or expires (an event Watch), relative to
- * now. The exact time shows on hover.
- */
-function WatchTime(props: { watch: ConversationWatch }) {
-  const { watch } = props;
+  const cancel = useCancelConversationWatch(props.conversationId);
+  const title = watchTitle(watch);
+  // A Timer has the clock. A Watch for an Event has the sidebar's eye.
+  const timer = Boolean(watch.firesAt);
+  const Icon = watch.redacted ? LockKeyhole : timer ? Clock : Eye;
   const at = watch.firesAt ?? watch.expiresAt;
-  const verb = watch.firesAt ? "Fires" : "Expires";
+  const verb = timer ? "Fires" : "Expires";
   return (
-    <time
-      dateTime={at}
-      title={`${verb} ${formatTime(at, { dateStyle: "medium", timeStyle: "short" })}`}
-    >
-      {verb.toLowerCase()} {formatRelativeTime(at)}
-    </time>
-  );
-}
-
-function WatchCancelButton(props: {
-  onCancel: CancelWatch;
-  title: string;
-  watch: ConversationWatch;
-}) {
-  return (
-    <button
-      aria-label={`Cancel ${props.title}`}
-      className="grid size-8 shrink-0 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-      onClick={() => props.onCancel(props.watch)}
-      title="Cancel"
-      type="button"
-    >
-      <X aria-hidden="true" size={14} />
-    </button>
-  );
-}
-
-function WatchChevron() {
-  return (
-    <span className="grid size-5 place-items-center">
-      <ChevronRight
-        aria-hidden="true"
-        className={dashboardDisclosureChevronClass}
-      />
-    </span>
-  );
-}
-
-/**
- * Show why each Watch exists and which events wake the Conversation. Under a
- * linked work row, `showTime` also shows when each Watch fires or expires,
- * with Cancel when `onCancel` is set. A Watch row shows those itself.
- */
-export function WatchDetails(props: {
-  onCancel?: CancelWatch | undefined;
-  showTime?: boolean;
-  watches: ConversationWatch[];
-}) {
-  return (
-    // Indent under the title: icon column, column gap, and row padding.
-    <CollapsibleContent className="grid min-w-0 gap-3 pb-2 pl-9 pr-1.5 pt-0.5 text-xs leading-4 text-dashboard-text-muted">
-      {props.watches.map((watch) => (
-        <WatchDetail
-          key={watch.id}
-          onCancel={props.onCancel}
-          showTime={props.showTime === true}
-          watch={watch}
+    <DetailsRow
+      icon={
+        <Icon
+          aria-label={watch.redacted ? "Private" : timer ? "Timer" : "Watching"}
+          className="size-4 text-dashboard-text-muted"
+          role="img"
         />
-      ))}
-    </CollapsibleContent>
-  );
-}
-
-function WatchDetail(props: {
-  onCancel?: CancelWatch | undefined;
-  showTime: boolean;
-  watch: ConversationWatch;
-}) {
-  const { onCancel, watch } = props;
-  // A timer has one event, and its fire time already says when it wakes.
-  const events = watch.firesAt ? [] : watch.events;
-  const filters = Object.entries(watch.match ?? {});
-  const intent = watch.intent ? (
-    <DisplayText inline text={watch.intent} />
-  ) : null;
-  return (
-    <div className="grid min-w-0 gap-1.5">
-      {props.showTime ? (
-        <div className="flex min-w-0 items-start gap-2">
-          <p className="m-0 min-w-0 flex-1 break-words">{intent}</p>
-          <span className="shrink-0 tabular-nums">
-            <WatchTime watch={watch} />
-          </span>
-          {onCancel ? (
-            // Pull the button into the row padding, so its icon lines up
-            // with the text.
-            <span className="-my-2 -mr-1.5">
-              <WatchCancelButton
-                onCancel={onCancel}
-                title={watch.intent ?? watch.label ?? "Watch"}
-                watch={watch}
-              />
-            </span>
+      }
+      menu={
+        props.canEdit ? (
+          <DetailsRowMenu label={`Change ${title}`}>
+            <DropdownMenuItem onClick={() => cancel.mutate(watch)}>
+              Cancel
+            </DropdownMenuItem>
+          </DetailsRowMenu>
+        ) : null
+      }
+      title={
+        <>
+          {title}
+          {watch.url ? (
+            <a
+              aria-label={`Open ${title}`}
+              className="ml-1 inline-grid size-5 place-items-center rounded-md align-top text-dashboard-text-muted hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+              href={watch.url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <ExternalLink aria-hidden="true" className="size-3.5" />
+            </a>
           ) : null}
-        </div>
-      ) : intent ? (
-        <p className="m-0 break-words">{intent}</p>
-      ) : null}
-      {events.length > 0 || filters.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1">
-          {events.map((event) => (
-            <WatchChip key={event}>
-              {eventLabel(event, watch.resourceType)}
-            </WatchChip>
-          ))}
-          {filters.map(([key, value]) => (
-            <WatchChip filter key={`match:${key}`}>
-              {key.replaceAll("_", " ")}: {[value].flat().join(", ")}
-            </WatchChip>
-          ))}
-        </div>
-      ) : null}
-      {watch.childAgent ? (
-        <p className="m-0 flex min-w-0 items-center gap-1">
-          <Bot aria-hidden="true" className="size-3 shrink-0" />
-          <span className="truncate">
-            via {watch.childAgent.name ?? "child conversation"}
-          </span>
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-/** Label one event type, or a dashed match filter that narrows the events. */
-function WatchChip(props: { children: ReactNode; filter?: boolean }) {
-  return (
-    <Badge
-      className="min-w-0 truncate py-px"
-      variant={props.filter ? "dashed" : "secondary"}
+        </>
+      }
     >
-      {props.children}
-    </Badge>
+      <DetailsRowLine>
+        {/* The exact time shows on hover. */}
+        <time
+          dateTime={at}
+          title={`${verb} ${formatTime(at, { dateStyle: "medium", timeStyle: "short" })}`}
+        >
+          {verb} {formatRelativeTime(at)}
+        </time>
+      </DetailsRowLine>
+    </DetailsRow>
   );
 }

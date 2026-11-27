@@ -35,6 +35,7 @@ import {
   mapConversationFeedCache,
   type ConversationFeedCache,
 } from "../conversations/conversationFeedCache";
+import { conversationSideReadQueryKey } from "../conversations/conversationSideReads";
 import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import {
@@ -542,6 +543,13 @@ export function useInboxItemAction(options: { optimistic?: boolean } = {}) {
       queryClient.setQueryData(inboxItemQueryKey(item.id), item);
       if (args.body.action === "submit")
         await showAnswerOnFeedRows(queryClient, item);
+      // A To-do item's action can change the To-do, which Details lists.
+      const conversationId = itemConversationId(item);
+      if (item.todoId !== undefined && conversationId) {
+        await queryClient.invalidateQueries({
+          queryKey: conversationSideReadQueryKey(conversationId, "todos"),
+        });
+      }
     },
     // A read while another action is in flight would show its item again.
     onSettled: () =>

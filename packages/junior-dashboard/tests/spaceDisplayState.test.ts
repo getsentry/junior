@@ -1,5 +1,10 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { spaceDisplayState } from "../src/client/spaces/SpaceStateIcon";
+import {
+  SpaceStateIcon,
+  spaceDisplayState,
+} from "../src/client/spaces/SpaceStateIcon";
 
 describe("spaceDisplayState", () => {
   it("orders needs_you, failed, then working, and shows nothing when idle", () => {
@@ -15,5 +20,11 @@ describe("spaceDisplayState", () => {
     expect(
       spaceDisplayState({ latestTurnFailed: false, treeState: "done" }),
     ).toBeUndefined();
+  });
+
+  it("names a Space's failed child a Thread", () => {
+    expect(
+      renderToStaticMarkup(createElement(SpaceStateIcon, { state: "failed" })),
+    ).toContain('aria-label="A Thread failed"');
   });
 });
