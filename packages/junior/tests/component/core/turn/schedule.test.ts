@@ -392,7 +392,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const running = await claim(alice.turnId);
     await interruptFrom("identity:other", "event-2");
 
-    await expect(releaseTurn(engineCtx, running)).resolves.toBe(true);
+    await expect(releaseTurn(engineCtx, running)).resolves.toBe("cancelled");
 
     await expect(readEnd(alice.turnId)).resolves.toMatchObject({
       state: "cancelled",

@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { findUnreadInputs } from "@/core/turn/inbox";
-import { findDiscardedUsage } from "@/core/turn/state";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import {
+  createTurn,
+  findDiscardedUsage,
+  TURN_PRIORITY,
+} from "@/core/turn/state";
+import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
   modelCalls,
   modelOverloaded,
@@ -187,6 +191,36 @@ describe("advanceTurn after a failed model request", () => {
       expect.objectContaining({ inputId }),
     ]);
     expect(pendingSteps(turnId)).toBe(0);
+  });
+
+  it("ends a superseded Turn at its retryable failure, and sends no retry", async () => {
+    // Injected fault: the model provider is overloaded.
+    await setModelReplies([modelOverloaded()]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+    let aheadId = "";
+    const send = globalThis.fetch;
+    // A Turn that supersedes this one arrives while its model request runs.
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (...args) => {
+      ({ turnId: aheadId } = await createTurn(harness.engineCtx, {
+        conversationId: harness.conversationId,
+        priority: TURN_PRIORITY.supersede,
+      }));
+      return send(...args);
+    });
+
+    await harness.runStep();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "cancelled",
+      endReason: "superseded",
+    });
+    expect(pendingSteps(turnId)).toBe(0);
+    expect(stepDelays(aheadId)).toEqual([0]);
+    expect(
+      harness.queue
+        .pending(TURN_ENDED_TOPIC)
+        .map((message) => [messageTurnId(message.payload), message.due]),
+    ).toEqual([[turnId, true]]);
   });
 
   it("waits the Retry-After of a rate limit, up to a minute", async () => {

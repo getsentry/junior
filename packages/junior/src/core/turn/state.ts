@@ -648,14 +648,14 @@ export async function failTurn(
  * Queues a running Turn again after its invocation failed, so the queue's
  * retry can claim the step at once. The failed attempt still counts. A Turn
  * that another Turn supersedes ends instead, like at a commit. `discarded` is
- * the usage of the failed model reply that the retry drops. False when the
- * lease is lost.
+ * the usage of the failed model reply that the retry drops. Returns the
+ * Turn's new state, or undefined when the lease is lost.
  */
 export async function releaseTurn(
   { executor }: Pick<EngineContext, "executor">,
   lease: TurnLease & { conversationId: string },
   discarded?: AgentTurnUsage,
-): Promise<boolean> {
+): Promise<TurnState | undefined> {
   return executor.transaction(() =>
     withConversationEventLock(executor, lease.conversationId, async () => {
       const released = {
@@ -673,8 +673,8 @@ export async function releaseTurn(
             : { ...released, state: "queued" },
         )
         .where(leaseFence(lease))
-        .returning({ id: juniorTurns.id });
-      return rows.length > 0;
+        .returning({ state: juniorTurns.state });
+      return rows[0]?.state;
     }),
   );
 }
