@@ -14,6 +14,8 @@ import { createWatch, listWatches } from "@/chat/events/store";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { createEventInboundMessage } from "@/chat/events/notification";
+import { turnStartedKey } from "@/chat/conversations/turn-lifecycle";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { juniorConversations } from "@/db/schema";
@@ -373,9 +375,16 @@ describe("child Turns on the Conversation loop", () => {
     { watchLeft: false, eventWaits: false, acked: false, updates: 1 },
     { watchLeft: true, eventWaits: false, acked: true, updates: 1 },
     { watchLeft: false, eventWaits: true, acked: true, updates: 2 },
+    {
+      watchLeft: false,
+      eventWaits: false,
+      acked: true,
+      updates: 1,
+      legacyStart: true,
+    },
   ])(
-    "wakes the parent when a Thread's Watch Turn ends (Watch left: $watchLeft, Event waits: $eventWaits, acked: $acked)",
-    async ({ watchLeft, eventWaits, acked, updates }) => {
+    "wakes the parent when a Thread's Watch Turn ends (Watch left: $watchLeft, Event waits: $eventWaits, acked: $acked, legacy start: $legacyStart)",
+    async ({ watchLeft, eventWaits, acked, updates, legacyStart }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -383,20 +392,53 @@ describe("child Turns on the Conversation loop", () => {
         if (watchLeft) {
           await createDeployWatch(harness, childId);
         }
+        // A Watch on the Thread hears none of these Turns.
+        await createWatch(
+          {
+            conversationId: slackParentConversationId,
+            events: ["agent.update"],
+            expiresAtMs: Date.now() + 600_000,
+            identifier: childId,
+            intent: "Follow the deploy check.",
+            label: "Deploy check thread",
+            namespace: "junior",
+            resourceType: "agent",
+          },
+          { state: harness.state },
+        );
+        const eventMessage = (eventKey: string) =>
+          createEventInboundMessage({
+            event: {
+              eventKey,
+              eventType: "deployment.failed",
+              identifier: "getsentry/junior",
+              namespace: "github",
+              occurredAtMs: Date.now(),
+              trustedSummary: "A deployment failed.",
+            },
+            subscription: { conversationId: childId, id: "watch-1" },
+            text: "Deploy failed.",
+          });
+        if (legacyStart) {
+          // The start that a release before `watchEventsOnly` wrote.
+          const { inboundMessageId } = eventMessage("deploy-1");
+          const turnId = buildDeterministicTurnId(inboundMessageId);
+          await getConversationEventStore().append(childId, [
+            {
+              idempotencyKey: turnStartedKey(turnId),
+              createdAtMs: Date.now(),
+              data: {
+                type: "turn_started",
+                turnId,
+                inputMessageIds: [inboundMessageId],
+                surface: "api",
+              },
+            },
+          ]);
+        }
         const sendEvent = (eventKey: string) =>
           appendAndEnqueueInboundMessage({
-            message: createEventInboundMessage({
-              event: {
-                eventKey,
-                eventType: "deployment.failed",
-                identifier: "getsentry/junior",
-                namespace: "github",
-                occurredAtMs: Date.now(),
-                trustedSummary: "A deployment failed.",
-              },
-              subscription: { conversationId: childId, id: "watch-1" },
-              text: "Deploy failed.",
-            }),
+            message: eventMessage(eventKey),
             queue: harness.queue,
             state: harness.state,
           });
@@ -444,6 +486,11 @@ describe("child Turns on the Conversation loop", () => {
             expect.stringMatching(/status="done"/),
           ),
         );
+        expect(
+          (await parentMessageTexts()).filter((text) =>
+            text.includes('source="watch"'),
+          ),
+        ).toEqual([]);
         expect(
           (await parentNoteTexts()).filter((text) =>
             text.includes("The deploy is green."),

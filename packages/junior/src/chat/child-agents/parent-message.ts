@@ -257,9 +257,25 @@ export function parentMessageAuthor(parentConversationId: string) {
 
 /**
  * Return whether a saved transcript Message is a parent message, by its
- * author. Only the root Turn code saves one, after its sender check.
+ * stored fields. Only the root Turn code saves one, after its sender check.
  */
-export function isParentMessageAuthor(
+export function isSavedParentMessage(message: {
+  author?: { userId?: unknown } | undefined;
+  meta?: { fromParentAgent?: unknown } | undefined;
+}): boolean {
+  return (
+    message.meta?.fromParentAgent === true ||
+    legacyIsParentMessageAuthor(message.author)
+  );
+}
+
+/**
+ * Read a parent message saved before `fromParentAgent` by its author id.
+ *
+ * TODO(dcramer): Delete once no saved Message has this author id without
+ * `fromParentAgent`. Saved transcripts keep them until a backfill.
+ */
+function legacyIsParentMessageAuthor(
   author: { userId?: unknown } | undefined,
 ): boolean {
   return (

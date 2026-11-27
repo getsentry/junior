@@ -262,6 +262,7 @@ describe("child agent task work", () => {
           role: "user",
           text: expect.stringContaining(slackSpawnInput.input),
           meta: expect.objectContaining({
+            fromParentAgent: true,
             requestText: slackSpawnInput.input,
           }),
         }),
@@ -860,6 +861,12 @@ describe("child agent task work", () => {
           status: "completed",
         });
         expect(run).toHaveBeenCalledTimes(runs);
+        // A resumed slice still runs the parent's task as the instruction.
+        for (const [call] of run.mock.calls) {
+          expect(call.instruction.provenance).toEqual({
+            authority: "instruction",
+          });
+        }
         const parentWork = await getConversationWorkState({
           conversationId: parentConversationId,
           state,
