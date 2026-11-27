@@ -36,13 +36,21 @@ export async function responseTextWithinLimit(
   if (!body) {
     return "";
   }
+  const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
   try {
-    // Leaving the loop early cancels the stream.
-    for await (const value of body) {
+    while (true) {
+      // oxlint-disable-next-line no-await-in-loop -- Chunks arrive in order.
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
       bytes += value.byteLength;
       if (bytes > limit) {
+        // The clone shares its source with the caller's body, so its cancel
+        // settles only after the caller reads. Awaiting it here hangs.
+        void reader.cancel().catch(() => undefined);
         return undefined;
       }
       chunks.push(value);
