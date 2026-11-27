@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import diagnosticsChannel from "node:diagnostics_channel";
 import { expect } from "vitest";
 import { getSqlExecutor } from "@/chat/db";
@@ -35,6 +36,11 @@ const POOL_CONNECT_CHANNEL = diagnosticsChannel.tracingChannel<PgCall, PgCall>(
 
 const ignore = () => {};
 
+// The store holds each measurement that the current work runs in, so a
+// statement of other work, such as a background task that an earlier test
+// left running, does not count. Measurements can nest.
+const measuredCalls = new AsyncLocalStorage<ReadonlySet<object>>();
+
 // `pg` takes `query(text, values)` or `query({ text, values }, values)`.
 function statementOf(args: unknown): SqlStatement | undefined {
   const [first, second] = Array.from(args as ArrayLike<unknown>);
@@ -71,6 +77,8 @@ export async function measureSql<T>(
 ): Promise<{ result: T; sql: SqlBudget; statements: SqlStatement[] }> {
   // Event order, not time, decides whether one statement waits on another.
   let order = 0;
+  const owner = {};
+  const owned = () => measuredCalls.getStore()?.has(owner) === true;
   const spans = new Map<PgCall, Span>();
   const statements: SqlStatement[] = [];
   const connectStarts = new WeakMap<PgCall, number>();
@@ -80,14 +88,16 @@ export async function measureSql<T>(
   const checkouts: PgCall[] = [];
   const connect = {
     start: (context: PgCall) => {
-      connectStarts.set(context, ++order);
+      if (owned()) connectStarts.set(context, ++order);
     },
     end: ignore,
+    // pg-pool can call a waiting checkout back from another caller's
+    // release, so a checkout is known by its start, not by the store.
     asyncStart: (context: PgCall) => {
-      checkouts.push(context);
+      if (connectStarts.has(context)) checkouts.push(context);
     },
-    asyncEnd: () => {
-      checkouts.pop();
+    asyncEnd: (context: PgCall) => {
+      if (checkouts.at(-1) === context) checkouts.pop();
     },
     error: ignore,
   };
@@ -98,6 +108,7 @@ export async function measureSql<T>(
   const query = {
     start: (context: PgCall) => {
       const checkout = checkouts.at(-1);
+      if (!checkout && !owned()) return;
       const start = checkout && connectStarts.get(checkout);
       spans.set(context, { start: start ?? ++order });
       const statement = statementOf(context.arguments);
@@ -111,7 +122,10 @@ export async function measureSql<T>(
   POOL_CONNECT_CHANNEL.subscribe(connect);
   QUERY_CHANNEL.subscribe(query);
   try {
-    const result = await call();
+    // Await inside the store: a Drizzle query builder sends its SQL only
+    // when it is awaited.
+    const owners = new Set(measuredCalls.getStore()).add(owner);
+    const result = await measuredCalls.run(owners, async () => await call());
     const all = [...spans.values()];
     return {
       result,
