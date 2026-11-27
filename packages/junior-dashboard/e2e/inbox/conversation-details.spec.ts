@@ -234,6 +234,34 @@ test.describe("new UI", () => {
     ).toHaveCount(0);
   });
 
+  test("a reader of a public conversation joins it to reply", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA456:1770025200.000700")}`,
+    );
+    const composer = page.getByRole("textbox", {
+      name: "Continue this conversation",
+    });
+    const join = page.getByRole("button", { name: "Join", exact: true });
+    // Only a Participant posts, so the dock offers Join instead.
+    await expect(join).toBeVisible();
+    await expect(composer).toHaveCount(0);
+
+    const joined = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" &&
+        response.url().endsWith("/subscription"),
+    );
+    await join.click();
+    expect((await joined).request().postDataJSON()).toEqual({
+      subscribed: true,
+    });
+    await expect(composer).toBeVisible();
+    await expect(join).toHaveCount(0);
+  });
+
   test("shows a Watch on linked work in its linked work row", async ({
     page,
     dashboard,

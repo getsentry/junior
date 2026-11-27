@@ -186,9 +186,9 @@ describe("Spaces API", () => {
       viewerIsMember: false,
     });
 
-    // A web Message adds nobody either. Bo joins the public Lead himself.
+    // Only a Participant posts. Bo joins the public Lead himself first.
     const lead = await leadOf(bo, space.id);
-    expect((await postMessage(bo, lead, "spaces-api-post")).status).toBe(200);
+    expect((await postMessage(bo, lead, "spaces-api-post")).status).toBe(403);
     expect(await readByBo()).toMatchObject({ viewerIsMember: false });
     expect(await detail(bo, lead)).toHaveProperty("subscribed", false);
     const joined = await request(
@@ -211,7 +211,7 @@ describe("Spaces API", () => {
     });
     expect(await listNames(bo)).not.toContain("Billing migration");
 
-    // Anyone can still message the public Lead.
+    // Leave of a public Lead keeps Bo a Participant, so he can still post.
     expect((await postMessage(bo, lead, "spaces-api-rejoin")).status).toBe(200);
   });
 
@@ -269,7 +269,7 @@ describe("Spaces API", () => {
       ).json(),
     );
     expect(archived.archivedAt).not.toBeNull();
-    // Only a Participant restores an archive, and a Message restores one.
+    // Only a Participant posts, so a reader's Message never restores one.
     expect(
       (await postMessage(bo, await leadOf(bo, space.id), "spaces-api-visit"))
         .status,
@@ -323,9 +323,9 @@ describe("Spaces API", () => {
       spaceId: space.id,
     });
     const oneOff = await startConversation(ana, "one-off");
-    // Anyone posts in a public Space's Conversations, as in any public root.
+    // Only members post in a Space's Conversations, as in any root.
     expect((await postMessage(bo, inSpace, "bo-in-ledger-plan")).status).toBe(
-      200,
+      403,
     );
 
     // Anyone can read the public Space's list. Rows and the detail name the
