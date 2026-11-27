@@ -50,11 +50,11 @@ export const inboxItemSchema = z
     /** True when the item is for the viewer: theirs, or for Everyone. */
     canAct: z.boolean(),
     /**
-     * True when the viewer can answer, dismiss, or take the open item. Anyone
-     * who can see a public question can, also when `canAct` is false.
+     * True when the viewer can answer or dismiss the open item. Anyone who
+     * can see a public question can, also when `canAct` is false.
      */
     canAnswer: z.boolean(),
-    /** True when `canAnswer` and the viewer is not the only assignee. */
+    /** True when `canAct` and the viewer is not already the only assignee. */
     canTake: z.boolean(),
     closeReason: z.string().min(1).optional(),
     closedAt: z.string().datetime().optional(),

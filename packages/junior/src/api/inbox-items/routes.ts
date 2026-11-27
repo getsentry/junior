@@ -270,7 +270,7 @@ function inboxItemPayload(
     canAct: canActOnInboxItem(item, viewer.id),
     canAnswer: canAnswerInboxItem(item, viewer.id),
     canTake:
-      canAnswerInboxItem(item, viewer.id) &&
+      canActOnInboxItem(item, viewer.id) &&
       !isOnlyAssignee(item, viewer.id) &&
       !hasAssigneeRoles(item),
     conversationIds: conversationHidden ? [] : item.conversationIds,

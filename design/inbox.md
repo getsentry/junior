@@ -24,7 +24,7 @@ groups and acts on its rows.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
 - Only an assignee answers or dismisses a private item that has assignees.
-  Anyone who can see a public question can answer, dismiss, or take it. The
+  Anyone who can see a public question can answer or dismiss it. The
   answer carries the authority of the person who gives
   it. Junior, an Event, or a trigger never answers or approves for a
   person.

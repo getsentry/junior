@@ -140,8 +140,8 @@ describe("inbox items of a Conversation", () => {
     );
     expect((await api(fixture, ana).get(`/${item.id}`)).status).toBe(200);
     // Cal can view the public Conversation but does not take part in it.
-    // He sees its public questions and can answer, dismiss, or take them,
-    // like an assignee. They still do not wait on him.
+    // He sees its public questions and can answer or dismiss them, like an
+    // assignee. They still do not wait on him, and only an assignee takes.
     const calView = await (
       await api(fixture, cal).get("?conversationId=local:web:shared")
     ).json();
@@ -152,11 +152,14 @@ describe("inbox items of a Conversation", () => {
             id,
             canAct: false,
             canAnswer: true,
-            canTake: true,
+            canTake: false,
           }),
         ),
       ),
     );
+    expect(
+      (await api(fixture, cal).act(item.id, { action: "take" })).status,
+    ).toBe(403);
     const dismissed = await api(fixture, cal).act(other.id, {
       action: "dismiss",
     });

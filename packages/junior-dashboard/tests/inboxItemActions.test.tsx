@@ -51,7 +51,7 @@ describe("inbox item actions", () => {
     expect(buttons({ dismiss: false, take: false })).toEqual([]);
   });
 
-  it("lets a reader of a public question answer, dismiss, and take it", () => {
+  it("lets a reader of a public question answer and dismiss it", () => {
     const question = items.find(
       (candidate) => candidate.request && candidate.status === "open",
     )!;
@@ -59,12 +59,12 @@ describe("inbox item actions", () => {
       ...question,
       canAct: false,
       canAnswer: true,
-      canTake: true,
+      canTake: false,
     };
     const shown = buttons({}, reader);
     expect(shown).toContain("Send");
     expect(shown).toContain("Dismiss");
-    expect(shown).toContain("Take");
+    expect(shown).not.toContain("Take");
     expect(render({}, { ...reader, canAnswer: false })).toContain(
       "Only an assignee can act on this item.",
     );

@@ -172,7 +172,7 @@ export async function actOnInboxItem(args: {
     if (item.status !== "open") {
       throw new InboxItemActionError("conflict", "Inbox item is closed.");
     }
-    if (!canAnswerInboxItem(item, user.id)) {
+    if (!canActOnInboxItem(item, user.id)) {
       throw new InboxItemActionError(
         "forbidden",
         "Only an assignee can take this item.",
