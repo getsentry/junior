@@ -50,6 +50,11 @@ type MockSpace = {
   /** Members other than the viewer. */
   others: MockMember[];
   viewerMember: boolean;
+  /**
+   * Like the API, a Leave of a public Lead keeps the viewer's Participant
+   * row. Only a private Leave drops it.
+   */
+  viewerParticipant: boolean;
   visibility: SpaceVisibilityReport;
 };
 
@@ -91,6 +96,8 @@ function seedSpaces(): MockSpace[] {
       name: "Billing migration",
       others: [AVERY],
       viewerMember: true,
+
+      viewerParticipant: true,
       visibility: "public",
     },
     {
@@ -102,6 +109,8 @@ function seedSpaces(): MockSpace[] {
       name: "Mobile app",
       others: [AVERY, RILEY],
       viewerMember: true,
+
+      viewerParticipant: true,
       visibility: "public",
     },
     {
@@ -113,6 +122,8 @@ function seedSpaces(): MockSpace[] {
       name: "Docs refresh",
       others: [RILEY],
       viewerMember: false,
+
+      viewerParticipant: false,
       visibility: "public",
     },
     {
@@ -124,6 +135,8 @@ function seedSpaces(): MockSpace[] {
       name: "Pricing launch",
       others: [AVERY],
       viewerMember: true,
+
+      viewerParticipant: true,
       visibility: "private",
     },
   ];
@@ -262,8 +275,8 @@ function leadParticipation(
   ];
   return {
     // Match the API: only a Participant may Invite.
-    ...(member ? { canInvite: true as const } : undefined),
-    isParticipant: member,
+    ...(space.viewerParticipant ? { canInvite: true as const } : undefined),
+    isParticipant: space.viewerParticipant,
     participants,
     subscribed: member,
     visibility: space.visibility,
@@ -351,6 +364,7 @@ export function addMockConversationSpaceRoutes(
     if (!space?.viewerMember)
       return errorResponse("Conversation not found.", 404);
     space.viewerMember = false;
+    if (space.visibility === "private") space.viewerParticipant = false;
     return jsonResponse(conversationLeaveResponseSchema, { archivedAt: null });
   });
   app.patch("/conversations/:conversationId/subscription", async (c, next) => {
@@ -364,6 +378,7 @@ export function addMockConversationSpaceRoutes(
     );
     if (!body.success) return errorResponse("Invalid request body.", 400);
     space.viewerMember = body.data.subscribed;
+    if (body.data.subscribed) space.viewerParticipant = true;
     return jsonResponse(conversationSubscriptionResponseSchema, {
       archivedAt: null,
       subscribed: body.data.subscribed,
@@ -628,6 +643,8 @@ export function createMockSpaceRoutes(): Hono<{
       name: body.data.name,
       others: [],
       viewerMember: true,
+
+      viewerParticipant: true,
       visibility: body.data.visibility,
     };
     mockSpaces.set(space.id, space);
