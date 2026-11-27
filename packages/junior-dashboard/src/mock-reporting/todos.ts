@@ -54,7 +54,8 @@ const MOCK_TODOS: Record<string, () => ConversationTodo[]> = {
       title: "Confirm the rollback window",
       notes: "Check the deploy calendar before the next release.",
       status: "open",
-      assignee: { kind: "user", name: "Morgan Lee" },
+      // Morgan Lee is the mock viewer.
+      assignee: { kind: "user", name: "Morgan Lee", viewer: true },
       updatedAt: iso(-6 * MINUTE_MS),
     },
     {
@@ -89,7 +90,8 @@ const MOCK_TODOS: Record<string, () => ConversationTodo[]> = {
       id: 43,
       title: "Approve the preview deploy",
       status: "open",
-      assignee: { kind: "user", name: "Morgan Lee" },
+      // Morgan Lee is the mock viewer.
+      assignee: { kind: "user", name: "Morgan Lee", viewer: true },
       updatedAt: iso(-25 * MINUTE_MS),
     },
     {

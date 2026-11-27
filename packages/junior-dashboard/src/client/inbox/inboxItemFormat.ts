@@ -13,7 +13,6 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { withoutStandaloneUrl } from "../display-text/DisplayText";
 import { automationPath } from "../format";
 import { displayPlainText } from "../display-text/plainText";
-import type { Conversation } from "../types";
 
 /** Return the Inbox route that selects one item. */
 export function inboxItemPath(id: string): string {
@@ -156,31 +155,6 @@ export function answerLine(
   return answerRows(request, answer)
     .map((row) => row.value)
     .join(" · ");
-}
-
-/** Say "You answered Hold" for picked options, or "You replied" for text. */
-function answeredLine(choices: readonly string[]): string {
-  return choices.length > 0
-    ? `You answered ${choices.join(", ")}`
-    : "You replied";
-}
-
-/**
- * Say what the viewer last answered in a Conversation, from the answer that
- * its feed row carries, until a later Message moves it on. The answer's own
- * Message has the close time, so it does not count as later.
- */
-export function conversationAnswerLine(
-  conversation: Pick<Conversation, "lastMessageAt" | "viewerAnswer">,
-): string | undefined {
-  const answer = conversation.viewerAnswer;
-  if (!answer) return undefined;
-  if (
-    conversation.lastMessageAt &&
-    Date.parse(conversation.lastMessageAt) > Date.parse(answer.closedAt)
-  )
-    return undefined;
-  return answeredLine(answer.choices);
 }
 
 /**

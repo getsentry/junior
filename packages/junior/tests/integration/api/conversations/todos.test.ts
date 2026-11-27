@@ -178,7 +178,8 @@ describe("conversation To-dos API", () => {
       expect.objectContaining({
         title: "Approve the brief",
         status: "done",
-        assignee: { kind: "user", name: "owner@example.com" },
+        // The viewer's own To-do says so, so the dashboard can show "You".
+        assignee: { kind: "user", name: "owner@example.com", viewer: true },
       }),
     ]);
   });

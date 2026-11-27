@@ -6,6 +6,7 @@ import type { EngineContext } from "@/core/engine-context";
 import { readTurnEndedMessages } from "@/core/turn/ended";
 import { deliverTurn, type Delivery } from "@/delivery/deliver";
 import { createSlackSender } from "@/delivery/slack";
+import { compat__writeTurnEnded } from "@/delivery/compat__turn-ended";
 import { recordTurnMetrics } from "@/turn-steps/metrics";
 
 /**
@@ -39,5 +40,7 @@ export function turnEndedConsumer(
   return readTurnEndedMessages(engineCtx, async (message) => {
     await recordTurnMetrics(engineCtx, message);
     await deliverTurn(engineCtx, message, delivery);
+    // Compat: main's end event comes after the replies it delivered.
+    await compat__writeTurnEnded(engineCtx, message);
   });
 }

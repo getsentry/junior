@@ -737,7 +737,6 @@ export function buildConversations(
       omittedThreadCount: summary.omittedThreadCount,
       awaitingAuthorization: summary.awaitingAuthorization,
       latestTurnFailed: summary.latestTurnFailed,
-      viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
       space: summary.space,
     }))

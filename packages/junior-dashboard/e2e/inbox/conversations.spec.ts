@@ -133,14 +133,15 @@ test.describe("new UI", () => {
     await expect(details).toBeVisible();
     // The saved width rounds to whole pixels.
     await expect.poll(transcriptSize).toBeCloseTo(resizedTranscriptSize, 0);
-    const usage = details.getByRole("button", { name: /^Usage/ });
+    // Usage opens in place of the details, with a way back.
+    const usage = details.getByRole("button", { exact: true, name: "Usage" });
     const modelBreakdown = details.getByRole("table", { name: "Model" });
-    await expect(usage).toHaveAttribute("aria-expanded", "false");
     await expect(modelBreakdown).toBeHidden();
     await usage.click();
     await expect(modelBreakdown).toBeVisible();
-    await usage.click();
+    await details.getByRole("button", { name: "Back to details" }).click();
     await expect(modelBreakdown).toBeHidden();
+    await expect(usage).toBeVisible();
   });
 
   test("turn context takes the details panel and gives it back", async ({
@@ -667,7 +668,8 @@ test.describe("new UI", () => {
     ).toBeHidden();
     await screenshot(page, "conversation-child-agents");
 
-    // Details lists Tasks with the runtime status.
+    // Details list Tasks in Agents with their own state. A blocked Task
+    // names why, from the update that the transcript hides.
     await page
       .getByRole("button", { name: "Conversation details", exact: true })
       .click();
@@ -675,18 +677,17 @@ test.describe("new UI", () => {
       name: "Conversation details",
       exact: true,
     });
+    const work = details.getByRole("region", { exact: true, name: "Agents" });
     await expect(
-      details.getByRole("heading", { name: "Tasks 2", exact: true }),
+      work.getByRole("button", { name: /^Blocked reviewer/ }),
+    ).toContainText("The reviewer needs access to the dashboard repository.");
+    await work.getByRole("button", { name: "Show finished" }).click();
+    await expect(
+      work.getByRole("button", { name: /^Done Review the dashboard plan/ }),
     ).toBeVisible();
-    const tasks = details.getByRole("region", { name: "Tasks" });
-    await expect(tasks.getByRole("listitem")).toHaveCount(2);
     await screenshot(page, "conversation-subagents");
     // A row opens the same Task transcript drawer as the transcript row.
-    await tasks
-      .getByRole("button", {
-        name: /^blocked reviewer/,
-      })
-      .click();
+    await work.getByRole("button", { name: /^Blocked reviewer/ }).click();
     const reviewerDrawer = page.getByRole("dialog", { name: "reviewer" });
     await expect(
       reviewerDrawer.getByText("blocked", { exact: true }),

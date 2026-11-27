@@ -6,12 +6,25 @@ import {
   type PluginCatalogRuntime,
 } from "@/chat/plugins/registry";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
+import type { QueueProviderState } from "@/chat/queue/provider";
+import type { SlackTeamDomainCache } from "@/chat/slack/team-domain";
+import type { SlackUserCache } from "@/chat/slack/user";
 
 export interface AppContext {
   /** App plugins, validated and sorted by manifest name. */
   plugins: PluginRegistration[];
   /** The plugin catalog, built from the app plugin config. */
   catalog: PluginCatalogRuntime;
+  /** What the queue provider keeps, such as clients built on first use. */
+  queueProvider: QueueProviderState;
+  /** Slack workspace domains that this instance looked up. */
+  slackTeamDomains: SlackTeamDomainCache;
+  /** The Slack team id of each bot token, looked up once per token. */
+  slackBotTeamIds: Map<string, Promise<string>>;
+  /** Slack profiles that this instance looked up. */
+  slackUsers: SlackUserCache;
+  /** Title generation in flight, by Conversation id. */
+  conversationTitles: Map<string, Promise<string | undefined>>;
 }
 
 /** Build the long-lived app state from resolved plugin wiring. */
@@ -31,6 +44,11 @@ export function createAppContext(
       left.manifest.name.localeCompare(right.manifest.name),
     ),
     catalog,
+    queueProvider: {},
+    slackTeamDomains: { entries: new Map(), inflight: new Map() },
+    slackBotTeamIds: new Map(),
+    slackUsers: new Map(),
+    conversationTitles: new Map(),
   };
 }
 

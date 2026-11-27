@@ -499,9 +499,14 @@ ORDER BY table_name ASC, ordinal_position ASC
           (column) => column !== "brief_version",
         ),
       );
-      // The schema drops it, and space_lead_holds_name keeps it for one
-      // release. Remove this when the follow-up migration drops it.
-      actual.delete("junior_space_members");
+      // The schema drops these, and drop_space_members keeps them for one
+      // release. Remove this when the follow-up migration drops them.
+      actual.set(
+        "junior_spaces",
+        (actual.get("junior_spaces") ?? []).filter(
+          (column) => !["archived_at", "name", "visibility"].includes(column),
+        ),
+      );
       actual.set(
         "junior_inbox_items",
         (actual.get("junior_inbox_items") ?? []).filter(

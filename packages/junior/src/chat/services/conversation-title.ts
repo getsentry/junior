@@ -1,3 +1,4 @@
+import { getAppContext } from "@/app/context";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { readLocationConfigurationValues } from "@/chat/configuration/sql";
@@ -16,11 +17,8 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 
-const inFlightTitles = new Map<string, Promise<string | undefined>>();
-
-/** Test-only: clear in-flight title work between cases. */
-export function resetConversationTitleStateForTests(): void {
-  inFlightTitles.clear();
+function inFlightTitles(): Map<string, Promise<string | undefined>> {
+  return getAppContext().conversationTitles;
 }
 
 /**
@@ -38,15 +36,15 @@ async function ensureConversationTitle(args: {
   conversationStore?: Pick<ConversationStore, "get" | "recordActivity">;
   nowMs?: number;
 }): Promise<string | undefined> {
-  const pending = inFlightTitles.get(args.conversationId);
+  const pending = inFlightTitles().get(args.conversationId);
   if (pending) {
     return pending;
   }
 
   const work = ensureConversationTitleOnce(args).finally(() => {
-    inFlightTitles.delete(args.conversationId);
+    inFlightTitles().delete(args.conversationId);
   });
-  inFlightTitles.set(args.conversationId, work);
+  inFlightTitles().set(args.conversationId, work);
   return work;
 }
 
@@ -208,7 +206,7 @@ export function scheduleConversationTitle(args: {
 export async function settleConversationTitleWork(
   conversationId: string,
 ): Promise<void> {
-  await inFlightTitles.get(conversationId);
+  await inFlightTitles().get(conversationId);
 }
 
 /**
@@ -219,7 +217,7 @@ export async function resolveConversationTitle(args: {
   conversationId: string;
   conversationStore?: Pick<ConversationStore, "get">;
 }): Promise<string | undefined> {
-  const pending = inFlightTitles.get(args.conversationId);
+  const pending = inFlightTitles().get(args.conversationId);
   if (pending) {
     const generated = await pending;
     if (generated?.trim()) {

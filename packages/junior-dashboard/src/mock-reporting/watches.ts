@@ -2,6 +2,8 @@ import type { ConversationWatchesReport } from "@sentry/junior/api/schema";
 import {
   ACTIVE_CONVERSATION_ID,
   DASHBOARD_QA_CONVERSATION_ID,
+  DASHBOARD_QA_NESTED_THREAD_ID,
+  DASHBOARD_QA_THREAD_ID,
   NOW_MS,
   readMockConversationDetail,
 } from "./fixtures";
@@ -43,17 +45,28 @@ export function readMockConversationWatches(
 }
 
 /**
- * Cancel one active mock Watch. Returns false when the Conversation does not
- * have it, or when the viewer does not take part, as the API refuses then.
+ * Cancel one active mock Watch through the Conversation that created it: a
+ * parent's own Watch, or a child's Watch through the child, like the API.
+ * Returns false when that Conversation does not have it, or when the viewer
+ * does not take part, as the API refuses then.
  */
 export function cancelMockConversationWatch(
   conversationId: string,
   watchId: string,
 ): boolean {
   if (!readMockConversationDetail(conversationId)?.isParticipant) return false;
-  const watch = readMockConversationWatches(conversationId)?.watches.find(
-    (candidate) => candidate.id === watchId && !candidate.childAgent,
-  );
+  const watch = Object.entries(MOCK_WATCHES)
+    .flatMap(([ownerId, watches]) =>
+      watches().map((candidate) => ({ candidate, ownerId })),
+    )
+    .find(
+      ({ candidate, ownerId }) =>
+        candidate.id === watchId &&
+        !cancelledMockWatchIds.has(watchId) &&
+        (candidate.childAgent
+          ? candidate.childAgent.conversationId === conversationId
+          : ownerId === conversationId),
+    );
   if (!watch) return false;
   cancelledMockWatchIds.add(watchId);
   return true;
@@ -146,6 +159,24 @@ const MOCK_WATCHES: Record<string, () => ConversationWatchesReport["watches"]> =
         namespace: "slack",
         redacted: true,
         resourceType: "channel",
+      },
+    ],
+    // The viewer takes part in this Thread, so its child's Watch shows
+    // Cancel in the child's row menu.
+    [DASHBOARD_QA_THREAD_ID]: () => [
+      {
+        childAgent: {
+          conversationId: DASHBOARD_QA_NESTED_THREAD_ID,
+          name: "Recheck pin order in Safari",
+        },
+        createdAt: iso(-40 * 60_000),
+        events: ["deployment.succeeded"],
+        expiresAt: iso(DAY_MS),
+        id: "watch-thread-child",
+        intent: "Recheck in Safari when the preview deploy is ready.",
+        label: "junior-dashboard preview",
+        namespace: "vercel",
+        resourceType: "deployment",
       },
     ],
   };

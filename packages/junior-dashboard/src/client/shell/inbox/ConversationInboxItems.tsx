@@ -3,144 +3,169 @@ import { useEffect, useRef, useState } from "react";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { LoadMorePagination } from "../../components/Pagination";
-import {
-  Collapsible,
-  CollapsibleContent,
-} from "../../components/ui/collapsible";
-import {
-  DetailsCard,
-  DetailsList,
-  DetailsRow,
-} from "../../conversations/DetailsList";
-import { cn, dashboardDisclosureChevronClass } from "../../styles";
+import { cn } from "../../styles";
 import { useMobileLayout } from "../../layoutMedia";
-import { InboxItemCard } from "./InboxItemCard";
-import { InboxItemSheet } from "../../inbox/InboxItemSheet";
+import { formatCompactAge } from "../../time";
+import { InboxItemDialog, InboxItemSheet } from "../../inbox/InboxItemSheet";
 import { AskKindIcon, askIcon } from "../../inbox/askKind";
 import { inboxItemKind } from "../../inbox/inboxModel";
+import { useDashboardCoreData } from "../../api";
+import { useConversationChildAgents } from "../../conversations/ConversationChildAgents";
 import { useInboxItemsData } from "../../inbox/queries";
 import { inboxItemTitleText } from "../../inbox/inboxItemFormat";
 
 /**
- * Show the open Inbox items linked to a Conversation in its details. Each
- * item is one line, like its sidebar chip, and expands to the full card in
- * place, or opens it in a sheet on a phone. `highlight` marks the card
- * when a sidebar link opened it.
+ * Load the open Inbox items that the viewer can act on for a Conversation:
+ * questions, approvals, reviews, and their own To-dos. Items of its child
+ * Conversations count too, since they block its work: on a root, every item
+ * of its tree; on a child, the items of its own child agents. Notices and
+ * items that the viewer snoozed stay out.
+ */
+export function useConversationNeedsYou(conversationId: string) {
+  // Items that wait on the viewer page first, so the first page holds them.
+  const { items, query } = useInboxItemsData({
+    conversationId,
+    forViewer: true,
+    sort: "waiting",
+  });
+  // The Inbox already reads the viewer's waiting items, so the child items
+  // come from that read, with no read of their own.
+  const signedIn = Boolean(useDashboardCoreData().data?.me.user.email);
+  const waiting = useInboxItemsData({
+    enabled: signedIn,
+    forViewer: true,
+    sort: "waiting",
+  }).items;
+  const childIds = new Set(
+    (useConversationChildAgents(conversationId).data?.agents ?? []).map(
+      (child) => child.conversationId,
+    ),
+  );
+  const ids = new Set(items.map((item) => item.id));
+  const fromChildren = waiting.filter(
+    (item) =>
+      !ids.has(item.id) &&
+      item.owner.kind === "conversation" &&
+      item.owner.id !== conversationId &&
+      (item.rootConversationId === conversationId ||
+        childIds.has(item.owner.id) ||
+        item.conversationIds.some((id) => childIds.has(id))),
+  );
+  return {
+    items: [...items, ...fromChildren].filter(
+      (item) =>
+        item.status === "open" &&
+        !item.snoozedByViewer &&
+        (item.canAct || item.canAnswer) &&
+        inboxItemKind(item) !== "FYI",
+    ),
+    query,
+  };
+}
+
+/** Name the kind of ask for the viewer, such as "Question for you". */
+function needsYouLabel(kind: string): string {
+  return kind === "Question" || kind === "Approval" ? `${kind} for you` : kind;
+}
+
+/**
+ * Lead Conversation details with what needs the viewer: one card per open
+ * Inbox item that they can act on. A card opens the item in a dialog, or in
+ * a sheet on a phone. `highlight` comes from a sidebar review link: it opens
+ * the only item, or marks the cards when there are more.
  */
 export function ConversationInboxItems(props: {
   conversationId: string;
   highlight: boolean;
 }) {
-  const { items: linked, query } = useInboxItemsData({
-    conversationId: props.conversationId,
-  });
-  // An item that the viewer snoozed keeps only its record in the
-  // transcript.
-  const items = linked.filter((item) => !item.snoozedByViewer);
-  const sectionRef = useRef<HTMLDivElement>(null);
+  const { items, query } = useConversationNeedsYou(props.conversationId);
+  const [openId, setOpenId] = useState<string>();
+  const sectionRef = useRef<HTMLElement>(null);
   const mobile = useMobileLayout();
+  const only = items.length === 1 ? items[0]?.id : undefined;
   const shown = items.length > 0;
+  // Details can already be open when a sidebar review link highlights it.
   useEffect(() => {
-    if (props.highlight && shown) {
-      sectionRef.current?.scrollIntoView({ block: "nearest" });
-    }
-  }, [props.highlight, shown]);
+    if (!props.highlight || !shown) return;
+    if (only) setOpenId(only);
+    else sectionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [props.highlight, shown, only]);
   if (!shown) return null;
+  const open = items.find((item) => item.id === openId);
+  const close = () => setOpenId(undefined);
   return (
-    <div
-      className={cn(
-        "rounded-lg",
-        props.highlight && "ring-2 ring-dashboard-focus/50",
-      )}
+    <section
+      aria-label="Needs you"
+      className="grid min-w-0 gap-1"
       ref={sectionRef}
     >
-      {/* A count of loaded pages only would understate, so hide it. */}
-      <DetailsCard
-        count={query.hasNextPage ? undefined : items.length}
-        label="Inbox"
-        title="Inbox"
-      >
-        <DetailsList
-          itemKey={(item) => item.id}
-          items={items}
-          renderItem={(item) => (
-            <InboxItemRow
-              // A phone opens an item in a sheet, so it opens one only when
-              // the list has one item. The section's ring marks the rest.
-              defaultExpanded={
-                props.highlight && (!mobile || items.length === 1)
-              }
-              item={item}
-            />
-          )}
+      {items.map((item) => (
+        <NeedsYouCard
+          child={
+            item.owner.id === props.conversationId
+              ? undefined
+              : item.addedByLabel
+          }
+          highlight={props.highlight && !only}
+          item={item}
+          key={item.id}
+          onOpen={() => setOpenId(item.id)}
         />
-        <LoadMorePagination
-          className="mt-2"
-          hasMore={Boolean(query.hasNextPage)}
-          loading={query.isFetchingNextPage}
-          onLoadMore={() => void query.fetchNextPage()}
-        />
-      </DetailsCard>
-    </div>
+      ))}
+      <LoadMorePagination
+        hasMore={Boolean(query.hasNextPage)}
+        loading={query.isFetchingNextPage}
+        onLoadMore={() => void query.fetchNextPage()}
+      />
+      {open ? (
+        mobile ? (
+          <InboxItemSheet item={open} key={open.id} onClose={close} />
+        ) : (
+          <InboxItemDialog item={open} key={open.id} onClose={close} />
+        )
+      ) : null}
+    </section>
   );
 }
 
-function InboxItemRow(props: {
-  defaultExpanded: boolean;
+function NeedsYouCard(props: {
+  /** The child Conversation that added the item, by its label. */
+  child: string | undefined;
+  highlight: boolean;
   item: InboxItemPayload;
+  onOpen(): void;
 }) {
-  // A phone opens the item in a sheet, not in place. The two states stay
-  // apart, so rows open in place do not each open a sheet on a resize.
-  const mobile = useMobileLayout();
-  const [expanded, setExpanded] = useState(props.defaultExpanded && !mobile);
-  const [sheet, setSheet] = useState(props.defaultExpanded && mobile);
-  if (sheet && !mobile) setSheet(false);
-  const kind = inboxItemKind(props.item);
-  // Details can already be open when a sidebar review chip highlights it.
-  useEffect(() => {
-    if (!props.defaultExpanded) return;
-    if (mobile) setSheet(true);
-    else setExpanded(true);
-  }, [mobile, props.defaultExpanded]);
-  const row = (
-    <DetailsRow
-      disclosure={!mobile}
-      icon={
-        // The kind's icon, as the Inbox pills show it.
-        askIcon(kind) ? (
+  const { item } = props;
+  const kind = inboxItemKind(item);
+  return (
+    <button
+      className={cn(
+        "group grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5 rounded-md bg-dashboard-fill-soft px-2 py-2 text-left font-sans transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus motion-reduce:transition-none",
+        props.highlight && "ring-2 ring-dashboard-focus/50",
+      )}
+      onClick={props.onOpen}
+      type="button"
+    >
+      {/* The kind's icon, as the Inbox pills show it, at the row size. */}
+      <span className="grid size-5 shrink-0 place-items-center text-dashboard-text-muted [&_svg]:size-4">
+        {askIcon(kind) ? (
           <AskKindIcon kind={kind} />
         ) : (
-          <Inbox aria-hidden="true" className="size-3.5" />
-        )
-      }
-      meta={
-        <span className="grid size-5 place-items-center">
-          <ChevronRight
-            aria-hidden="true"
-            className={dashboardDisclosureChevronClass}
-          />
+          <Inbox aria-hidden="true" />
+        )}
+      </span>
+      <span className="grid min-w-0 gap-1">
+        <span className="min-w-0 break-words text-sm font-medium leading-5 text-dashboard-text">
+          {inboxItemTitleText(item)}
         </span>
-      }
-      onClick={mobile ? () => setSheet(true) : undefined}
-      title={inboxItemTitleText(props.item)}
-    />
-  );
-  if (mobile) {
-    return (
-      <>
-        {row}
-        {sheet ? (
-          <InboxItemSheet item={props.item} onClose={() => setSheet(false)} />
-        ) : null}
-      </>
-    );
-  }
-  return (
-    <Collapsible className="min-w-0" onOpenChange={setExpanded} open={expanded}>
-      {row}
-      <CollapsibleContent className="px-1.5 pb-1">
-        <InboxItemCard item={props.item} />
-      </CollapsibleContent>
-    </Collapsible>
+        <span className="text-xs leading-4 text-dashboard-text-muted">
+          {needsYouLabel(kind)} · {props.child ? `${props.child} · ` : null}
+          {formatCompactAge(item.createdAt)}
+        </span>
+      </span>
+      <span className="grid size-5 place-items-center text-dashboard-text-muted">
+        <ChevronRight aria-hidden="true" className="size-4" />
+      </span>
+    </button>
   );
 }

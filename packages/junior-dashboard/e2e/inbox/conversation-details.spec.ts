@@ -91,9 +91,18 @@ test.describe("new UI", () => {
     await expect(costTooltip).toBeHidden();
     await expect(details).toBeVisible();
 
-    await expect(
-      details.getByRole("link", { name: /getsentry\/payments#77/ }),
-    ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
+    // Merged work waits behind "Show finished". The ref drops the repo that
+    // the conversation works in.
+    const linkedWork = details.getByRole("region", { name: "Linked work" });
+    const merged = linkedWork.getByRole("link", {
+      name: /#77 Cache tax rates/,
+    });
+    await expect(merged).toHaveCount(0);
+    await linkedWork.getByRole("button", { name: "Show finished" }).click();
+    await expect(merged).toHaveAttribute(
+      "href",
+      "https://github.com/getsentry/payments/pull/77",
+    );
     await closeDetails.click();
     await expect(details).toBeHidden();
     await context.grantPermissions(["clipboard-read", "clipboard-write"], {
@@ -142,7 +151,7 @@ test.describe("new UI", () => {
     const memories = details.getByText("Use pnpm for repository commands.");
     await expect(memories).toBeHidden();
     await details
-      .getByRole("button", { name: "1 recalled · 2 captured" })
+      .getByRole("button", { name: "Memories", exact: true })
       .click();
     await expect(memories).toBeVisible();
     await expect(
@@ -153,9 +162,9 @@ test.describe("new UI", () => {
     await page.setViewportSize({ width: 1024, height: 900 });
     const sheet = page.getByRole("dialog", { name: "Conversation details" });
     await expect(sheet).toBeVisible();
-    await expect(
-      sheet.getByRole("link", { name: /getsentry\/payments#77/ }),
-    ).toBeVisible();
+    const sheetLinks = sheet.getByRole("region", { name: "Linked work" });
+    await sheetLinks.getByRole("button", { name: "Show finished" }).click();
+    await expect(sheetLinks.getByRole("link", { name: /#77 / })).toBeVisible();
     await page.setViewportSize({ width: 1600, height: 900 });
     await expect(sheet).toBeHidden();
     await expect(details).toBeVisible();
@@ -269,7 +278,7 @@ test.describe("new UI", () => {
     await expect(join).toHaveCount(0);
   });
 
-  test("shows a Watch on linked work in its linked work row", async ({
+  test("lists Watches in Waiting on and linked work once", async ({
     page,
     dashboard,
   }) => {
@@ -281,30 +290,37 @@ test.describe("new UI", () => {
       name: "Conversation details",
       exact: true,
     });
-    const watched = details.getByRole("link", {
-      name: /getsentry\/getsentry#21572/,
-    });
-    // The watched pull request is linked work, so it shows once.
-    await expect(watched).toHaveCount(1);
-    await expect(details.getByText("Also waiting on")).toBeVisible();
+    // The watched pull request is linked work, so it shows once, and its
+    // Watch waits with its expiry and a separate link out.
     await expect(
-      details.getByRole("link", {
-        name: /^Reply to new review comments on the PR\. expires/,
+      details
+        .getByRole("region", { name: "Linked work" })
+        .getByRole("link", { name: /#21572/ }),
+    ).toHaveCount(1);
+    const watch = details
+      .getByRole("region", { exact: true, name: "Waiting on" })
+      .getByRole("listitem")
+      .filter({
+        hasText:
+          "Fix failing checks and address requested changes on the dashboard PR.",
+      });
+    await expect(watch).toContainText(/Expires /);
+    await expect(
+      watch.getByRole("link", {
+        name: "Open Fix failing checks and address requested changes on the dashboard PR.",
       }),
-    ).toBeVisible();
-
-    await details
-      .getByRole("button", { name: "Details for getsentry/getsentry#21572" })
-      .click();
-    await expect(
-      details.getByText(
-        "Fix failing checks and address requested changes on the dashboard PR.",
-      ),
-    ).toBeVisible();
+    ).toHaveAttribute("href", /\/pull\/21572/);
+    // What blocks work leads. To-dos only inform, so they come last.
+    await expect(details.getByRole("heading", { level: 3 })).toHaveText([
+      "Agents",
+      "Waiting on",
+      "To-dos",
+      "Linked work",
+    ]);
     await screenshot(page, "conversation-details-watched-linked-work");
   });
 
-  test("lists To-dos, and a Participant changes their status", async ({
+  test("lists To-dos with their owners, and a Participant changes their status", async ({
     dashboard,
     page,
   }) => {
@@ -312,23 +328,39 @@ test.describe("new UI", () => {
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
     );
-    const details = page.getByRole("complementary", {
-      exact: true,
-      name: "Conversation details",
-    });
-    // The heading counts the open and in-progress To-dos.
-    const heading = details.getByRole("heading", { name: /^To-dos/ });
-    await expect(heading).toHaveText("To-dos3");
+    const work = page
+      .getByRole("complementary", { exact: true, name: "Conversation details" })
+      .getByRole("region", { exact: true, name: "To-dos" });
+    // To-dos have no count: closed To-dos are only the latest few.
+    await expect(work.getByRole("heading")).toHaveText("To-dos");
+    // A child agent's To-do stays out: Agents shows that child.
+    await expect(work.getByText("Compare p95 with last week")).toHaveCount(0);
     const change = page.getByRole("button", {
       name: "Change Confirm the rollback window",
     });
-    const rollback = details.getByRole("listitem").filter({ has: change });
-    await expect(rollback.getByRole("img", { name: "Open" })).toBeVisible();
+    const rollback = work.getByRole("listitem").filter({ has: change });
+    await expect(
+      rollback.getByRole("img", { name: "Not started" }),
+    ).toBeVisible();
+    // Each To-do names its owner before its notes. The viewer's own To-do
+    // says "You".
+    await expect(rollback).toContainText("You · Check the deploy calendar");
     await screenshot(page, "conversation-details-todos", {
       lightTheme: true,
-      target: details,
+      target: work,
       view: "desktop",
     });
+
+    // A started To-do can go back to not started.
+    await page
+      .getByRole("button", { name: "Change Find the slow checkout span" })
+      .click();
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Mark done",
+      "Mark not started",
+      "Drop",
+    ]);
+    await page.keyboard.press("Escape");
 
     await change.click();
     await expect(page.getByRole("menuitem")).toHaveText([
@@ -342,26 +374,133 @@ test.describe("new UI", () => {
     );
     await page.getByRole("menuitem", { name: "Mark done" }).click();
     expect((await save).postDataJSON()).toEqual({ status: "done" });
+    // A finished To-do waits behind "Show finished".
+    await expect(rollback).toHaveCount(0);
+    await work.getByRole("button", { name: "Show finished" }).click();
     await expect(rollback.getByRole("img", { name: "Done" })).toBeVisible();
-    await expect(heading).toHaveText("To-dos2");
 
     await change.click();
     await page.getByRole("menuitem", { name: "Reopen" }).click();
-    await expect(rollback.getByRole("img", { name: "Open" })).toBeVisible();
+    await expect(
+      rollback.getByRole("img", { name: "Not started" }),
+    ).toBeVisible();
 
-    // A phone shows the same card in the details sheet.
+    // A phone shows the same section in the details sheet.
     await page.setViewportSize({ height: 844, width: 390 });
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await conversationMenuRow(page, "Conversation details").click();
     const sheetHeading = page
       .getByRole("dialog", { name: "Conversation details" })
-      .getByRole("heading", { name: /^To-dos/ });
+      .getByRole("heading", { name: "To-dos", exact: true });
     await sheetHeading.scrollIntoViewIfNeeded();
     await expect(sheetHeading).toBeInViewport();
     await screenshot(page, "conversation-details-todos", {
       lightTheme: true,
       view: "mobile",
     });
+  });
+
+  test("an Agents row menu cancels the child's Watch and archives the child", async ({
+    dashboard,
+    page,
+  }) => {
+    const parentId = "junior:internal:dashboard-qa:thread";
+    const childId = "junior:internal:dashboard-qa:thread:nested";
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(parentId)}`,
+    );
+    const agents = page
+      .getByRole("complementary", { exact: true, name: "Conversation details" })
+      .getByRole("region", { exact: true, name: "Agents" });
+    const child = agents
+      .getByRole("listitem")
+      .filter({ hasText: "Recheck pin order in Safari" });
+    const menu = child.getByRole("button", {
+      name: "Change Recheck pin order in Safari",
+    });
+    // The child's run is done, so it waits behind "Show finished".
+    await agents.getByRole("button", { name: "Show finished" }).click();
+    await expect(child.getByRole("img", { name: "Done" })).toBeVisible();
+
+    // Only the child cancels its own Watch, so the cancel goes to its route.
+    await menu.click();
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Cancel Recheck in Safari when the preview deploy is ready.",
+      "Archive",
+    ]);
+    const cancel = page.waitForResponse(
+      (response) =>
+        response.request().method() === "DELETE" &&
+        response.url() ===
+          `${dashboard.baseURL}/api/conversations/${encodeURIComponent(childId)}/watches/watch-thread-child`,
+    );
+    await page
+      .getByRole("menuitem", {
+        name: "Cancel Recheck in Safari when the preview deploy is ready.",
+      })
+      .click();
+    expect((await cancel).status()).toBe(204);
+    await menu.click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Archive"]);
+
+    // Archive is for everyone, so it asks first.
+    const archive = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" &&
+        response.url() ===
+          `${dashboard.baseURL}/api/conversations/${encodeURIComponent(childId)}/archive`,
+    );
+    await page.getByRole("menuitem", { name: "Archive" }).click();
+    await page
+      .getByRole("alertdialog", { name: "Archive for everyone?" })
+      .getByRole("button", { name: "Archive" })
+      .click();
+    const archived = await archive;
+    expect(archived.ok()).toBe(true);
+    expect(archived.request().postDataJSON()).toMatchObject({
+      applyToChildren: true,
+      archived: true,
+    });
+    // An archived child stays listed, with nothing left to change.
+    await expect(menu).toHaveCount(0);
+    await expect(child.getByRole("img", { name: "Done" })).toBeVisible();
+  });
+
+  test("Needs you lists a child's Inbox items on its parent", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA456:1770028800.000900")}`,
+    );
+    const details = page.getByRole("complementary", {
+      exact: true,
+      name: "Conversation details",
+    });
+    // A child's ask blocks its parent's work, so the parent shows it, with
+    // the child's name.
+    const card = details
+      .getByRole("region", { name: "Needs you" })
+      .getByRole("button", { name: /Pause canary rollouts/ });
+    await expect(card).toContainText(
+      /Question for you · Check the last ten Sentaur pipeline runs · /,
+    );
+    // The child keeps its row in Agents, waiting on the viewer.
+    await expect(
+      details
+        .getByRole("region", { exact: true, name: "Agents" })
+        .getByRole("listitem")
+        .filter({ hasText: "Check the last ten Sentaur pipeline runs" })
+        .getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+    await card.click();
+    await expect(
+      page
+        .getByRole("dialog")
+        .getByText("Pause canary rollouts until #418 lands?"),
+    ).toBeVisible();
   });
 
   test("a viewer who is not a Participant sees To-dos without actions", async ({
@@ -396,8 +535,8 @@ test.describe("new UI", () => {
     await conversationMenuRow(page, "Conversation details").click();
     const details = page.getByRole("dialog", { name: "Conversation details" });
     await details
-      .getByRole("region", { name: "Inbox" })
-      .getByRole("button", { name: "Handle the negative invoices" })
+      .getByRole("region", { name: "Needs you" })
+      .getByRole("button", { name: /Handle the negative invoices/ })
       .click();
     // The item does not open in place in the details, but over them.
     const item = page.getByRole("dialog", {
@@ -418,6 +557,73 @@ test.describe("new UI", () => {
     await expect(details).toBeVisible();
   });
 
+  test("a Needs you card opens its Inbox item in a dialog that acting closes", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:questions-qa")}`,
+    );
+    const needsYou = page
+      .getByRole("complementary", { exact: true, name: "Conversation details" })
+      .getByRole("region", { name: "Needs you" });
+    const card = needsYou.getByRole("button", {
+      name: /Handle the negative invoices/,
+    });
+    await card.click();
+    const item = page.getByRole("dialog", {
+      name: "Handle the negative invoices",
+    });
+    await expect(item.getByRole("button", { name: "Skip them" })).toBeVisible();
+    await item.getByRole("button", { exact: true, name: "Dismiss" }).click();
+    await expect(item).toHaveCount(0);
+    await expect(card).toHaveCount(0);
+  });
+
+  test("a review link opens the only Needs you item with its action", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}?review=open`,
+    );
+    // A To do for you opens with its related links and Mark done.
+    const item = page.getByRole("dialog", {
+      name: "Approve the preview deploy",
+    });
+    await expect(
+      item.getByRole("link", { name: /Dashboard QA preview/ }),
+    ).toBeVisible();
+    await item.getByRole("button", { exact: true, name: "Mark done" }).click();
+    await expect(item).toHaveCount(0);
+  });
+
+  test("an Automation run names its Automation above the summary", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("scheduler:daily-ops-digest")}`,
+    );
+    const details = page.getByRole("complementary", {
+      exact: true,
+      name: "Conversation details",
+    });
+    await expect(
+      details.getByRole("link", {
+        exact: true,
+        name: "Automation: Weekly project summary",
+      }),
+    ).toHaveAttribute("href", "/automations/scheduled-1");
+    // Its full instruction stays on the Automation page.
+    await expect(
+      details.getByText(/Send the weekly project summary/),
+    ).toHaveCount(0);
+  });
+
   test("on a phone, memories and Tasks open one step deeper in the details sheet", async ({
     dashboard,
     page,
@@ -430,7 +636,8 @@ test.describe("new UI", () => {
     await conversationMenuRow(page, "Conversation details").click();
     const details = page.getByRole("dialog", { name: "Conversation details" });
     const memoryCard = details.getByRole("button", {
-      name: "1 recalled · 2 captured",
+      exact: true,
+      name: "Memories",
     });
 
     // Memories replace details in the sheet, with a way back.
@@ -447,8 +654,8 @@ test.describe("new UI", () => {
 
     // A Task opens over the details, and Back goes back to them.
     const reviewerRow = details
-      .getByRole("region", { name: "Tasks" })
-      .getByRole("button", { name: /^blocked reviewer/ });
+      .getByRole("region", { exact: true, name: "Agents" })
+      .getByRole("button", { name: /^Blocked reviewer/ });
     await reviewerRow.click();
     const reviewer = page.getByRole("dialog", { name: "reviewer" });
     await expect(
@@ -480,7 +687,7 @@ test.describe("new UI", () => {
       exact: true,
     });
     await details
-      .getByRole("button", { name: "1 recalled · 2 captured" })
+      .getByRole("button", { name: "Memories", exact: true })
       .click();
     const captured = details
       .getByRole("listitem")

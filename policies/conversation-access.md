@@ -98,15 +98,12 @@ private Space gets "not found" for the Space.
   before any text from the target reaches the watcher.
 - `loadAttachment` and `transcribeAudio` use `canAccessConversation` on the
   Conversation that owns the attachment.
-- A Lead's `searchConversations` finds roots that are public or at the
-  Destination of the requester's root. It finds
-  child agents only when asked, and never the requester's own tree. Results
+- `listAgents` with a `query` or a filter finds roots that are public or at
+  the Destination of the requester's root, plus the requester's own tree
+  except the requester. It finds child agents only when asked. Results
   include the summary and outcome status. `participating` keeps only roots
-  where the person is a Participant.
-- `listAgents` with a `query` finds the same roots, plus the requester's own
-  tree except the requester, with the summary and outcome status. The
-  requester's team ranks first, then roots where the person it works for is
-  a Participant.
+  where the person is a Participant. The requester's team ranks first, then
+  roots where the person it works for is a Participant.
 - `searchConversationMessages` is only available in public Conversations
   and returns only public Conversations. It is a Slack tool, so it returns
   only Slack Conversations.

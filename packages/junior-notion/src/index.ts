@@ -35,6 +35,7 @@ export function notionPlugin(): PluginRegistration {
         ],
         // Page link cards and covers read the page as the viewer.
         viewerTools: ["notion-fetch"],
+        guardian: { skipReview: ["notion-search", "notion-fetch"] },
       },
       // Optional shared account. It has no effect until an admin connects
       // it on the dashboard Admin page. It can create and update pages so

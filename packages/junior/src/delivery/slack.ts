@@ -21,7 +21,10 @@ export function createSlackSender(args: {
     conversationId: string;
     destination: SlackDestination;
     text: string;
-  }): Promise<{ providerMessageId?: string }> => {
+  }): Promise<{
+    providerMessageId?: string;
+    providerConversationId?: string;
+  }> => {
     const { channelId, teamId, threadTs } = reply.destination;
     let messageIds: string[];
     try {
@@ -53,6 +56,12 @@ export function createSlackSender(args: {
       throw error;
     }
     const providerMessageId = messageIds.at(-1);
-    return providerMessageId ? { providerMessageId } : {};
+    // Only a reply with no thread starts one, at its first post. Main binds
+    // only those posts, so a reply in an existing thread returns none.
+    const providerConversationId = threadTs ? undefined : messageIds[0];
+    return {
+      ...(providerMessageId ? { providerMessageId } : undefined),
+      ...(providerConversationId ? { providerConversationId } : undefined),
+    };
   };
 }

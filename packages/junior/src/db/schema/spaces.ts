@@ -1,5 +1,4 @@
 import { index, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { juniorUsers } from "./users";
 import { timestamptz } from "./timestamps";
 
@@ -13,16 +12,7 @@ export const juniorSpaces = pgTable(
   "junior_spaces",
   {
     id: text("id").primaryKey(),
-    // No code reads or writes name, visibility, or archived_at. The Lead
-    // holds them. They are dropped after the first release with this change
-    // ships.
-    name: text("name"),
     description: text("description"),
-    visibility: text("visibility")
-      .$type<ConversationPrivacy>()
-      .notNull()
-      .default("public"),
-    archivedAt: timestamptz("archived_at"),
     createdByUserId: text("created_by_user_id")
       .notNull()
       .references(() => juniorUsers.id),

@@ -15,7 +15,6 @@ export {
 } from "../chat/child-agents/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
-  answeredChoices,
   buttonUserInputField,
   fieldAnswerValues,
   isEmptyUserInputAnswer,
@@ -145,7 +144,6 @@ export {
 export type {
   ConversationFeed,
   ConversationFeedItem,
-  ConversationFeedViewerAnswer,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,

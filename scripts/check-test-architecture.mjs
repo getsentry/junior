@@ -24,6 +24,10 @@ const AGENT_FIXTURE_ROOT = "packages/junior-evals/src/fixture/";
 const AGENT_FIXTURE_ALIAS = "@junior-evals/fixture/";
 const JUNIOR_TESTS_ROOT = "packages/junior/tests/";
 const AGENT_EVALS_ROOT = "packages/junior-evals/evals/";
+const SHARED_WORKER_TEST_ROOTS = [
+  `${JUNIOR_TESTS_ROOT}integration/`,
+  `${JUNIOR_TESTS_ROOT}fixtures/`,
+];
 // Guardian and classifier evals call one model boundary and do not run the
 // agent.
 const ISOLATED_EVAL_ROOTS = [
@@ -118,6 +122,19 @@ const AGENT_TEST_RULES = [
       "tests must not mutate runtime config or reload modules; pass options to createApp() or agent()",
     pattern:
       /\bsetPlugins\(|\bObject\.assign\(\s*botConfig\b|\bvi\.resetModules\(/g,
+  },
+  {
+    // Integration files share a worker. Vitest restores env through the
+    // `process.env` object, so a test that assigns a new one leaks env into
+    // later files.
+    id: "process-env-assignment",
+    message:
+      "integration tests and test fixtures must change env with vi.stubEnv, not assign a new object to process.env",
+    pathPrefix: JUNIOR_TESTS_ROOT,
+    count: (file) =>
+      SHARED_WORKER_TEST_ROOTS.some((root) => file.path.startsWith(root))
+        ? countMatches(file.contents, /\bprocess\.env\s*=(?!=)/g)
+        : 0,
   },
   {
     id: "runtime-composition",

@@ -43,7 +43,6 @@ import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { patchConfig } from "../../fixtures/config";
 
 const SIGNING_SECRET = "test-signing-secret";
-const ORIGINAL_ENV = { ...process.env };
 
 async function requestDetails(
   id: string,
@@ -135,7 +134,7 @@ async function saveReminder(): Promise<ScheduledAutomation> {
 
 describe("Slack Work Object details", () => {
   beforeEach(() => {
-    process.env["SLACK_BOT_TOKEN"] = "xoxb-test-token";
+    vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test-token");
     patchConfig({
       dashboard: {
         baseURL: "https://junior.example.com",
@@ -145,7 +144,7 @@ describe("Slack Work Object details", () => {
   });
 
   afterEach(async () => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     resetSlackApiMockState();
     await disconnectStateAdapter();
   });

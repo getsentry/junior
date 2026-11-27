@@ -13,7 +13,8 @@ import { OutboundLink } from "../components/OutboundLink";
 /** Linked work tags shown on a home card before the rest collapse into +N. */
 const MAX_CARD_LINK_TAGS = 2;
 
-function githubRepositoryFromUrl(href: string) {
+/** Read the GitHub repository that a github.com URL points into. */
+export function githubRepositoryFromUrl(href: string) {
   const url = new URL(href);
   if (url.origin !== "https://github.com") return undefined;
   const [, owner, repo] = url.pathname.split("/");

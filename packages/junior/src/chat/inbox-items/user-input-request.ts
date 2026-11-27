@@ -217,20 +217,6 @@ export function fieldAnswerValues(
   return [...(normalized.values[field.id] ?? []), ...(own ? [own] : [])];
 }
 
-/**
- * Return the option labels that an answer picked, in field order. Text
- * fields and the note pick no option.
- */
-export function answeredChoices(
-  request: UserInputRequest,
-  answer: UserInputAnswer,
-): string[] {
-  const { values } = normalizeUserInputAnswer(request, answer);
-  return request.fields.flatMap((field) =>
-    field.kind === "text" ? [] : (values[field.id] ?? []),
-  );
-}
-
 /** Return true when an answer has no value and no free text. */
 export function isEmptyUserInputAnswer(answer: UserInputAnswer): boolean {
   return (

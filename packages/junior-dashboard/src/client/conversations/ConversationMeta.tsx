@@ -15,7 +15,6 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
@@ -25,7 +24,6 @@ import {
   summarizeModelCost,
   summarizeModelUsage,
   summarizeUsage,
-  automationPath,
 } from "../format";
 import {
   Tooltip,
@@ -33,7 +31,7 @@ import {
   TooltipTitle,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { cn, dashboardInlineLinkClass } from "../styles";
+import { cn } from "../styles";
 import {
   CostMetric,
   DurationMetric,
@@ -578,30 +576,16 @@ function LocationLink(props: {
   label: string;
   locationUrl?: string | undefined;
 }) {
+  // Muted like the line it sits in, so the summary stays the loudest text.
   return props.locationUrl ? (
-    <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
+    <OutboundLink
+      className="hover:text-dashboard-text"
+      href={props.locationUrl}
+    >
       {props.label}
     </OutboundLink>
   ) : (
     props.label
-  );
-}
-
-function SourceTask(props: {
-  sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
-}) {
-  const automationId = props.sourceTask.id?.trim();
-  const title = props.sourceTask.title?.trim();
-  const label = title ? `Automation: ${title}` : "Automation";
-  return automationId ? (
-    <Link
-      className={dashboardInlineLinkClass}
-      to={automationPath(automationId)}
-    >
-      {label}
-    </Link>
-  ) : (
-    <span>{label}</span>
   );
 }
 
@@ -628,11 +612,6 @@ export function liveModelId(
 type ConversationStatsProps = {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport | undefined;
-  /**
-   * The page shows cost, tokens, runtime, and location in its glance, so
-   * the list leaves them out.
-   */
-  glance?: boolean;
   showUsageBreakdown?: boolean;
 };
 
@@ -645,11 +624,9 @@ type ConversationStatItem = {
   content: ReactNode;
   key: string;
   label: string;
-  /** Shown below `md` only, where the title bar is hidden. */
-  mobileOnly?: boolean;
 };
 
-/** Render runtime, source, token, and cost metadata as a labeled list. */
+/** List activity, runtime, token, cost, and child totals with labels. */
 export function ConversationStats(props: ConversationStatsProps) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
@@ -657,10 +634,7 @@ export function ConversationStats(props: ConversationStatsProps) {
     <dl className="m-0 grid min-w-0 gap-2 text-xs leading-snug">
       {stats.map((item) => (
         <div
-          className={cn(
-            "flex min-w-0 items-baseline justify-between gap-4",
-            item.mobileOnly && "md:hidden",
-          )}
+          className="flex min-w-0 items-baseline justify-between gap-4"
           key={item.key}
         >
           <dt className="shrink-0 text-dashboard-text-muted">{item.label}</dt>
@@ -728,37 +702,6 @@ export function conversationCost(
   );
 }
 
-/**
- * Show cost, tokens, and runtime on one line: cost first, the rest muted.
- * Each value keeps its breakdown tooltip. Null when none has a value.
- */
-export function ConversationGlanceMetrics(props: {
-  conversation: Conversation | undefined;
-  detail: ConversationDetailReport | undefined;
-}) {
-  if (!props.conversation) return null;
-  const cost = conversationCost(props.conversation, props.detail, "below");
-  const tokens = tokenMetric({ ...props, conversation: props.conversation });
-  // Named, like "1.9k tokens", so a runtime alone still says what it is.
-  const duration = durationMetric(props.conversation, props.detail, " runtime");
-  const rest = [tokens, duration].filter(Boolean);
-  if (!cost && rest.length === 0) return null;
-  return (
-    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-sans text-sm leading-5 tabular-nums">
-      {cost ? (
-        <span className="font-medium text-dashboard-text">{cost}</span>
-      ) : null}
-      {rest.length ? (
-        <span className="flex min-w-0 items-baseline gap-1.5 text-xs text-dashboard-text-muted">
-          {tokens}
-          {tokens && duration ? <span aria-hidden="true">·</span> : null}
-          {duration}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
 function tokenMetric(props: {
   conversation: Conversation;
   detail?: ConversationDetailReport | undefined;
@@ -794,7 +737,6 @@ function tokenMetric(props: {
 function durationMetric(
   conversation: Conversation,
   detail: ConversationDetailReport | undefined,
-  labelSuffix = "",
 ): ReactNode {
   const label = formatConversationDuration(conversation);
   if (label === "none") return null;
@@ -805,7 +747,7 @@ function durationMetric(
       }
       durationMs={conversation.cumulativeDurationMs}
       endedAt={conversation.lastSeenAt}
-      label={`${label}${labelSuffix}`}
+      label={label}
       startedAt={conversation.startedAt}
     />
   );
@@ -815,42 +757,18 @@ function conversationStatItems(
   props: ConversationStatsProps,
 ): ConversationStatItem[] {
   if (!props.conversation) return [];
-  const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
-  // The glance shows these four.
-  const location = props.glance
+  const duration = durationMetric(props.conversation, props.detail);
+  // The usage breakdown tables show tokens and cost instead.
+  const tokens = props.showUsageBreakdown
     ? null
-    : conversationLocation(props.conversation, props.detail);
-  const duration = props.glance
+    : tokenMetric({ conversation: props.conversation, detail: props.detail });
+  const cost = props.showUsageBreakdown
     ? null
-    : durationMetric(props.conversation, props.detail);
-  const tokens =
-    props.glance || props.showUsageBreakdown
-      ? null
-      : tokenMetric({ conversation: props.conversation, detail: props.detail });
-  const cost =
-    props.glance || props.showUsageBreakdown
-      ? null
-      : conversationCost(props.conversation, props.detail);
+    : conversationCost(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
-    // The desktop title bar shows the location. Mobile hides that bar.
-    location
-      ? {
-          content: location,
-          key: "location",
-          label: "Location",
-          mobileOnly: true,
-        }
-      : undefined,
-    sourceTask
-      ? {
-          content: <SourceTask sourceTask={sourceTask} />,
-          key: "source-task",
-          label: "Source",
-        }
-      : undefined,
     lastActivityAt
       ? {
           content: (

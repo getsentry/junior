@@ -30,6 +30,7 @@ import {
 } from "@/chat/inbox-items/store";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
+import { useAppContext } from "../../../fixtures/app-context";
 import { avatarPath } from "../../../fixtures/avatar";
 import { getConversation } from "@/chat/task-execution/store";
 import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
@@ -689,6 +690,8 @@ describe("inbox item actions API", () => {
   });
 
   it("counts each Inbox bundle across every page", async () => {
+    // createApp installs its plugins; the next test starts without them.
+    useAppContext();
     // The GitHub plugin's link types recognize pull request subjects.
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const fixture = await createConversationFixture();

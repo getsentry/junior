@@ -83,6 +83,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           : undefined),
         description: activeTool.description,
         name: tool_name,
+        ...(activeTool.skipReview ? { skipReview: true } : undefined),
         source: {
           id: activeTool.provider,
           description: `MCP provider ${activeTool.provider}`,

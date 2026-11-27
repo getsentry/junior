@@ -53,6 +53,10 @@ describe("sentry egress policy", () => {
       ["POST", "https://sentry.io/api/0/projects/sentry/junior/teams/eng/"],
       ["DELETE", "https://sentry.io/api/0/projects/sentry/junior/teams/eng/"],
       ["POST", "https://us.sentry.io/api/0/organizations/sentry/alert-rules/"],
+      [
+        "POST",
+        "https://us.sentry.io/api/0/organizations/sentry/projects/junior/detectors/",
+      ],
       ["PUT", "https://sentry.io/api/0/organizations/sentry/detectors/12/"],
       ["PUT", "https://sentry.io/api/0/organizations/sentry/issues/123/"],
       [

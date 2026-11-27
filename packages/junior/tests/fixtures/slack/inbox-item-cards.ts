@@ -2,7 +2,7 @@ import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-que
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { type Identity, type User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
@@ -21,8 +21,7 @@ import {
 } from "../conversation-work";
 import { slackEventsApiEnvelope } from "./factories/events";
 import { createSlackWebhookTestClient } from "./webhook-client";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../stub-env";
 export const THREAD = "slack:C123:1712345.0001";
 export const OTHER_THREAD = "slack:C456:1712345.0009";
 // The Slack API mock gives every posted message this ts.
@@ -164,13 +163,13 @@ export function buttonValue(
 
 /** Give each test the Slack bot token and fresh Slack API mocks. */
 export function setUpInboxItemCards(): void {
-  process.env = { ...ORIGINAL_ENV, SLACK_BOT_TOKEN: "xoxb-test-token" };
+  resetTestEnv({ SLACK_BOT_TOKEN: "xoxb-test-token" });
   resetSlackApiMockState();
 }
 
 /** Restore the env, state, and database after each test. */
 export async function tearDownInboxItemCards(): Promise<void> {
-  process.env = { ...ORIGINAL_ENV };
+  vi.unstubAllEnvs();
   resetSlackApiMockState();
   await disconnectStateAdapter();
   await closeDb();

@@ -13,7 +13,6 @@ import {
   createTestMessage,
 } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
-import { resetConversationTitleStateForTests } from "@/chat/services/conversation-title";
 import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-thread/title";
 import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 import {
@@ -108,7 +107,6 @@ describe("bot handlers (integration)", () => {
   beforeEach(async () => {
     process.env["AI_GATEWAY_API_KEY"] = "test-gateway-key";
     mockTitleModel("Test conversation");
-    resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
     await disconnectStateAdapter();
   });
@@ -120,7 +118,6 @@ describe("bot handlers (integration)", () => {
       process.env["AI_GATEWAY_API_KEY"] = ORIGINAL_AI_GATEWAY_API_KEY;
     }
     resetSlackApiMockState();
-    resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
     vi.restoreAllMocks();
     await disconnectStateAdapter();

@@ -49,8 +49,26 @@ describe("sentAgentMessage", () => {
     ).toMatchObject({
       conversationId: undefined,
       delivery: "refused",
-      reason: "not reachable",
+      reason: "Not reachable.",
     });
+  });
+
+  it("keeps only the part of a refusal meant for a person", () => {
+    const reason = (output: string) =>
+      sentAgentMessage(call({ output, status: "error" }))?.reason;
+    // The row names the target, so the reason does not repeat it.
+    expect(
+      reason(
+        '"reviewer" is not "parent" or a child agent of this conversation. Use listAgents to find an agent.',
+      ),
+    ).toBe('Not "parent" or a child agent of this conversation.');
+    expect(
+      reason(
+        "This conversation is stopped, so it cannot give work to child agents. Do not start more work. End this turn.",
+      ),
+    ).toBe(
+      "This conversation is stopped, so it cannot give work to child agents.",
+    );
   });
 
   it("shows no state for a result it cannot read", () => {
@@ -217,5 +235,12 @@ describe("agentMessageConversationTitle", () => {
         { delivery: "refused", to: "designer" },
       ),
     ).toBe("designer");
+    // A Conversation id is not a name, so a neutral label stands in.
+    expect(
+      agentMessageConversationTitle(
+        { events: [] },
+        { delivery: "refused", to: "slack:C123:1700000000.000100" },
+      ),
+    ).toBe("Conversation");
   });
 });

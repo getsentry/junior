@@ -43,6 +43,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Undo vi.stubEnv after each test, so env does not leak into later files
+    // in the same worker.
+    unstubEnvs: true,
     // Inject the `pg` tracing channels that SQL budget tests count.
     execArgv: [
       "--import",
@@ -50,10 +53,29 @@ export default defineConfig({
         path.resolve(__dirname, "tests/fixtures/pg-tracing-hook.ts"),
       ).href,
     ],
-    include: ["tests/**/*.test.ts"],
     exclude: [
       "tests/unit/workflow/**/*.test.ts",
       "tests/integration/workflow/**/*.test.ts",
+    ],
+    projects: [
+      {
+        extends: true,
+        test: { name: "unit", include: ["tests/unit/**/*.test.ts"] },
+      },
+      {
+        extends: true,
+        test: { name: "component", include: ["tests/component/**/*.test.ts"] },
+      },
+      {
+        extends: true,
+        test: {
+          name: "integration",
+          include: ["tests/integration/**/*.test.ts"],
+          // Files in a worker share module state, so each file restores
+          // what it changes.
+          isolate: false,
+        },
+      },
     ],
     globalSetup: ["tests/fixtures/postgres/global-setup.ts"],
     setupFiles: [
