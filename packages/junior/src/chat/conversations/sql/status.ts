@@ -13,11 +13,6 @@ import {
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { EndedTurn } from "@/chat/conversations/turn-update";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
-import {
-  inboxItemNeedsInput,
-  inboxItemOwnedByConversation,
-  inboxItemSetsConversationStatus,
-} from "@/chat/inbox-items/access";
 import { awaitsAuthorization } from "./authorization-wait";
 import { conversationKindSql } from "./conversation-row";
 import {
@@ -25,7 +20,6 @@ import {
   juniorConversationReadPositions,
   juniorConversations,
   juniorIdentities,
-  juniorInboxItems,
 } from "@/db/schema";
 
 /** The `junior_conversations` columns, or an alias's, that status reads. */
@@ -255,10 +249,10 @@ function conversationWaitsOnStarterSql(
 /**
  * SQL for the status of one Conversation's own work, shared by everyone.
  * This is the only place that derives it; readers, counts, and feed tokens
- * select it. When more than one applies: `needs_input` > `working` > `done`.
+ * select it. It reads no Inbox item. When more than one applies:
+ * `needs_input` > `working` > `done`.
  *
- * - `needs_input`: an open action Inbox item that this Conversation added
- *   waits on its assignees or Everyone, a Turn waits on a person to sign in
+ * - `needs_input`: a Turn waits on a person to sign in
  *   (`awaitsAuthorization`), or the work waits on its starter
  *   (`conversationWaitsOnStarterSql`).
  * - `working`: a Turn is queued or running (`conversationIsActiveSql`).
@@ -268,13 +262,8 @@ function conversationWaitsOnStarterSql(
 export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
-  const needsInput = sql`exists (select 1 from ${juniorInboxItems} where ${and(
-    inboxItemOwnedByConversation(conversation.conversationId),
-    inboxItemNeedsInput(),
-    inboxItemSetsConversationStatus(),
-  )})`;
   return sql<ConversationReportStatus>`case
-    when ${needsInput} or ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'
+    when ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'
     when ${conversationIsActiveSql(conversation)} then 'working'
     else 'done'
   end`;

@@ -3,31 +3,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
+  inboxItemWaitingConversationsSchema,
 } from "@/api/schema";
 import { getDb } from "@/chat/db";
-import { inboxItemOwnedByConversation } from "@/chat/inbox-items/access";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { setConversationSpace } from "@/chat/spaces/conversations";
 import { createSpace } from "@/chat/spaces/store";
-import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import {
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
 } from "@/chat/conversations/projection";
-import { juniorConversations, juniorInboxItems } from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/child-agents";
-import {
-  closeConversationFixture,
-  webTestActor,
-} from "../../../fixtures/conversation";
+import { closeConversationFixture } from "../../../fixtures/conversation";
 import {
   SLACK_VIEWER,
   SLACK_DESTINATION,
-  REQUEST,
   ACTION_ITEM,
   failingAgentRunner,
   lastSeq,
@@ -44,6 +39,7 @@ import {
   recordTurnFailure,
   recordTurnStart,
 } from "../../../fixtures/turn-start";
+import { expectNoInboxSql } from "../../../fixtures/sql-budget";
 
 describe("conversation status", () => {
   afterEach(async () => {
@@ -71,67 +67,35 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("working");
   });
 
-  it("needs input while an open action item that it added is open", async () => {
+  it("leaves an open action item to the Inbox: the detail reads no Inbox table", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
       fixture.conversationStore,
       "1700000000.000100",
     );
-    await addItem(conversationId, {
-      kind: "notice",
-      title: "Release shipped",
-      body: "No action needed.",
-      assignees: [webTestActor.email],
-    });
-    await expect(fixture.status(conversationId)).resolves.toBe("done");
-    const before = await fixture.request(detailPath(conversationId));
-    const version = before.headers.get(CONVERSATION_DETAIL_VERSION_HEADER);
-    expect(version).toBeTruthy();
-
-    // addInboxItem assigns a Participant by default. A Slack Actor without
-    // a User adds an item that no one is assigned to, and anyone in the
-    // thread can answer it.
-    const unassigned = await insertInboxItem(getDb(), {
-      subject: { id: "unassigned", kind: "question" },
-      owner: { id: conversationId, kind: "conversation" },
-      assignedToEveryone: false,
-      assigneeUserIds: [],
-      body: "Anyone in the thread can answer.",
-      conversationIds: [conversationId],
-      kind: "action",
-      nowMs: Date.now(),
-      request: REQUEST,
-      title: "Pick a release name",
-    });
-    // Only the item changed, and a poll with the old version reloads.
-    const polled = await fixture.request(detailPath(conversationId), {
-      headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: version! },
-    });
-    expect(polled.status).toBe(200);
-    expect(
-      conversationDetailReportSchema.parse(await polled.json()).status,
-    ).toBe("needs_input");
-    await closeInboxItem(getDb(), {
-      id: unassigned!.id,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
-    await expect(fixture.status(conversationId)).resolves.toBe("done");
-
-    const everyone = await addItem(conversationId, {
-      ...ACTION_ITEM,
-      assignees: ["everyone"],
-    });
-    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    await closeInboxItem(getDb(), {
-      id: everyone,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
-    await expect(fixture.status(conversationId)).resolves.toBe("done");
-
     const assigned = await addItem(conversationId, ACTION_ITEM);
-    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    // The detail reads only Conversation data, so the item does not change
+    // its status or its tree state.
+    const detail = await expectNoInboxSql(() =>
+      fixture.request(detailPath(conversationId)),
+    );
+    expect(
+      conversationDetailReportSchema.parse(await detail.json()),
+    ).toMatchObject({ status: "done", treeState: "done" });
+    // The dashboard overlays Needs you from the Inbox's own route.
+    const waiting = inboxItemWaitingConversationsSchema.parse(
+      await (
+        await fixture.request("/api/inbox-items/waiting-conversations")
+      ).json(),
+    );
+    expect(waiting.conversations).toEqual([
+      expect.objectContaining({
+        conversationId,
+        conversationIds: [conversationId],
+        items: [expect.objectContaining({ conversationId, id: assigned })],
+      }),
+    ]);
+
     // The person's answer is input for a new Turn.
     const answered = await fixture.request(
       `/api/inbox-items/${assigned}/actions`,
@@ -250,19 +214,12 @@ describe("conversation status", () => {
   it("orders needs_input over working over done, and a stop ends the wait", async () => {
     const fixture = await createStatusFixture(failingAgentRunner);
     const conversationId = await fixture.start("status-precedence");
-    const item = await addItem(conversationId, ACTION_ITEM);
-    // The queued Turn still reads as active, so live views keep polling.
+    // The queued Turn reads as active, so live views keep polling.
     await expect(fixture.detail(conversationId)).resolves.toMatchObject({
-      status: "needs_input",
+      status: "working",
       turnActive: true,
     });
     await expect(fixture.feedTurnActive(conversationId)).resolves.toBe(true);
-    await closeInboxItem(getDb(), {
-      id: item,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
-    await expect(fixture.status(conversationId)).resolves.toBe("working");
 
     await fixture.drain();
     await expect(fixture.detail(conversationId)).resolves.toMatchObject({
@@ -449,7 +406,14 @@ describe("conversation status", () => {
       idempotencyKey: "status-asking-child",
     });
     fixture.queue.takeMessageFor(asking.childConversationId);
-    await addItem(asking.childConversationId, ACTION_ITEM);
+    await recordAuthorizationRequested({
+      actorId: SLACK_VIEWER.slackUserId,
+      authorizationId: "status-child-sign-in",
+      conversationId: asking.childConversationId,
+      delivery: "private_link_sent",
+      kind: "mcp",
+      provider: "notion",
+    });
 
     await expect(fixture.status(conversationId)).resolves.toBe("done");
     await expect(
@@ -492,10 +456,18 @@ describe("conversation status", () => {
       fixture.conversationStore,
       "1700000000.000300",
     );
-    await addItem(conversationId, ACTION_ITEM);
+    await recordAuthorizationRequested({
+      actorId: SLACK_VIEWER.slackUserId,
+      authorizationId: "status-archived-sign-in",
+      conversationId,
+      delivery: "private_link_sent",
+      kind: "mcp",
+      provider: "notion",
+    });
     const detail = conversationDetailReportSchema.parse(
       await (await fixture.request(detailPath(conversationId))).json(),
     );
+    expect(detail.status).toBe("needs_input");
 
     const archived = await fixture.request(
       `${detailPath(conversationId)}/archive`,
@@ -507,10 +479,5 @@ describe("conversation status", () => {
     );
     expect(archived.status).toBe(200);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    const [item] = await getDb()
-      .select({ status: juniorInboxItems.status })
-      .from(juniorInboxItems)
-      .where(inboxItemOwnedByConversation(conversationId));
-    expect(item?.status).toBe("open");
   });
 });

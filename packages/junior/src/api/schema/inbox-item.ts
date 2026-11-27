@@ -322,6 +322,8 @@ export const inboxItemWaitingConversationsSchema = z
                 .strict(),
             )
             .min(1),
+          /** The Space of the root, when it is in one. */
+          spaceId: z.string().min(1).optional(),
           /** When the oldest of those items was added: when the wait began. */
           waitingSince: z.string().datetime(),
         })

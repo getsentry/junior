@@ -88,6 +88,7 @@ import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { createConversationAccessReader } from "./access";
 import { reportConversationRead } from "./read-position";
+import { closeReadReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { catchUpOnConversation } from "./catch-up";
 import { reorderPinnedConversations } from "./pin";
 import { inviteToConversation } from "./subscription";
@@ -159,16 +160,11 @@ export function createConversationRoutes(
         status,
       } = context.req.valid("query");
       const viewer = context.get("viewer");
-      // The feed does not mark waiting rows, so the read reports their count.
-      let waitingRows = 0;
       const feed = await readConversationFeed({
         ...(actorEmail ? { actorEmail } : undefined),
         ...(codeRepositoryId ? { codeRepositoryId } : undefined),
         ...(cursor ? { cursor } : undefined),
         include,
-        onWaitingRows: (count) => {
-          waitingRows = count;
-        },
         ...(q ? { q } : undefined),
         ...(spaceId ? { spaceId } : undefined),
         status,
@@ -183,7 +179,7 @@ export function createConversationRoutes(
         return new Response(null, { status: 304, headers });
       }
       return jsonResponse(conversationFeedSchema, feed, { headers }, (parsed) =>
-        serializeConversationFeed(parsed, waitingRows),
+        serializeConversationFeed(parsed),
       );
     },
   );
@@ -493,10 +489,17 @@ export function createConversationRoutes(
       const viewer = context.get("viewer");
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
-      return jsonResponse(
-        conversationReadPositionSchema,
-        await reportConversationRead(viewer, conversationId, body),
+      const position = await reportConversationRead(
+        viewer,
+        conversationId,
+        body,
       );
+      await closeReadReplyNotice(getDb(), {
+        conversationId,
+        nowMs: Date.now(),
+        userId: viewer.id,
+      });
+      return jsonResponse(conversationReadPositionSchema, position);
     },
   );
 

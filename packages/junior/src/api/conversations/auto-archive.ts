@@ -29,6 +29,7 @@ import {
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { conversationStatusSql } from "@/chat/conversations/sql/status";
+import { conversationHasOpenActionItem } from "@/chat/inbox-items/access";
 import { OPEN_TODO_STATUSES } from "@/chat/todos/types";
 import {
   juniorConversationParticipants,
@@ -106,7 +107,8 @@ function treeIsQuiet(run: ArchiveRun) {
 
 /**
  * True when nothing in the participant row's tree needs a person: no
- * `needs_input` status and no open To-do assigned to a person. Archive
+ * `needs_input` status, no open action item, and no open To-do assigned to
+ * a person. Archive
  * applies to everyone, so input that waits on anyone keeps the tree. An
  * archived child counts for nothing, as in the tree state.
  */
@@ -141,6 +143,7 @@ function treeNeedsNoOne() {
         ),
         or(
           sql`${conversationStatusSql(juniorConversations)} = 'needs_input'`,
+          conversationHasOpenActionItem(juniorConversations.conversationId),
           sql`exists (${assignedToPerson})`,
         ),
       ),

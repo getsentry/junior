@@ -158,6 +158,13 @@ const mockSpaces = new Map<string, MockSpace>();
 /** The Space of each root, by Conversation id. */
 const mockConversationSpaces = new Map<string, string>();
 
+/** The Space of a mock root, if it is in one. */
+export function mockConversationSpaceId(
+  conversationId: string,
+): string | undefined {
+  return mockConversationSpaces.get(conversationId);
+}
+
 /** A root in a private Space is private, as the API makes it. */
 function visibilityOf(
   conversationId: string,

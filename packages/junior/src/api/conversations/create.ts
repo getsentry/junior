@@ -23,6 +23,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import { markConversationRead } from "./read-position";
+import { closeReadReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
@@ -215,6 +216,11 @@ export async function appendConversationMessageForViewer(
     });
     await markConversationRead(viewer, conversationId, {
       lastReadSeq: Number.MAX_SAFE_INTEGER,
+    });
+    await closeReadReplyNotice(getDb(), {
+      conversationId,
+      nowMs: Date.now(),
+      userId: viewer.id,
     });
   };
   try {

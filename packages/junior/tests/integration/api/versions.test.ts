@@ -23,6 +23,8 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import { setConversationArchive } from "@/api/conversations/archive";
+import { conversationVersionsQuery } from "@/api/conversations/detail-etag";
+import { conversationFeedVersionQuery } from "@/api/conversations/list";
 import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
@@ -151,10 +153,7 @@ describe("versions API", () => {
           statements: 1,
           serialRounds: 1,
         }),
-      // About 3,100. An Inbox item's owner comes from its subject on
-      // purpose, since the item stores no owner, so each running row finds
-      // its items by subject kind. A read of every open item for each
-      // running row costs about 8,600.
+      // About 3,100.
       4_500,
     );
     expect(await read()).toEqual(first);
@@ -254,25 +253,24 @@ describe("versions API", () => {
       },
       title: "Approve",
     });
-    // An open item is a status input, so the detail moves too. The feed row
-    // moves from `working` to `needs_input`, which outranks it.
+    // An open item is the Inbox's fact: the feed token reads no Inbox
+    // table, so it stays. The Inbox's write touches its owner's detail
+    // version, so the transcript refreshes its ask.
     const withItem = await read();
-    expect(changed(withPin, withItem)).toEqual([
-      "conversation",
-      "conversations",
-      "inboxItems",
-    ]);
+    expect(changed(withPin, withItem)).toEqual(["conversation", "inboxItems"]);
+    for (const query of [
+      conversationFeedVersionQuery(getDb(), viewer.id),
+      conversationVersionsQuery(getDb(), [OWN], viewer.id),
+    ]) {
+      expect(query.toSQL().sql).not.toMatch(/junior_inbox_item/);
+    }
     await closeInboxItem(getDb(), {
       id: item!.id,
       nowMs: Date.parse("2026-10-01T12:01:00.000Z"),
       status: "done",
     });
     const closed = await read();
-    expect(changed(withItem, closed)).toEqual([
-      "conversation",
-      "conversations",
-      "inboxItems",
-    ]);
+    expect(changed(withItem, closed)).toEqual(["conversation", "inboxItems"]);
 
     // A recorded Turn changes the viewer's spend. It starts on a whole
     // minute in the past, so the Events below stay in the spend window and
@@ -461,9 +459,9 @@ describe("versions API", () => {
     };
     const taskRunning = await taskTurn("running", nowMs + 300_000);
     expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
-    // A take changes whom a running Task's item up for grabs waits on. The
-    // Conversation is private, so the item has no assignees: it cannot name
-    // Everyone yet.
+    // A take changes whom a running Task's item up for grabs waits on. That
+    // is the Inbox's fact, so the feed token stays. The Conversation is
+    // private, so the item has no assignees: it cannot name Everyone yet.
     const everyone = await insertInboxItem(getDb(), {
       owner: { id: `${OWN}:child`, kind: "conversation" },
       assignedToEveryone: false,
@@ -496,7 +494,7 @@ describe("versions API", () => {
       }),
     ).toBe(true);
     const taken = await read();
-    expect(feedMoved(withEveryone, taken)).toEqual(["threads"]);
+    expect(feedMoved(withEveryone, taken)).toEqual([]);
     await closeInboxItem(getDb(), {
       id: everyone!.id,
       nowMs: nowMs + 302_000,

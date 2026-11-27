@@ -1136,7 +1136,6 @@
     "packages/junior/tests/integration/api/automations.test.ts": 1,
     "packages/junior/tests/integration/api/conversations/detail.test.ts": 1,
     "packages/junior/tests/integration/api/conversations/event-list.test.ts": 1,
-    "packages/junior/tests/integration/api/conversations/list-budget.test.ts": 1,
     "packages/junior/tests/integration/api/conversations/subscription.test.ts": 1,
     "packages/junior/tests/integration/api/people/fixture.ts": 1,
     "packages/junior/tests/integration/child-agent-worker-crash.test.ts": 1,

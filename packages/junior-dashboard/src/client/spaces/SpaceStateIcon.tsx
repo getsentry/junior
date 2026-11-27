@@ -8,14 +8,16 @@ import { cn } from "../styles";
 export type SpaceDisplayState = "needs_you" | "failed" | "working";
 
 /**
- * Pick one state for a Space row from the roll-up of its Threads.
- * When more than one applies: `needs_you` > `failed` > `working`. An idle
- * Space shows nothing.
+ * Pick one state for a Space row from the roll-up of its Threads, and
+ * whether the Inbox says one of them waits on the viewer. When more than
+ * one applies: `needs_you` > `failed` > `working`. An idle Space shows
+ * nothing.
  */
 export function spaceDisplayState(
   space: Pick<SpaceReport, "latestTurnFailed" | "treeState">,
+  waitsOnViewer = false,
 ): SpaceDisplayState | undefined {
-  if (space.treeState === "needs_you") return "needs_you";
+  if (waitsOnViewer || space.treeState === "needs_you") return "needs_you";
   if (space.latestTurnFailed) return "failed";
   if (space.treeState === "working") return "working";
   return undefined;

@@ -20,6 +20,7 @@ import { statusToneClass } from "../components/StatusChip";
 import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { Spinner } from "../components/ui/spinner";
 import { DisplayText } from "../display-text/DisplayText";
+import { useViewerWaits } from "../inbox/queries";
 import { cn } from "../styles";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useArchiveConversation } from "./conversationArchive";
@@ -55,13 +56,16 @@ export type ChildState =
 
 /**
  * Read where a child Conversation stands. A wait on the viewer comes first,
- * then a run that is going, then how an earlier Turn ended. An archived
- * child is done.
+ * from its tree state or the Inbox, then a run that is going, then how an
+ * earlier Turn ended. An archived child is done.
  */
-export function childState(child: ConversationChildAgent): ChildState {
+export function childState(
+  child: ConversationChildAgent,
+  waitsOnViewer = false,
+): ChildState {
   if (child.archivedAt) return "done";
   const { lastResult, status, treeState } = child;
-  if (treeState === "needs_you") return "needs_you";
+  if (waitsOnViewer || treeState === "needs_you") return "needs_you";
   if (status === "running" || status === "pending") return "running";
   if (status === "failed") return "failed";
   if (status === "idle" && lastResult === "failed") return "failed";
@@ -185,8 +189,9 @@ export function ConversationAgents(props: {
   const watches =
     useConversationWatches(props.conversationId).data?.watches ?? [];
   const reasons = childUpdateReasons(props.events);
+  const waits = useViewerWaits().conversationIds;
   const rows = children.map((child) => {
-    const state = childState(child);
+    const state = childState(child, waits.has(child.conversationId));
     const row = (
       <ChildRow
         canEdit={props.canEdit}

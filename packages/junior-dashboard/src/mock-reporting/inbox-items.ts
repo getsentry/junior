@@ -22,6 +22,7 @@ import {
   viewer,
 } from "./inbox-item-seeds";
 import { readMockObjectLinks } from "./objects";
+import { mockConversationSpaceId } from "./spaces";
 
 type MockItemChange = Pick<
   InboxItemPayload,
@@ -375,6 +376,9 @@ export function readMockWaitingConversations(nowMs: number) {
   return {
     conversations: [...byConversation].map(([conversationId, items]) => ({
       conversationId,
+      ...(mockConversationSpaceId(conversationId)
+        ? { spaceId: mockConversationSpaceId(conversationId) }
+        : undefined),
       // A mock child sits right under its root.
       conversationIds: [
         ...new Set([conversationId, ...items.map((item) => item.owner.id)]),

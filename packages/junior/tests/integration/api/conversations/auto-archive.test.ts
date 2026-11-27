@@ -453,12 +453,6 @@ describe("conversation auto-archive API", () => {
     expect(
       archiveDoneConversationsResponseSchema.parse(await response.json()),
     ).toEqual({ archived: 1 });
-    // The waiting conversation stays in the feed after it falls out of the
-    // newest page, so Needs attention can show it.
-    const feed = await readConversationFeedFromSql({ limit: 1, viewer });
-    expect(
-      feed.conversations.map((conversation) => conversation.conversationId),
-    ).toEqual([recentId, waitingId]);
     const fullFeed = await readConversationFeedFromSql({ viewer });
     expect(
       fullFeed.conversations

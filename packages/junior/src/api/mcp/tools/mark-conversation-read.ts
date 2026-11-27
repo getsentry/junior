@@ -1,6 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
 import { markConversationRead } from "@/api/conversations/read-position";
+import { getDb } from "@/chat/db";
+import { closeReadReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { mcpConversationIdSchema } from "../conversation";
 import {
   apiToolError,
@@ -50,12 +52,16 @@ export function registerMarkConversationReadTool(
         return mcpToolError("Conversation not found.");
       }
       try {
-        return mcpToolResult(
-          await markConversationRead(user, conversationId, {
-            // The store cuts a value past the last event to the last event.
-            lastReadSeq: lastReadSeq ?? Number.MAX_SAFE_INTEGER,
-          }),
-        );
+        const position = await markConversationRead(user, conversationId, {
+          // The store cuts a value past the last event to the last event.
+          lastReadSeq: lastReadSeq ?? Number.MAX_SAFE_INTEGER,
+        });
+        await closeReadReplyNotice(getDb(), {
+          conversationId,
+          nowMs: Date.now(),
+          userId: user.id,
+        });
+        return mcpToolResult(position);
       } catch (error) {
         return apiToolError(error);
       }

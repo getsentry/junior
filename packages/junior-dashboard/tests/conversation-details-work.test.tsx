@@ -66,7 +66,7 @@ describe("a child Conversation's state", () => {
         archivedAt: "2026-08-03T07:00:00.000Z",
         status: "running",
       }),
-    ].map(childState);
+    ].map((child) => childState(child));
     expect(states).toEqual([
       "done",
       "running",

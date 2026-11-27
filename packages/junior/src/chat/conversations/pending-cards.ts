@@ -1,6 +1,13 @@
-import type { User } from "@sentry/junior-plugin-api";
+import type {
+  ConversationAnnotation,
+  LiveAnnotation,
+  User,
+} from "@sentry/junior-plugin-api";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { readLiveAnnotations } from "@/api/objects/live-annotations";
+import {
+  annotationLabel,
+  readLiveAnnotations,
+} from "@/api/objects/live-annotations";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
@@ -146,11 +153,29 @@ async function readConversationOwner(
     : undefined;
 }
 
+type ObjectAnnotation = Extract<ConversationAnnotation, { kind: "object" }>;
+
+/** A card's object as its Annotation stored it, with no provider read. */
+function storedCard(annotation: ObjectAnnotation): LiveAnnotation {
+  return {
+    kind: "object",
+    key: annotation.key,
+    label: annotationLabel(annotation),
+    objectType: annotation.objectType,
+    plugin: annotation.plugin,
+    title: annotation.title,
+    url: annotation.url,
+    createdAt: annotation.createdAt,
+    updatedAt: annotation.updatedAt,
+  };
+}
+
 /**
- * Select undelivered cards and read each object once, with the access of
- * the person who started the Conversation. The delivered Message keeps
- * that copy. A card whose object cannot be read that way shows only the
- * stored title, the label, and the link.
+ * Select undelivered cards. A provider's object shows as its Annotation
+ * stored it: the tool that selected the card just read or wrote it, so
+ * delivery reads no provider again. Junior's own objects, such as an
+ * Automation, read from the database with the access of the person who
+ * started the Conversation. The delivered Message keeps that copy.
  */
 export async function loadPendingMessageCards(
   conversationId: string,
@@ -166,18 +191,19 @@ export async function loadPendingMessageCards(
   const annotations = (
     await listConversationAnnotations(getDb(), conversationId)
   ).filter(
-    (annotation) =>
+    (annotation): annotation is ObjectAnnotation =>
       annotation.kind === "object" &&
       selected.has(JSON.stringify([annotation.plugin, annotation.key])),
   );
-  return resolveMessageCards(
-    refs,
-    annotations.length > 0
+  const own = annotations.filter(({ plugin }) => plugin === "junior");
+  return resolveMessageCards(refs, [
+    ...annotations.filter(({ plugin }) => plugin !== "junior").map(storedCard),
+    ...(own.length > 0
       ? await readLiveAnnotations(
           await readConversationOwner(conversationId),
-          annotations,
+          own,
           "title",
         )
-      : [],
-  );
+      : []),
+  ]);
 }

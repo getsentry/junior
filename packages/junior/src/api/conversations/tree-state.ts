@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { desc, eq, isNull, or, sql } from "drizzle-orm";
 import type { ConversationTreeState } from "@/api/schema/conversation-tree-state";
 import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-wait";
 import {
@@ -10,11 +10,6 @@ import {
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
 import { listConversationsWithWatches } from "@/chat/events/store";
-import {
-  conversationOwnsInboxItem,
-  inboxItemForUser,
-  inboxItemNeedsInput,
-} from "@/chat/inbox-items/access";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 
@@ -32,23 +27,11 @@ export type ConversationTreeRead = {
 };
 
 /**
- * SQL: the Conversation needs input from this User. An open action Review
- * item that it added is assigned to the User, to Everyone, or to no one, or
- * a Turn waits on the User to sign in.
- */
-function needsUserSql(userId: string) {
-  return sql<boolean>`(${conversationOwnsInboxItem(
-    juniorConversations.conversationId,
-    and(inboxItemNeedsInput(), inboxItemForUser(userId))!,
-  )} or ${awaitsAuthorizationFrom(juniorConversations.conversationId, userId)})`;
-}
-
-/**
  * Read the tree state of each Conversation for one viewer, over its whole
- * tree. Input that waits on another person is not shown, and an archived
- * child and its descendants count for nothing, since the feed hides them. A
- * viewer who can see the row may see its tree state: it shows no child's
- * content.
+ * tree. It reads only Conversation data; clients overlay the Inbox items
+ * that wait on the viewer. Input that waits on another person is not shown,
+ * and an archived child and its descendants count for nothing, since the
+ * feed hides them. A viewer who can see the row may see its tree state.
  */
 export async function readConversationTreeStates(
   db: JuniorDatabase,
@@ -58,10 +41,10 @@ export async function readConversationTreeStates(
   if (conversationIds.length === 0) return new Map();
   const scopeId = conversationSubtreeColumns.scopeConversationId;
   const needsViewer = viewerUserId
-    ? sql<boolean>`bool_or(${needsUserSql(viewerUserId)} or ${conversationWaitsOnUserSql(
-        juniorConversations,
+    ? sql<boolean>`bool_or(${awaitsAuthorizationFrom(
+        juniorConversations.conversationId,
         viewerUserId,
-      )})`
+      )} or ${conversationWaitsOnUserSql(juniorConversations, viewerUserId)})`
     : sql<boolean>`false`;
   const rows = await db
     .select({

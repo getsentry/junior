@@ -1,6 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
 import {
-  conversationOwnedSubjectKinds,
   inboxItemOwnerConversationId,
   todoItemOwnerConversationId,
   inboxItemTenantId,
@@ -11,7 +10,6 @@ import {
   and,
   eq,
   exists,
-  inArray,
   isNotNull,
   isNull,
   ne,
@@ -112,36 +110,33 @@ export function inboxItemReaderForUser(user: User): InboxItemReader {
 }
 
 /**
- * SQL: a Conversation owns the Inbox item. The Conversation status and
- * feeds read the items that each Conversation owns.
+ * SQL: the Conversation owns an open action item, which waits on a person.
+ * A To-do's item waits only on its assignee, whose open To-do counts on its
+ * own. Auto-archive keeps a tree while one of its Conversations has one.
  */
+export function conversationHasOpenActionItem(
+  conversationId: SQL | AnyColumn,
+): SQL {
+  return exists(
+    getDb()
+      .select({ one: sql`1` })
+      .from(juniorInboxItems)
+      .where(
+        and(
+          inboxItemOwnedByConversation(conversationId),
+          eq(juniorInboxItems.status, "open"),
+          eq(juniorInboxItems.kind, "action"),
+          ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
+        ),
+      ),
+  );
+}
+
+/** SQL: a Conversation owns the Inbox item. */
 export function inboxItemOwnedByConversation(
   conversationId: SQL | AnyColumn | string,
 ): SQL {
   return eq(inboxItemOwnerConversationId(), conversationId);
-}
-
-/**
- * SQL: the Conversation owns an Inbox item that matches `condition`, which
- * must not read the outer row. No index holds an item's owner, so a check
- * on each row would read every matching item again. The set has no outer
- * reference, so Postgres reads the items once for the statement, through
- * the subject kind index.
- */
-export function conversationOwnsInboxItem(
-  conversationId: SQL | AnyColumn,
-  condition: SQL,
-): SQL<boolean> {
-  const owned = getDb()
-    .select({ ownerId: inboxItemOwnerConversationId() })
-    .from(juniorInboxItems)
-    .where(
-      and(
-        inArray(juniorInboxItems.subjectKind, conversationOwnedSubjectKinds()),
-        condition,
-      ),
-    );
-  return sql<boolean>`coalesce(${conversationId} in (${owned}), false)`;
 }
 
 const todoOwner = alias(juniorConversations, "todo_owner");
@@ -252,29 +247,6 @@ export function inboxItemNeedsUser(userId: string): SQL {
     eq(juniorInboxItems.kind, "action"),
     inboxItemAssignedTo(userId),
   )!;
-}
-
-/**
- * SQL: the Inbox item waits for a person's input: an open `action` item,
- * whoever it is assigned to. An item with no assignees still waits for
- * anyone who can answer it. The Conversation that added it shows
- * `needs_input`. `junior_inbox_items_open_action_added_by_idx` has this
- * predicate.
- */
-export function inboxItemNeedsInput(): SQL {
-  return and(
-    eq(juniorInboxItems.status, "open"),
-    eq(juniorInboxItems.kind, "action"),
-  )!;
-}
-
-/**
- * SQL: the Inbox item sets the status of the Conversation that owns it. A
- * To-do's item waits only on its assignee, so it shows only to them, through
- * their tree state and Inbox. It does not change that status.
- */
-export function inboxItemSetsConversationStatus(): SQL {
-  return ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo);
 }
 
 /**

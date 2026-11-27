@@ -40,6 +40,8 @@ export type WaitingConversation = {
   conversationIds: string[];
   /** Open Inbox items on this Conversation that need the User, newest first. */
   items: WaitingItem[];
+  /** The Space of the root, so a client can mark the Space too. */
+  spaceId?: string;
   /** When the oldest of those items was added: when the wait began. */
   waitingSince: string;
 };
@@ -189,18 +191,6 @@ function waitingItemsQuery(db: JuniorDatabase, userId: string) {
 }
 
 /**
- * Return a query for the ids of the root Conversations that wait on a User,
- * as `listWaitingConversations` lists them, to filter another query by.
- */
-export function waitingConversationIdsQuery(
-  db: JuniorDatabase,
-  userId: string,
-) {
-  const items = waitingItemsQuery(db, userId).as("waiting_items");
-  return db.select({ conversationId: items.conversationId }).from(items);
-}
-
-/**
  * Return whether a root Conversation waits on a User, as
  * `listWaitingConversations` decides it.
  */
@@ -222,8 +212,8 @@ export async function isConversationWaitingOnUser(
  * List the root Conversations that wait on a User: each root or one of its
  * child conversations is linked to, or owns a To-do's, open item that needs
  * the User now (`inboxItemNeedsUserNow`), so a snoozed item leaves it out.
- * Each root names the Conversations of its tree that wait, so a client can
- * mark a Thread or a child agent too.
+ * Each root names the Conversations of its tree that wait and its Space, so
+ * a client can mark a Thread, a child agent, or the Space too.
  */
 export async function listWaitingConversations(
   db: JuniorDatabase,
@@ -242,6 +232,7 @@ export async function listWaitingConversations(
           .select({
             conversationId: juniorConversations.conversationId,
             rootConversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+            spaceId: juniorConversations.spaceId,
           })
           .from(juniorConversations)
           .where(
@@ -282,6 +273,7 @@ export async function listWaitingConversations(
     if (entry && !entry.conversationIds.includes(member.conversationId)) {
       entry.conversationIds.push(member.conversationId);
     }
+    if (entry && member.spaceId) entry.spaceId = member.spaceId;
   }
   return [...waiting.values()].sort((left, right) =>
     left.conversationId.localeCompare(right.conversationId),

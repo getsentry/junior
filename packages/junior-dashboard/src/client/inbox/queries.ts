@@ -611,11 +611,14 @@ export type ViewerWaits = {
   /** Each Conversation of a waiting item, and its ancestors. */
   conversationIds: ReadonlySet<string>;
   itemIds: ReadonlySet<string>;
+  /** The Spaces of the waiting Conversations. */
+  spaceIds: ReadonlySet<string>;
 };
 
 const NO_WAITS: ViewerWaits = {
   conversationIds: new Set(),
   itemIds: new Set(),
+  spaceIds: new Set(),
 };
 
 /**
@@ -635,6 +638,11 @@ export function useViewerWaits(): ViewerWaits {
             itemIds: new Set(
               conversations.flatMap((entry) =>
                 entry.items.map((item) => item.id),
+              ),
+            ),
+            spaceIds: new Set(
+              conversations.flatMap((entry) =>
+                entry.spaceId ? [entry.spaceId] : [],
               ),
             ),
           }

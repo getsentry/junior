@@ -7,6 +7,7 @@ import {
   acceptedConversationMessageSchema,
   conversationDetailReportSchema,
   conversationFeedSchema,
+  inboxItemWaitingConversationsSchema,
   spaceListSchema,
 } from "@/api/schema";
 import { getSpaceLead } from "@/chat/lead/conversation";
@@ -19,8 +20,10 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
-import { recordAuthorizationRequested } from "@/chat/conversations/projection";
+import {
+  recordAuthorizationCompleted,
+  recordAuthorizationRequested,
+} from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import {
@@ -29,6 +32,7 @@ import {
 } from "../../../fixtures/child-agents";
 import {
   expectNoFullScan,
+  expectNoInboxSql,
   expectPlanCost,
   expectSqlBudget,
   explainNodes,
@@ -41,7 +45,6 @@ import {
   SLACK_VIEWER,
   SLACK_DESTINATION,
   failingAgentRunner,
-  REQUEST,
   ACTION_ITEM,
   detailPath,
   createStatusFixture,
@@ -55,6 +58,26 @@ import {
 } from "../../../fixtures/conversation-status";
 
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
+
+/** Record a sign-in wait on a person, named by their Slack user id. */
+async function signIn(
+  conversationId: string,
+  authorizationId: string,
+  actorId: string = SLACK_VIEWER.slackUserId,
+) {
+  const wait = {
+    actorId,
+    authorizationId,
+    conversationId,
+    kind: "mcp" as const,
+    provider: "notion",
+  };
+  await recordAuthorizationRequested({
+    ...wait,
+    delivery: "private_link_sent",
+  });
+  return async () => await recordAuthorizationCompleted(wait);
+}
 
 /** Read the viewer's feed version token. */
 async function feedToken(fixture: StatusFixture): Promise<string> {
@@ -107,50 +130,21 @@ describe("conversation tree state", () => {
       idempotencyKey: "tree-asking-child",
     });
     fixture.queue.takeMessageFor(asking.childConversationId);
-    // An item for another person is not shown to the viewer.
-    const other = await resolveViewerUser("bob@example.com");
-    const forOther = await insertInboxItem(getDb(), {
-      subject: { id: "for-other", kind: "question" },
-      owner: { id: asking.childConversationId, kind: "conversation" },
-      assignedToEveryone: false,
-      assigneeUserIds: [other!.id],
-      body: "Bob decides.",
-      conversationIds: [asking.childConversationId],
-      kind: "action",
-      nowMs: Date.now(),
-      request: REQUEST,
-      title: "Bob's call",
-    });
+    // A wait on another person is not shown to the viewer.
+    await signIn(asking.childConversationId, "tree-sign-in-bob", "UBOB");
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",
     );
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "working",
     });
-    await closeInboxItem(getDb(), {
-      id: forOther!.id,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
-
-    // An item for Everyone needs the viewer too.
-    const everyone = await addItem(asking.childConversationId, {
-      ...ACTION_ITEM,
-      assignees: ["everyone"],
-    });
-    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
-    });
-    await closeInboxItem(getDb(), {
-      id: everyone,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
+    // An Inbox item is the Inbox's fact: the tree state does not read it.
+    await addItem(asking.childConversationId, ACTION_ITEM);
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "working",
     });
 
-    const item = await addItem(asking.childConversationId, ACTION_ITEM);
+    const end = await signIn(asking.childConversationId, "tree-sign-in");
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
@@ -162,11 +156,7 @@ describe("conversation tree state", () => {
       watching: false,
     });
 
-    await closeInboxItem(getDb(), {
-      id: item,
-      nowMs: Date.now(),
-      status: "dismissed",
-    });
+    await end();
     await expect(fixture.feedTree(conversationId)).resolves.toEqual({
       treeState: "working",
       watching: true,
@@ -208,7 +198,7 @@ describe("conversation tree state", () => {
       fixture.queue.takeMessageFor(child.childConversationId);
     }
 
-    await addItem(grandchild.childConversationId, ACTION_ITEM);
+    await signIn(grandchild.childConversationId, "tree-depth-sign-in");
 
     await expect(fixture.feedTree(rootId)).resolves.toMatchObject({
       treeState: "needs_you",
@@ -242,7 +232,7 @@ describe("conversation tree state", () => {
       });
     }
 
-    await addItem("agent:feed-ask", ACTION_ITEM);
+    await signIn("agent:feed-ask", "tree-feed-sign-in");
 
     const row = await fixture.feedRow(rootId);
     // The sidebar orders a root's Threads by these, as the Threads panel
@@ -443,7 +433,7 @@ describe("conversation tree state", () => {
       kind: "task",
       parentConversationId: childConversationId,
     });
-    await addItem(grandchildConversationId, ACTION_ITEM);
+    await signIn(grandchildConversationId, "tree-archived-sign-in");
     await watchDeployment(childConversationId);
     const needsYou = { treeState: "needs_you", watching: true };
     await expect(fixture.tree(conversationId)).resolves.toEqual(needsYou);
@@ -476,19 +466,7 @@ describe("conversation tree state", () => {
       fixture.conversationStore,
       "1700000000.000590",
     );
-    const other = await resolveViewerUser("bob@example.com");
-    await insertInboxItem(getDb(), {
-      subject: { id: "token-for-other", kind: "question" },
-      owner: { id: conversationId, kind: "conversation" },
-      assignedToEveryone: false,
-      assigneeUserIds: [other!.id],
-      body: "Bob decides.",
-      conversationIds: [conversationId],
-      kind: "action",
-      nowMs: Date.now(),
-      request: REQUEST,
-      title: "Bob's call",
-    });
+    await signIn(conversationId, "token-sign-in-bob", "UBOB");
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
     const before = await feedToken(fixture);
@@ -540,8 +518,8 @@ describe("conversation tree state", () => {
       watching: boolean;
     }) => {
       const feed = await expectSqlBudget(
-        () => fixture.request("/api/conversations"),
-        { statements: 17, serialRounds: 3 },
+        () => expectNoInboxSql(() => fixture.request("/api/conversations")),
+        { statements: 16, serialRounds: 3 },
       );
       const row = conversationFeedSchema
         .parse(await feed.json())
@@ -550,7 +528,8 @@ describe("conversation tree state", () => {
         tree,
       );
       const detail = await expectSqlBudget(
-        () => fixture.request(detailPath(conversationId)),
+        () =>
+          expectNoInboxSql(() => fixture.request(detailPath(conversationId))),
         { statements: 19, serialRounds: 5 },
       );
       const report = conversationDetailReportSchema.parse(await detail.json());
@@ -568,13 +547,12 @@ describe("conversation tree state", () => {
       "agent:tree-budget-c",
       "agent:tree-budget-d",
     ]);
-    const itemId = await addItem("agent:tree-budget-d", ACTION_ITEM);
+    await addItem("agent:tree-budget-d", ACTION_ITEM);
+    await expectBudget({ treeState: "done", watching: true });
+    await signIn("agent:tree-budget-d", "tree-budget-sign-in");
     await expectBudget({ treeState: "needs_you", watching: true });
 
-    // Other Conversations' open items cost the tree one read of them, not
-    // one for each row of the tree. Today's plan costs about 67,000, mostly
-    // the starter check on each row. An owner check on each row costs about
-    // a million.
+    // Today's plan costs about 67,000, mostly the starter check on each row.
     await getSqlExecutor().execute(
       `insert into junior_conversations
         (conversation_id, root_conversation_id, parent_conversation_id,
@@ -583,19 +561,7 @@ describe("conversation tree state", () => {
       from generate_series(1, 200) n`,
       [conversationId],
     );
-    await getSqlExecutor().execute(
-      `insert into junior_inbox_items
-      select (jsonb_populate_record(item, jsonb_build_object(
-        'id', 'tree-budget-other-' || n,
-        'dedupe_key', 'tree-budget-other-' || n,
-        'subject_id', 'tree-budget-other-' || n))).*
-      from junior_inbox_items item, generate_series(1, 500) n
-      where item.id = $1`,
-      [itemId],
-    );
-    await getSqlExecutor().execute(
-      "analyze junior_conversations, junior_inbox_items",
-    );
+    await getSqlExecutor().execute("analyze junior_conversations");
     await expectPlanCost(() => fixture.request("/api/conversations"), 100_000);
   });
 
@@ -675,6 +641,21 @@ describe("conversation tree state", () => {
       treeState: "working",
     });
 
+    // An ask in the Space waits in the Inbox. The Space list does not read
+    // it; the Inbox's own read names the Space, and the dashboard overlays it.
+    await addItem(conversationId, ACTION_ITEM);
+    const waiting = inboxItemWaitingConversationsSchema.parse(
+      await (
+        await fixture.request("/api/inbox-items/waiting-conversations")
+      ).json(),
+    );
+    expect(waiting.conversations).toEqual([
+      expect.objectContaining({
+        conversationIds: expect.arrayContaining([conversationId]),
+        spaceId: space.id,
+      }),
+    ]);
+
     const [row] = await getDb()
       .select({ lastActivityAt: juniorConversations.lastActivityAt })
       .from(juniorConversations)
@@ -693,10 +674,12 @@ describe("conversation tree state", () => {
     await expect(asBob()).resolves.toEqual(leadWorking);
 
     // The Space list reads its top-level Conversations through indexes,
-    // however many other Conversations there are. Its tree states cost
-    // about 43,000. An owner check of the open Inbox items on each tree row
-    // costs about five times as much.
+    // however many other Conversations there are, and reads no Inbox
+    // table. Its tree states cost about 43,000.
     await seedDashboardScale();
-    await expectPlanCost(() => expectNoFullScan(asViewer), 65_000);
+    await expectPlanCost(
+      () => expectNoFullScan(() => expectNoInboxSql(asViewer)),
+      65_000,
+    );
   });
 });

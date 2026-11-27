@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { getDb } from "@/chat/db";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { insertInboxItem } from "@/chat/inbox-items/store";
 import { juniorConversations } from "@/db/schema";
 import { storeConversationMetadataFixture } from "../../../../fixtures/conversation-metadata";
@@ -19,6 +19,16 @@ import {
 mockMcpDashboardConfig();
 
 const CONVERSATION_ID = "slack:C123:1700000000.000300";
+
+// A sign-in wait on someone who is not the viewer.
+const SIGN_IN = {
+  actorId: "UOTHER",
+  authorizationId: "mcp-sign-in",
+  conversationId: CONVERSATION_ID,
+  delivery: "private_link_sent" as const,
+  kind: "mcp" as const,
+  provider: "notion",
+};
 
 describe("getConversation MCP tool", () => {
   it("returns the metadata, the summary, and only the last assistant reply", async () => {
@@ -73,10 +83,33 @@ describe("getConversation MCP tool", () => {
       .update(juniorConversations)
       .set({ executionStatus: "running" })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-    // An open action item reads `needs_input` while the Turn runs.
+    // A sign-in wait reads `needs_input` while the Turn runs.
+    await recordAuthorizationRequested(SIGN_IN);
+
+    const running = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(idle.structuredContent).toMatchObject({
+      conversation: { turnActive: false },
+    });
+    expect(running.structuredContent).toMatchObject({
+      conversation: { status: "needs_input", turnActive: true },
+    });
+  });
+
+  it("returns the viewer state apart from the status, and no Inbox state", async () => {
+    await seedMcpConversation({
+      conversationId: CONVERSATION_ID,
+      email: MCP_TEST_VIEWER,
+      title: "Viewer incident",
+    });
+    // It waits on another person, so it does not need the viewer.
+    await recordAuthorizationRequested(SIGN_IN);
+    // An Inbox item is the Inbox's fact: `searchInboxItems` lists it.
     await insertInboxItem(getDb(), {
-      subject: { id: "running-ask", kind: "question" },
-      owner: { id: CONVERSATION_ID, kind: "conversation" as const },
+      subject: { id: "everyone-ask", kind: "question" },
+      owner: { id: CONVERSATION_ID, kind: "conversation" },
       assignedToEveryone: true,
       assigneeUserIds: [],
       body: "Pick one.",
@@ -96,83 +129,21 @@ describe("getConversation MCP tool", () => {
       },
       title: "Ship the release?",
     });
-
-    const running = await call("getConversation", {
-      conversationId: CONVERSATION_ID,
-    });
-
-    expect(idle.structuredContent).toMatchObject({
-      conversation: { turnActive: false },
-    });
-    expect(running.structuredContent).toMatchObject({
-      conversation: { status: "needs_input", turnActive: true },
-    });
-  });
-
-  it("returns the viewer state apart from the status", async () => {
-    await seedMcpConversation({
-      conversationId: CONVERSATION_ID,
-      email: MCP_TEST_VIEWER,
-      title: "Viewer incident",
-    });
-    const other = await resolveViewerUser(MCP_TEST_OTHER_VIEWER);
-    const ask = {
-      owner: { id: CONVERSATION_ID, kind: "conversation" as const },
-      body: "Pick one.",
-      conversationIds: [CONVERSATION_ID],
-      kind: "action" as const,
-      nowMs: Date.now(),
-      request: {
-        question: "Ship now?",
-        fields: [
-          {
-            id: "decision",
-            kind: "choice" as const,
-            label: "Decision",
-            options: [{ label: "Ship" }, { label: "Wait" }],
-          },
-        ],
-      },
-      title: "Ship the release?",
-      visibility: "public" as const,
-    };
-    await insertInboxItem(getDb(), {
-      subject: { id: "other-ask", kind: "question" },
-      ...ask,
-      assignedToEveryone: false,
-      assigneeUserIds: [other!.id],
-    });
     const call = await connectMcpTools();
-
-    // It waits on another person, so it does not need the viewer.
-    const forOther = await call("getConversation", {
-      conversationId: CONVERSATION_ID,
-    });
-    await insertInboxItem(getDb(), {
-      subject: { id: "everyone-ask", kind: "question" },
-      ...ask,
-      assignedToEveryone: true,
-      assigneeUserIds: [],
-    });
-    const forEveryone = await call("getConversation", {
+    const detail = await call("getConversation", {
       conversationId: CONVERSATION_ID,
     });
     const list = await call("searchConversations");
 
-    expect(forOther.structuredContent).toMatchObject({
+    expect(detail.structuredContent).toMatchObject({
       conversation: {
         status: "needs_input",
         treeState: "done",
         watching: false,
       },
     });
-    expect(forEveryone.structuredContent).toMatchObject({
-      conversation: { status: "needs_input", treeState: "needs_you" },
-    });
     expect(list.structuredContent).toMatchObject({
-      conversations: [
-        { conversationId: CONVERSATION_ID, treeState: "needs_you" },
-      ],
+      conversations: [{ conversationId: CONVERSATION_ID, treeState: "done" }],
     });
   });
 
