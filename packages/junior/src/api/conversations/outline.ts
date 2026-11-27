@@ -48,7 +48,12 @@ export async function readConversationOutline(
     readMessages(conversationId, "assistant"),
   ]);
   const items: ConversationOutline["items"] = rows.flatMap((row) => {
-    const text = withoutCutToken(row.text).trim();
+    const parentAgentInput = reportParentAgentInput(row);
+    // Like the transcript, a Parent message shows the parent's words, not
+    // the prompt that core wraps around them for the child model.
+    const text = withoutCutToken(
+      (parentAgentInput && row.requestText) || row.text,
+    ).trim();
     if (!text) return [];
     return [
       {
@@ -60,7 +65,7 @@ export async function readConversationOutline(
           ? { actorIdentityId: row.authorIdentityId }
           : undefined),
         // The same parent agent rule as the transcript events.
-        ...reportParentAgentInput(row),
+        ...parentAgentInput,
       },
     ];
   });
@@ -111,6 +116,9 @@ function readMessages(
       authorUserId: sql<string | null>`${payload}->'meta'->'author'->>'userId'`,
       createdAt: juniorConversationEvents.createdAt,
       messageId: sql<string>`${payload}->>'messageId'`,
+      requestText: sql<
+        string | null
+      >`left(${payload}->'meta'->>'requestText', ${CONVERSATION_OUTLINE_TEXT_LENGTH})`,
       seq: juniorConversationEvents.seq,
       text: sql<string>`coalesce(left(${payload}->>'text', ${CONVERSATION_OUTLINE_TEXT_LENGTH}), '')`,
     })

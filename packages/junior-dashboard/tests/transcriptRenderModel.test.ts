@@ -725,6 +725,24 @@ describe("canonical event transcript reduction", () => {
     // card: the start is on an earlier page, or the child is a Conversation
     // that moved into the Lead's Space.
     expect(rows(events.slice(3, 6))).toEqual([{ key: "tool:message-1" }]);
+    // The child's update shows the outcome when no card in view does.
+    const update = event(9, "2026-01-01T00:00:09.000Z", {
+      type: "message",
+      messageId: "update-1",
+      role: "user",
+      eventType: "agent.update",
+      eventIdentifier: "child-1",
+      trustedSummary: "Child agent blocked.",
+      text: "<agent-result>blocked</agent-result>",
+    });
+    expect(rows([...events, update])).toEqual([
+      { key: "subagent:child-1", status: "running" },
+      { key: "tool:message-1" },
+    ]);
+    expect(rows([...events.slice(3, 6), update])).toEqual([
+      { key: "tool:message-1" },
+      { key: "9:message:0" },
+    ]);
   });
 
   it("renders a completed subagent when its start is outside the page", () => {

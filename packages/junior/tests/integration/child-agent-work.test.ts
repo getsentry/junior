@@ -298,6 +298,7 @@ describe("child agent task work", () => {
         expect.objectContaining({
           fromParentAgent: true,
           reply: "Durable child result",
+          text: slackSpawnInput.input,
         }),
       ]);
       const eventPage = conversationEventPageSchema.parse(
