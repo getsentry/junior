@@ -1,4 +1,6 @@
-import { Bash, defineCommand } from "just-bash";
+// The `shell-quote` index types patch the global `Array#join` type; this
+// subpath has the parser without that.
+import parse from "shell-quote/parse.js";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import { getAppContext } from "@/app/context";
 import { readConversationSpaceConfiguration } from "@/chat/spaces/configuration";
@@ -186,25 +188,41 @@ async function handlePluginsCommand(
   });
 }
 
-function createJrRpcCommand(deps: JrRpcDeps) {
-  return defineCommand("jr-rpc", async (args) => {
-    const usage = [
-      "jr-rpc config get <key>",
-      "jr-rpc config list [--prefix <value>]",
-      "jr-rpc plugins list",
-    ].join("\n");
-    const verb = (args[0] ?? "").trim();
-    if (verb === "config") {
-      return handleConfigCommand(args.slice(1), deps);
-    }
-    if (verb === "plugins") {
-      return handlePluginsCommand(args.slice(1));
-    }
-    return commandResult({
-      stderr: `Unsupported jr-rpc command. Use:\n${usage}\n`,
-      exitCode: 2,
-    });
+async function runJrRpc(
+  args: string[],
+  deps: JrRpcDeps,
+): Promise<ReturnType<typeof commandResult>> {
+  const usage = [
+    "jr-rpc config get <key>",
+    "jr-rpc config list [--prefix <value>]",
+    "jr-rpc plugins list",
+  ].join("\n");
+  const verb = (args[0] ?? "").trim();
+  if (verb === "config") {
+    return handleConfigCommand(args.slice(1), deps);
+  }
+  if (verb === "plugins") {
+    return handlePluginsCommand(args.slice(1));
+  }
+  return commandResult({
+    stderr: `Unsupported jr-rpc command. Use:\n${usage}\n`,
+    exitCode: 2,
   });
+}
+
+/**
+ * Split a jr-rpc command line into plain arguments, or return undefined when
+ * it has a part that a shell would expand or run: `$VAR`, `$(...)`, a
+ * backtick, a glob, a comment, or an operator. Nothing runs a shell here.
+ */
+function parseJrRpcArgs(command: string): string[] | undefined {
+  // shell-quote keeps backticks as literal text.
+  if (command.includes("`")) return undefined;
+  // The env function makes `$VAR` and `$(...)` objects instead of text.
+  const tokens = parse(command, (key) => ({ op: "var", key }));
+  return tokens.every((token): token is string => typeof token === "string")
+    ? tokens
+    : undefined;
 }
 
 function toolCommandResult(
@@ -269,12 +287,20 @@ export async function maybeExecuteJrRpcCustomCommand(
       }),
     };
   }
-  const shell = new Bash({
-    customCommands: [createJrRpcCommand(deps)],
-  });
-  const execResult = await shell.exec(normalized);
+  const argv = parseJrRpcArgs(normalized);
+  if (!argv) {
+    return {
+      handled: true,
+      result: toolCommandResult(normalized, {
+        exitCode: 2,
+        stdout: "",
+        stderr:
+          "jr-rpc takes plain arguments only: no variables, globs, command substitution, or shell operators. Quote values with single quotes.\n",
+      }),
+    };
+  }
   return {
     handled: true,
-    result: toolCommandResult(normalized, execResult),
+    result: toolCommandResult(normalized, await runJrRpc(argv.slice(1), deps)),
   };
 }

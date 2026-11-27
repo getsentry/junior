@@ -53,6 +53,43 @@ describe("jr-rpc custom command", () => {
     expect(mention).toEqual({ handled: false });
   });
 
+  it("passes quoted values as plain arguments", async () => {
+    // `config get` echoes the key it got.
+    for (const [command, key] of [
+      [`jr-rpc config get '["junior","relay"]'`, '["junior","relay"]'],
+      ['jr-rpc config get "a \\"b\\" c"', 'a "b" c'],
+      ["jr-rpc config get a\\ b", "a b"],
+    ] as const) {
+      const handled = expectHandled(
+        await maybeExecuteJrRpcCustomCommand(command, {
+          locationConfiguration: makeLocationConfiguration(),
+        }),
+      );
+      expect(handled.result.exit_code).toBe(0);
+      expect(JSON.parse(handled.result.stdout)).toMatchObject({ key });
+    }
+  });
+
+  it("rejects shell expansion, comments, and operators", async () => {
+    for (const command of [
+      "jr-rpc config get $HOME",
+      "jr-rpc config get $(id)",
+      "jr-rpc config get `id`",
+      "jr-rpc config get *.repo",
+      "jr-rpc config get github.repo # note",
+      "jr-rpc config get github.repo && echo hi",
+    ]) {
+      const handled = expectHandled(
+        await maybeExecuteJrRpcCustomCommand(command, {
+          locationConfiguration: makeLocationConfiguration(),
+        }),
+      );
+      expect(handled.result.exit_code).toBe(2);
+      expect(handled.result.stdout).toBe("");
+      expect(handled.result.stderr).toContain("plain arguments only");
+    }
+  });
+
   it("requires conversation context for config commands", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config get github.repo",
