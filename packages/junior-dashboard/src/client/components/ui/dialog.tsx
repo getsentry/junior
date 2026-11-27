@@ -9,15 +9,12 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@dashboard/lib/utils";
 import { useMobileLayoutWhileOpen } from "@dashboard/layoutMedia";
 
+const loadDialogSheet = () => import("./dialogSheet");
 const DialogSheetRoot = lazy(() =>
-  import("./dialogSheet").then((module) => ({
-    default: module.DialogSheetRoot,
-  })),
+  loadDialogSheet().then((module) => ({ default: module.DialogSheetRoot })),
 );
 const DialogSheetContent = lazy(() =>
-  import("./dialogSheet").then((module) => ({
-    default: module.DialogSheetContent,
-  })),
+  loadDialogSheet().then((module) => ({ default: module.DialogSheetContent })),
 );
 
 // True when `DialogContent` renders as a phone sheet.

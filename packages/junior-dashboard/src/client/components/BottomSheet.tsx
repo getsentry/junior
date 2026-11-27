@@ -8,15 +8,12 @@ import {
 
 // A sheet opens only after a tap, so base-ui's drawer loads with the first
 // open instead of with the page.
+const loadContent = () => import("./BottomSheetContent");
 const BottomSheetContent = lazy(() =>
-  import("./BottomSheetContent").then((module) => ({
-    default: module.BottomSheetContent,
-  })),
+  loadContent().then((module) => ({ default: module.BottomSheetContent })),
 );
 const ActionSheetContent = lazy(() =>
-  import("./BottomSheetContent").then((module) => ({
-    default: module.ActionSheetContent,
-  })),
+  loadContent().then((module) => ({ default: module.ActionSheetContent })),
 );
 
 /** Props of a bottom sheet. */

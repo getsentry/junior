@@ -5,10 +5,8 @@ import { ChevronRightIcon, CheckIcon } from "lucide-react";
 import { useMobileLayout } from "@dashboard/layoutMedia";
 
 import {
-  PHONE_MENU_CANCEL_CLASS,
   PHONE_MENU_GROUP_CLASS,
   PHONE_MENU_ITEM_CLASS,
-  PHONE_SHEET_BACKDROP_CLASS,
   PHONE_SHEET_POPUP_CLASS,
   PHONE_SHEET_POSITIONER_CLASS,
 } from "./phoneSheet";
@@ -98,7 +96,6 @@ function ContextMenuContent({
   const mobile = useMobileLayout();
   return (
     <ContextMenuPrimitive.Portal>
-      <ContextMenuPrimitive.Backdrop className={PHONE_SHEET_BACKDROP_CLASS} />
       <ContextMenuPrimitive.Positioner
         className={cn(
           "isolate z-50 outline-none",
@@ -121,9 +118,17 @@ function ContextMenuContent({
           {mobile ? (
             <>
               <div className={PHONE_MENU_GROUP_CLASS}>{children}</div>
-              <ContextMenuPrimitive.Item className={PHONE_MENU_CANCEL_CLASS}>
-                Cancel
-              </ContextMenuPrimitive.Item>
+              <div className={cn(PHONE_MENU_GROUP_CLASS, "mt-2")}>
+                <ContextMenuPrimitive.Item
+                  className={cn(
+                    CONTEXT_MENU_ITEM_CLASS,
+                    PHONE_MENU_ITEM_CLASS,
+                    "justify-center font-medium",
+                  )}
+                >
+                  Cancel
+                </ContextMenuPrimitive.Item>
+              </div>
             </>
           ) : (
             children

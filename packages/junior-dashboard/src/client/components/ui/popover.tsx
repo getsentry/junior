@@ -1,17 +1,26 @@
+import { lazy, Suspense, useState, type CSSProperties } from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
+import { useMobileLayout } from "@dashboard/layoutMedia";
 import { cn } from "@dashboard/lib/utils";
-import { useKeyboardBand } from "@dashboard/mobileViewport";
 
 import {
-  PHONE_SHEET_BACKDROP_CLASS,
   PHONE_SHEET_POPUP_CLASS,
   PHONE_SHEET_POSITIONER_CLASS,
-  phoneSheetBandVars,
 } from "./phoneSheet";
 
-/** Own an anchored popover's state and dismissal. */
+const PhoneSheetBand = lazy(() =>
+  import("./phoneSheetBand").then((module) => ({
+    default: module.PhoneSheetBand,
+  })),
+);
+
+/**
+ * Own an anchored popover's state and dismissal. A phone shows it as a
+ * modal sheet, so a tap on the dimmed page only closes it.
+ */
 export function Popover(props: PopoverPrimitive.Root.Props) {
-  return <PopoverPrimitive.Root {...props} />;
+  const mobile = useMobileLayout();
+  return <PopoverPrimitive.Root {...props} modal={mobile || props.modal} />;
 }
 
 /** Open a popover from the owning control. */
@@ -31,18 +40,24 @@ export function PopoverContent({
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<PopoverPrimitive.Positioner.Props, "align" | "side">) {
-  // A popover can hold a field, such as a comment or a search.
-  const band = useKeyboardBand();
+  // A popover can hold a field, such as a comment or a search, so a phone
+  // keeps it above the keyboard.
+  const mobile = useMobileLayout();
+  const [bandStyle, setBandStyle] = useState<CSSProperties>();
   return (
     <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Backdrop className={PHONE_SHEET_BACKDROP_CLASS} />
       <PopoverPrimitive.Positioner
         align={align}
         side={side}
         sideOffset={8}
         className={cn("isolate z-50", PHONE_SHEET_POSITIONER_CLASS)}
-        style={phoneSheetBandVars(band)}
+        style={mobile ? bandStyle : undefined}
       >
+        {mobile ? (
+          <Suspense fallback={null}>
+            <PhoneSheetBand onChange={setBandStyle} />
+          </Suspense>
+        ) : null}
         <PopoverPrimitive.Popup
           data-slot="popover-content"
           className={cn(

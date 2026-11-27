@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { keyboardBandStyle, useKeyboardBand } from "../mobileViewport";
+import { keyboardBandStyle, useKeyboardBand } from "../keyboardBand";
 import { cn } from "../styles";
 import type {
   ActionSheetItem,
@@ -21,10 +21,6 @@ import {
 } from "./bottomSheetContext";
 import { Button } from "./ui/button";
 import { Drawer, DrawerClose, DrawerContent, DrawerTitle } from "./ui/drawer";
-import {
-  ACTION_SHEET_GROUP_CLASS,
-  ACTION_SHEET_ROW_CLASS,
-} from "./ui/phoneSheet";
 import { useSheet } from "./ui/useSheet";
 
 /** Render the open bottom sheet. `BottomSheet` loads this module on demand. */
@@ -134,6 +130,14 @@ export function BottomSheetContent(props: BottomSheetProps) {
     </SheetFrame>
   );
 }
+
+/** A row of an action sheet. */
+const ACTION_SHEET_ROW_CLASS =
+  "flex min-h-12 w-full cursor-pointer items-center gap-3 px-4 text-left font-sans text-base text-dashboard-text no-underline transition-colors active:bg-dashboard-fill-soft disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:text-dashboard-text-muted";
+
+/** A card of action sheet rows. It owns the border and the fill. */
+const ACTION_SHEET_GROUP_CLASS =
+  "overflow-hidden rounded-xl border border-dashboard-border-subtle bg-dashboard-fill-faint";
 
 // Rows sit in a group, which owns the border and the fill.
 const PLAIN_ROW_CLASS = cn(ACTION_SHEET_ROW_CLASS, "border-0 bg-transparent");

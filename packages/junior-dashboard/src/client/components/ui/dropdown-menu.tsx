@@ -3,17 +3,25 @@ import { cn } from "@dashboard/lib/utils";
 import { useMobileLayout } from "@dashboard/layoutMedia";
 
 import {
-  PHONE_MENU_CANCEL_CLASS,
   PHONE_MENU_GROUP_CLASS,
   PHONE_MENU_ITEM_CLASS,
-  PHONE_SHEET_BACKDROP_CLASS,
   PHONE_SHEET_POPUP_CLASS,
   PHONE_SHEET_POSITIONER_CLASS,
 } from "./phoneSheet";
 
-/** Own a dropdown menu's open state. */
-function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-  return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+/**
+ * Own a dropdown menu's open state. A phone shows it as a modal action
+ * sheet, so a tap on the dimmed page only closes it.
+ */
+function DropdownMenu(props: MenuPrimitive.Root.Props) {
+  const mobile = useMobileLayout();
+  return (
+    <MenuPrimitive.Root
+      data-slot="dropdown-menu"
+      {...props}
+      modal={mobile || props.modal}
+    />
+  );
 }
 
 /** Open the menu from the owning control. */
@@ -41,7 +49,6 @@ function DropdownMenuContent({
   const mobile = useMobileLayout();
   return (
     <MenuPrimitive.Portal>
-      <MenuPrimitive.Backdrop className={PHONE_SHEET_BACKDROP_CLASS} />
       <MenuPrimitive.Positioner
         className={cn(
           "isolate z-50 outline-none",
@@ -64,9 +71,17 @@ function DropdownMenuContent({
           {mobile ? (
             <>
               <div className={PHONE_MENU_GROUP_CLASS}>{children}</div>
-              <MenuPrimitive.Item className={PHONE_MENU_CANCEL_CLASS}>
-                Cancel
-              </MenuPrimitive.Item>
+              <div className={cn(PHONE_MENU_GROUP_CLASS, "mt-2")}>
+                <MenuPrimitive.Item
+                  className={cn(
+                    DROPDOWN_MENU_ITEM_CLASS,
+                    PHONE_MENU_ITEM_CLASS,
+                    "justify-center font-medium",
+                  )}
+                >
+                  Cancel
+                </MenuPrimitive.Item>
+              </div>
             </>
           ) : (
             children
