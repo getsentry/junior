@@ -1,6 +1,7 @@
 import type { Locator } from "@playwright/test";
 import { openAsk } from "./askSheet";
 import { digest, mockInboxItems } from "./inbox/inbox-fixture";
+import { distanceFromBottom } from "./long-transcript-fixture";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -42,6 +43,17 @@ for (const view of [desktop, mobile]) {
     const question = page.getByRole("region", {
       name: "Asked Approve the payments-v42 rollout",
     });
+    // Each record shows once its item loads, and the transcript then scrolls
+    // back to its end. Playwright retries a tap on a record that moves with
+    // a scroll that leaves the thread above its end, so wait for both.
+    await expect(
+      page.getByRole("region", { name: "Asked Pick the canary region" }),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        distanceFromBottom(page.getByLabel("Conversation transcript")),
+      )
+      .toBeLessThanOrEqual(1);
     // A phone opens the question in a sheet.
     await expectRelated(await openAsk(question, view === mobile));
     if (view === desktop) {
