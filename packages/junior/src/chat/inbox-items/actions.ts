@@ -101,7 +101,8 @@ function isSameClose(
 ): boolean {
   return (
     item.closeReason !== INBOX_ITEM_REPLIED_REASON &&
-    item.closedBy?.userId === user.id &&
+    (action === "submit" ? item.answeredBy : item.closedBy)?.userId ===
+      user.id &&
     item.status === closedStatus(action) &&
     (action === "submit") === Boolean(item.answer) &&
     item.closeAction === kindAction
@@ -238,13 +239,7 @@ export async function actOnInboxItem(args: {
   }
 
   if (!closedNow && item.status === "open") {
-    // Anyone who can see a public question can answer it. Dismiss keeps the
-    // assignee rule (`canAnswerInboxItem`).
-    const allowed =
-      action === "submit"
-        ? canAnswerInboxItem(item, user.id)
-        : canActOnInboxItem(item, user.id);
-    if (!allowed) {
+    if (!canAnswerInboxItem(item, user.id)) {
       throw new InboxItemActionError(
         "forbidden",
         "Only an assignee can act on this item.",

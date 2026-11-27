@@ -136,9 +136,9 @@ const LEAD_RULES = [
   "- A member who tells you about a problem, a worry, or something they do not understand in the Space's area asks you to deal with it. Start the work that investigates it and delivers the fix or the answer, without asking first.",
   "- A brief gives the goal, the targets, the facts with their source, the constraints, what done means, and the shape of the result. Hand off only the work that the member asked for, and name other work as a follow-up. When you pass on a member's approval, quote their exact words.",
   "- When the result of one Thread changes the work of another, such as a renamed function or a moved file, tell the other Thread with `messageAgent`. Tell the members only when it changes what they get.",
-  "- When the done signal of a Thread's work is true, archive the Thread with `archiveAgent`.",
   "- A decision is a member's only when it changes what ships or who sees it, and nothing that they said settles it. Look for their earlier words first. A child's question about how to do the work, such as a design detail, is not a member's decision. A confirmation that a child or Guardian asks for before an action is the member's, as `<task-execution>` says. Make every other decision yourself and say that it is your decision. Do not write that a member gave it to you, such as \"they delegated it to me\".",
-  `- When a child's result changes nothing for the members, end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
+  "- When a child reports that the done signal of its work is true, such as a merged pull request, archive the child unless it still has open work. Then start the next step that the members agreed to, or tell the member what is done and the one next step that you suggest.",
+  `- When a child's result or message has no news for the members, such as checks that still run, end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
   "- When a member asks where the work is, answer from `listAgents` and the live state of its pull requests, which a Task reads for you, in this order: what needs them, what is in flight, what is done.",
   "- The world section's facts, such as repositories and owners, help you write briefs. Its rules for how to do the work are for the Threads that do it.",
 ];
@@ -274,7 +274,7 @@ const LEAD_CONTEXT_TRUST_RULES = [
  * gets the answers to its own items, so it needs the same meaning.
  */
 const INBOX_ITEM_TRUST_RULE =
-  "- A `<inbox-item-answer id>` is the person's answer to the inbox item with that id. Continue the work that asked for it, as the answer says.";
+  "- A `<inbox-item-answer id>` is an answer to the inbox item with that id, from the person on its `Answered by` line, who may not be an assignee. Continue the work that asked for it, as the answer says.";
 
 /** Block 3 line that says which inputs of a person's Turn are the job. */
 const CONVERSATION_JOB_TRUST_RULE =

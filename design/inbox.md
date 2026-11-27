@@ -23,9 +23,9 @@ groups and acts on its rows.
   asks. It can link to other objects, such as a pull request.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
-- Only an assignee answers a private item that has assignees. Anyone who
-  can see a public question can answer it, but only an assignee dismisses
-  or takes it. The answer carries the authority of the person who gives
+- Only an assignee answers or dismisses a private item that has assignees.
+  Anyone who can see a public question can answer or dismiss it. The
+  answer carries the authority of the person who gives
   it. Junior, an Event, or a trigger never answers or approves for a
   person.
 - "Needs you" means one thing on every surface: an ask or a Conversation
@@ -88,9 +88,9 @@ groups and acts on its rows.
   about the same object changes, such as from review to merge, the same
   item shows the new ask.
 - A question belongs to the Conversation where Junior asked it, and holds
-  its title, body, form, related links, and answer. Its related links show
-  on the card, but they never decide the card or add related work to
-  another item.
+  its title, body, form, related links, and answer, with who answered it
+  and when. Its related links show on the card, but they never decide the
+  card or add related work to another item.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
 - A plugin's subject kind can define actions, such as Keep fixing on a

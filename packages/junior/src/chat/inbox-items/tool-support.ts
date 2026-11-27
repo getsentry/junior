@@ -129,7 +129,8 @@ export function itemResult(item: InboxItem) {
     ...(item.closedAt
       ? {
           closed_at: item.closedAt.toISOString(),
-          closed_by: item.closedBy?.email ?? "agent",
+          closed_by:
+            (item.answer ? item.answeredBy : item.closedBy)?.email ?? "agent",
         }
       : undefined),
     ...(item.closeReason ? { close_reason: item.closeReason } : undefined),

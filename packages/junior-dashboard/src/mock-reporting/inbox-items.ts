@@ -4,10 +4,7 @@
  * like the API.
  */
 import {
-  answeredChoices,
   inboxItemQuestion,
-  type ConversationFeed,
-  type ConversationFeedViewerAnswer,
   type InboxItemActionBody,
   type InboxItemPayload,
   type InboxSnoozeCreateBody,
@@ -28,7 +25,13 @@ import { readMockObjectLinks } from "./objects";
 
 type MockItemChange = Pick<
   InboxItemPayload,
-  "answer" | "closeAction" | "closeReason" | "closedAt" | "closedBy" | "status"
+  | "answer"
+  | "answeredBy"
+  | "closeAction"
+  | "closeReason"
+  | "closedAt"
+  | "closedBy"
+  | "status"
 >;
 
 const changes = new Map<string, MockItemChange>();
@@ -263,6 +266,7 @@ function payload(
           closedBy: item.closedBy ?? viewer,
         }
       : undefined),
+    ...(item.answer ? { answeredBy: item.answeredBy ?? viewer } : undefined),
   };
 }
 
@@ -332,48 +336,11 @@ export function actOnMockInboxItem(
     closedBy: viewer,
     status: body.action === "dismiss" ? "dismissed" : "done",
     ...(body.action === "submit"
-      ? { answer: { ...body.answer, requestId: id } }
+      ? { answer: { ...body.answer, requestId: id }, answeredBy: viewer }
       : undefined),
     ...(closeAction ? { closeAction } : undefined),
   });
   return readMockInboxItem(nowMs, id);
-}
-
-/**
- * Put the viewer's newest answer on each feed row of the Conversation that
- * added it, like the API.
- */
-export function withMockViewerAnswers(
-  feed: ConversationFeed,
-  nowMs: number,
-): ConversationFeed {
-  const answers = new Map<string, ConversationFeedViewerAnswer>();
-  // Closed items come newest closed first, so the first one wins.
-  for (const item of readMockInboxItems(nowMs, { closed: true })) {
-    const conversationId =
-      item.owner.kind === "conversation" ? item.owner.id : undefined;
-    const question = inboxItemQuestion(item.request);
-    if (
-      !conversationId ||
-      !item.answer ||
-      !question ||
-      !item.closedAt ||
-      item.closedBy?.userId !== viewer.userId ||
-      answers.has(conversationId)
-    )
-      continue;
-    answers.set(conversationId, {
-      choices: answeredChoices(question, item.answer),
-      closedAt: item.closedAt,
-    });
-  }
-  return {
-    ...feed,
-    conversations: feed.conversations.map((conversation) => {
-      const viewerAnswer = answers.get(conversation.conversationId);
-      return viewerAnswer ? { ...conversation, viewerAnswer } : conversation;
-    }),
-  };
 }
 
 /**
@@ -392,6 +359,7 @@ export function answerMockInboxItemByReply(
   if (!item) return;
   changes.set(item.id, {
     answer: { other: text, requestId: item.id, values: {} },
+    answeredBy: viewer,
     closeReason: "Replied in the conversation.",
     closedAt: new Date(nowMs).toISOString(),
     closedBy: viewer,

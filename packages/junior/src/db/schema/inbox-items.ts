@@ -57,8 +57,9 @@ export const juniorInboxItems = pgTable(
     status: text("status").$type<"open" | "done" | "dismissed">().notNull(),
     /**
      * A `question` item's question holds its title, body, request, and
-     * answer (`junior_questions`). The item keeps a copy for the release
-     * before this one, and new code never reads it.
+     * answer (`junior_questions`). The item keeps a copy of the title,
+     * body, and request for the release before this one, and new code
+     * never reads it.
      */
     title: text("title"),
     body: text("body"),

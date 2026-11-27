@@ -304,6 +304,7 @@ function inboxItemPayload(
       ? { rootConversationId: root?.rootConversationId ?? conversationId }
       : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
+    ...(item.answeredBy ? { answeredBy: item.answeredBy } : undefined),
     ...(item.addedByTurnId && !conversationHidden
       ? { addedByTurnId: item.addedByTurnId }
       : undefined),

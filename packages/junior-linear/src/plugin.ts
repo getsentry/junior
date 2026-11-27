@@ -14,8 +14,11 @@ import { linearIssueLinks } from "./links/issues.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
 
-/** Read-only Linear MCP tools that the optional service account may call. */
-const LINEAR_SERVICE_ACCOUNT_TOOLS = [
+/**
+ * Read-only Linear MCP tools. The optional service account may call them, and
+ * Guardian skips their review.
+ */
+const LINEAR_READ_TOOLS = [
   "extract_images",
   "get_attachment",
   "get_document",
@@ -115,7 +118,7 @@ export function linearPlugin(
       // Optional shared read account. It has no effect until an admin
       // connects it on the dashboard Admin page.
       accounts: {
-        serviceAccount: { tools: [...LINEAR_SERVICE_ACCOUNT_TOOLS] },
+        serviceAccount: { tools: [...LINEAR_READ_TOOLS] },
       },
       configKeys: ["team", "project"],
       description:
@@ -129,6 +132,7 @@ export function linearPlugin(
         url: "https://mcp.linear.app/mcp",
         // Issue link cards read the issue as the viewer.
         viewerTools: ["get_issue"],
+        guardian: { skipReview: [...LINEAR_READ_TOOLS] },
       },
       name: "linear",
       ...(options.reviewContext

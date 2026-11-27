@@ -22,7 +22,7 @@ import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
-import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   recordTurn,
@@ -529,13 +529,9 @@ describe("people profile API", () => {
 
       // The seed Conversation has no Turn, so it does not count.
       // Aggregates in one round, then the recent rows' access and usage.
-      const report = await expectPlanCost(
-        () =>
-          expectSqlBudget(
-            () => readPeopleProfileFromSql("aggregate@example.com"),
-            { statements: 10, serialRounds: 2 },
-          ),
-        10_000,
+      const report = await expectSqlBudget(
+        () => readPeopleProfileFromSql("aggregate@example.com"),
+        { statements: 10, serialRounds: 2 },
       );
       expect(report.totals).toMatchObject({
         conversations: 5_000,

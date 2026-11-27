@@ -173,7 +173,7 @@ export function inboxCardActions(input: {
             putAway(() => input.snoozeItem(item, end));
           };
       const close = (action: "dismiss" | "done") =>
-        item.status === "open" && item.canAct
+        item.status === "open" && item.canAnswer
           ? () => void act(row, [item], { action }).catch(() => {})
           : undefined;
       const todo = item.todoId !== undefined;

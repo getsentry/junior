@@ -27,7 +27,7 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     # The server release version. scripts/bump-release-versions.mjs sets it.
-    MARKETING_VERSION: "0.319.0"
+    MARKETING_VERSION: "0.321.0"
     CURRENT_PROJECT_VERSION: "1"
     # Ad-hoc "Sign to Run Locally" for the simulator, so the Keychain works.
     "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"

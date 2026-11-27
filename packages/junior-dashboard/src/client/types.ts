@@ -225,8 +225,6 @@ export type Conversation = {
   visibility?: ConversationSummaryReport["visibility"] | undefined;
   /** The Space of the root, or null for a one-off. Feed rows and details. */
   space?: ConversationSummaryReport["space"] | undefined;
-  /** The viewer's newest answer here. The viewer's own feed rows only. */
-  viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;
 };
 
 export type Identity = DashboardIdentity;

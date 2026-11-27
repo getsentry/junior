@@ -21,6 +21,7 @@ import {
 } from "@/chat/inbox-items/user-input-request";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { InboxItemChangeRecord } from "./change-record";
+import { personName } from "./messages";
 import { getInboxItem, type InboxItem } from "./store";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
@@ -42,7 +43,10 @@ function typedAnswerText(
 }
 
 // Render one answer to an Inbox item as a prompt input. Only an action
-// item with a request takes an answer.
+// item with a request takes an answer. It names the person who closed the
+// item, who need not be an assignee, such as anyone who answers a public
+// question. An answer has no `<current-instruction>`, so without the name
+// the model guesses the assignee.
 function renderInboxItemAnswer(
   item: InboxItem,
 ): RuntimeInstructionInput | undefined {
@@ -50,10 +54,12 @@ function renderInboxItemAnswer(
   if (!request || !item.answer) return undefined;
   const question = request.question.trim();
   const requestText = typedAnswerText(request, item.answer);
+  const by = item.closedBy;
   const text = renderTag(
     "inbox-item-answer",
     { id: item.id },
     [
+      ...(by ? [`Answered by: ${personName(by)}`] : []),
       `Question: ${
         question.length > QUESTION_MAX_LENGTH
           ? `${question.slice(0, QUESTION_MAX_LENGTH - 1)}…`

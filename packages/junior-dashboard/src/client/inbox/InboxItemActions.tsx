@@ -19,7 +19,7 @@ import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
-import { DismissNote, RowDismissButton } from "./RowDismissButton";
+import { RowDismissButton } from "./RowDismissButton";
 
 /**
  * The actions of an item's subject kind that the viewer can take, such as
@@ -172,13 +172,12 @@ export function InboxItemActions(props: {
   }
 
   // A To-do for the viewer closes with Mark done, its main action. A plugin
-  // kind can bring its own, such as Resume.
+  // kind can bring its own, such as Keep fixing.
   const todo = item.todoId !== undefined;
   const question = inboxItemQuestion(item.request);
   const kindActions = itemKindActions(item);
-  // A person who may only answer, such as a reader of a public question,
-  // gets no Dismiss or Snooze.
-  const dismiss = item.canAct && (props.dismiss ?? true);
+  // A reader of a public question can dismiss it, like an assignee.
+  const dismiss = item.canAnswer && (props.dismiss ?? true);
   const take = item.canTake ? (props.take ?? "Take") : false;
   // A card on its own, as in a transcript, snoozes its item itself. The
   // Inbox brings its own Snooze, so its row leaves with motion.
@@ -281,10 +280,6 @@ export function InboxItemActions(props: {
         kindActions.length > 0 ||
         props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
-          {/* Where tooltips are off, Dismiss's note shows next to it. */}
-          {item.canAct && item.subject.dismissNote ? (
-            <DismissNote note={item.subject.dismissNote} />
-          ) : null}
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
             {secondaryActions}
