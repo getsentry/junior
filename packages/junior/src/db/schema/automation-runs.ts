@@ -76,6 +76,8 @@ export const juniorAutomationRuns = pgTable(
       table.completedAtMs,
     ),
     index("junior_automation_runs_completed_idx").on(table.completedAtMs),
+    // An Inbox item names its Automation through the run of its Conversation.
+    index("junior_automation_runs_conversation_idx").on(table.conversationId),
     index("junior_automation_runs_incomplete_idx")
       .on(table.automationId, table.scheduledForMs)
       .where(sql`${table.status} in ('pending', 'running')`),

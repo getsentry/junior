@@ -2,7 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
-import { inboxItemsNeedingUserVersionQuery } from "@/chat/inbox-items/store";
+import { inboxItemsNeedingUserVersionQuery } from "@/chat/inbox-items/waiting";
 import { juniorUsers } from "@/db/schema";
 import { conversationVersionsQuery } from "./conversations/detail-etag";
 import { conversationFeedVersionQuery } from "./conversations/list";

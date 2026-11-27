@@ -34,6 +34,7 @@ import {
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
 import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
+import { juniorAutomationRuns } from "@/db/schema";
 import { fixtureId } from "./ids";
 import type { InboxItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
@@ -275,11 +276,10 @@ export async function insertInboxItem(args: {
   assignee?: SlackAuthor;
   automationId?: string;
   body: string;
-  dedupeKey: string;
   destination: SlackChannel;
   kind: InboxItemContent["kind"];
   request?: InboxItemContent["request"];
-  subject?: InboxItemContent["subject"];
+  subject: InboxItemContent["subject"];
   title: string;
 }): Promise<{ id: string }> {
   const identity = await insertSlackIdentity(resolveAuthor(args.assignee));
@@ -287,23 +287,31 @@ export async function insertInboxItem(args: {
     throw new Error("insertInboxItem() needs an assignee with a User");
   }
   const conversationId = await insertCreationThread(args.destination);
+  // The item belongs to the Automation whose run owns its Conversation.
+  if (args.automationId) {
+    await getDb()
+      .insert(juniorAutomationRuns)
+      .values({
+        automationId: args.automationId,
+        completedAtMs: Date.now() - 60_000,
+        conversationId,
+        id: fixtureId("automation-run", 20),
+        status: "completed",
+      });
+  }
   const item = await insertStoredInboxItem(getDb(), {
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [identity.userId],
     body: args.body,
     conversationIds: [conversationId],
-    dedupeKey: args.dedupeKey,
     kind: args.kind,
     nowMs: Date.now() - 60_000,
-    tenant: { provider: "slack", providerTenantId: args.destination.teamId },
+    subject: args.subject,
     title: args.title,
-    visibility: "public",
-    ...(args.automationId ? { automationId: args.automationId } : undefined),
     ...(args.request ? { request: args.request } : undefined),
-    ...(args.subject ? { subject: args.subject } : undefined),
   });
-  if (!item) throw new Error(`Inbox item ${args.dedupeKey} is already open`);
+  if (!item) throw new Error(`Inbox item ${args.subject.id} is already open`);
   return { id: item.id };
 }
 
@@ -324,11 +332,10 @@ export async function insertWebInboxItem(args: {
     assigneeUserIds: [user.id],
     body: args.item.body,
     conversationIds: [args.conversationId],
-    dedupeKey: `ask:${fixtureId("inbox-item", 20)}`,
     kind: args.item.request ? "action" : "notice",
     nowMs: Date.now() - 60_000,
+    subject: { id: fixtureId("inbox-item", 20), kind: "question" },
     title: args.item.title,
-    visibility: "public",
     ...(args.item.request ? { request: args.item.request } : undefined),
   });
   if (!item) throw new Error(`Inbox item ${args.item.title} is already open`);

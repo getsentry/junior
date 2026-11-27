@@ -3,16 +3,12 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import {
-  isLeadConversation,
-  readMentionedUserIds,
-  resolveRootConversationId,
-} from "@/chat/conversations/sql/participants";
-import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
+import { isLeadConversation } from "@/chat/conversations/sql/participants";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorUsers,
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type {
@@ -52,7 +48,7 @@ import {
  * - Given the last subscriber, when they unsubscribe, then the root and its
  *   unarchived descendants are archived for everyone. No feed shows it
  *   anymore. The person who started the Conversation is a subscriber before
- *   they post in it, because their first Turn adds their Participant row.
+ *   they post in it, because starting it adds their Participant row.
  * - Given an archived root, when a person restores it (any Message that
  *   restores an archive, or Unarchive), then that person is subscribed
  *   again. A restored root never sits in no feed.
@@ -61,19 +57,23 @@ import {
  *   Conversation. The dashboard conversation menu, the agent tool, and the
  *   MCP tool act only on the signed-in person or the Turn actor. No argument
  *   of theirs names a person.
+ * - Given a public root, when a person who is not a Participant Joins it
+ *   (Subscribe), then they become a subscribed Participant. A Slack Message
+ *   adds its author too. A dashboard or other web Message does not: on the
+ *   web a person joins explicitly.
  * - Given a public Conversation that a person can add Messages to, when
- *   they Invite a person they mention, or send a dashboard or Slack Message
- *   that mentions them, then that person becomes a subscribed Participant.
- *   A dashboard Message adds them when it is accepted. Any Message adds them
- *   when it starts or joins a Turn, like its author. This is the only way to
- *   subscribe another person. It gives no access: anyone can already read a
- *   public Conversation and join it by posting.
+ *   they Invite a person, then that person becomes a subscribed
+ *   Participant. This is the only way to subscribe another person. A
+ *   mention in a dashboard or Slack Message adds nobody. Invite gives no
+ *   access: anyone can already read a public Conversation and join it.
+ * - Invite names a User of this install, the one that user search finds,
+ *   so it works the same in every Conversation, with or without Slack.
  * - Given a private Conversation, when a Participant Invites a person, then
  *   that person becomes a Participant and can read it. Only Invite does
  *   this: a mention in a Message adds nobody, so sharing private content
- *   is always an explicit act. A private Space owns its audience, and a
- *   Slack-backed private Conversation follows its Slack channel, so both
- *   refuse Invite, with the same error as a missing Conversation.
+ *   is always an explicit act. A Slack-backed private Conversation follows
+ *   its Slack channel, so it refuses Invite, with the same error as a
+ *   missing Conversation.
  * - Given a Participant, when they Leave, then they unsubscribe. In a
  *   private Conversation with its own Participant list, their row is also
  *   deleted, so they lose access until someone Invites them again.
@@ -81,15 +81,14 @@ import {
  *   another person. When they were the last subscriber, the root and its
  *   unarchived descendants are archived for everyone.
  * - Given any Invite, an archived root refuses it, because no
- *   feed shows it and a restore is for everyone. A Message that mentions
- *   someone in an archived root still adds them, because that Message
- *   restores the root. The mention names a Slack user of the Conversation's
- *   workspace. An existing Participant keeps their row, so Invite does not
+ *   feed shows it and a restore is for everyone. The mention names a Slack
+ *   user of the Conversation's workspace. An existing Participant keeps their row, so Invite does not
  *   undo their unsubscribe. Nobody can unsubscribe another person.
  *
  * Rules that follow:
- * - A subscription belongs to the root, like a pin. A child id resolves to
- *   its root.
+ * - A subscription belongs to the root, like a pin. Only a root can be
+ *   joined, left, or unsubscribed: a child, such as a Space's Thread under
+ *   its Lead, follows its root's subscription.
  * - Unsubscribe clears the person's pin. Subscribe does not restore an
  *   archive.
  * - A last-subscriber archive and a concurrent mention or pin are ordered by
@@ -103,6 +102,9 @@ import {
  *   `chat/tools/conversation-subscription.ts`, and
  *   `api/mcp/tools/set-conversation-subscription.ts`.
  */
+
+const NOT_ROOT_MESSAGE =
+  "Only a root conversation has a subscription. Change it on the root.";
 
 /**
  * Subscribe a person to a Conversation, or unsubscribe them, for the HTTP
@@ -118,31 +120,34 @@ export async function setConversationSubscription(
     conversationId,
     body.subscribed,
   );
-  if (!result) throwApiError(404, "Conversation not found.");
+  if (result === "not_participant") {
+    throwApiError(404, "Conversation not found.");
+  }
+  if (result === "not_root") throwApiError(409, NOT_ROOT_MESSAGE);
   return result;
 }
 
 /**
- * Subscribe a person to a Conversation, or unsubscribe them. Every caller
- * passes the person who asked, so nobody changes another person's
- * subscription. Returns undefined when the person is not a participant.
+ * Subscribe a person to a root Conversation, or unsubscribe them. Every
+ * caller passes the person who asked, so nobody changes another person's
+ * subscription. Refuses a person who is not a participant, and a child,
+ * which follows its root's subscription.
  */
 export async function updateConversationSubscription(
   person: User,
   conversationId: string,
   subscribed: boolean,
-): Promise<ConversationSubscriptionResponse | undefined> {
-  const access = await readConversationAccessFromSql(
-    getDb(),
-    [conversationId],
-    person,
-  );
-  if (!access.get(conversationId)?.isParticipant) return undefined;
+): Promise<ConversationSubscriptionResponse | "not_participant" | "not_root"> {
+  const access = (
+    await readConversationAccessFromSql(getDb(), [conversationId], person)
+  ).get(conversationId);
+  // A person joins a public root explicitly. A Message on the web does not
+  // add its author.
+  const joins = subscribed && access?.visibility === "public";
+  if (!access || (!access.isParticipant && !joins)) return "not_participant";
+  if (access.rootConversationId !== conversationId) return "not_root";
+  const rootConversationId = conversationId;
   const executor = getSqlExecutor();
-  const rootConversationId = await resolveRootConversationId(
-    executor,
-    conversationId,
-  );
   return await executor.transaction(async () => {
     const db = executor.db();
     // Unsubscribes, pins, archives, and Turns in the root itself all lock the
@@ -158,7 +163,7 @@ export async function updateConversationSubscription(
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .for("no key update");
-    if (!root) return undefined;
+    if (!root) return "not_participant";
     const unsubscribedAt = subscribed ? null : new Date();
     // The detail ETag and the feed version read the subscription on each
     // request.
@@ -209,15 +214,20 @@ export async function leaveConversation(
   if (!rootConversationId || !access.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  // Where the Conversation is public, or a Space or Slack channel decides
-  // who reads it, Leave only takes it out of the viewer's feed.
+  if (rootConversationId !== conversationId) {
+    throwApiError(409, NOT_ROOT_MESSAGE);
+  }
+  // Where the Conversation is public, or a Slack channel decides who reads
+  // it, Leave only takes it out of the viewer's feed.
   if (!leaveEndsAccess(access)) {
     const result = await updateConversationSubscription(
       viewer,
       conversationId,
       false,
     );
-    if (!result) throwApiError(404, "Conversation not found.");
+    if (typeof result === "string") {
+      throwApiError(404, "Conversation not found.");
+    }
     return { archivedAt: result.archivedAt };
   }
   const executor = getSqlExecutor();
@@ -292,7 +302,7 @@ async function archiveWithoutSubscribers(
 }
 
 /**
- * Invite a mentioned person into a Conversation's feed, for the HTTP API. The contract is in the comment above. `added` is false when the
+ * Invite a User into a Conversation's feed, for the HTTP API. The contract is in the comment above. `added` is false when the
  * person was already a Participant.
  */
 export async function inviteToConversation(
@@ -302,50 +312,18 @@ export async function inviteToConversation(
 ): Promise<ConversationInviteResponse> {
   const conversation = await readInvitableConversation(viewer, conversationId);
   if (!conversation) throwApiError(404, "Conversation not found.");
-  const [userId] = await readMentionedUserIds(
-    getSqlExecutor(),
-    [body.slackUserId],
-    conversation.slackTeamId,
-  );
-  if (!userId) throwApiError(404, "Person not found.");
+  const [user] = await getDb()
+    .select({ id: juniorUsers.id })
+    .from(juniorUsers)
+    .where(eq(juniorUsers.id, body.userId))
+    .limit(1);
+  if (!user) throwApiError(404, "Person not found.");
   const added = await addInvitedParticipants(
     conversation.rootConversationId,
-    [userId],
+    [user.id],
     { refuseArchived: true },
   );
   return { added: added > 0 };
-}
-
-/**
- * Invite each person that a viewer's Message mentions, as if the viewer
- * chose Invite on each mention. The contract is in the comment above, with
- * one change: an archived root still adds them, because the Message itself
- * restores the root. A mention of someone who is not a User adds nobody.
- */
-export async function inviteMentionedPeople(
-  viewer: User,
-  conversationId: string,
-  text: string,
-): Promise<void> {
-  const slackUserIds = slackMentionedUserIds(text);
-  if (slackUserIds.length === 0) return;
-  const conversation = await readInvitableConversation(viewer, conversationId);
-  // A mention never shares a private Conversation. Only Invite does.
-  if (conversation?.visibility !== "public") return;
-  // The Participants of a Lead are its Space's members, and a person joins
-  // a Space on purpose, so a mention there adds nobody.
-  if (await isLeadConversation(getDb(), conversation.rootConversationId)) {
-    return;
-  }
-  const userIds = await readMentionedUserIds(
-    getSqlExecutor(),
-    slackUserIds,
-    conversation.slackTeamId,
-  );
-  if (userIds.length === 0) return;
-  await addInvitedParticipants(conversation.rootConversationId, userIds, {
-    refuseArchived: false,
-  });
 }
 
 /**

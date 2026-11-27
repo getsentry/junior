@@ -7,6 +7,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   lte,
   sql,
   type SQL,
@@ -138,6 +139,27 @@ function emptyStatusDay(date: string): AutomationExecutionStatusDay {
  */
 export function existingConversationId(conversationId: string): SQL {
   return sql`(select ${juniorConversations.conversationId} from ${juniorConversations} where ${juniorConversations.conversationId} = ${conversationId})`;
+}
+
+/**
+ * Link an Automation run to its Conversation as soon as that Conversation
+ * exists, before the run's agent can act. An Inbox item names its Automation
+ * through this link, so an item that the run adds is the Automation's at
+ * once. A run that is linked already keeps its link.
+ */
+export async function linkAutomationRunConversation(args: {
+  conversationId: string;
+  runId: string;
+}): Promise<void> {
+  await getDb()
+    .update(juniorAutomationRuns)
+    .set({ conversationId: existingConversationId(args.conversationId) })
+    .where(
+      and(
+        eq(juniorAutomationRuns.id, args.runId),
+        isNull(juniorAutomationRuns.conversationId),
+      ),
+    );
 }
 
 /**

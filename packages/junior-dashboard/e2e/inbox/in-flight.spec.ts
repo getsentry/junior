@@ -92,7 +92,7 @@ test.describe("new UI", () => {
     await outlineRead;
   });
 
-  test("In flight shows every pin first, in the stored order, and Show all lists the rest", async ({
+  test("In flight shows every pin first, in the stored order, and Show all lists the rest, with no child or Lead", async ({
     dashboard,
     page,
   }) => {
@@ -102,6 +102,8 @@ test.describe("new UI", () => {
         index: number,
         displayTitle: string,
         fields: {
+          kind?: "lead";
+          parentConversationId?: string;
           pinnedAt: string | null;
           pinPosition?: number;
           status: string;
@@ -137,6 +139,24 @@ test.describe("new UI", () => {
               pinnedAt: "2026-08-07T10:00:00.000Z",
               pinPosition: 0,
               status: "done",
+            }),
+            // Only roots that are not a Lead show, so a Space's Threads
+            // show on its page, and the Space in the Spaces list.
+            conversation(8, "Running Space thread", {
+              parentConversationId: "lead:space-billing",
+              pinnedAt: null,
+              status: "working",
+            }),
+            conversation(9, "Pinned Space thread", {
+              parentConversationId: "lead:space-billing",
+              pinnedAt: "2026-08-07T10:00:00.000Z",
+              pinPosition: 2,
+              status: "working",
+            }),
+            conversation(10, "Running Lead", {
+              kind: "lead",
+              pinnedAt: null,
+              status: "working",
             }),
           ],
           nextCursor: undefined,

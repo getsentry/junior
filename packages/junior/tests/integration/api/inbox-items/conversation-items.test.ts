@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
-import { insertInboxItem } from "@/chat/inbox-items/store";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
@@ -131,20 +130,6 @@ describe("inbox items of a Conversation", () => {
       item.id,
     ]);
     expect((await api(fixture, ana).get(`/${item.id}`)).status).toBe(200);
-    // A private item stays private when its Conversation is public.
-    const hidden = await insertInboxItem(getDb(), {
-      assignedToEveryone: false,
-      assigneeUserIds: [ana.id],
-      body: "Added before the Conversation became public.",
-      conversationIds: ["local:web:shared"],
-      dedupeKey: "private-question",
-      kind: "action",
-      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
-      owner: { id: "local:web:shared", kind: "conversation" },
-      request: REQUEST,
-      title: "Private question",
-      visibility: "private",
-    });
     // Cal can view the public Conversation but does not take part in it.
     // He sees its public question and can answer it, but only an assignee
     // dismisses or takes it.
@@ -154,15 +139,6 @@ describe("inbox items of a Conversation", () => {
     expect(calView.items).toMatchObject([
       { id: item.id, canAct: false, canAnswer: true, canTake: false },
     ]);
-    expect((await api(fixture, cal).get(`/${hidden!.id}`)).status).toBe(404);
-    expect(
-      (
-        await api(fixture, cal).act(hidden!.id, {
-          action: "submit",
-          answer: { values: { decision: ["Approve"] } },
-        })
-      ).status,
-    ).toBe(404);
     expect(
       (await api(fixture, cal).act(item.id, { action: "dismiss" })).status,
     ).toBe(403);

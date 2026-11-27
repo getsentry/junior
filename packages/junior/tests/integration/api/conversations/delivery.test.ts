@@ -7,8 +7,13 @@ import { conversationDeliveryResponseSchema } from "@/api/schema";
 import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { slackApiOutbox } from "../../../fixtures/slack-api-outbox";
+import { buildJuniorSqlConversation } from "../../../fixtures/sql";
 import { chatPostMessageOk } from "../../../fixtures/slack/factories/api";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
@@ -130,5 +135,43 @@ describe("conversation delivery API", () => {
     await expect(isConversationDeliveryPaused(conversationId)).resolves.toBe(
       false,
     );
+  });
+
+  it("reads a pause from the top-level Conversation, not from a Lead above it", async () => {
+    const lead = "local:test:delivery-lead";
+    const thread = "slack:C123:1700000000.000300";
+    const task = "local:test:delivery-task";
+    await getDb()
+      .insert(juniorConversations)
+      .values([
+        buildJuniorSqlConversation({ conversationId: lead, kind: "lead" }),
+        buildJuniorSqlConversation({
+          conversationId: thread,
+          parentConversationId: lead,
+          rootConversationId: lead,
+        }),
+        buildJuniorSqlConversation({
+          conversationId: task,
+          kind: "task",
+          parentConversationId: thread,
+          rootConversationId: lead,
+        }),
+      ]);
+    const pause = (conversationId: string, at: Date | null) =>
+      getDb()
+        .update(juniorConversations)
+        .set({ deliveryPausedAt: at })
+        .where(eq(juniorConversations.conversationId, conversationId));
+
+    // A paused Lead does not detach the Slack Conversations in its Space.
+    await pause(lead, new Date(1_000));
+    await expect(isConversationDeliveryPaused(lead)).resolves.toBe(true);
+    await expect(isConversationDeliveryPaused(thread)).resolves.toBe(false);
+    await expect(isConversationDeliveryPaused(task)).resolves.toBe(false);
+
+    // A detached Slack Conversation in a Space detaches its child agents.
+    await pause(lead, null);
+    await pause(thread, new Date(1_000));
+    await expect(isConversationDeliveryPaused(task)).resolves.toBe(true);
   });
 });

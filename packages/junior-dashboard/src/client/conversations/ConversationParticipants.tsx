@@ -48,7 +48,7 @@ export function ConversationParticipants(props: {
     await post(
       conversationInviteResponseSchema,
       `/api/conversations/${encodeURIComponent(props.conversationId)}/invites`,
-      { slackUserId: user.slackUserId },
+      { userId: user.userId },
     );
   };
   return (

@@ -40,7 +40,7 @@ export const messageAgentToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .describe(
-          `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from startAgent or listAgents, or the conversation_id of another top-level agent, such as one from listAgents, searchConversations, or slackThreadRead`,
+          `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from startAgent or listAgents, or the conversation_id of another top-level agent, such as one from listAgents or slackThreadRead`,
         ),
       text: z
         .string()

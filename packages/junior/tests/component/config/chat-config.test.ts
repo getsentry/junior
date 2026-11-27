@@ -757,3 +757,82 @@ describe("Slack reaction emoji options", () => {
     ).toBe("white_check_mark");
   });
 });
+
+describe("sandbox config", () => {
+  const sandboxConfig = (
+    env: Record<string, string>,
+    sandbox?: ConfigInput["sandbox"],
+  ) =>
+    loadConfig({ env: { ...BASE_ENV, ...env }, options: { sandbox } }).sandbox;
+
+  it("prefers the createApp vCPU option over SANDBOX_VCPUS", () => {
+    expect(sandboxConfig({ SANDBOX_VCPUS: "2" }, { vcpus: 4 }).vcpus).toBe(4);
+    expect(sandboxConfig({ SANDBOX_VCPUS: " 2 " }).vcpus).toBe(2);
+    expect(sandboxConfig({}).vcpus).toBeUndefined();
+  });
+
+  it("ignores invalid SANDBOX_VCPUS values", () => {
+    for (const value of ["", "0", "-1", "1.5", "two", "99999999999999999"]) {
+      expect(sandboxConfig({ SANDBOX_VCPUS: value }).vcpus).toBeUndefined();
+    }
+  });
+
+  it("rejects an invalid vCPU option", () => {
+    for (const vcpus of [0, -1, 1.5, Number.NaN]) {
+      expect(() => sandboxConfig({}, { vcpus })).toThrow(
+        /^sandbox\.vcpus must be a positive integer$/,
+      );
+    }
+  });
+
+  it("parses the keepalive and turns invalid values off", () => {
+    expect(
+      sandboxConfig({ VERCEL_SANDBOX_KEEPALIVE_MS: "5000" }).keepAliveMs,
+    ).toBe(5000);
+    expect(
+      sandboxConfig({ VERCEL_SANDBOX_KEEPALIVE_MS: " 5000ms" }).keepAliveMs,
+    ).toBe(5000);
+    for (const value of ["", "-5", "soon"]) {
+      expect(
+        sandboxConfig({ VERCEL_SANDBOX_KEEPALIVE_MS: value }).keepAliveMs,
+      ).toBe(0);
+    }
+    expect(sandboxConfig({}).keepAliveMs).toBe(0);
+  });
+
+  it("parses snapshot freshness settings", () => {
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    expect(sandboxConfig({}).snapshot).toEqual({
+      floatingMaxAgeMs: sevenDaysMs,
+      rebuildEpoch: "",
+    });
+    expect(
+      sandboxConfig({
+        SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS: "0",
+        SANDBOX_SNAPSHOT_REBUILD_EPOCH: " epoch-a ",
+      }).snapshot,
+    ).toEqual({ floatingMaxAgeMs: 0, rebuildEpoch: "epoch-a" });
+    for (const value of [" ", "-1", "later"]) {
+      expect(
+        sandboxConfig({ SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS: value }).snapshot
+          .floatingMaxAgeMs,
+      ).toBe(sevenDaysMs);
+    }
+  });
+
+  it("trims Docker and Vercel provider settings", () => {
+    const config = sandboxConfig({
+      DOCKER_HOST: " unix:///tmp/docker.sock ",
+      JUNIOR_DOCKER_SANDBOX_DIR: " ",
+      JUNIOR_DOCKER_SANDBOX_EXTRA_CA_CERTS: " /etc/ca.pem ",
+      VERCEL_TOKEN: " tk ",
+      VERCEL_TEAM_ID: "",
+      VERCEL_PROJECT_ID: "pj",
+    });
+    expect(config.docker).toEqual({
+      host: "unix:///tmp/docker.sock",
+      extraCaCertsFile: "/etc/ca.pem",
+    });
+    expect(config.vercel).toEqual({ token: "tk", projectId: "pj" });
+  });
+});

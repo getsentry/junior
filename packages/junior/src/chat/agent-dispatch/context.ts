@@ -16,6 +16,7 @@ import { createPluginConversationChanges } from "@/chat/plugins/conversation-cha
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
+import { createPluginUsers } from "@/chat/plugins/viewer";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import type { SendPluginTask } from "@/chat/plugins/task-runner";
@@ -151,6 +152,7 @@ export function createHeartbeatContext(args: {
       send: args.sendPluginTask,
       tasks: typeof args.plugin === "string" ? undefined : args.plugin.tasks,
     }),
+    users: createPluginUsers(pluginName),
     log: createPluginLogger(pluginName),
     agent: {
       async dispatch(options) {
@@ -186,6 +188,14 @@ export function createHeartbeatContext(args: {
   };
 }
 
+// Also the signed credential binding label of event automations.
+const EVENT_AUTOMATION_PLUGIN = "junior";
+
+/** The dispatch id of an event automation run, which is also its run id. */
+export function eventAutomationDispatchId(idempotencyKey: string): string {
+  return buildDispatchId(EVENT_AUTOMATION_PLUGIN, idempotencyKey);
+}
+
 /** Create and enqueue one core-owned event automation dispatch. */
 export async function dispatchEventAutomation(args: {
   automationId: string;
@@ -200,7 +210,7 @@ export async function dispatchEventAutomation(args: {
     };
   };
 }) {
-  const plugin = "junior";
+  const plugin = EVENT_AUTOMATION_PLUGIN;
   const { credentialSubject, outcomes, skill, ...unboundOptions } =
     args.options;
   validateDispatchOptions({ ...unboundOptions });
@@ -222,7 +232,7 @@ export async function dispatchEventAutomation(args: {
       kind: "event_automation",
       automationId: args.automationId,
       // An event automation run id is its dispatch id.
-      automationRunId: buildDispatchId(plugin, unboundOptions.idempotencyKey),
+      automationRunId: eventAutomationDispatchId(unboundOptions.idempotencyKey),
     },
   };
   return await dispatch({

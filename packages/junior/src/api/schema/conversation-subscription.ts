@@ -35,9 +35,9 @@ export const conversationLeaveResponseSchema = z
   })
   .strict();
 
-/** Invite one mentioned person, by Slack user id, to a Conversation. */
+/** Invite one User, by the id that user search returns, to a Conversation. */
 export const conversationInviteBodySchema = z
-  .object({ slackUserId: z.string().min(1).max(64) })
+  .object({ userId: z.string().min(1).max(64) })
   .strict();
 
 /** `added` is false when the person was already a Participant. */

@@ -45,6 +45,11 @@ async function loadInstrumentationModule() {
     getClient: () => undefined,
     init,
     getGlobalScope: () => globalScope,
+    nativeNodeFetchIntegration: (options: unknown) => ({
+      name: "NodeFetch",
+      options,
+      setupOnce: () => {},
+    }),
   }));
   const instrumentation = await import("@/instrumentation");
   return { init, globalScope, instrumentation };
@@ -109,8 +114,26 @@ describe("initSentry", () => {
         { name: "PiAi", setupOnce: () => {} },
         { name: "VercelAI", setupOnce: () => {} },
         { name: "Dedupe", setupOnce: () => {} },
+        { name: "NodeFetch", setupOnce: () => {} },
       ]),
-    ).toEqual([http]);
+    ).toEqual([
+      http,
+      {
+        name: "NodeFetch",
+        options: {
+          headersToSpanAttributes: {
+            responseHeaders: [
+              "x-ratelimit-limit",
+              "x-ratelimit-remaining",
+              "x-ratelimit-reset",
+              "x-ratelimit-resource",
+              "x-ratelimit-used",
+            ],
+          },
+        },
+        setupOnce: expect.any(Function),
+      },
+    ]);
     const span: {
       attributes: Record<string, unknown>;
       end_timestamp: number;

@@ -17,7 +17,9 @@ import {
   juniorInboxItems,
 } from "@/db/schema";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
+import { listOpenAutomationQuestions } from "@/chat/inbox-items/automation-questions";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
@@ -29,8 +31,15 @@ type Context = Pick<
 >;
 
 // Parse the input first, as the agent runtime does.
-async function execute(tool: any, input: unknown): Promise<any> {
-  return await tool.execute(tool.prepareArguments(input), {} as any);
+async function execute(
+  tool: any,
+  input: unknown,
+  toolCallId?: string,
+): Promise<any> {
+  return await tool.execute(
+    tool.prepareArguments(input),
+    (toolCallId ? { toolCallId } : {}) as any,
+  );
 }
 
 const queue = createConversationWorkQueueTestAdapter();
@@ -95,12 +104,25 @@ function automationRun(conversationId: string, turnId?: string): Context {
   };
 }
 
+// The copy of a question item's content that the release before this one
+// reads on the item.
+async function legacyCopy(id: string) {
+  const [row] = await getDb()
+    .select({
+      answer: juniorInboxItems.answer,
+      title: juniorInboxItems.title,
+    })
+    .from(juniorInboxItems)
+    .where(eq(juniorInboxItems.id, id));
+  return row;
+}
+
 describe("inbox item tools", () => {
   afterEach(async () => {
     await closeDb();
   });
 
-  it("updates one open item per dedupe key across Automation runs", async () => {
+  it("changes a question of an earlier run by its id", async () => {
     await conversation("slack:CPUB:1.000001", "CPUB", "public");
     await conversation("slack:CPUB:1.000002", "CPUB", "public");
     const ana = await user("ana@example.com");
@@ -112,14 +134,14 @@ describe("inbox item tools", () => {
       title: "Review acme entry",
       body: "The acme entry changed its license.",
       assignees: ["ana@example.com", "ben@example.com"],
-      dedupe_key: "fair-source:entry:acme",
       request: REQUEST,
-      subject: { id: "https://github.com/example/list/pull/7" },
     };
 
     await expect(
       execute(first.add, { ...add, request: undefined }),
-    ).rejects.toThrow("An action item needs a `request`.");
+    ).rejects.toThrow(
+      "An action item needs a `request` with a `question` and `fields`.",
+    );
     const recommendBoth = {
       ...REQUEST,
       fields: [
@@ -135,39 +157,63 @@ describe("inbox item tools", () => {
     await expect(
       execute(first.add, { ...add, request: recommendBoth }),
     ).rejects.toThrow("can recommend only one option");
-    const added = await execute(first.add, add);
-    const again = await execute(second.add, {
-      ...add,
+    const added = await execute(first.add, add, "call-1");
+    // A Turn replays a call that committed before its result was saved, and
+    // the replay returns the item that the call added.
+    const replayed = await execute(first.add, add, "call-1");
+    expect(replayed.item.id).toBe(added.item.id);
+    // Each add asks a new question, with its own id.
+    expect(added.item.subject).toEqual({
+      id: expect.stringMatching(/^ask:/),
+      kind: "question",
+    });
+    const again = await execute(second.update, {
+      id: added.item.id,
       title: "Review acme entry again",
       assignees: ["ana@example.com"],
     });
-
-    expect(added.created).toBe(true);
-    expect(again).toMatchObject({
-      created: false,
-      item: {
-        id: added.item.id,
-        title: "Review acme entry again",
-        assignees: ["ana@example.com"],
-        conversation_ids: ["slack:CPUB:1.000001", "slack:CPUB:1.000002"],
-        visibility: "public",
+    expect(again.item).toMatchObject({
+      id: added.item.id,
+      title: "Review acme entry again",
+      assignees: ["ana@example.com"],
+      visibility: "public",
+    });
+    expect(await legacyCopy(added.item.id)).toMatchObject({
+      title: "Review acme entry again",
+    });
+    // A later run changes the choices of the question by its id.
+    const changed = await execute(second.update, {
+      id: added.item.id,
+      request: {
+        ...REQUEST,
+        fields: [
+          {
+            ...REQUEST.fields[0],
+            options: [{ label: "Approve" }, { label: "Hold" }],
+          },
+        ],
       },
     });
-    // The item points to the Turn that added it. An add from another
-    // Conversation keeps that Turn; a later add in the same Conversation
-    // moves it to the newer Turn.
+    expect(changed.item.request.fields[0].options).toEqual([
+      { label: "Approve" },
+      { label: "Hold" },
+    ]);
+    await expect(
+      execute(second.update, {
+        id: added.item.id,
+        request: {
+          related: [{ label: "Spec", url: "https://example.com/spec" }],
+        },
+      }),
+    ).rejects.toThrow(
+      "An action item needs a `request` with a `question` and `fields`.",
+    );
+    // The item points to the Turn that asked it, not the one that changed it.
     expect((await getInboxItem(getDb(), added.item.id))?.addedByTurnId).toBe(
       "turn-1",
     );
-    await execute(
-      tools(automationRun("slack:CPUB:1.000001", "turn-3")).add,
-      add,
-    );
-    expect((await getInboxItem(getDb(), added.item.id))?.addedByTurnId).toBe(
-      "turn-3",
-    );
 
-    // A person in another public Conversation finds it by subject.
+    // A person in another public Conversation finds it by its question id.
     await conversation("slack:COTHER:1.000003", "COTHER", "public");
     const reader = tools({
       conversationId: "slack:COTHER:1.000003",
@@ -175,7 +221,7 @@ describe("inbox item tools", () => {
       source: { kind: "web", conversationId: "web:1" } as any,
     });
     const found = await execute(reader.search, {
-      subject_id: "https://github.com/example/list/pull/7",
+      subject_id: added.item.subject.id,
     });
     expect(found.items.map((item: any) => item.id)).toEqual([added.item.id]);
     expect(
@@ -209,9 +255,7 @@ describe("inbox item tools", () => {
       source: { kind: "slack" } as any,
     });
     expect((await execute(outsider.search, {})).count).toBe(0);
-    // Dedupe keys are per workspace, so the same key is a new item there.
     const theirs = await execute(outsider.add, add);
-    expect(theirs.created).toBe(true);
     expect(theirs.item.id).not.toBe(added.item.id);
     await expect(
       execute(outsider.update, {
@@ -242,7 +286,6 @@ describe("inbox item tools", () => {
       kind: "notice",
       title: "Rotate the key",
       body: "The deploy key expires on Friday.",
-      dedupe_key: "deploy-key",
     };
 
     await expect(
@@ -299,23 +342,12 @@ describe("inbox item tools", () => {
     await expect(
       execute(other.update, { id: added.item.id, title: "Mine now" }),
     ).rejects.toThrow("is not found");
-    await expect(
-      execute(other.add, { ...notice, assignees: ["ben@example.com"] }),
-    ).rejects.toThrow("Another open item uses this `dedupe_key`");
-    // A private Conversation cannot write into a public item, by its key
-    // or by an update, because other Conversations read that item.
+    // A private Conversation cannot write into a public item, because other
+    // Conversations read that item.
     const shared = await execute(other.add, {
       ...notice,
-      dedupe_key: "shared-key",
       assignees: ["everyone"],
     });
-    await expect(
-      execute(owner.add, {
-        ...notice,
-        dedupe_key: "shared-key",
-        assignees: ["ana@example.com"],
-      }),
-    ).rejects.toThrow("Use a different key.");
     await expect(
       execute(owner.update, { id: shared.item.id, body: "Private detail." }),
     ).rejects.toThrow("A public item changes only from a public Conversation");
@@ -323,7 +355,6 @@ describe("inbox item tools", () => {
     await expect(
       execute(other.add, {
         ...notice,
-        dedupe_key: "other-key",
         assignees: ["ben@example.com"],
         conversation_ids: ["slack:CPRIV:1.000001"],
       }),
@@ -376,12 +407,18 @@ describe("inbox item tools", () => {
           kind: "scheduled_automation",
         } as any,
       });
+    // Each run's row links its Conversation before the run acts, so later
+    // runs know the items that it added.
+    const started = (conversationId: string) =>
+      recordAutomationExecution("auto-digest", {
+        conversationId,
+        executionId: `run-${conversationId}`,
+      });
     const notice = {
       kind: "notice",
       title: "Digest needs a look",
       body: "Two entries changed.",
       assignees: ["ana@example.com"],
-      dedupe_key: "digest",
     };
 
     // A new run has no Actor and no people yet. It assigns the creator of
@@ -391,40 +428,40 @@ describe("inbox item tools", () => {
     const fresh = await execute(run("slack:DRUN:1.000003").add, {
       ...notice,
       assignees: undefined,
-      dedupe_key: "digest-fresh",
     });
     expect(fresh.item.assignees).toEqual(["ana@example.com"]);
     await expect(
       execute(run("slack:DRUN:1.000003").add, {
         ...notice,
         assignees: ["ben@example.com"],
-        dedupe_key: "digest-other",
       }),
     ).rejects.toThrow("only to people in its Conversation");
 
+    await started("slack:DRUN:1.000001");
     const added = await execute(run("slack:DRUN:1.000001").add, notice);
+    // A later run gets the open questions of earlier runs in its task.
+    expect(await listOpenAutomationQuestions(getDb(), "auto-digest")).toEqual([
+      { id: added.item.id, title: "Digest needs a look" },
+    ]);
     // Ana took part only in the first run, which added the item.
-    const again = await execute(run("slack:DRUN:1.000002").add, notice);
-    expect(again).toMatchObject({
-      created: false,
-      item: { id: added.item.id, assignees: ["ana@example.com"] },
+    const again = await execute(run("slack:DRUN:1.000002").update, {
+      id: added.item.id,
+      body: "Three entries changed.",
+    });
+    expect(again.item).toMatchObject({
+      body: "Three entries changed.",
+      assignees: ["ana@example.com"],
     });
 
     // A run in a private Conversation cannot write into the public item of
-    // an earlier run, by its key or by an update.
+    // an earlier run.
     await conversation("slack:CPUB:1.000009", "CPUB", "public");
+    await started("slack:CPUB:1.000009");
     const shared = await execute(run("slack:CPUB:1.000009").add, {
       ...notice,
       assignees: ["everyone"],
-      dedupe_key: "digest-public",
     });
     expect(shared.item.visibility).toBe("public");
-    await expect(
-      execute(run("slack:DRUN:1.000002").add, {
-        ...notice,
-        dedupe_key: "digest-public",
-      }),
-    ).rejects.toThrow("Use a different key.");
     await expect(
       execute(run("slack:DRUN:1.000002").update, {
         id: shared.item.id,
@@ -466,10 +503,7 @@ describe("inbox item tools", () => {
       request: REQUEST,
     };
 
-    const added = await execute(eventTurn("local:web:shared").add, {
-      ...ask,
-      dedupe_key: "both",
-    });
+    const added = await execute(eventTurn("local:web:shared").add, ask);
     expect(added.item).toMatchObject({ visibility: "private" });
     expect([...added.item.assignees].sort()).toEqual([ana.email, ben.email]);
 
@@ -479,10 +513,7 @@ describe("inbox item tools", () => {
       .update(juniorConversationParticipants)
       .set({ unsubscribedAt: new Date("2026-10-01T12:10:00.000Z") })
       .where(eq(juniorConversationParticipants.userId, ana.id));
-    const left = await execute(eventTurn("local:web:shared").add, {
-      ...ask,
-      dedupe_key: "ben",
-    });
+    const left = await execute(eventTurn("local:web:shared").add, ask);
     expect(left.item.assignees).toEqual([ben.email]);
 
     // With no Participant, no person would see the item.
@@ -513,15 +544,15 @@ describe("inbox item tools", () => {
       resolveActorIdentity: asActor(app),
       source: { kind: "slack" } as any,
     });
-    await expect(
-      execute(appTurn.add, { ...ask, dedupe_key: "app" }),
-    ).rejects.toThrow("Only people act on items");
+    const before = await getDb()
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems);
+    await expect(execute(appTurn.add, ask)).rejects.toThrow(
+      "Only people act on items",
+    );
     expect(
-      await getDb()
-        .select({ id: juniorInboxItems.id })
-        .from(juniorInboxItems)
-        .where(eq(juniorInboxItems.dedupeKey, "app")),
-    ).toEqual([]);
+      await getDb().select({ id: juniorInboxItems.id }).from(juniorInboxItems),
+    ).toEqual(before);
   });
 
   it("lets an agent close an item once, with a reason", async () => {
@@ -535,7 +566,6 @@ describe("inbox item tools", () => {
       body: "It waits on a reviewer.",
       assignees: ["everyone"],
       conversation_ids: ["slack:CPUB:1.000002"],
-      dedupe_key: "pr:7",
     });
 
     await expect(
@@ -583,16 +613,6 @@ describe("inbox item tools", () => {
     expect(again).toEqual({ already_closed: true, item: closed.item });
     expect((await execute(agent.search, {})).count).toBe(0);
     expect((await execute(agent.search, { status: "any" })).count).toBe(1);
-
-    // A closed key can start a new item.
-    const next = await execute(agent.add, {
-      kind: "notice",
-      title: "Pull request needs review",
-      body: "It reopened.",
-      assignees: ["everyone"],
-      dedupe_key: "pr:7",
-    });
-    expect(next.created).toBe(true);
   });
 
   it("keeps a person's close when the agent closes the item after them", async () => {
@@ -634,6 +654,9 @@ describe("inbox item tools", () => {
         ),
       );
     const answered = await getInboxItem(getDb(), added.item.id);
+    expect(await legacyCopy(added.item.id)).toMatchObject({
+      answer: { values: { decision: ["Approve"] } },
+    });
     const before = await pending();
 
     // Ana answered it, and then the agent closes it, with any status.
@@ -689,32 +712,47 @@ describe("inbox item tools", () => {
       body: "The last run failed.",
       assignees: ["everyone"],
     };
-    // The input schema rejects a key with a prefix that core or a plugin
-    // owns, so the tool never runs.
-    for (const [key, owner] of [
-      ["automation:sched_1", "an Automation alert"],
-      ["plugin:github:pr", "a plugin"],
-      ["reply:local:web:1", "a reply notice"],
-      ["todo:slack:CPUB:1.000001:1", "a To-do"],
-    ]) {
-      expect(() =>
-        agent.add.prepareArguments!({ ...notice, dedupe_key: key }),
-      ).toThrow(`belongs to ${owner}`);
-    }
-    // An alert that core added for a public Automation.
+    // An alert that core added for an Automation of a public channel.
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        createdAt: new Date(1),
+        id: "identity:creator",
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "UCREATOR",
+        providerTenantId: "T123",
+        updatedAt: new Date(1),
+        userId: ana.id,
+      });
+    await getDb()
+      .insert(juniorAutomations)
+      .values({
+        channelId: "CPUB",
+        createdAtMs: 1,
+        creatorIdentityId: "identity:creator",
+        creatorSlackUserId: "UCREATOR",
+        id: "sched_1",
+        instruction: "Post the digest.",
+        kind: "scheduled",
+        record: {} as any,
+        status: "active",
+        teamId: "T123",
+      });
     const alert = await insertInboxItem(getDb(), {
       assignedToEveryone: false,
       assigneeUserIds: [ana.id],
       body: "Last run failed.",
       conversationIds: [],
-      dedupeKey: "automation:sched_1:run",
       kind: "action",
       nowMs: Date.now(),
       owner: { id: "sched_1", kind: "automation" },
-      tenant: { provider: "slack", providerTenantId: "T123" },
+      subject: { id: "sched_1", kind: "automation" },
       title: "Daily digest",
-      visibility: "public",
     });
+    // An agent's question is its own item, not the Automation's alert.
+    const own = await execute(agent.add, notice);
+    expect(own.item.id).not.toBe(alert!.id);
     await expect(
       execute(agent.update, {
         id: alert!.id,

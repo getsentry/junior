@@ -61,7 +61,7 @@ function optionsSchema(minOptions: number) {
     .describe("Choices in display order.");
 }
 
-function requestSchema(minOptions: number) {
+function fieldsSchema(minOptions: number) {
   const userInputFieldSchema = z.discriminatedUnion("kind", [
     z.object({
       ...fieldBase,
@@ -81,22 +81,32 @@ function requestSchema(minOptions: number) {
     }),
   ]);
   return z
+    .array(userInputFieldSchema)
+    .min(1)
+    .max(USER_INPUT_LIMITS.maxFields)
+    .describe(
+      "What to ask, in display order. Use one `choice` field for a simple decision.",
+    );
+}
+
+/** The question of a request, in markdown. */
+export const userInputQuestionSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(USER_INPUT_LIMITS.maxQuestionChars)
+  .describe(
+    "The question, in markdown. Include the facts the person needs to decide.",
+  );
+
+/** The fields of a request that an agent writes. */
+export const userInputFieldsSchema = fieldsSchema(USER_INPUT_LIMITS.minOptions);
+
+function requestSchema(minOptions: number) {
+  return z
     .object({
-      question: z
-        .string()
-        .trim()
-        .min(1)
-        .max(USER_INPUT_LIMITS.maxQuestionChars)
-        .describe(
-          "The question, in markdown. Include the facts the person needs to decide.",
-        ),
-      fields: z
-        .array(userInputFieldSchema)
-        .min(1)
-        .max(USER_INPUT_LIMITS.maxFields)
-        .describe(
-          "What to ask, in display order. Use one `choice` field for a simple decision.",
-        ),
+      question: userInputQuestionSchema,
+      fields: fieldsSchema(minOptions),
     })
     .superRefine((request, context) => {
       const ids = new Set<string>();

@@ -16,6 +16,8 @@ export type NewEventRow = {
   payload: Record<string, unknown>;
   idempotencyKey?: string | undefined;
   actorIdentityId?: string | undefined;
+  /** The Turn that writes the row, when a Turn writes it. */
+  turnId?: string | undefined;
   createdAtMs: number;
 };
 
@@ -127,6 +129,7 @@ async function insertAt(
     type: row.type,
     payload: sanitizePostgresJson(row.payload),
     actorIdentityId: row.actorIdentityId ?? null,
+    turnId: row.turnId ?? null,
     createdAt: new Date(row.createdAtMs),
   }));
   if (values.length === 0) return [];

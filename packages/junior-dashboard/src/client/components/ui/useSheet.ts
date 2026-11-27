@@ -59,6 +59,14 @@ export function useSheet(
   return {
     /** Close from the sheet's own controls, with the exit animation. */
     close: () => onOpenChange(false, { cancel() {} }),
+    /**
+     * Close because the sheet's owner closed it, also while another modal is
+     * in front, as when a dialog over the sheet finishes the sheet's item.
+     */
+    shut: () => {
+      closingRef.current = true;
+      setOpen(false);
+    },
     rootProps: {
       open,
       modal: topmost ? "trap-focus" : false,
