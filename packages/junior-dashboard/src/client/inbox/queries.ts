@@ -556,7 +556,12 @@ export function useFailedInboxItemAnswer(id: string) {
  * for, and when the wait began (the oldest item).
  */
 export type WaitingConversation = {
-  items: Array<{ plugin?: string; title: string }>;
+  items: Array<{
+    conversationId: string;
+    id: string;
+    plugin?: string;
+    title: string;
+  }>;
   waitingSince: string;
 };
 
@@ -597,6 +602,43 @@ export function useWaitingConversations(): ReadonlyMap<
             ]),
           )
         : NO_WAITING,
+    [conversations],
+  );
+}
+
+/** What waits on the viewer, by Conversation and by Inbox item. */
+export type ViewerWaits = {
+  /** Every Conversation of a tree that waits: each item's, and its ancestors. */
+  conversationIds: ReadonlySet<string>;
+  itemIds: ReadonlySet<string>;
+};
+
+const NO_WAITS: ViewerWaits = {
+  conversationIds: new Set(),
+  itemIds: new Set(),
+};
+
+/**
+ * Return what waits on the viewer, from the Inbox's own read. Conversation
+ * reads say nothing about the Inbox, so every surface that shows "Needs
+ * you" overlays this on the rows that it reads.
+ */
+export function useViewerWaits(): ViewerWaits {
+  const conversations = useQuery(waitingConversationsQuery).data?.conversations;
+  return useMemo(
+    () =>
+      conversations
+        ? {
+            conversationIds: new Set(
+              conversations.flatMap((entry) => entry.conversationIds),
+            ),
+            itemIds: new Set(
+              conversations.flatMap((entry) =>
+                entry.items.map((item) => item.id),
+              ),
+            ),
+          }
+        : NO_WAITS,
     [conversations],
   );
 }

@@ -375,11 +375,20 @@ export function readMockWaitingConversations(nowMs: number) {
   return {
     conversations: [...byConversation].map(([conversationId, items]) => ({
       conversationId,
+      // A mock child sits right under its root.
+      conversationIds: [
+        ...new Set([conversationId, ...items.map((item) => item.owner.id)]),
+      ],
       items: [...items]
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .map(({ id, title }) => {
+        .map(({ id, owner, title }) => {
           const plugin = plugins.get(id);
-          return { title, ...(plugin ? { plugin } : undefined) };
+          return {
+            conversationId: owner.id,
+            id,
+            title,
+            ...(plugin ? { plugin } : undefined),
+          };
         }),
       waitingSince: items
         .map((item) => item.createdAt)

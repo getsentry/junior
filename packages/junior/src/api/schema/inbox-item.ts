@@ -302,11 +302,19 @@ export const inboxItemWaitingConversationsSchema = z
       z
         .object({
           conversationId: z.string().min(1),
+          /**
+           * The Conversations of the tree that wait on the viewer: each one
+           * that an item links, and their ancestors, the root among them.
+           */
+          conversationIds: z.array(z.string().min(1)).min(1),
           /** Open items that need the viewer, newest first. */
           items: z
             .array(
               z
                 .object({
+                  /** The Conversation that the item links. */
+                  conversationId: z.string().min(1),
+                  id: z.string().min(1),
                   /** The plugin that added the item, such as `github`. */
                   plugin: z.string().min(1).optional(),
                   title: z.string().min(1),
