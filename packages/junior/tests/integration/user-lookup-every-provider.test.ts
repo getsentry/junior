@@ -8,6 +8,7 @@ import { upsertIdentity } from "@/chat/identities/sql";
 import { findLinkedHandle } from "@/chat/identities/user-lookup";
 import { readIdentityById } from "@/chat/plugins/viewer";
 import { parseSlackTeamId } from "@/chat/slack/ids";
+import { useAppContext } from "../fixtures/app-context";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import { measureSql } from "../fixtures/sql-budget";
 import {
@@ -125,6 +126,8 @@ describe("userLookup without a provider", () => {
   });
 
   it("links accounts that a plugin search finds", async () => {
+    // createApp installs its plugins; the next test starts without them.
+    useAppContext();
     await seedLinkedIdentities({
       githubId: "12345",
       githubHandle: "dcramer",
@@ -176,6 +179,8 @@ describe("userLookup without a provider", () => {
   });
 
   it("leaves out a plugin search that fails", async () => {
+    // createApp installs its plugins; the next test starts without them.
+    useAppContext();
     await seedLinkedIdentities({
       githubId: "12345",
       githubHandle: "dcramer",
