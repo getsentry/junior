@@ -1,6 +1,8 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveSignInAuthConfig } from "@/chat/sign-in/auth";
 import { loadConfig, type ConfigInput } from "@/config";
+import { patchConfig } from "../../fixtures/config";
 
 const TEST_DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 const ENCRYPTION_ENV = {
@@ -357,6 +359,24 @@ describe("chat config", () => {
       googleClientSecret: "client-secret",
       trustedOrigins: " https://a.example.com ",
     });
+  });
+
+  it("trims comma-separated list entries and drops empty ones", () => {
+    const config = loadConfig({
+      env: {
+        ...BASE_ENV,
+        JUNIOR_ALLOWED_DOMAINS: "sentry.io, getsentry.com, ,",
+        JUNIOR_DASHBOARD_TRUSTED_ORIGINS:
+          "https://a.example.com, https://b.example.com,,",
+      },
+    });
+    patchConfig({ signIn: config.signIn });
+
+    expect(config.trust.allowedDomains).toEqual(["sentry.io", "getsentry.com"]);
+    expect(resolveSignInAuthConfig("junior", []).trustedOrigins).toEqual([
+      "https://a.example.com",
+      "https://b.example.com",
+    ]);
   });
 
   it("requires dashboard sign-in unless JUNIOR_DASHBOARD_AUTH_REQUIRED is false", () => {
