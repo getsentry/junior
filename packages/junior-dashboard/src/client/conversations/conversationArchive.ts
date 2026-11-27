@@ -132,8 +132,7 @@ const archiveConversationMutationKey = [
 
 type ArchiveConversationVariables = {
   archived: boolean;
-  /** Without it, the archive does not check for newer activity. */
-  lastSeenAt?: string | undefined;
+  lastSeenAt: string;
 };
 
 type ArchiveConversationMutationContext = {

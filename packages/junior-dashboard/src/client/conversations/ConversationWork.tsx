@@ -186,17 +186,15 @@ function WorkRow(props: {
     />
   ) : null;
   if (item.kind === "child") {
+    const lastSeenAt = feedThreads.get(item.child.conversationId)?.lastSeenAt;
     return (
       <DetailsRow
         icon={icon}
         menu={
-          props.canEdit && !item.child.redacted ? (
-            <ChildMenu
-              child={item.child}
-              lastSeenAt={
-                feedThreads.get(item.child.conversationId)?.lastSeenAt
-              }
-            >
+          props.canEdit &&
+          !item.child.redacted &&
+          (lastSeenAt || watchItems) ? (
+            <ChildMenu child={item.child} lastSeenAt={lastSeenAt}>
               {watchItems}
             </ChildMenu>
           ) : null
@@ -352,23 +350,24 @@ function WatchCancelItems(props: {
   ));
 }
 
-/** Archive a child after a confirm, or restore it at once. */
+/**
+ * Archive a child after a confirm, or restore it at once. Archive needs the
+ * child's last activity, which only a feed Thread has, so a Task is
+ * archived from its own page.
+ */
 function ChildMenu(props: {
   /** More entries, such as Cancel for the child's Watches. */
   children?: ReactNode;
   child: ConversationChildAgent;
-  /**
-   * The child's last activity, which a feed Thread has. A Task has none,
-   * so its archive does not check for newer activity.
-   */
   lastSeenAt: string | undefined;
 }) {
-  const { child } = props;
+  const { child, lastSeenAt } = props;
   const archive = useArchiveConversation(child.conversationId);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const archived = Boolean(child.archivedAt);
-  const setArchived = (value: boolean) =>
-    archive.mutate({ archived: value, lastSeenAt: props.lastSeenAt });
+  const setArchived = (value: boolean) => {
+    if (lastSeenAt) archive.mutate({ archived: value, lastSeenAt });
+  };
   return (
     <>
       <RowMenu
@@ -376,13 +375,15 @@ function ChildMenu(props: {
         label={`Change ${childTitle(child)}`}
       >
         {props.children}
-        <DropdownMenuItem
-          onClick={() =>
-            archived ? setArchived(false) : setConfirmArchive(true)
-          }
-        >
-          {archived ? "Restore" : "Archive"}
-        </DropdownMenuItem>
+        {lastSeenAt ? (
+          <DropdownMenuItem
+            onClick={() =>
+              archived ? setArchived(false) : setConfirmArchive(true)
+            }
+          >
+            {archived ? "Restore" : "Archive"}
+          </DropdownMenuItem>
+        ) : null}
       </RowMenu>
       {confirmArchive ? (
         <ArchiveChildDialog
