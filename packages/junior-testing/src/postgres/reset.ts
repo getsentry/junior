@@ -50,6 +50,16 @@ WHERE starelid IN (
 `,
         [SCHEMA_NAME],
       );
+      await client.query(
+        `
+DELETE FROM pg_catalog.pg_statistic_ext_data
+WHERE stxoid IN (
+  SELECT oid FROM pg_catalog.pg_statistic_ext
+  WHERE stxnamespace = $1::regnamespace
+)
+`,
+        [SCHEMA_NAME],
+      );
       await options.afterTruncate?.(client);
     }
 
