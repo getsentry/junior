@@ -109,9 +109,9 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["Conversation menu"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.staticTexts["Junior is working…"].waitForExistence(timeout: 10))
 
-    // The header's Back returns to the list. On iPhone Duo, it is the only
-    // way back when the device is closed.
-    let back = app.buttons["Back"]
+    // Back returns to the list: the header's, or the system's (`BackButton`)
+    // in the vertical bar of iPhone Duo.
+    let back = app.buttons.matching(NSPredicate(format: "label == 'Back' OR identifier == 'BackButton'")).firstMatch
     XCTAssertTrue(back.isHittable, "Back at \(back.frame) in \(app.windows.firstMatch.frame) is not hittable")
     back.tap()
     if !app.buttons["Conversation menu"].waitForNonExistence(timeout: 10) {

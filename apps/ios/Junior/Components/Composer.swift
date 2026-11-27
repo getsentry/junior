@@ -26,8 +26,8 @@ struct ComposerDock<Above: View, Content: View>: View {
     // The vertical bar's controls sit at its top, so the dock spans the bar's
     // column and stays clear only of what the hardware covers, such as a camera.
     .ignoresSafeArea(.container, edges: barSide)
-    .onGeometryChange(for: CGFloat.self) { proxy in
-      verticalBarEdge.map { proxy.occlusionDepth(from: $0) } ?? 0
+    .onGeometryChange(for: CGFloat.self) { [edge = verticalBarEdge] proxy in
+      edge.map { proxy.occlusionDepth(from: $0) } ?? 0
     } action: {
       occluded = $0
     }

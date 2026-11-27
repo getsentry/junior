@@ -9,7 +9,6 @@ struct AppHeader<Trailing: View, Below: View>: View {
   }
 
   @Environment(WindowModel.self) private var window
-  @Environment(\.dismiss) private var dismiss
   @Environment(\.splitColumn) private var column
   @Environment(\.verticalBarEdge) private var verticalBarEdge
   var title: String
@@ -46,7 +45,8 @@ struct AppHeader<Trailing: View, Below: View>: View {
           Button {
             switch leading {
             case .menu: withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = true }
-            case .back: dismiss()
+            // Pops the window's path: `dismiss()` here leaves the Conversation open.
+            case .back: if !window.path.isEmpty { window.path.removeLast() }
             }
           } label: {
             Icon(leading == .menu ? "menu" : "arrow-left", size: 20)
