@@ -903,8 +903,8 @@ describe("advanceTurn with a test step", () => {
     },
   );
 
-  it("continues a completed Turn when an input arrives during the step, and sends the next step", async () => {
-    await engine.addTestInput("How many Turns?");
+  it("drops a final reply when an input arrives during the step, and runs the step again", async () => {
+    const firstInputId = await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "Three." });
     const step = stepWith([reply]);
     let lateInputId: string | undefined;
@@ -920,13 +920,12 @@ describe("advanceTurn with a test step", () => {
     });
 
     const turn = await engine.readTurn();
-    expect(turn).toMatchObject({ state: "queued", stepSeq: 1 });
+    // The redo is not a failed attempt, so it uses none.
+    expect(turn).toMatchObject({ state: "queued", stepSeq: 0, attempts: 0 });
     expect(turn.endedAt).toBeNull();
-    await expect(engine.loadHistory()).resolves.toEqual([
-      userText("How many Turns?"),
-      storedReply(reply),
-    ]);
+    await expect(engine.loadHistory()).resolves.toEqual([]);
     await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
+      expect.objectContaining({ inputId: firstInputId }),
       expect.objectContaining({ inputId: lateInputId }),
     ]);
     expect(engine.sentStepMessages()).toBe(1);
