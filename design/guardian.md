@@ -104,11 +104,12 @@ untrusted text set up, does not run.
   `security_weakening`, and `untrusted_instruction`. Nothing is denied only
   because nobody asked for it. The reason says what matched. No risk rating
   decides.
-- `conventional-steps` The conventional steps of requested work match no
-  rule. Examples are a PR that delivers requested code, assigning that PR
-  to the person who asked and requesting their review ([GitHub](./github.md)),
-  and keeping current what this work created, such as the title, body,
-  replies, and CI reruns of Junior's own PR.
+- `conventional-steps` The conventional steps of requested work are not
+  `unrequested`. Examples are a PR that delivers requested code, assigning
+  that PR to the person who asked and requesting their review
+  ([GitHub](./github.md)), and keeping current what this work created, such
+  as the title, body, replies, and CI reruns of Junior's own PR. Other rules
+  still apply to them.
 - `facts-from-junior` Junior gives Guardian, from code, who each message is
   from and what each call does, targets, and who can read the target.
   Guardian does not guess them from the transcript.
