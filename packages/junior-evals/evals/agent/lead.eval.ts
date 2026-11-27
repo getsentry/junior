@@ -4,6 +4,7 @@ import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedToolCalls,
   toolCallsOf,
+  toolOutput,
   type ToolCall,
 } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
@@ -196,6 +197,43 @@ describe("Lead", () => {
       completedToolCalls("startAgent", conversation).length,
     ).toBeGreaterThan(0);
     expect(conversation.replies.at(-1)?.text).toMatch(/merged/i);
+  });
+
+  // A merge reached the Lead as a routine done result, and it ended the Turn
+  // with noReply. The case measures whether the Lead acts on a done signal
+  // that is true: it archives the child and starts the agreed next step or
+  // posts one.
+  test("when a child reports that its pull request merged, the Lead archives it and moves to the agreed next step", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 8 } });
+    const conversation = await run(
+      webMessage(
+        `have a thread check whether ${MERGED_PULL_REQUEST} has merged. once it has, start a thread that drafts a three-line changelog entry for the next craft release`,
+        { lead: true },
+      ),
+    );
+
+    const [first, ...later] = conversation.turns;
+    const [child] = completedToolCalls("startAgent", {
+      toolCalls: first?.toolCalls ?? [],
+    });
+    expect(child).toBeDefined();
+    const childId = (toolOutput(child!) as { conversation_id?: unknown })
+      .conversation_id;
+    const archived = later.find((turn) =>
+      completedToolCalls("archiveAgent", turn).some(
+        (call) => input(call)["conversation_id"] === childId,
+      ),
+    );
+    expect(archived).toBeDefined();
+    // In the same Turn, the next step starts in a new or waiting Thread, or
+    // the Lead posts it.
+    expect(
+      toolCallsOf("startAgent", archived!).length +
+        toolCallsOf("messageAgent", archived!).length +
+        archived!.replies.length,
+    ).toBeGreaterThan(0);
   });
 
   // The member changes one thing about running work. The case measures
