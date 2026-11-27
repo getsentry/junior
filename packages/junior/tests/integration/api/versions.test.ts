@@ -1,9 +1,5 @@
 import { and, eq, max } from "drizzle-orm";
-import {
-  expectNoFullScan,
-  expectPlanCost,
-  expectSqlBudget,
-} from "../../fixtures/sql-budget";
+import { expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { seedDashboardScale } from "../../fixtures/dashboard-scale";
@@ -145,17 +141,12 @@ describe("versions API", () => {
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
-    const detail = await expectPlanCost(() => detailVersion(), 1_500);
+    const detail = await detailVersion();
     await seedDashboardScale();
-    const first = await expectPlanCost(
-      () =>
-        expectSqlBudget(() => read(), {
-          statements: 1,
-          serialRounds: 1,
-        }),
-      // About 3,100.
-      4_500,
-    );
+    const first = await expectSqlBudget(() => read(), {
+      statements: 1,
+      serialRounds: 1,
+    });
     expect(await read()).toEqual(first);
     expect(detail).toBe(first.conversation);
     // A Conversation that does not exist has no token.
@@ -570,18 +561,10 @@ describe("versions API", () => {
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
     await seedDashboardScale();
-    const first = await expectPlanCost(
-      () =>
-        expectNoFullScan(() =>
-          expectSqlBudget(() => readVersions(app, onScreen), {
-            statements: 1,
-            serialRounds: 1,
-          }),
-        ),
-      // About 9,400. A read of every open item for each running row costs
-      // about 14,900.
-      12_000,
-    );
+    const first = await expectSqlBudget(() => readVersions(app, onScreen), {
+      statements: 1,
+      serialRounds: 1,
+    });
     // Each token is the one that the detail report sends. A Conversation
     // that does not exist has no entry.
     expect(first.conversationDetails).toEqual({

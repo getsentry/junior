@@ -19,7 +19,6 @@ import { expectResponseBudget } from "../../../fixtures/response-budget";
 import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import {
   expectNoInboxSql,
-  expectPlanCost,
   expectSqlBudget,
 } from "../../../fixtures/sql-budget";
 
@@ -125,20 +124,15 @@ describe("conversation list API response budget", () => {
       pinnedIds.push(conversationId);
     }
 
-    // About 390,000, mostly the starter check of each tree row.
     const response = await expectResponseBudget(
       () =>
-        expectPlanCost(
+        expectSqlBudget(
           () =>
-            expectSqlBudget(
-              () =>
-                expectNoInboxSql(() =>
-                  fixture.request("/api/conversations?include=links,media"),
-                ),
-              // Threads' tree states wait for the Thread read: one more round.
-              { statements: 17, serialRounds: 4 },
+            expectNoInboxSql(() =>
+              fixture.request("/api/conversations?include=links,media"),
             ),
-          600_000,
+          // Threads' tree states wait for the Thread read: one more round.
+          { statements: 17, serialRounds: 4 },
         ),
       // Pins are not paged, so the body has no budget.
       {

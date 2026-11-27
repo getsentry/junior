@@ -274,7 +274,7 @@ const LEAD_CONTEXT_TRUST_RULES = [
  * gets the answers to its own items, so it needs the same meaning.
  */
 const INBOX_ITEM_TRUST_RULE =
-  "- A `<inbox-item-answer id>` is the person's answer to the inbox item with that id. Continue the work that asked for it, as the answer says.";
+  "- A `<inbox-item-answer id>` is an answer to the inbox item with that id, from the person on its `Answered by` line, who may not be an assignee. Continue the work that asked for it, as the answer says.";
 
 /** Block 3 line that says which inputs of a person's Turn are the job. */
 const CONVERSATION_JOB_TRUST_RULE =
