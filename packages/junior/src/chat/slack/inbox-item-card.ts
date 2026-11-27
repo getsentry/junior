@@ -195,13 +195,13 @@ function controls(item: InboxItem): Button[] {
       value: JSON.stringify({ itemId: item.id, label: option.label }),
     })),
     // One choice is a plugin's action, such as Resume. The plugin does the
-    // work and reads no words, so there is no Other….
+    // work and reads no words, so there is no Answer….
     ...(buttonField.options.length > 1
       ? [
           {
             type: "button" as const,
             action_id: ANSWER_ACTION_ID,
-            text: plainText("Other…"),
+            text: plainText("Answer…"),
             value: item.id,
           },
         ]

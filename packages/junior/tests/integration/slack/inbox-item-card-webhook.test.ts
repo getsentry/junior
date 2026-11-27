@@ -301,7 +301,7 @@ describe("Slack webhook: Inbox item cards", () => {
       title: "Deploys stopped · api",
     });
 
-    // The card asks the body once, and has one button and no Other….
+    // The card asks the body once, and has one button and no Answer….
     const [card] = slackApiOutbox.messages();
     const text = blocksOf(card)[0]?.text ?? "";
     expect(text.split("Deploys of `api` stopped")).toHaveLength(2);

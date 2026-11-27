@@ -659,8 +659,8 @@ test.describe("new UI", () => {
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, alert.title));
     await expect(todo.getByRole("button", { name: "Pause" })).toBeVisible();
-    // Core takes the step and reads no words, so there is no Other….
-    await expect(todo.getByRole("button", { name: "Other…" })).toHaveCount(0);
+    // Core takes the step and reads no words, so there is no Answer….
+    await expect(todo.getByRole("button", { name: "Answer…" })).toHaveCount(0);
     await expect(
       todo.getByText("Slack rejected the result message: channel_not_found."),
     ).toBeVisible();
