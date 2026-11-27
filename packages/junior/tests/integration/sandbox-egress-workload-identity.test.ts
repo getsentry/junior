@@ -28,8 +28,7 @@ import {
   VERCEL_DEPLOYMENT_OIDC_TOKEN,
   workloadIdentityRequests,
 } from "../msw/handlers/workload-identity";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../fixtures/stub-env";
 const FIXTURE_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/workload-identity",
@@ -161,14 +160,13 @@ describe("sandbox egress workload identity credentials", () => {
   }
 
   beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       JUNIOR_BASE_URL: BASE_URL,
       JUNIOR_SECRET: "integration-secret",
       JUNIOR_STATE_ADAPTER: "memory",
       IAP_APP_API_KEY: "redash-api-key",
       VERCEL_OIDC_TOKEN: VERCEL_DEPLOYMENT_OIDC_TOKEN,
-    };
+    });
     upstreamHeaders.length = 0;
     upstreamFetch.mockClear();
     pluginApp = await createPluginAppFixture([FIXTURE_PLUGIN_ROOT]);
@@ -182,7 +180,7 @@ describe("sandbox egress workload identity credentials", () => {
     await disconnectStateAdapter();
     await pluginApp?.cleanup();
     pluginApp = undefined;
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   });
 
   it("sends an IAP service account JWT in Proxy-Authorization next to static API headers, keeps only the token in the shared lease, and mints again when it expires", async () => {
@@ -243,7 +241,7 @@ describe("sandbox egress workload identity credentials", () => {
 
     // The lease is shared until 5 minutes before the token expires. Static
     // API headers resolve from env on each request.
-    process.env["IAP_APP_API_KEY"] = "rotated-api-key";
+    vi.stubEnv("IAP_APP_API_KEY", "rotated-api-key");
     vi.setSystemTime(Date.now() + 54 * 60 * 1000);
     expect((await sendFromSandbox(IAP_HOST)).status).toBe(200);
     expect(workloadIdentityRequests()).toHaveLength(2);

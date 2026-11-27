@@ -375,6 +375,25 @@ test("rejects agent test contract violations above the baseline", () => {
   );
 });
 
+test("rejects a process.env assignment in integration tests and fixtures", () => {
+  const contents = "process.env = { ...ORIGINAL_ENV };";
+  assert.deepEqual(
+    checkAgentTestArchitecture(
+      [
+        integrationTest(contents),
+        integrationTest(contents, "packages/junior/tests/fixtures/env.ts"),
+        integrationTest(contents, "packages/junior/tests/unit/env.test.ts"),
+        integrationTest('if (process.env === env) vi.stubEnv("A", "1");'),
+      ],
+      {},
+    ),
+    [
+      `${TEST_PATH}: integration tests and test fixtures must change env with vi.stubEnv, not assign a new object to process.env (1 found)`,
+      "packages/junior/tests/fixtures/env.ts: integration tests and test fixtures must change env with vi.stubEnv, not assign a new object to process.env (1 found)",
+    ],
+  );
+});
+
 test("requires a lower baseline when a file breaks a rule less", () => {
   assert.deepEqual(
     checkAgentTestArchitecture([integrationTest("setPlugins([]);")], {
