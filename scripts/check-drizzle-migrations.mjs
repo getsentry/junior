@@ -3,17 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Drizzle migration check. Each migration is a folder named
- * `YYYYMMDDHHMMSS_name` that holds `migration.sql` and `snapshot.json`. The
- * migrator skips a folder without `migration.sql`, and drizzle-kit needs each
- * snapshot to find conflicts. `drizzle-kit check` then reports migrations of
- * two branches that change the same thing, and a schema that no migration
- * creates.
- *
- * `drizzle-kit check` passes two branches that change different things, so
- * this check also requires one leaf: one snapshot that no other snapshot
- * lists in `prevIds`. Two pull requests that each generate a migration off
- * the same parent make two leaves, and git merges them without a conflict.
+ * Drizzle migration check. Each folder, `YYYYMMDDHHMMSS_name`, needs
+ * `migration.sql` (the migrator skips a folder without it) and `snapshot.json`
+ * (drizzle-kit finds conflicts with it). `drizzle-kit check` misses two
+ * branches that change different things, so this also requires one leaf: one
+ * snapshot that no other snapshot lists in `prevIds`.
  */
 
 const MIGRATION_FOLDER = /^\d{14}_[a-z0-9_]+$/;

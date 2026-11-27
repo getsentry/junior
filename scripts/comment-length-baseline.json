@@ -439,7 +439,6 @@
     "packages/junior/tests/integration/durable-queue.test.ts": 1,
     "packages/junior/tests/integration/scheduled-automation-tools.test.ts": 2,
     "scripts/check-dashboard-bundle-size.mjs": 11,
-    "scripts/check-drizzle-migrations.mjs": 1,
     "scripts/check-inbox-item-fields.mjs": 2,
     "scripts/check-lockfile-families.mjs": 2,
     "scripts/check-migration-locks.mjs": 4,
