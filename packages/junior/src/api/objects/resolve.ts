@@ -58,6 +58,27 @@ const DEFAULT_HTTP_CACHE = { staleIfError: true, ttlMs: OBJECT_LINK_TTL_MS };
 // Links resolve outside a Turn, so no person is the credential subject. This
 // system Actor gets only credentials that a plugin owns, never the viewer's.
 // Each plugin checks that the viewer may see an object before it returns it.
+// A card is not worth a longer wait, so a card read's provider call ends
+// after this, body included. Egress also has its own, longer deadline.
+const CARD_READ_DEADLINE_MS = 10_000;
+
+const cardReadFetch: typeof fetch = async (input, init) => {
+  const deadline = new AbortController();
+  const timer = setTimeout(
+    () => deadline.abort(new Error("The card read ran out of time")),
+    CARD_READ_DEADLINE_MS,
+  );
+  // A finished read must not keep the process alive until the deadline.
+  timer.unref?.();
+  return await fetch(input, {
+    ...init,
+    signal: AbortSignal.any([
+      ...(init?.signal ? [init.signal] : []),
+      deadline.signal,
+    ]),
+  });
+};
+
 const OBJECT_LINK_SYSTEM_ACTOR = {
   platform: "system",
   name: "object-link",
@@ -192,6 +213,7 @@ function objectLinkContext(
     db: getDb(),
     egress: createPluginEgress({
       credentialContext: credentialContextForActor(OBJECT_LINK_SYSTEM_ACTOR),
+      fetch: cardReadFetch,
       httpCache,
       // A card is optional. It must never ask anyone to authorize.
       pluginAuth: { async handleAuthRequired() {} },
@@ -206,6 +228,7 @@ function objectLinkContext(
     // Only that subject's own OAuth token is used.
     viewerEgress: createPluginEgress({
       credentialContext: credentialContextForActor(webActorFromUser(viewer)),
+      fetch: cardReadFetch,
       httpCache,
       pluginAuth: { async handleAuthRequired() {} },
       userOAuthOnly: true,

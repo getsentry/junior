@@ -442,6 +442,39 @@ describe("object links API", () => {
     expect(card?.facts).not.toHaveProperty("titleParts");
   });
 
+  it("ends a card read at the card deadline when GitHub stalls", async () => {
+    stubGitHubApp();
+    // GitHub never answers this read.
+    let requested!: () => void;
+    const stalled = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    mswServer.use(
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({ data: {} }),
+      ),
+      http.get(`${GITHUB_API}/pulls/35`, () => {
+        requested();
+        return new Promise<never>(() => {});
+      }),
+    );
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+    const pending = read(`${GITHUB_REPO}/pull/35`).finally(() => {
+      settled = true;
+    });
+    await stalled;
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const member = await pending;
+    expect(member.objects.has(`${GITHUB_REPO}/pull/35`)).toBe(false);
+  });
+
   it("shows the GitHub object of a webhook on the next card read, with no GitHub call", async () => {
     stubGitHubApp();
     const reads: string[] = [];
