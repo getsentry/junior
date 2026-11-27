@@ -89,8 +89,7 @@ Canonical words for Junior code and docs. One concept, one word.
   `working`. A Watch that has not expired is live. A Conversation that is
   not archived is unarchived, and the feed filter is `archived`.
 - **Blocked**: a Turn or dispatch outcome (`reportBlocked`, the `blocked`
-  agent update, a blocked Automation run). Not a Conversation status: after
-  a blocked Turn, the Conversation is `idle`.
+  agent update, a blocked Automation run). Not a Conversation status.
 - **Paused**: an execution status (another execution slice is due), a Turn
   that waits for a sign-in, or an Automation that a person paused. Not a
   Conversation status.
@@ -165,7 +164,7 @@ Canonical words for Junior code and docs. One concept, one word.
   new work: `messageAgent` to a child leaves a Conversation note, and
   `startAgent` fails. A person's stop keeps the
   Watches; an agent's `stopAgent` also cancels them. Its status is
-  `stopped`, or `needs_input` after a stop by the automated-turn limit.
+  `stopped`.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
   (needs an identifier) per event type. Limits noise, not access.
 - **Inbound message**: one normalized source event given to the agent.

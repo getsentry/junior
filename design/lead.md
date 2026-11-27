@@ -47,7 +47,7 @@ theirs to decide.
   not post. The Lead posts only with an explicit reply, or ends the Turn
   with `noReply`.
 - A child's `done` update reaches the Lead as a Conversation note and starts
-  no Turn. `waiting`, `blocked`, `failed`, and `stopped` start a Turn.
+  no Turn. `needs_input`, `blocked`, `failed`, and `stopped` start a Turn.
 - The Lead sees a child's result as that child's claim, apart from runtime
   facts.
 

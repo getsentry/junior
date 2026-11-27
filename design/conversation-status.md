@@ -30,23 +30,28 @@ failed, or still runs, without opening each Conversation.
 - `working` While a Turn is queued or running, the status is `working`. New
   input that starts work makes it `working`.
 - `needs-input` The status is `needs_input` only while the work is blocked
-  on a person: an open action Inbox item that this Conversation added, a
-  Turn that waits for a sign-in, or the automated-turn limit. An unread
-  reply, a failed Turn, a notice, a To-do, and an item that another
-  Conversation added do not make it `needs_input`.
+  on a person: an open action Inbox item that this Conversation added, or a
+  Turn that waits for a sign-in. An unread reply, a failed Turn, a notice,
+  a To-do, and an item that another Conversation added do not make it
+  `needs_input`.
+- `turn-limit` When automated input reaches the automated-turn limit, the
+  Conversation adds an action Inbox item that asks a person whether to
+  continue. Until a person answers it or sends input, or the parent gives
+  new work, automated input starts no Turn. The limit never stops a
+  Conversation.
 - `failed` When the latest Turn failed and no later Turn started, the status
   is `failed`. A reply that says the agent could not do the task is not a
   failure.
 - `stopped` When a person or the parent stops a Conversation, the status is
   `stopped`. It does not resume by itself: only a person's input or new work
-  from its parent ends the stop. A stop by the automated-turn limit is
-  `needs_input`.
-- `idle` When the latest Turn ended but the work is not finished, the status
-  is `idle`: a Watch or a Timer is live, or the Turn ended blocked.
-- `done` When the latest Turn answered the latest input with a reply or a
-  `noReply`, and no other status applies, the status is `done`. This is the
-  `done` agent update, the same for every kind of Conversation, so a root
-  is done when it answered the person and nothing waits.
+  from its parent ends the stop.
+- `idle` When the latest Turn ended and a Watch or a Timer on this
+  Conversation is live, the status is `idle`. A new, cancelled, or expired
+  Watch or Timer changes the status.
+- `done` When the latest Turn ended and nothing on this Conversation is
+  pending, the status is `done`. This is the same for every kind of
+  Conversation, so a root is done when it answered the person and nothing
+  waits. A Turn that ended blocked is `done`: the parent has the result.
 - `own-order` When more than one status applies, the first of these wins:
   `stopped`, `working`, `needs_input`, `failed`, `idle`, `done`. So an agent
   that keeps working while its question is open shows `working`.
@@ -70,18 +75,12 @@ failed, or still runs, without opening each Conversation.
 - `current` A status changes in the same write as the facts that set it, so
   a reader never derives it.
 - `self-heals` If a status misses a change that no write makes, such as a
-  sign-in wait that expires or a worker that is lost, Junior corrects it
-  with no action from a person.
+  sign-in wait or a Watch that expires, or a worker that is lost, Junior
+  corrects it within 5 minutes, with no action from a person.
 
 ## Non-goals
 
 - Unread is not a status. Whether a person read a reply is their own state.
-- Watching is not a status. A live Watch or Timer reads as `idle`.
-
-## Open questions
-
-- How soon must `self-heals` correct a missed change? The proposal is
-  within 5 minutes.
 
 ## Gaps
 
@@ -90,8 +89,10 @@ failed, or still runs, without opening each Conversation.
 - `one-status`, `own-order`: a status is only `needs_input`, `working`, or
   `done`. A failed Turn shows `needs_input`, or `done` in a Task, and a
   stop or a live Watch shows `done`.
-- `needs-input`: an unread reply shows `needs_input`, and the
-  automated-turn limit shows `done`.
+- `needs-input`: an unread reply shows `needs_input`.
+- `turn-limit`: the automated-turn limit stops the Conversation tree and
+  posts a notice, so the tree shows `done`, and only a person's message
+  continues it.
 - `shared`, `roll-up`: a roll-up differs for each viewer. A tree shows
   "Needs you" only to the person that it waits on, and it has no `failed`
   or `idle`.

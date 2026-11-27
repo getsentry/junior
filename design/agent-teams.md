@@ -84,10 +84,10 @@ end-of-Turn contract. A person can see and steer each agent.
   Turn or an Automation run can end quietly.
 - `one-update` Every agent sends one update type, `agent.update`, when a
   Turn ends, waits on a person, is blocked, fails, or stops. Its status is
-  `done`, `waiting`, `blocked`, `failed`, or `stopped`. It holds the reply,
-  the `noReply` note, the question, the missing part, or the failure, so
-  the receiver can act with no read of history. Nothing in it depends on
-  the kind.
+  `done`, `needs_input`, `blocked`, `failed`, or `stopped`. It holds the
+  reply, the `noReply` note, the question, the missing part, or the
+  failure, so the receiver can act with no read of history. Nothing in it
+  depends on the kind.
 - `watch-is-start` An agent that starts another watches it, and a watcher
   gets the same update as the agent that started the target. Each update
   starts a Turn, unless the watch makes it quiet, and then it is a
@@ -108,7 +108,7 @@ end-of-Turn contract. A person can see and steer each agent.
 - `asker-asks` Any agent, also a child, asks a person only with an Inbox
   item, and only for approval, access, or a decision that is the person's.
   The answer goes to the agent that asked, as the person's own input, and
-  to no other Conversation. The agent that started it gets a `waiting`
+  to no other Conversation. The agent that started it gets a `needs_input`
   update and does not ask again.
 
 **Stops**
@@ -153,9 +153,11 @@ end-of-Turn contract. A person can see and steer each agent.
 - `asker-asks`: an Inbox answer goes, as the person, to every Conversation
   that the item links, not only to the agent that asked.
 - `asker-asks`: when a person's Turn in a Thread adds an Inbox item, the
-  parent gets no `waiting` update. Only a watcher gets it.
+  parent gets no `needs_input` update. Only a watcher gets it.
 - `one-update`: a Turn that only Watch Events started sends no update to a
   Watch, also when it replies. Only the agent that started it gets one.
+- `one-update`: an update that waits on a person has the status `waiting`,
+  not `needs_input`.
 - `watch-is-start`: a parent cannot make the updates of its child agents
   quiet.
 - `push-not-poll`, `steering`: few agent tool results say the next step for

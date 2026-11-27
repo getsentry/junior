@@ -41,8 +41,8 @@ groups and acts on its rows.
   All is the Inbox count. A type with nothing waiting hides, but All always
   shows.
 - The Conversation filters use the state that the row shows: Needs you
-  when an Inbox item in the tree waits on the viewer, else the tree's
-  roll-up ([Conversation status](./conversation-status.md)).
+  when an Inbox item in the tree waits on the viewer, then Working, then
+  Watching. Done is the rest.
 - Pinned, a tab of the same control, shows only the rows of the viewer's pinned Conversations.
   Pins have no section of their own: a pin stays in its place, with a pin
   marker.
