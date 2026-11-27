@@ -57,7 +57,7 @@ const usageCommit = {
 const branchPush = {
   command: `${checkout} && git push -u origin feat/digest-recent-visitors`,
 };
-// What `git log -p --branches --not --remotes` prints in the checkout
+// What `git log -p --all --not --remotes` prints in the checkout
 // before each push: the commits that the push publishes.
 const historyPatch = [
   "commit 9b03e7d ref(digest): Drop the usage comment",

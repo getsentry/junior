@@ -136,10 +136,10 @@ export function gitCommandFacts(input: unknown): {
 }
 
 /**
- * Read the commits on any local branch of one checkout that no remote
- * branch has yet, with their patches, cut to a bound. This covers a push of
- * any branch, also its first push. A stale remote ref can only add commits
- * here, never hide one.
+ * Read the commits of one checkout that no remote branch has yet, from every
+ * local ref and a detached `HEAD`, with their patches, cut to a bound. This
+ * covers a push of any ref, also its first push. A stale remote ref can only
+ * add commits here, never hide one.
  */
 export async function readUnpushedCommits(
   workspace: Pick<SandboxWorkspace, "runCommand">,
@@ -153,7 +153,7 @@ export async function readUnpushedCommits(
       "log",
       "-p",
       "--no-color",
-      "--branches",
+      "--all",
       "--not",
       "--remotes",
     ],

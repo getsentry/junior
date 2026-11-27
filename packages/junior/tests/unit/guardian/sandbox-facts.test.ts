@@ -93,17 +93,21 @@ describe("sandbox facts", () => {
     ]);
   });
 
-  it("reads unpushed commits on every local branch, not only HEAD", async () => {
+  it("reads unpushed commits on every local branch and a detached HEAD", async () => {
     const { checkout } = sandboxRoot();
     git(checkout, "checkout", "-q", "-b", "fix/export");
     writeFileSync(path.join(checkout, "b.txt"), "Acme Corp, $1.2M ARR\n");
     git(checkout, "add", "b.txt");
     git(checkout, "commit", "-q", "-m", "unpushed");
-    git(checkout, "checkout", "-q", "main");
+    git(checkout, "checkout", "-q", "--detach", "main");
+    writeFileSync(path.join(checkout, "c.txt"), "Globex, $3M ARR\n");
+    git(checkout, "add", "c.txt");
+    git(checkout, "commit", "-q", "-m", "detached");
 
     const log = await readUnpushedCommits(localWorkspace, checkout);
 
     expect(log).toContain("Acme Corp, $1.2M ARR");
+    expect(log).toContain("Globex, $3M ARR");
     // The commit that `origin` has is not in the log.
     expect(log).not.toMatch(/^ {4}pushed$/m);
   });

@@ -31,7 +31,7 @@ export interface GuardianDesignCheckout {
    * it, as in production. Core has no record of the others.
    */
   remotes: string[];
-  /** What `git log -p --branches --not --remotes` prints in this checkout. */
+  /** What `git log -p --all --not --remotes` prints in this checkout. */
   unpushed?: string;
 }
 

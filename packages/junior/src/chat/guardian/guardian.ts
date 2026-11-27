@@ -58,7 +58,7 @@ export interface ReviewRequest {
       /** The target of each fetch and push URL of the checkout. */
       remotes: Target[];
       /**
-       * Commits on local branches that no remote has, with patches, cut to a
+       * Local commits that no remote has, with patches, cut to a
        * bound. Untrusted data. Set when the batch pushes and can reach `world`.
        */
       unpushed?: string;

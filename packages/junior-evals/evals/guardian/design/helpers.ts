@@ -63,7 +63,7 @@ export function ownPullRequests(...refs: string[]): GuardianDesignFacts {
 
 /**
  * A Sandbox with this GitHub repository checked out under `repos/`, and
- * what `git log -p --branches --not --remotes` prints there.
+ * what `git log -p --all --not --remotes` prints there.
  */
 export function checkoutOf(
   repo: string,
