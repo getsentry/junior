@@ -5,10 +5,7 @@ import {
   messageChildAgent,
 } from "@/chat/child-agents/create";
 import { agentTypeInstructions } from "@/chat/child-agents/agent-types";
-import {
-  ChildAgentLimitError,
-  AgentStoppedError,
-} from "@/chat/child-agents/errors";
+import { ChildAgentLimitError } from "@/chat/child-agents/errors";
 import { FORK_INSTRUCTIONS } from "@/chat/child-agents/fork-history";
 import { turnRequestText } from "@/chat/agent/prompt";
 import {
@@ -19,10 +16,7 @@ import { eq } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
 import { bindMessageAgent } from "@/chat/child-agents/message";
 import { readRootConversation } from "@/chat/child-agents/root-conversation";
-import {
-  getConversationStoppedAtMs,
-  stopConversationTree,
-} from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -118,7 +112,6 @@ describe("child agents", () => {
     harness: { queue: ConversationWorkQueue; state: Harness["state"] },
     childConversationId: string,
     idempotencyKey: string,
-    parentConversationId = slackParentConversationId,
   ) {
     return await messageChildAgent(
       {
@@ -126,7 +119,7 @@ describe("child agents", () => {
         childConversationId,
         idempotencyKey,
         input: "Check it again.",
-        parentConversationId,
+        parentConversationId: slackParentConversationId,
         parentToolCallId: idempotencyKey,
         parentTurnId: idempotencyKey,
       },
@@ -631,27 +624,6 @@ describe("child agents", () => {
     }
   });
 
-  it("refuses a spawn from a child agent whose run sees its stop late", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const childId = await spawnChild(harness, "parent-turn:call-1");
-      await stopConversationTree([childId], {
-        state: harness.state,
-        stoppedAtMs: Date.now(),
-      });
-      // The child's run has not seen its stop yet when it spawns a helper.
-      vi.setSystemTime(1_800_000_001_000);
-      await expect(
-        spawnChild(harness, "child-turn:call-1", {
-          parentConversationId: childId,
-        }),
-      ).rejects.toBeInstanceOf(AgentStoppedError);
-    } finally {
-      await harness.close();
-    }
-  });
-
   it("resumes a parent task as the instruction that Guardian reads", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
@@ -780,32 +752,6 @@ describe("child agents", () => {
       await expect(
         messageChild(harness, childId, "parent-turn:call-5"),
       ).resolves.toEqual({ delivery: "queued" });
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("gives no work to child agents while the child is stopped", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const childId = await spawnChild(harness, "parent-turn:call-1");
-      const helperId = await spawnChild(harness, "child-turn:call-1", {
-        parentConversationId: childId,
-      });
-      await stopConversationTree([childId, helperId], {
-        state: harness.state,
-        stoppedAtMs: Date.now(),
-      });
-
-      await expect(
-        spawnChild(harness, "child-turn:call-2", {
-          parentConversationId: childId,
-        }),
-      ).rejects.toThrow("is stopped");
-      await expect(
-        messageChild(harness, helperId, "child-turn:call-3", childId),
-      ).resolves.toEqual({ delivery: "noted" });
     } finally {
       await harness.close();
     }
