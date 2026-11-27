@@ -363,7 +363,9 @@ export function UserInputForm(props: {
   };
   const normalized = normalizeUserInputAnswer(props.request, answer);
   const empty = isEmptyUserInputAnswer(normalized);
-  const answeredCount = Object.keys(normalized.values).length;
+  const answeredCount = props.request.fields.filter(
+    (field) => normalized.values[field.id] || normalized.custom?.[field.id],
+  ).length;
   const fieldCount = props.request.fields.length;
   // An action sends on click, so only the form can hold unsent input.
   const unsent = !actionField && !sending && !empty;

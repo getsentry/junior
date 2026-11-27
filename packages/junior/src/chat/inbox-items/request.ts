@@ -72,4 +72,4 @@ export const ASK_TOOL_NAMES: ReadonlySet<string> = new Set([
  * Subject id prefix of a question that `askUserQuestion` asked. The rest of
  * the id is the id of that tool call, so its answer can name the call.
  */
-export const ASK_SUBJECT_PREFIX = "ask:";
+export const ASK_SUBJECT_PREFIX = "askUserQuestion:";
