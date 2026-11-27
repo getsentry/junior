@@ -25,7 +25,9 @@ import {
   type ConversationMemoryList,
 } from "../../conversations/conversationMemory";
 import { ConversationParticipants } from "../../conversations/ConversationParticipants";
-import { ConversationWork } from "../../conversations/ConversationWork";
+import { ConversationAgents } from "../../conversations/ConversationAgents";
+import { ConversationTodoList } from "../../conversations/ConversationTodos";
+import { ConversationWaitingOn } from "../../conversations/ConversationWatches";
 import {
   ConversationDrawer,
   type ConversationDrawerTarget,
@@ -44,9 +46,10 @@ const viewTitles: Record<Exclude<DetailsView, "details">, string> = {
 
 /**
  * Show what a Conversation is and where its work stands, top to bottom:
- * where it came from, the summary, what needs the viewer, its Work, and its
- * linked work. The footer holds the Participants, the cost, and Usage and
- * Memories, which open in place of the details.
+ * where it came from, the summary, what needs the viewer, its Agents,
+ * To-dos, and what it waits on, and its linked work. The footer holds the
+ * Participants, the cost, and Usage and Memories, which open in place of
+ * the details.
  */
 export function ConversationDetails(props: {
   conversationId: string;
@@ -86,12 +89,13 @@ export function ConversationDetails(props: {
     setView("details");
     setTask(undefined);
   }
-  const needsYou = useConversationNeedsYou(props.conversationId).items;
-  const viewerTodoIds = new Set(
-    needsYou.flatMap((item) =>
+  const needsYou = useConversationNeedsYou(props.conversationId);
+  const needsYouTodoIds = new Set(
+    needsYou.items.flatMap((item) =>
       item.todoId === undefined ? [] : [item.todoId],
     ),
   );
+  const canEdit = detail?.isParticipant === true;
   const hasMemories = Boolean(memoryList?.events.length);
   const origin = conversationOrigin(detail);
 
@@ -186,11 +190,12 @@ export function ConversationDetails(props: {
           conversationId={props.conversationId}
           highlight={props.highlightReview}
         />
-        <ConversationWork
-          // A key per Conversation resets "Show finished".
-          canEdit={detail?.isParticipant === true}
+        {/* A key per Conversation resets "Show finished". */}
+        <ConversationAgents
+          canEdit={canEdit}
           conversationId={props.conversationId}
-          key={`work:${props.conversationId}`}
+          events={detail?.events}
+          key={`agents:${props.conversationId}`}
           onOpenTask={(target) => {
             // A phone shows the Task one step deeper in the details sheet.
             if (mobile) return setTask(target);
@@ -198,7 +203,17 @@ export function ConversationDetails(props: {
             if (!panel) props.onClose();
             props.onOpenSubagent(target);
           }}
-          viewerTodoIds={viewerTodoIds}
+        />
+        <ConversationTodoList
+          canEdit={canEdit}
+          conversationId={props.conversationId}
+          key={`todos:${props.conversationId}`}
+          needsYouTodoIds={needsYouTodoIds}
+          viewerTodoIds={needsYou.viewerTodoIds}
+        />
+        <ConversationWaitingOn
+          canEdit={canEdit}
+          conversationId={props.conversationId}
         />
         <ConversationLinkedWork
           key={`links:${props.conversationId}`}

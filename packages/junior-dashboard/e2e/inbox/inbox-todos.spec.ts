@@ -23,13 +23,13 @@ test.describe("new UI", () => {
       .last();
   // Its own actions, in order: Dismiss, Snooze, then Done, the main one.
   const ownActions = (scope: ReturnType<typeof rowOf>) =>
-    scope.getByRole("button", { name: /^(Dismiss|Snooze|Done)$/ });
+    scope.getByRole("button", { name: /^(Dismiss|Snooze|Done|Mark done)$/ });
   const inboxTab = (page: Page) =>
     page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox/ });
 
-  test("a To-do for the viewer waits in To do, and Done closes it", async ({
+  test("a To-do for the viewer waits in To do, and Mark done closes it", async ({
     dashboard,
     page,
   }) => {
@@ -46,8 +46,12 @@ test.describe("new UI", () => {
       card.getByText("Check the deploy calendar before the next release."),
     ).toBeVisible();
     await screenshot(page, "inbox-todo-for-you", { lightTheme: true });
-    await expect(ownActions(card)).toHaveText(["Dismiss", "Snooze", "Done"]);
-    await card.getByRole("button", { exact: true, name: "Done" }).click();
+    await expect(ownActions(card)).toHaveText([
+      "Dismiss",
+      "Snooze",
+      "Mark done",
+    ]);
+    await card.getByRole("button", { exact: true, name: "Mark done" }).click();
 
     await expect(rowOf(page)).toHaveCount(0);
     expect(actions).toEqual([{ body: { action: "done" }, id: todoForYou.id }]);

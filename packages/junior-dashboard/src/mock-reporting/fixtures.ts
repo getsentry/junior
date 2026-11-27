@@ -1212,6 +1212,7 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         messageId: "qa-reviewer-result",
         role: "user",
         eventType: "agent.update",
+        eventIdentifier: DASHBOARD_QA_REVIEW_ID,
         trustedSummary: 'Child agent "reviewer" is blocked.',
         text: "The reviewer needs access to the dashboard repository.",
       }),

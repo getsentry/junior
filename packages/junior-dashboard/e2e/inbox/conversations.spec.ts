@@ -667,7 +667,8 @@ test.describe("new UI", () => {
     ).toBeHidden();
     await screenshot(page, "conversation-child-agents");
 
-    // Details list Tasks in Work with their runtime state.
+    // Details list Tasks in Agents with their own state. A blocked Task
+    // names why, from the update that the transcript hides.
     await page
       .getByRole("button", { name: "Conversation details", exact: true })
       .click();
@@ -675,9 +676,13 @@ test.describe("new UI", () => {
       name: "Conversation details",
       exact: true,
     });
-    const work = details.getByRole("region", { exact: true, name: "Work" });
+    const work = details.getByRole("region", { exact: true, name: "Agents" });
     await expect(
-      work.getByRole("button", { name: /Review the dashboard plan/ }),
+      work.getByRole("button", { name: /^Blocked reviewer/ }),
+    ).toContainText("The reviewer needs access to the dashboard repository.");
+    await work.getByRole("button", { name: "Show finished" }).click();
+    await expect(
+      work.getByRole("button", { name: /^Done Review the dashboard plan/ }),
     ).toBeVisible();
     await screenshot(page, "conversation-subagents");
     // A row opens the same Task transcript drawer as the transcript row.

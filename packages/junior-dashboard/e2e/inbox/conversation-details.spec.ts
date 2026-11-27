@@ -271,7 +271,7 @@ test.describe("new UI", () => {
     await expect(join).toHaveCount(0);
   });
 
-  test("lists Watches in Work and linked work once", async ({
+  test("lists Watches in Waiting on and linked work once", async ({
     page,
     dashboard,
   }) => {
@@ -284,24 +284,29 @@ test.describe("new UI", () => {
       exact: true,
     });
     // The watched pull request is linked work, so it shows once, and its
-    // Watch shows in Work.
+    // Watch waits with its expiry and a separate link out.
     await expect(
       details
         .getByRole("region", { name: "Linked work" })
         .getByRole("link", { name: /#21572/ }),
     ).toHaveCount(1);
+    const watch = details
+      .getByRole("region", { exact: true, name: "Waiting on" })
+      .getByRole("listitem")
+      .filter({
+        hasText:
+          "Fix failing checks and address requested changes on the dashboard PR.",
+      });
+    await expect(watch).toContainText(/Expires /);
     await expect(
-      details
-        .getByRole("region", { exact: true, name: "Work" })
-        .getByRole("link", {
-          name: "Fix failing checks and address requested changes on the dashboard PR.",
-        }),
-    ).toBeVisible();
-    await expect(details.getByText("Also waiting on")).toHaveCount(0);
+      watch.getByRole("link", {
+        name: "Open Fix failing checks and address requested changes on the dashboard PR.",
+      }),
+    ).toHaveAttribute("href", /\/pull\/21572/);
     await screenshot(page, "conversation-details-watched-linked-work");
   });
 
-  test("lists To-dos in Work, and a Participant changes their status", async ({
+  test("lists To-dos with their owners, and a Participant changes their status", async ({
     dashboard,
     page,
   }) => {
@@ -311,19 +316,36 @@ test.describe("new UI", () => {
     );
     const work = page
       .getByRole("complementary", { exact: true, name: "Conversation details" })
-      .getByRole("region", { exact: true, name: "Work" });
-    // Work has no count: closed To-dos are only the latest few.
-    await expect(work.getByRole("heading")).toHaveText("Work");
+      .getByRole("region", { exact: true, name: "To-dos" });
+    // To-dos have no count: closed To-dos are only the latest few.
+    await expect(work.getByRole("heading")).toHaveText("To-dos");
     const change = page.getByRole("button", {
       name: "Change Confirm the rollback window",
     });
     const rollback = work.getByRole("listitem").filter({ has: change });
-    await expect(rollback.getByRole("img", { name: "To do" })).toBeVisible();
+    await expect(
+      rollback.getByRole("img", { name: "Not started" }),
+    ).toBeVisible();
+    // Each To-do names its owner before its notes.
+    await expect(rollback).toContainText(
+      "Morgan Lee · Check the deploy calendar",
+    );
     await screenshot(page, "conversation-details-todos", {
       lightTheme: true,
       target: work,
       view: "desktop",
     });
+
+    // A started To-do can go back to not started.
+    await page
+      .getByRole("button", { name: "Change Find the slow checkout span" })
+      .click();
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Mark done",
+      "Mark not started",
+      "Drop",
+    ]);
+    await page.keyboard.press("Escape");
 
     await change.click();
     await expect(page.getByRole("menuitem")).toHaveText([
@@ -344,7 +366,9 @@ test.describe("new UI", () => {
 
     await change.click();
     await page.getByRole("menuitem", { name: "Reopen" }).click();
-    await expect(rollback.getByRole("img", { name: "To do" })).toBeVisible();
+    await expect(
+      rollback.getByRole("img", { name: "Not started" }),
+    ).toBeVisible();
 
     // A phone shows the same section in the details sheet.
     await page.setViewportSize({ height: 844, width: 390 });
@@ -352,7 +376,7 @@ test.describe("new UI", () => {
     await conversationMenuRow(page, "Conversation details").click();
     const sheetHeading = page
       .getByRole("dialog", { name: "Conversation details" })
-      .getByRole("heading", { name: "Work", exact: true });
+      .getByRole("heading", { name: "To-dos", exact: true });
     await sheetHeading.scrollIntoViewIfNeeded();
     await expect(sheetHeading).toBeInViewport();
     await screenshot(page, "conversation-details-todos", {
@@ -447,11 +471,14 @@ test.describe("new UI", () => {
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}?review=open`,
     );
-    // A To do for you opens with Done.
+    // A To do for you opens with its related links and Mark done.
     const item = page.getByRole("dialog", {
       name: "Approve the preview deploy",
     });
-    await item.getByRole("button", { exact: true, name: "Done" }).click();
+    await expect(
+      item.getByRole("link", { name: /Dashboard QA preview/ }),
+    ).toBeVisible();
+    await item.getByRole("button", { exact: true, name: "Mark done" }).click();
     await expect(item).toHaveCount(0);
   });
 
@@ -509,7 +536,7 @@ test.describe("new UI", () => {
 
     // A Task opens over the details, and Back goes back to them.
     const reviewerRow = details
-      .getByRole("region", { exact: true, name: "Work" })
+      .getByRole("region", { exact: true, name: "Agents" })
       .getByRole("button", { name: /^Blocked reviewer/ });
     await reviewerRow.click();
     const reviewer = page.getByRole("dialog", { name: "reviewer" });

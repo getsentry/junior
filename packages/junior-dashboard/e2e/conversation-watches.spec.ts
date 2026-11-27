@@ -6,7 +6,7 @@ const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const TIMER_INTENT = "Remind Morgan to confirm the rollback window.";
 const ALERT_INTENT = "Post when the checkout p95 alert resolves.";
 
-test("lists a Conversation's Watches in Work and cancels one", async ({
+test("lists a Conversation's Watches in Waiting on and cancels one", async ({
   page,
   dashboard,
 }) => {
@@ -16,13 +16,17 @@ test("lists a Conversation's Watches in Work and cancels one", async ({
   );
   const work = page
     .getByRole("complementary", { name: "Conversation details", exact: true })
-    .getByRole("region", { exact: true, name: "Work" });
+    .getByRole("region", { exact: true, name: "Waiting on" });
   const timer = work.getByRole("listitem").filter({ hasText: TIMER_INTENT });
   const alert = work.getByRole("listitem").filter({ hasText: ALERT_INTENT });
   await expect(timer).toBeVisible();
   await expect(alert).toBeVisible();
-  // A Watch waits, so it shows the waiting icon and no line under it.
-  await expect(timer.getByRole("img", { name: "Waiting" })).toBeVisible();
+  // A Timer has the clock and says when it fires. A Watch for an Event has
+  // the eye and says when it expires.
+  await expect(timer.getByRole("img", { name: "Timer" })).toBeVisible();
+  await expect(timer).toContainText(/Fires /);
+  await expect(alert.getByRole("img", { name: "Watching" })).toBeVisible();
+  await expect(alert).toContainText(/Expires /);
   await screenshot(page, "conversation-details-watches", {
     lightTheme: true,
     target: work,
@@ -36,7 +40,7 @@ test("lists a Conversation's Watches in Work and cancels one", async ({
   await page.getByRole("menuitem", { name: "Cancel" }).click();
   await expect(timer).toHaveCount(0);
   await cancelled;
-  // Work reads the server again, so the cancel stays.
+  // The list reads the server again, so the cancel stays.
   await page.reload();
   await expect(alert).toBeVisible();
   await expect(timer).toHaveCount(0);
@@ -75,7 +79,7 @@ test("shows no row menu to a viewer who does not take part", async ({
   );
   const work = page
     .getByRole("complementary", { name: "Conversation details", exact: true })
-    .getByRole("region", { exact: true, name: "Work" });
+    .getByRole("region", { exact: true, name: "Waiting on" });
   await expect(
     work.getByText("Check whether CI recovered after the retry."),
   ).toBeVisible();

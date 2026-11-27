@@ -66,7 +66,7 @@ async function seedThreads(page: Page) {
   );
 }
 
-test("a Space's Threads list in Work by state, finished ones last", async ({
+test("a Space's Threads list in Agents by state, finished ones last", async ({
   dashboard,
   page,
 }) => {
@@ -76,7 +76,7 @@ test("a Space's Threads list in Work by state, finished ones last", async ({
   await page.goto(`${dashboard.baseURL}${BILLING}`);
   const work = page
     .getByRole("complementary", { name: "Conversation details" })
-    .getByRole("region", { exact: true, name: "Work" });
+    .getByRole("region", { exact: true, name: "Agents" });
 
   // A wait on the viewer and a failure first, then running, then waiting.
   // Each state keeps the loaded order, newest first, and finished Threads
@@ -123,7 +123,7 @@ test("a phone shows a Space's Threads in its details sheet", async ({
   await conversationMenuRow(page, "Conversation details").click();
   const work = page
     .getByRole("dialog", { name: "Conversation details" })
-    .getByRole("region", { exact: true, name: "Work" });
+    .getByRole("region", { exact: true, name: "Agents" });
   await expect(work.getByRole("link").first()).toHaveText(
     /Approve the cutover window/,
   );

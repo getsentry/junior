@@ -1,9 +1,14 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Ellipsis } from "lucide-react";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { SectionTitle } from "../components/layout/SectionTitle";
 import { Button } from "../components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Item, ItemContent, ItemMedia } from "../components/ui/item";
 import {
   cn,
@@ -164,5 +169,27 @@ export function DetailsRowLine(props: { children: ReactNode }) {
     <div className="line-clamp-2 min-w-0 break-words text-xs leading-4 text-dashboard-text-muted">
       {props.children}
     </div>
+  );
+}
+
+/** The menu of one `DetailsRow`: one trigger that shows on hover or focus. */
+export function DetailsRowMenu(props: {
+  children: ReactNode;
+  disabled?: boolean;
+  label: string;
+}) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        aria-label={props.label}
+        className="grid size-6 place-items-center rounded-md bg-dashboard-surface-panel text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+        disabled={props.disabled}
+      >
+        <Ellipsis aria-hidden="true" size={15} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-36 max-w-72">
+        {props.children}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

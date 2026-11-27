@@ -67,7 +67,7 @@ test.describe("new UI", () => {
     );
 
     // An archived Thread is finished, so it waits behind "Show finished".
-    const work = details.getByRole("region", { exact: true, name: "Work" });
+    const work = details.getByRole("region", { exact: true, name: "Agents" });
     const archived = work.getByRole("link", { name: /Compare sidebar badges/ });
     await expect(archived).toHaveCount(0);
     await work.getByRole("button", { name: "Show finished" }).click();
