@@ -42,7 +42,6 @@ async function designAction(
   proposal: ToolActionProposal,
   ctx: GuardianFactsContext,
 ): Promise<Action> {
-  const input = proposal.input as { command?: unknown };
   const described = await agentActionFacts(proposal.tool, proposal.input, ctx);
   const context = await pluginGuardianContext({
     call: {
@@ -65,16 +64,14 @@ async function designAction(
       ? { serverHints: proposal.tool.serverHints }
       : undefined),
     ...(context.length > 0 ? { context } : undefined),
+    // As production: the summary of the tool's guardian, else the tool
+    // name. Only a made-up tool keeps its own description.
     summary:
-      proposal.tool.name === "bash" && typeof input.command === "string"
-        ? input.command
-        : (described.summary ??
-          // Core writes a real tool's description for the current
-          // Guardian. Only a made-up tool keeps its own.
-          ((await agentHasTool(proposal.tool))
-            ? undefined
-            : proposal.tool.proposalDescription) ??
-          proposal.tool.name),
+      described.summary ??
+      ((await agentHasTool(proposal.tool))
+        ? undefined
+        : proposal.tool.proposalDescription) ??
+      proposal.tool.name,
   };
 }
 
