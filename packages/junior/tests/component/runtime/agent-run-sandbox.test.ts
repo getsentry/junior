@@ -239,19 +239,6 @@ vi.mock("@/chat/pi/gateway-models", async (importOriginal) => ({
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
-// Guardian reviews each bash call. These tests cover sandbox wiring, so the
-// reviewer allows every call.
-vi.mock("@/chat/guardian/reviewer", () => ({
-  createGuardianActionReviewer: () => ({
-    review: async () => ({
-      decision: "allow" as const,
-      reason: "This test exercises sandbox runtime behavior.",
-      riskLevel: "low" as const,
-      userAuthorization: "high" as const,
-    }),
-  }),
-}));
-
 vi.mock("@/chat/prompt", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/prompt")>()),
   buildCoreSystemPromptSections: () => [
@@ -522,7 +509,6 @@ const LOCAL_DESTINATION = {
   conversationId: "local:test:agent-run-sandbox",
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
-// Guardian review of a bash call needs the Actor of the Run.
 const LOCAL_ACTOR = { platform: "local" as const, userId: "local-test" };
 
 /** Return each AGENTS.md block in history, in order. */

@@ -1,7 +1,7 @@
 import { and, eq, inArray, SQL } from "drizzle-orm";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations } from "@/db/schema";
+import { juniorConversations, juniorSpaces } from "@/db/schema";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
 import { conversationSubtree, conversationSubtreeColumns } from "./subtree";
@@ -127,7 +127,35 @@ export async function setArchivedAt(
         guard,
       ),
     )
-    .returning({ conversationId: juniorConversations.conversationId });
+    .returning({
+      conversationId: juniorConversations.conversationId,
+      spaceId: juniorConversations.spaceId,
+    });
+  // 0.316.0 reads a Space's archive from its own row. Keep it equal to its
+  // Lead's archive, so a rollback sees it, until the drop migration.
+  const inSpaces = updated.filter((row) => row.spaceId);
+  if (inSpaces.length > 0) {
+    await db
+      .update(juniorSpaces)
+      .set({ archivedAt })
+      .where(
+        inArray(
+          juniorSpaces.id,
+          db
+            .select({ id: juniorConversations.spaceId })
+            .from(juniorConversations)
+            .where(
+              and(
+                inArray(
+                  juniorConversations.conversationId,
+                  inSpaces.map((row) => row.conversationId),
+                ),
+                eq(juniorConversations.kind, "lead"),
+              ),
+            ),
+        ),
+      );
+  }
   return updated.length;
 }
 

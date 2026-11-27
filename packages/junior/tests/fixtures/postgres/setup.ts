@@ -2,7 +2,6 @@ import pg from "pg";
 import { afterAll, beforeEach, inject } from "vitest";
 import {
   assertLocalPostgresUrl,
-  cleanupPostgresWorkerDatabases,
   getPostgresWorkerDatabaseUrl,
   parsePostgresHarnessConfig,
   resetPostgresTestDatabase,
@@ -64,5 +63,4 @@ afterAll(async () => {
   } else {
     process.env["JUNIOR_DATABASE_DRIVER"] = originalJuniorDatabaseDriver;
   }
-  await cleanupPostgresWorkerDatabases();
 });

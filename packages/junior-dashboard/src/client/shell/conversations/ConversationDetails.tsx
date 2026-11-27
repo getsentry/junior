@@ -1,4 +1,4 @@
-import { ArrowLeft, CornerLeftUp } from "lucide-react";
+import { Bot, CornerLeftUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type {
   ConversationAgentTreeNode,
@@ -7,7 +7,6 @@ import type {
 
 import { DetailsPanel, useDetailsPanel } from "../../components/DetailsPanel";
 import { ConversationInboxItems } from "../inbox/ConversationInboxItems";
-import { Button } from "../../components/ui/button";
 import { ConversationSummary } from "../../conversations/ConversationSummary";
 import {
   ConversationTasks,
@@ -30,7 +29,11 @@ import {
 } from "../../conversations/conversationMemory";
 import { ConversationTodos } from "../../conversations/ConversationTodos";
 import { DetailsCard, DetailsRow } from "../../conversations/DetailsList";
-import type { ConversationDrawerTarget } from "../../conversations/ConversationDrawer";
+import {
+  ConversationDrawer,
+  type ConversationDrawerTarget,
+} from "../../conversations/ConversationDrawer";
+import { useMobileLayout } from "../../layoutMedia";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 import { cn } from "../../styles";
 
@@ -56,7 +59,10 @@ export function ConversationDetails(props: {
   links: ConversationLink[];
   memoryList?: ConversationMemoryList | undefined;
   onClose(): void;
-  /** Open one Task transcript. A details sheet closes first. */
+  /**
+   * Open one Task transcript. A details sheet closes first. A phone opens
+   * the Task in a sheet over details instead, so this does not run there.
+   */
   onOpenSubagent(target: ConversationDrawerTarget): void;
   /** Show the Turn that recalled or captured one memory. */
   onSelectMemory(entry: ConversationMemoryEntry): void;
@@ -66,7 +72,9 @@ export function ConversationDetails(props: {
   usage: ReactNode;
 }) {
   const panel = useDetailsPanel();
+  const mobile = useMobileLayout();
   const { memoryList } = props;
+  const [task, setTask] = useState<ConversationDrawerTarget>();
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   const [memoryConversationId, setMemoryConversationId] = useState(
     props.conversationId,
@@ -74,6 +82,7 @@ export function ConversationDetails(props: {
   if (memoryConversationId !== props.conversationId) {
     setMemoryConversationId(props.conversationId);
     setMemoriesOpen(false);
+    setTask(undefined);
   }
   const agents = useConversationChildAgents(props.conversationId).data?.agents;
   const threads = agents?.filter((agent) => agent.kind === "thread") ?? [];
@@ -85,28 +94,23 @@ export function ConversationDetails(props: {
     // The list replaces details in place, so nothing stacks over the panel.
     return (
       <DetailsPanel
+        back={{
+          label: "Back to details",
+          onBack: () => setMemoriesOpen(false),
+        }}
         label="Conversation details"
         onClose={props.onClose}
+        sheetTitle="Memories"
         title={
-          <div className="-ml-2 flex min-w-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              aria-label="Back to details"
-              onClick={() => setMemoriesOpen(false)}
-              size="icon"
-            >
-              <ArrowLeft aria-hidden="true" size={15} />
-            </Button>
-            <h2
-              className={cn(
-                fadeOverflowClass,
-                "m-0 font-sans text-sm font-semibold text-dashboard-text",
-              )}
-              ref={fadeWhenOverflowing}
-            >
-              Memories
-            </h2>
-          </div>
+          <h2
+            className={cn(
+              fadeOverflowClass,
+              "m-0 font-sans text-sm font-semibold text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
+            Memories
+          </h2>
         }
       >
         <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
@@ -180,6 +184,8 @@ export function ConversationDetails(props: {
         {tasks.length > 0 ? (
           <ConversationTasks
             onOpenTask={(target) => {
+              // A phone shows the Task one step deeper in the details sheet.
+              if (mobile) return setTask(target);
               // The panel stays beside the drawer. A modal sheet cannot.
               if (!panel) props.onClose();
               props.onOpenSubagent(target);
@@ -199,6 +205,20 @@ export function ConversationDetails(props: {
           />
         ) : null}
       </div>
+      {task ? (
+        <ConversationDrawer
+          icon={
+            <Bot
+              aria-hidden="true"
+              className="shrink-0 text-cyan-300"
+              size={16}
+              strokeWidth={2}
+            />
+          }
+          onClose={() => setTask(undefined)}
+          target={task}
+        />
+      ) : null}
     </DetailsPanel>
   );
 }
