@@ -15,7 +15,7 @@ import {
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mockFeedPage } from "../mock-reports";
-import { scrollListUntil } from "./scroll-until";
+import { scrollListUntil, scrollToLastStatus } from "./scroll-until";
 
 // A GitHub notice about a pull request that waits on no one, so Code has a
 // Waiting on others pile. An agent's notice that cites one is not on Code.
@@ -548,10 +548,6 @@ test.describe("new UI", () => {
    * asks for the next page. The last row can show while that line does not.
    */
   async function scrollToTodoEnd(page: Page) {
-    const end = page
-      .getByRole("region", { name: "To do" })
-      .getByRole("status")
-      .last();
-    if ((await end.count()) > 0) await end.scrollIntoViewIfNeeded();
+    await scrollToLastStatus(page.getByRole("region", { name: "To do" }));
   }
 });
