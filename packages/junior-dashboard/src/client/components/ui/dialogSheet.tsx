@@ -43,9 +43,9 @@ export function DialogSheetContent({
       data-slot="dialog-content"
       // As on a desktop, a dialog opened from a sheet dims it too.
       forceOverlay
-      // While a touch keyboard is open, the sheet fills the band above it,
-      // as a `BottomSheet` does.
-      style={keyboardBandStyle(band)}
+      // While a touch keyboard is open, a tall sheet fills the band above
+      // it, and a form sheet ends at the keyboard's top edge.
+      style={keyboardBandStyle(band, phoneSize === "full")}
     >
       <div
         aria-hidden="true"
