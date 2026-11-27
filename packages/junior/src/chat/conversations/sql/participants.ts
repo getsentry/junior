@@ -1,5 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
@@ -7,8 +6,6 @@ import {
   juniorIdentities,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
-import { loadConversationSlackTenantId } from "./event-actor";
-import { resolveRootVisibility } from "./privacy";
 
 /** Resolve the root conversation id that owns personal-feed membership. */
 export async function resolveRootConversationId(
@@ -45,9 +42,12 @@ export async function rootConversationIsArchived(
 }
 
 /**
- * Upsert one linked user as a participant on a root conversation.
- * No-ops and returns false when the identity is missing, unlinked, or not a
- * user. `resubscribe` ends an unsubscribe: the user addressed Junior again.
+ * Upsert one linked user as a participant on a root conversation, and
+ * return whether they are one now. No-ops and returns false when the
+ * identity is missing, unlinked, or not a user. `resubscribe` ends an
+ * unsubscribe: the user addressed Junior again. With `message`, only a Slack
+ * author is added: on the web and other surfaces a person joins explicitly,
+ * so their Message only updates a row that they already have.
  */
 export async function recordConversationParticipant(
   executor: JuniorSqlDatabase,
@@ -55,6 +55,7 @@ export async function recordConversationParticipant(
     actorIdentityId: string;
     conversationId: string;
     atMs: number;
+    message?: boolean;
     resubscribe?: boolean;
   },
 ): Promise<boolean> {
@@ -62,6 +63,7 @@ export async function recordConversationParticipant(
     .db()
     .select({
       kind: juniorIdentities.kind,
+      provider: juniorIdentities.provider,
       userId: juniorIdentities.userId,
     })
     .from(juniorIdentities)
@@ -76,9 +78,31 @@ export async function recordConversationParticipant(
     args.conversationId,
   );
   const at = new Date(args.atMs);
+  const set = {
+    lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, ${at})`,
+    ...(args.resubscribe ? { unsubscribedAt: null } : undefined),
+  };
   // Each caller bumps the Conversation in the same transaction: event appends
   // carry the touch, and the root upsert sets `detailVersion`. The root needs
   // no bump, because its detail version sums its subtree.
+  if (args.message && identity.provider !== "slack") {
+    // oxlint-disable-next-line junior/touch-conversation-detail -- callers bump in the same transaction.
+    const updated = await executor
+      .db()
+      .update(juniorConversationParticipants)
+      .set(set)
+      .where(
+        and(
+          eq(juniorConversationParticipants.userId, identity.userId),
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            rootConversationId,
+          ),
+        ),
+      )
+      .returning({ userId: juniorConversationParticipants.userId });
+    return updated.length > 0;
+  }
   // oxlint-disable-next-line junior/touch-conversation-detail -- callers bump in the same transaction.
   await executor
     .db()
@@ -93,40 +117,9 @@ export async function recordConversationParticipant(
         juniorConversationParticipants.userId,
         juniorConversationParticipants.rootConversationId,
       ],
-      set: {
-        lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
-        ...(args.resubscribe ? { unsubscribedAt: null } : undefined),
-      },
+      set,
     });
   return true;
-}
-
-/**
- * Read the Users of mentioned Slack people. With `slackTeamId`, only people
- * of that Slack workspace match, so a mention names someone there.
- */
-export async function readMentionedUserIds(
-  executor: JuniorSqlDatabase,
-  slackUserIds: readonly string[],
-  slackTeamId: string | undefined,
-): Promise<string[]> {
-  if (slackUserIds.length === 0) return [];
-  const rows = await executor
-    .db()
-    .select({ userId: juniorIdentities.userId })
-    .from(juniorIdentities)
-    .where(
-      and(
-        eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.kind, "user"),
-        inArray(juniorIdentities.providerSubjectId, [...slackUserIds]),
-        isNotNull(juniorIdentities.userId),
-        slackTeamId
-          ? eq(juniorIdentities.providerTenantId, slackTeamId)
-          : undefined,
-      ),
-    );
-  return [...new Set(rows.flatMap((row) => (row.userId ? [row.userId] : [])))];
 }
 
 /** Return whether a Conversation is a Space's Lead. */
@@ -144,46 +137,6 @@ export async function isLeadConversation(
       ),
     );
   return Boolean(lead);
-}
-
-/**
- * Subscribe the people that a person's Turn input Message mentions, when the
- * root is public. It is an Invite by mention (contract:
- * `api/conversations/subscription.ts`), so an existing Participant keeps
- * their row and their unsubscribe.
- */
-export async function recordMentionedParticipants(
-  executor: JuniorSqlDatabase,
-  args: { atMs: number; conversationId: string; text: string },
-): Promise<void> {
-  const slackUserIds = slackMentionedUserIds(args.text);
-  if (slackUserIds.length === 0) return;
-  const { rootConversationId, visibility } = await resolveRootVisibility(
-    executor,
-    args.conversationId,
-  );
-  if (visibility !== "public") return;
-  const userIds = await readMentionedUserIds(
-    executor,
-    slackUserIds,
-    await loadConversationSlackTenantId(executor, rootConversationId),
-  );
-  if (userIds.length === 0) return;
-  const at = new Date(args.atMs);
-  // The caller bumps the Conversation in the same transaction, as for
-  // `recordConversationParticipant`.
-  // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
-  await executor
-    .db()
-    .insert(juniorConversationParticipants)
-    .values(
-      userIds.map((userId) => ({
-        lastMessageAt: at,
-        rootConversationId,
-        userId,
-      })),
-    )
-    .onConflictDoNothing();
 }
 
 /**

@@ -62,8 +62,8 @@ export type StepInput<T> = {
 /**
  * What the step adds to the history, and what the Turn does next. `continue`:
  * run another step. `completed` ends the Turn. `failed`: the model request
- * failed and the step adds nothing. `reply` is the failed reply, so the caller
- * can retry the step or end the Turn.
+ * failed or its reply is cut off, and the step adds nothing. `reply` is the
+ * failed reply, so the caller can retry the step or end the Turn.
  */
 export type StepResult =
   | {
@@ -124,8 +124,21 @@ async function requestModel(
   if (reply.content.some((block) => block.type === "toolCall")) {
     return { outcome: "continue", messages: [reply] };
   }
-  if (reply.stopReason === "stop" || reply.stopReason === "length") {
+  if (reply.stopReason === "stop") {
     return { outcome: "completed", messages: [reply] };
+  }
+  // Text that the output limit cut off is not a reply, so nobody gets half an
+  // answer. The same request would hit the limit again.
+  if (reply.stopReason === "length") {
+    return {
+      outcome: "failed",
+      reply,
+      failure: {
+        kind: "cut_off_output",
+        retryable: false,
+        message: "The reply hit the output token limit",
+      },
+    };
   }
   return {
     outcome: "failed",

@@ -71,14 +71,13 @@ describe("Notion plugin package", () => {
       pluginRoots: () => [],
     }));
 
-    const { pluginCatalogRuntime } =
-      await import("@/chat/plugins/catalog-runtime");
+    const { getAppContext } = await import("@/app/context");
     const { defineJuniorPlugins, pluginCatalogConfigFromPluginSet } =
       await import("@/plugins");
-    pluginCatalogRuntime.setConfig(
+    getAppContext().catalog.setConfig(
       pluginCatalogConfigFromPluginSet(defineJuniorPlugins([notionPlugin()])),
     );
-    const providers = pluginCatalogRuntime.getProviders();
+    const providers = getAppContext().catalog.getProviders();
 
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.mcp).toMatchObject({

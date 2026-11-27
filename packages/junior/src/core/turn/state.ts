@@ -1,60 +1,10 @@
-// The state changes of a Turn. Each arrow is one function in this file.
-//
-//            claimTurn            commitStep (completed)
-//   queued ─────────────▶ running ───────────────────────▶ completed
-//     │   ◀─────────────    │  ↺ claimTurn (lease expired)
-//     │   commitStep        │
-//     │   (continue),       │                failTurn
-//     │   releaseTurn       ├──────────────────────────▶ failed
-//     │     stopTurns       │   stopTurns
-//     └─────────────────────┴──────────────────────────▶ cancelled
-//
-// createTurn inserts a Turn as queued. completed, failed and cancelled are
-// final: no function changes them. A lease covers one step: commitStep
-// (continue) queues the Turn again, and the next step needs a new claim.
-//
-// | Change                 | Turn must be          | lease_epoch | attempts | step_seq | Lease    |
-// | ---------------------- | --------------------- | ----------- | -------- | -------- | -------- |
-// | claimTurn              | next, or expired      | +1          | +1       |          | set      |
-// | commitStep (continue)  | running, fenced, step |             | 0        | +1       | cleared  |
-// | commitStep (completed) | running, fenced, step |             | 0        | +1       | cleared  |
-// | failTurn               | running, fenced       |             |          |          | cleared  |
-// | releaseTurn            | running, fenced       |             |          |          | cleared  |
-// | stopTurns              | queued or running     | +1          |          |          | cleared  |
-// | supersedeTurn (queued) | queued                | +1          |          |          |          |
-//
-// commitStep (completed) queues the Turn instead, like commitStep (continue),
-// while the Turn has an input that no step has read. The first claimTurn sets
-// `started_at`; later claims keep it.
-//
-// Superseded: supersedeTurn cancels a queued Turn. A running Turn instead
-// moves to normal priority, behind the Turn that supersedes it. Its next
-// commitStep or releaseTurn cancels it instead of queuing it again. All set
-// `end_reason` to `superseded`.
-//
-// stopTurns cancels every open Turn of a Conversation at once, so no Turn of
-// it runs after a stop. It publishes one of them after the cancel. That
-// message claims nothing, so the step consumer runs `reconcileTurn` for it.
-//
-// Next: queued, and no other Turn of the Conversation is running or comes
-// before it in run order, so a Conversation runs one Turn at a time, in order.
-//
-// Expired: running, but `lease_expires_at` has passed. Only claimTurn takes
-// over such a Turn, so the queue's redelivery after a crash resumes it.
-//
-// Fenced: the write matches only while the Turn runs under the caller's
-// `lease_epoch`, so a worker that lost its lease changes nothing and gets
-// `false`, or undefined from commitStep. holdsLease reads the same fence
-// without a write. Step: the write
-// also matches only at the caller's claimed `step_seq`, so a second commit of
-// the same step changes nothing. Lease times use the database clock, so hosts
-// agree on expiry.
-//
-// claimTurn, commitStep, releaseTurn and stopTurns take the Conversation lock
-// before they touch the Turn row, so a claim cannot start a Turn while
-// `scheduleInput` decides where an input goes. A writer that needs both takes them in this
-// order, so writers cannot deadlock.
+// The state changes of a Turn, one function each: claimTurn runs a queued
+// Turn, or takes over a running one whose lease expired. commitStep completes
+// it or queues it again (continue), as releaseTurn does. failTurn fails it.
+// stopTurns cancels a queued or running Turn. completed, failed and cancelled
+// are final. A lease covers one step.
 import { randomUUID } from "node:crypto";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   and,
   asc,
@@ -67,6 +17,7 @@ import {
   notExists,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type {
@@ -74,18 +25,26 @@ import type {
   ConversationTurnFailureReason,
 } from "@/chat/conversations/history";
 import { contextProvenance } from "@/chat/conversations/provenance";
+import { extractGenAiUsageSummary } from "@/chat/logging";
+import {
+  addAgentTurnUsage,
+  agentTurnCostUsd,
+  type AgentTurnUsage,
+} from "@/chat/usage";
 import { withConversationEventLock } from "@/conversation-events/lock";
 import { historyItemFromPiMessage } from "@/core/history/items";
 import { appendAgentHistory } from "@/core/history/write";
-import { recordReplies } from "@/core/delivery/outbox";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
+import { publishTurnEnded } from "@/core/turn/ended";
 import { findUnreadInputs, inputEventKey } from "@/core/turn/inbox";
-import { publishTurnStep } from "@/core/turn/queue";
+import { recordReplies } from "@/core/turn/outbox";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
+import { usdToMicroUsd } from "@/db/micro-usd";
+import { usageTokensSchema, type UsageTokens } from "@/usage-schema";
 
 /** A Turn's id and state. */
 export type Turn = { turnId: string; state: TurnState };
@@ -102,7 +61,12 @@ const SUPERSEDED_END = {
   endedAt: sql`now()`,
 } as const;
 
-/** The lease of one invocation on one step of a Turn. */
+/**
+ * The lease of one invocation on one step of a Turn. A fenced write matches
+ * only while the Turn runs under this `lease_epoch`, so a worker that lost its
+ * lease changes nothing. A commit also matches only at the claimed
+ * `step_seq`, so a second commit of the same step changes nothing.
+ */
 export type TurnLease = { turnId: string; leaseEpoch: number };
 
 /** A Turn that one invocation claimed to run its next step. */
@@ -113,6 +77,10 @@ export type ClaimedTurn = TurnLease & {
   attempts: number;
 };
 
+// Writers take the Conversation lock before the Turn row, in that order, so
+// they cannot deadlock, and a claim cannot start a Turn while `scheduleInput`
+// decides where an input goes. Lease times use the database clock, so hosts
+// agree on expiry.
 function leaseExpiry(leaseMs: number) {
   return sql`now() + ${leaseMs}::integer * interval '1 millisecond'`;
 }
@@ -180,6 +148,62 @@ export async function findTurn(
     .from(juniorTurns)
     .where(eq(juniorTurns.id, turnId));
   return turn;
+}
+
+/** The usage of the model replies that a Turn paid for but did not keep. */
+export type DiscardedUsage = { costMicroUsd: number; tokens?: UsageTokens };
+
+/** Reads a Turn's discarded usage. Undefined when the Turn does not exist. */
+export async function findDiscardedUsage(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<DiscardedUsage | undefined> {
+  return selectDiscardedUsage({ executor }, eq(juniorTurns.id, turnId));
+}
+
+async function selectDiscardedUsage(
+  { executor }: Pick<EngineContext, "executor">,
+  where: SQL | undefined,
+): Promise<DiscardedUsage | undefined> {
+  const [turn] = await executor
+    .db()
+    .select({
+      costMicroUsd: juniorTurns.discardedCostMicroUsd,
+      tokens: juniorTurns.discardedTokens,
+    })
+    .from(juniorTurns)
+    .where(where);
+  if (!turn) {
+    return undefined;
+  }
+  return turn.tokens === null
+    ? { costMicroUsd: turn.costMicroUsd }
+    : {
+        costMicroUsd: turn.costMicroUsd,
+        tokens: usageTokensSchema.parse(turn.tokens),
+      };
+}
+
+// The columns that add `usage` to the Turn's discarded usage, for the fenced
+// update that releases or ends the Turn. Only the lease holder writes them,
+// so it can read and add here instead of in SQL.
+async function discardedUsageUpdate(
+  { executor }: Pick<EngineContext, "executor">,
+  lease: TurnLease,
+  usage: AgentTurnUsage | undefined,
+): Promise<{ discardedCostMicroUsd?: number; discardedTokens?: UsageTokens }> {
+  const current = usage
+    ? await selectDiscardedUsage({ executor }, leaseFence(lease))
+    : undefined;
+  if (!current) {
+    return {};
+  }
+  const { cost: _, ...tokens } = addAgentTurnUsage(current.tokens, usage) ?? {};
+  return {
+    discardedCostMicroUsd:
+      current.costMicroUsd + usdToMicroUsd(agentTurnCostUsd(usage) ?? 0),
+    discardedTokens: tokens,
+  };
 }
 
 // Run order of a Conversation's open Turns: the running Turn first, then
@@ -302,34 +326,38 @@ async function isSuperseded(
 
 /**
  * Makes way for a Turn that supersedes this one. Call it under the
- * Conversation lock. A queued Turn has no step in flight, so it ends now. A
- * running Turn moves behind the new Turn, and `commitStep` ends it when its
- * step commits, so the step's work is kept.
+ * Conversation lock. A queued Turn has no step in flight, so it ends now and
+ * moves `lease_epoch`. A running Turn moves behind the new Turn, and
+ * `commitStep` or `releaseTurn` ends it, so the step's work is kept. True
+ * when the Turn ended now.
  */
 export async function supersedeTurn(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
-): Promise<void> {
+): Promise<boolean> {
   const db = executor.db();
-  await db
+  const ended = await db
     .update(juniorTurns)
     .set({
       ...SUPERSEDED_END,
       leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")));
+    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")))
+    .returning({ id: juniorTurns.id });
   await db
     .update(juniorTurns)
     .set({ priority: TURN_PRIORITY.normal, updatedAt: sql`now()` })
     .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "running")));
+  return ended.length > 0;
 }
 
 /**
  * Claims a Turn to run its next step: the Conversation's next queued Turn, or
- * a running Turn whose lease expired. Returns undefined for any other Turn, so
- * of two concurrent claims only one gets the Turn, and a Turn waits while
- * another Turn of its Conversation runs. It holds the Conversation lock.
+ * a running Turn whose lease expired, so the queue's redelivery after a crash
+ * resumes it. Any other Turn gets undefined, so one of two racing claims wins,
+ * and a Conversation runs one Turn at a time, in order. Each claim moves
+ * `lease_epoch` and `attempts` and holds the Conversation lock.
  */
 export async function claimTurn(
   {
@@ -481,22 +509,18 @@ function promptEventKey(
 }
 
 /**
- * Commits a step in one transaction: it appends the prompt's new messages in
- * layout order, which hold the inputs that the step read, then the step's
- * messages keyed by Turn and step, to the Conversation history, adds an
- * outbox row for each new reply and releases the lease. A Turn that
- * continues goes back to queued for its next step, which needs a new claim.
- * A Turn that the step completed ends, unless it still has unread inputs:
- * then it continues, so the next step reads them.
- * Returns what the Turn does next. Undefined when the lease is lost or the
- * step is already committed, and then nothing is written.
+ * Commits a step in one transaction: appends the prompt's new messages, with
+ * the inputs the step read, then the step's messages to history, adds an
+ * outbox row per new reply, and releases the lease. A Turn that continues
+ * queues for a new claim. A `stale` final reply is not committed. Undefined,
+ * with no write, when the lease is lost or the step is already committed.
  */
 export async function commitStep(
   { executor }: Pick<EngineContext, "executor">,
   turn: TurnLease & { conversationId: string; stepSeq: number },
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
   prompt: PromptMessage[],
-): Promise<"continue" | "completed" | "superseded" | undefined> {
+): Promise<"continue" | "completed" | "superseded" | "stale" | undefined> {
   const nextStep = {
     stepSeq: sql`${juniorTurns.stepSeq} + 1`,
     attempts: 0,
@@ -512,6 +536,11 @@ export async function commitStep(
         step,
         prompt,
       );
+      if (outcome === "stale") {
+        return (await requeueStep({ executor }, turn, step))
+          ? outcome
+          : undefined;
+      }
       const rows = await executor
         .db()
         .update(juniorTurns)
@@ -569,14 +598,15 @@ export async function commitStep(
 /**
  * A completed step ends the Turn only when the commit reads every unread
  * input. The scheduler can add an input after the step read them, and the
- * Conversation lock keeps more out until the commit ends.
+ * Conversation lock keeps more out until the commit ends. A final reply that
+ * missed an input is `stale`, so the Turn ends with one reply to every input.
  */
 async function commitOutcome(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
   prompt: PromptMessage[],
-): Promise<"continue" | "completed" | "superseded"> {
+): Promise<"continue" | "completed" | "superseded" | "stale"> {
   if (step.outcome === "completed") {
     const read = new Set(
       prompt.flatMap((entry) =>
@@ -588,25 +618,78 @@ async function commitOutcome(
       return "completed";
     }
   }
-  // A superseded Turn's unread inputs stay on it and are dropped.
-  return (await isSuperseded({ executor }, turnId)) ? "superseded" : "continue";
+  // A superseded Turn's unread inputs stay on it and are dropped, so its
+  // final reply is the last answer that it gives.
+  if (await isSuperseded({ executor }, turnId)) {
+    return "superseded";
+  }
+  // A tool batch already ran its tools, so only a model reply is dropped.
+  return step.outcome === "completed" && finalReplyOf(step)
+    ? "stale"
+    : "continue";
+}
+
+function finalReplyOf(
+  step: Extract<StepResult, { outcome: "continue" | "completed" }>,
+): AssistantMessage | undefined {
+  const [message] = step.messages;
+  return message?.role === "assistant" ? message : undefined;
+}
+
+/**
+ * Queues the Turn for the same step again, with nothing committed, after a
+ * stale final reply. The attempt does not count: the step did not fail. The
+ * dropped reply's usage adds to the Turn's discarded usage.
+ */
+async function requeueStep(
+  { executor }: Pick<EngineContext, "executor">,
+  turn: TurnLease & { conversationId: string; stepSeq: number },
+  step: Extract<StepResult, { outcome: "continue" | "completed" }>,
+): Promise<boolean> {
+  const rows = await executor
+    .db()
+    .update(juniorTurns)
+    .set({
+      ...(await discardedUsageUpdate(
+        { executor },
+        turn,
+        extractGenAiUsageSummary(finalReplyOf(step)),
+      )),
+      state: "queued",
+      attempts: 0,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        leaseFence(turn),
+        eq(juniorTurns.conversationId, turn.conversationId),
+        eq(juniorTurns.stepSeq, turn.stepSeq),
+      ),
+    )
+    .returning({ id: juniorTurns.id });
+  return rows.length > 0;
 }
 
 /**
  * Ends a running Turn as failed, with the reason and the failure details.
- * False when the lease is lost. The engine calls it through `endFailedTurn`,
- * which also moves the Turn's late inputs.
+ * `discarded` is the usage of the model reply that the step drops. False when
+ * the lease is lost. The engine calls it through `endFailedTurn`, which also
+ * moves the Turn's late inputs.
  */
 export async function failTurn(
   { executor }: Pick<EngineContext, "executor">,
   lease: TurnLease,
   endReason: string,
   failure: TurnFailure,
+  discarded?: AgentTurnUsage,
 ): Promise<boolean> {
   const rows = await executor
     .db()
     .update(juniorTurns)
     .set({
+      ...(await discardedUsageUpdate({ executor }, lease, discarded)),
       state: "failed",
       endReason,
       failureCode: failure.failureCode,
@@ -625,16 +708,19 @@ export async function failTurn(
 /**
  * Queues a running Turn again after its invocation failed, so the queue's
  * retry can claim the step at once. The failed attempt still counts. A Turn
- * that another Turn supersedes ends instead, like at a commit. False when the
- * lease is lost.
+ * that another Turn supersedes ends instead, like at a commit. `discarded` is
+ * the usage of the failed model reply that the retry drops. Returns the
+ * Turn's new state, or undefined when the lease is lost.
  */
 export async function releaseTurn(
   { executor }: Pick<EngineContext, "executor">,
   lease: TurnLease & { conversationId: string },
-): Promise<boolean> {
+  discarded?: AgentTurnUsage,
+): Promise<TurnState | undefined> {
   return executor.transaction(() =>
     withConversationEventLock(executor, lease.conversationId, async () => {
       const released = {
+        ...(await discardedUsageUpdate({ executor }, lease, discarded)),
         leaseOwner: null,
         leaseExpiresAt: null,
         updatedAt: sql`now()`,
@@ -648,20 +734,17 @@ export async function releaseTurn(
             : { ...released, state: "queued" },
         )
         .where(leaseFence(lease))
-        .returning({ id: juniorTurns.id });
-      return rows.length > 0;
+        .returning({ state: juniorTurns.state });
+      return rows[0]?.state;
     }),
   );
 }
 
 /**
- * Stops a Conversation's work: cancels every queued and running Turn of it,
- * in one commit. It needs no lease. It moves each Turn's `lease_epoch`, so
- * the invocation that runs a step cannot commit it. It holds the Conversation
- * lock, so an input that `scheduleInput` places after the stop goes to a new
- * Turn. After the commit it publishes one cancelled Turn: that message claims
- * nothing and runs `reconcileTurn`, which sends the replies already
- * committed. Returns the ids of the cancelled Turns.
+ * Cancels every queued and running Turn of a Conversation in one commit, with
+ * no lease. Moving each `lease_epoch` keeps a running step from committing,
+ * and the lock sends a later input to a new Turn. It then publishes the
+ * message that each stopped Turn ended.
  */
 export async function stopTurns(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
@@ -689,11 +772,9 @@ export async function stopTurns(
         .returning({ id: juniorTurns.id }),
     ),
   );
-  // Delivery runs per Conversation, so one message sends every stopped
-  // Turn's replies.
-  const [first] = stopped;
-  if (first) {
-    await publishTurnStep({ queue }, first.id);
+  for (const { id } of stopped) {
+    // oxlint-disable-next-line no-await-in-loop -- Few Turns stop at once, and a failed send fails the stop.
+    await publishTurnEnded({ queue }, { conversationId, turnId: id });
   }
   return stopped.map(({ id }) => id);
 }

@@ -23,9 +23,8 @@ rule, and it does not add a surface or tenant check to public access.
 - **Target**: the Conversation whose data is read, found, or acted on.
 - **Visibility**: `public` or `private`, stored on every Conversation row.
   A root takes the first known visibility of its Destination or Space, and
-  each child copies its root's. Only an explicit change, such as a move into
-  a private Space, changes it for the whole tree (`setConversationVisibility`);
-  a Slack channel that becomes private does not. Queries check it with
+  each child copies its root's. It does not change after the root is
+  created, even when its Slack channel becomes private. Queries check it with
   `isPublicConversation`. Missing visibility and direct messages are
   private. A missing root fails rows 2 and 3, and row 4 denies.
 
@@ -80,13 +79,11 @@ Check the rows in this order. The first match decides.
 
 ## Rule for people
 
-A person who reads directly, through the dashboard, the API, MCP, or ACP,
-is not a Conversation. Anyone may read a public Conversation and join it by
-posting. Only its Participants may read and act on a private one
-(`canViewPrivateContent`, `isParticipant`). Any Participant may Invite a
-person, and each person may only Leave on their own. A Slack-backed one
-follows its channel instead. This rule never lets one Conversation read
-another.
+Anyone may read a public root Conversation and Join it, but only its
+Participants act on any Conversation: post, Invite, archive, and the rest
+(`isParticipant`). Only they may read a private one
+(`canViewPrivateContent`). A Slack Message adds its author. A web Message
+and a mention add nobody. Each person may only Leave on their own.
 
 A Space's members are the Participants of its Lead, and every Conversation
 in it inherits them, as in any tree. A person who is not a member of a

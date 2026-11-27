@@ -53,7 +53,6 @@ import {
 } from "../../conversations/conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
 import { eventDetailsTrigger, turnContextTrigger } from "./panelTriggers";
-import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
 import { MoveToSpaceDialog } from "../../spaces/MoveToSpaceDialog";
 import { leadMenuState } from "../../spaces/leadMenuState";
@@ -86,7 +85,7 @@ import {
 } from "../../conversations/TranscriptTurnContextView";
 import { DashboardApiError } from "../../http";
 import { ConversationForkLinks } from "../../conversations/ConversationForkLinks";
-import { ChildConversationStatusPill } from "../../conversations/ChildConversationStatus";
+import { ChildPageStatusPill } from "../../conversations/ChildConversationStatus";
 import {
   ConversationStateIcon,
   conversationDisplayState,
@@ -408,12 +407,13 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   // A Task takes input only from its parent agent, and it runs without
-  // interactive auth, so it has no approval to show. Anyone can join a public
-  // Conversation by posting in it (`canAddConversationMessages` in the API).
+  // interactive auth, so it has no approval to show. Only a Participant
+  // posts (`canAddConversationMessages` in the API). A reader of a public
+  // root Joins first.
   const canReply =
     view === "rich" &&
     detail.data !== undefined &&
-    (detail.data.isParticipant || detail.data.visibility === "public") &&
+    detail.data.isParticipant &&
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
@@ -803,7 +803,7 @@ export function ConversationPage(props: {
               }
               status={
                 isChildConversation(conversationDetail) && conversation ? (
-                  <ChildConversationStatusPill status={conversation.status} />
+                  <ChildPageStatusPill conversation={conversation} />
                 ) : null
               }
               title={title}
@@ -840,7 +840,7 @@ export function ConversationPage(props: {
                   {detail.error.message}
                 </Card>
               ) : (
-                <LeadPageScope lead={lead} spaceId={spaceId}>
+                <>
                   {detail.error ? (
                     <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
                       Transcript refresh failed. Showing the latest available
@@ -895,7 +895,7 @@ export function ConversationPage(props: {
                       view={view}
                     />
                   </ConversationCatchUpContext>
-                </LeadPageScope>
+                </>
               )}
             </TranscriptColumn>
           }
@@ -903,6 +903,8 @@ export function ConversationPage(props: {
             <ConversationDock
               canReply={canReply}
               conversationId={conversationId}
+              joining={subscription.isPending}
+              onJoin={() => subscription.mutate(true)}
               detail={detail}
               focusRequest={replyFocusRequest}
               hasNewerPage={Boolean(history.newer)}

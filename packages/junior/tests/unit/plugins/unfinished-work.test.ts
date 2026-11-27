@@ -1,53 +1,53 @@
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
+import { describe, expect, it } from "vitest";
 import {
   isConversationWorkDone,
   listConversationWork,
   listUnfinishedWork,
 } from "@/chat/plugins/unfinished-work";
+import { useAppContext } from "../../fixtures/app-context";
 
 describe("plugin unfinished work", () => {
-  afterEach(() => setPlugins([]));
-
   it("combines plugin signals and ignores conversations outside the candidate set", async () => {
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "first",
-          displayName: "First",
-          description: "First unfinished work plugin",
-        },
-        hooks: {
-          unfinishedWork() {
-            return {
-              assignedConversationIds: [
-                "conversation-a",
-                "conversation-finished",
-                "not-a-candidate",
-              ],
-              conversationIds: ["conversation-a", "not-a-candidate"],
-              finishedWorkAtByConversationId: {
-                "conversation-finished": "2026-08-03T11:30:00.000Z",
-                "not-a-candidate": "2026-08-03T12:00:00.000Z",
-              },
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "first",
+            displayName: "First",
+            description: "First unfinished work plugin",
           },
-        },
-      }),
-      defineJuniorPlugin({
-        manifest: {
-          name: "second",
-          displayName: "Second",
-          description: "Second unfinished work plugin",
-        },
-        hooks: {
-          unfinishedWork() {
-            return { conversationIds: ["conversation-b", "conversation-a"] };
+          hooks: {
+            unfinishedWork() {
+              return {
+                assignedConversationIds: [
+                  "conversation-a",
+                  "conversation-finished",
+                  "not-a-candidate",
+                ],
+                conversationIds: ["conversation-a", "not-a-candidate"],
+                finishedWorkAtByConversationId: {
+                  "conversation-finished": "2026-08-03T11:30:00.000Z",
+                  "not-a-candidate": "2026-08-03T12:00:00.000Z",
+                },
+              };
+            },
           },
-        },
-      }),
-    ]);
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "second",
+            displayName: "Second",
+            description: "Second unfinished work plugin",
+          },
+          hooks: {
+            unfinishedWork() {
+              return { conversationIds: ["conversation-b", "conversation-a"] };
+            },
+          },
+        }),
+      ],
+    });
 
     await expect(
       listConversationWork([
@@ -79,35 +79,37 @@ describe("plugin unfinished work", () => {
   });
 
   it("keeps successful plugin signals when one plugin fails", async () => {
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "working",
-          displayName: "Working",
-          description: "Working unfinished work plugin",
-        },
-        hooks: {
-          unfinishedWork() {
-            return {
-              assignedConversationIds: ["conversation-a", "conversation-c"],
-              conversationIds: ["conversation-a"],
-            };
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "working",
+            displayName: "Working",
+            description: "Working unfinished work plugin",
           },
-        },
-      }),
-      defineJuniorPlugin({
-        manifest: {
-          name: "failing",
-          displayName: "Failing",
-          description: "Failing unfinished work plugin",
-        },
-        hooks: {
-          unfinishedWork() {
-            throw new Error("provider unavailable");
+          hooks: {
+            unfinishedWork() {
+              return {
+                assignedConversationIds: ["conversation-a", "conversation-c"],
+                conversationIds: ["conversation-a"],
+              };
+            },
           },
-        },
-      }),
-    ]);
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "failing",
+            displayName: "Failing",
+            description: "Failing unfinished work plugin",
+          },
+          hooks: {
+            unfinishedWork() {
+              throw new Error("provider unavailable");
+            },
+          },
+        }),
+      ],
+    });
 
     await expect(
       listConversationWork([

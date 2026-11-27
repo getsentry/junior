@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { createLocationConfigurationService } from "@/chat/configuration/service";
 import type { ConfigEntry } from "@/chat/configuration/types";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { useAppContext } from "../../fixtures/app-context";
 
 function makeLocationConfiguration() {
   const entries = new Map<string, ConfigEntry>();
@@ -53,6 +53,48 @@ describe("jr-rpc custom command", () => {
     expect(mention).toEqual({ handled: false });
   });
 
+  it("passes quoted values as plain arguments", async () => {
+    // `config get` echoes the key it got.
+    for (const [command, key] of [
+      [`jr-rpc config get '["junior","relay"]'`, '["junior","relay"]'],
+      ['jr-rpc config get "a \\"b\\" c"', 'a "b" c'],
+      ["jr-rpc config get a\\ b", "a b"],
+    ] as const) {
+      const handled = expectHandled(
+        await maybeExecuteJrRpcCustomCommand(command, {
+          locationConfiguration: makeLocationConfiguration(),
+        }),
+      );
+      expect(handled.result.exit_code).toBe(0);
+      expect(JSON.parse(handled.result.stdout)).toMatchObject({ key });
+    }
+  });
+
+  it("names the shell part to remove", async () => {
+    for (const [command, part] of [
+      ["jr-rpc config get $HOME", "$HOME"],
+      ["jr-rpc config get $(id)", "$(id)"],
+      ["jr-rpc config get `id`", "`id`"],
+      ["jr-rpc config get *.repo", "*.repo"],
+      ["jr-rpc config get github.repo # note", "# note"],
+      ["jr-rpc config get github.repo && echo hi", "&& echo hi"],
+      ["jr-rpc config get github.repo > out.txt", "> out.txt"],
+      ["jr-rpc config get github.repo | jq .", "| jq ."],
+      ["jr-rpc config get github.repo 2>&1", "2>&1"],
+    ] as const) {
+      const handled = expectHandled(
+        await maybeExecuteJrRpcCustomCommand(command, {
+          locationConfiguration: makeLocationConfiguration(),
+        }),
+      );
+      expect(handled.result).toMatchObject({
+        exit_code: 2,
+        stdout: "",
+        stderr: `jr-rpc takes plain arguments only. Remove "${part}" and run the jr-rpc command again.\n`,
+      });
+    }
+  });
+
   it("requires conversation context for config commands", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config get github.repo",
@@ -76,6 +118,10 @@ describe("jr-rpc custom command", () => {
     );
     const handled = expectHandled(getResult);
     expect(handled.result.exit_code).toBe(0);
+    // just-bash froze these host globals on its first command.
+    expect(Object.isFrozen(Math)).toBe(false);
+    expect(Object.isFrozen(JSON)).toBe(false);
+    expect(Object.isFrozen(Reflect)).toBe(false);
     expect(JSON.parse(handled.result.stdout)).toMatchObject({
       ok: true,
       key: "github.repo",
@@ -134,39 +180,37 @@ describe("jr-rpc custom command", () => {
   });
 
   it("lists installed plugins", async () => {
-    const previousConfig = pluginCatalogRuntime.setConfig({
-      inlineManifests: [
-        {
-          manifest: {
-            name: "example",
-            displayName: "Example",
-            description: "Example plugin",
-            configKeys: ["example.repo"],
-          },
-        },
-      ],
-    });
-    try {
-      const result = await maybeExecuteJrRpcCustomCommand(
-        "jr-rpc plugins list",
-        {},
-      );
-      const handled = expectHandled(result);
-      expect(handled.result.exit_code).toBe(0);
-      const output = JSON.parse(handled.result.stdout);
-      expect(output.ok).toBe(true);
-      expect(output.plugins).toEqual(
-        expect.arrayContaining([
+    useAppContext({
+      pluginConfig: {
+        inlineManifests: [
           {
-            name: "example",
-            displayName: "Example",
-            description: "Example plugin",
-            configKeys: ["example.repo"],
+            manifest: {
+              name: "example",
+              displayName: "Example",
+              description: "Example plugin",
+              configKeys: ["example.repo"],
+            },
           },
-        ]),
-      );
-    } finally {
-      pluginCatalogRuntime.setConfig(previousConfig);
-    }
+        ],
+      },
+    });
+    const result = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc plugins list",
+      {},
+    );
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(0);
+    const output = JSON.parse(handled.result.stdout);
+    expect(output.ok).toBe(true);
+    expect(output.plugins).toEqual(
+      expect.arrayContaining([
+        {
+          name: "example",
+          displayName: "Example",
+          description: "Example plugin",
+          configKeys: ["example.repo"],
+        },
+      ]),
+    );
   });
 });

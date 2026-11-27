@@ -88,6 +88,7 @@ test.describe("new UI", () => {
       "Done",
     ]);
     await screenshot(page, "inbox-todo-row-actions", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });

@@ -8,7 +8,7 @@ import {
   deleteMcpServerSessionId,
   deleteMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { RequestApp } from "./slack";
 
 /**
@@ -59,8 +59,8 @@ export async function forgetAuthorizations(userIds: string[]): Promise<void> {
   // The eval app has few providers and a test has few people, so delete
   // all of their data at once.
   await Promise.all(
-    pluginCatalogRuntime
-      .getProviders()
+    getAppContext()
+      .catalog.getProviders()
       .flatMap(({ manifest }) =>
         userIds.flatMap((userId) => [
           tokens.delete(userId, manifest.name),

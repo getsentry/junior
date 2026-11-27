@@ -13,23 +13,18 @@ import {
   juniorQuestions,
 } from "@/db/schema";
 
-// An item stores no owner. Its subject names the owner: a question belongs
-// to the Conversation that asked it, a reply and a To-do to their
-// Conversation, an Automation alert to its Automation, and a plugin item to
-// the Conversation that the plugin's owner table or Annotations map its
-// subject id to.
-// These expressions read the owner of the `junior_inbox_items` row of the
-// query.
+// An item stores no owner; its subject names it. These expressions read the
+// owner of the query's `junior_inbox_items` row, such as the asking
+// Conversation of a question or the Automation of an alert. A plugin item's
+// owner comes from the plugin's owner table or its Annotations.
 
 const item = juniorInboxItems;
 
 const annotations = juniorConversationAnnotations;
 
 // The Conversation that first saved an object Annotation of the subject's
-// object, such as the one that created a GitHub issue. Later Conversations
-// that change the object add their own Annotations of it. An attached link
-// can name the same object, but it does not make its Conversation the
-// owner, as in the plugin's own owner lookup.
+// object, such as the one that created a GitHub issue. An attached link
+// does not make its Conversation the owner.
 // `junior_conversation_annotations_subject_idx` serves this lookup.
 function annotationOwner(kind: string): SQL {
   return sql`(select ${annotations.conversationId} from ${annotations} where ${annotations.subjectKind} = ${kind} and ${annotations.subjectId} = ${item.subjectId} and ${annotations.kind} = 'object' order by ${annotations.createdAt}, ${annotations.conversationId} limit 1)`;

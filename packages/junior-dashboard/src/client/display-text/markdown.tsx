@@ -38,25 +38,11 @@ import {
 } from "./resolvedObjects";
 
 /**
- * Render display text Markdown as readable prose.
- *
- * The text is CommonMark plus GFM, with a hard break for each newline. Agent
- * replies also use Slack-style `•` bullets, `<url|label>` links, and
- * bold-only section labels, so those render as lists, links, and headings
- * too. Inline mode keeps only inline formatting, so the text fits in one
- * line or in a button. Document mode reads a Markdown file: plain CommonMark
- * plus GFM, where a newline in a paragraph does not break the line.
- *
- * A link to a known object (`KnownObjectsProvider`) previews its card on
- * hover. Other links ask the API for a card when they scroll into view or
- * the reader hovers them, and stay plain links until a card arrives.
- * Outside document mode, a bare URL in running text shows as a plain link
- * with the object title, or a chip for a person. The first bare URL alone in
- * a top-level paragraph shows the full card, or only the thumbnail of a
- * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
- * earlier text of the same message already shows. Inline mode shows links
- * only with `chips`, outside a link or a button. With `paragraphs` too, it
- * keeps the text's paragraphs, line breaks, and lists.
+ * Render display text Markdown: CommonMark plus GFM with a hard break per
+ * newline, plus the Slack-style bullets, links, and bold section labels that
+ * agent replies use. Inline mode keeps only inline formatting. Document mode
+ * reads a Markdown file, where a newline does not break the line.
+ * `shownCardUrls` lists the `objectUrlKey` of cards that the message shows.
  */
 export function MarkdownText(props: {
   chat?: boolean | undefined;
@@ -148,8 +134,7 @@ type MarkdownNode = {
 };
 
 /**
- * End a bare URL at `*`, as Slack output does (`readBareUrl` in
- * `packages/junior/src/chat/slack/mrkdwn.ts`). GFM keeps `*` in the URL, so
+ * End a bare URL at `*`, as Slack output does. GFM keeps `*` in the URL, so
  * `https://example.com**bold**` would link to `https://example.com**bold`.
  */
 function remarkBareUrlStops() {

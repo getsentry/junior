@@ -20,8 +20,11 @@ import {
 // Characters of one event that keyword search and excerpts read. The
 // tsvector of this much text stays far below the 1 MB Postgres limit.
 const MAX_SEARCHED_EVENT_CHARS = 200_000;
-// A run takes about 4 s on a local Postgres 17 for events of 5 KB each.
-const MAX_EVENTS_PER_RUN = 2_000;
+/**
+ * Events whose lexemes one call stores by default. A run takes about 4 s on a
+ * local Postgres 17 for events of 5 KB each.
+ */
+export const DEFAULT_MAX_LEXEME_EVENTS = 2_000;
 // The Postgres parser keeps a path, a URL, or a repository reference as one
 // lexeme. Spaces in their place let a query match each part, such as a file
 // name or a pull request number.
@@ -60,7 +63,7 @@ export function searchedEventTextSql(): SQL<string | null> {
 export async function storeConversationEventLexemes(
   db: JuniorDatabase,
   conversationId: string,
-  maxEvents = MAX_EVENTS_PER_RUN,
+  maxEvents = DEFAULT_MAX_LEXEME_EVENTS,
 ): Promise<number> {
   const events = juniorConversationEvents;
   const stored = juniorConversationEventLexemes;

@@ -1,15 +1,8 @@
 /**
- * Give old GitHub Annotations the id of their object, and the current name
- * of their repository.
- *
- * Old rows name an issue or a pull request only by its repository name and
- * number, or by a link that a person attached. After a rename, search and
- * later updates do not find them. A heartbeat starts one bounded slice at a
- * time, after the cursor in plugin state. The job first reads each object
- * whose Annotations have its id once, so a rename from before this release
- * moves them. Then it reads each object whose Annotations have no id, and
- * saves its id and current link. When GitHub names an object's repository
- * with a new name, the Annotations of the whole repository move to it.
+ * Give old GitHub Annotations their object's id and current repository name,
+ * so search finds them after a rename. A heartbeat runs one bounded slice
+ * after the cursor in plugin state: first objects with an id, then objects
+ * without one. A new repository name moves the whole repository's rows.
  */
 import pLimit from "p-limit";
 import type {

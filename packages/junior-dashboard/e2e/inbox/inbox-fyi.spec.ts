@@ -406,8 +406,11 @@ test.describe("new UI", () => {
       const actions = await mockInboxItems(page, { open: [replyNotice] });
       await mockReplyTurn(page);
       await page.goto(`${dashboard.baseURL}/inbox?item=${replyNotice.id}`);
+      // A phone opens the linked row in a sheet.
       const card = page
-        .getByRole("region", { name: "FYI" })
+        .getByRole(view === mobile ? "dialog" : "region", {
+          name: view === mobile ? replyNotice.title : "FYI",
+        })
         .getByRole("region", { name: replyNotice.title, exact: true });
       // The reply from its Turn takes the place of the stored preview.
       await expect(card).toContainText("the error rate is flat.");

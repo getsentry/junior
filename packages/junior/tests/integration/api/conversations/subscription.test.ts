@@ -329,28 +329,27 @@ describe("conversation subscription", () => {
     expect(await ben.feed()).toEqual([]);
   });
 
-  it("a dashboard Message that mentions a person adds them, like Invite", async () => {
-    const { ana, ben } = await sharedThread();
+  it("only a Participant may Invite: a reader of a public conversation Joins first", async () => {
+    await sharedThread();
     const cleo = await person("cleo");
-    await ben.setSubscribed(false);
+    const dana = await person("dana");
 
-    await ana.post(`<@${slackUserId("cleo")}> <@${slackUserId("ben")}> look`);
-    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
-    expect(await ben.feed()).toEqual([]);
+    const refused = await cleo.invite(dana);
+    expect(refused.status).toBe(403);
+    expect(await dana.feed()).toEqual([]);
+
+    await cleo.setSubscribed(true);
+    expect(await (await cleo.invite(dana)).json()).toEqual({ added: true });
+    expect(await dana.feed()).toEqual([CONVERSATION_ID]);
   });
 
-  it("a Slack Message that mentions a person adds them, like Invite", async () => {
-    const { ana, ben } = await sharedThread();
+  it("a Message that mentions a person adds nobody: only Invite does", async () => {
+    const { ana } = await sharedThread();
     const cleo = await person("cleo");
-    await ben.setSubscribed(false);
 
-    await say(
-      ana,
-      false,
-      `<@${slackUserId("cleo")}> <@${slackUserId("ben")}> look`,
-    );
-    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
-    expect(await ben.feed()).toEqual([]);
+    await ana.post(`<@${slackUserId("cleo")}> look`);
+    await say(ana, true, `<@${slackUserId("cleo")}> look`);
+    expect(await cleo.feed()).toEqual([]);
   });
 
   it("a Message in a private conversation adds nobody it mentions", async () => {

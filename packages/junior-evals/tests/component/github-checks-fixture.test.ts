@@ -66,6 +66,47 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
   );
   expect(logs).toContain(checks.check_runs[0].output.summary);
 
+  // The feedback tool and webhook read a review by id. The PR has no inline
+  // review comments, so a review id is not a review comment.
+  const review = await fetch(`${api}/pulls/691/reviews/9003`).then((response) =>
+    response.json(),
+  );
+  expect(review).toMatchObject({
+    id: 9_003,
+    node_id: expect.any(String),
+    user: { login: "octo-requester" },
+  });
+  expect((await fetch(`${api}/pulls/comments/9004`)).status).toBe(404);
+  // Feedback tools work only on a PR by the eval bot, id 12345.
+  expect(pr.user).toMatchObject({ id: 12_345, login: "junior-eval[bot]" });
+
+  // A review body's reactions go through GraphQL on its node id.
+  const reviewReaction = (operationName: string) =>
+    fetch("https://api.github.com/graphql", {
+      method: "POST",
+      body: JSON.stringify({
+        operationName,
+        query: `mutation ${operationName} { x }`,
+        variables: { content: "THUMBS_UP", subjectId: review.node_id },
+      }),
+    }).then((response) => response.json());
+  expect(await reviewReaction("ReviewReactions")).toEqual({
+    data: { node: { reactionGroups: [] } },
+  });
+  expect(await reviewReaction("AddReviewReaction")).toEqual({
+    data: { addReaction: { reaction: { content: "THUMBS_UP" } } },
+  });
+  const commentReaction = await fetch(`${api}/issues/comments/9001/reactions`, {
+    method: "POST",
+    body: JSON.stringify({ content: "eyes" }),
+  });
+  expect(commentReaction.status).toBe(201);
+  expect(
+    await fetch(`${api}/pulls/691/requested_reviewers`).then((response) =>
+      response.json(),
+    ),
+  ).toEqual({ users: [], teams: [] });
+
   // Unspecified paths fail at the fixture edge; they cannot reach live GitHub.
   const unknown = new URL(`${api}/actions/runs/999`);
   expect(

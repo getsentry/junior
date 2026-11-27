@@ -19,6 +19,7 @@ export type ModelFailureKind = Extract<
   | "invalid_request"
   | "invalid_response"
   | "content_policy"
+  | "cut_off_output"
   | "unknown"
 >;
 

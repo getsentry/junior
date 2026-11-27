@@ -128,6 +128,8 @@ export function conversationAccessFromRows(
         validRootConversationId === undefined ? null : row.visibility;
       // Participant rows belong to roots, so a row with a parent never
       // matches its own id. That keeps a forged cycle from granting access.
+      // A Space's members are the Participants of its Lead, the root of
+      // every Conversation in it, so this covers Spaces too.
       const isParticipant =
         (row.parentConversationId === null &&
           participantRootIds.has(row.conversationId)) ||
@@ -168,30 +170,27 @@ export function conversationAccessFromRows(
 }
 
 /**
- * Whether the viewer may add a Message to a Conversation. A signed-in person
- * joins a public Conversation by posting in it, the same as a public Slack
- * thread: their first Turn adds their Participant row. A private one takes
- * Messages only from its Participants.
+ * Whether the viewer may add a Message to a Conversation. Only its
+ * Participants act on a Conversation. A person who can read a public root
+ * Joins it first.
  */
 export function canAddConversationMessages(
   access: ConversationAccess | undefined,
 ): boolean {
-  return Boolean(access?.isParticipant || access?.visibility === "public");
+  return Boolean(access?.isParticipant);
 }
 
 /**
- * Whether the viewer may add a person to a Conversation's Participants. In a
- * public one, anyone who can post may Invite; it grants no access. In a
- * private one, only a Participant may, and it shares the Conversation. A
- * Slack-backed private Conversation follows its Slack channel, so it takes
- * no Invites.
+ * Whether the viewer may add a person to a Conversation's Participants. Only
+ * a Participant may. In a public one it grants no access. In a private one
+ * it shares the Conversation, except that a Slack-backed private
+ * Conversation follows its Slack channel, so it takes no Invites.
  */
 export function canInviteToConversation(
   access: ConversationAccess | undefined,
 ): boolean {
-  if (!access?.rootConversationId) return false;
-  if (access.visibility === "public") return true;
-  return access.isParticipant && !isSlackBacked(access);
+  if (!access?.rootConversationId || !access.isParticipant) return false;
+  return access.visibility === "public" || !isSlackBacked(access);
 }
 
 /**

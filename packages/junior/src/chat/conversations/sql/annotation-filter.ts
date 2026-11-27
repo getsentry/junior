@@ -121,11 +121,9 @@ async function readCodeChangeSubjects(
 
 /**
  * Resolve text that names an object, such as `owner/repo#12` or its link,
- * to an Annotation filter, without a provider call. The plugin that claims
- * a link names the object from the link. A `<repository>#<number>`
- * reference names a code change, which the code change records find by the
- * repository's current name. So an object of a renamed repository still
- * matches by its subject.
+ * to an Annotation filter, without a provider call. A reference finds its
+ * code change by the repository's current name, so an object of a renamed
+ * repository still matches by its subject.
  */
 export async function resolveAnnotationFilter(
   db: JuniorDatabase,

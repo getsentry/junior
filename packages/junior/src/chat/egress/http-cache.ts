@@ -1,16 +1,9 @@
 /**
- * Junior's HTTP cache of provider GET responses. Each entry belongs to one
- * credential scope and one request, so a response that one credential read
- * never serves another credential. A fresh entry serves with no request. A
- * stale one asks the provider with its `ETag` or `Last-Modified`, and a
- * `304 Not Modified` stores it again. Many providers, such as GitHub, do
- * not count a 304 against the rate limit.
- *
- * Saved bodies are plaintext in the state adapter, under hashed keys. A
- * breach of that store exposes up to 6 hours of provider reads: object
- * card data that viewers and the system Actor read, and plugin webhook
- * reads, such as pull requests, their commits with author names and
- * emails, and collaborator roles. It exposes no token.
+ * HTTP cache of provider GET responses, per credential scope and request. A
+ * stale entry revalidates with `ETag` or `Last-Modified`; a 304 is free on
+ * many providers. Bodies are plaintext in the state adapter under hashed
+ * keys, so a breach exposes up to 6 hours of provider reads, such as cards
+ * and pull request commits with author emails, but no token.
  */
 import { createHash } from "node:crypto";
 import * as z from "zod";

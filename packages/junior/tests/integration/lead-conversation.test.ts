@@ -2,11 +2,9 @@ import { createWebSource, type User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { canReadConversation } from "@/api/conversations/access";
 import { readConversationFeed } from "@/api/conversations/list";
-import { updateConversationSubscription } from "@/api/conversations/subscription";
 import { bindMessageAgent } from "@/chat/child-agents/message";
 import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import type { AgentRun } from "@/chat/agent/types";
-import { ownsLocation } from "@/chat/conversations/kind-behavior";
 import {
   createAndEnqueueConversation,
   webActorFromUser,
@@ -62,7 +60,7 @@ async function spaceLead(
     visibility,
     name,
   });
-  return { lead: await getSpaceLead({ member, space }), space };
+  return { lead: await getSpaceLead(space.id), space };
 }
 
 /** A Turn of `conversationId` that `person` started on the web. */
@@ -120,6 +118,8 @@ async function treeRows(conversationIds: string[]) {
       rootConversationId: juniorConversations.rootConversationId,
       spaceId: juniorConversations.spaceId,
       visibility: juniorConversations.visibility,
+      destinationId: juniorConversations.destinationId,
+      location: juniorConversations.location,
     })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, conversationIds));
@@ -140,13 +140,8 @@ describe("Lead", () => {
       name: "Billing migration",
     });
 
-    // Creating the Space made its Lead, so two reads at once return it.
-    const [first, second] = await Promise.all([
-      getSpaceLead({ member: ana, space }),
-      getSpaceLead({ member: ana, space }),
-    ]);
-
-    expect(second.conversationId).toBe(first.conversationId);
+    // Creating the Space made its Lead.
+    const first = await getSpaceLead(space.id);
     expect(first).toMatchObject({
       kind: "lead",
       spaceId: space.id,
@@ -157,7 +152,7 @@ describe("Lead", () => {
       first.conversationId,
     );
 
-    // A Space and its Lead share one name.
+    // A Space's name is its Lead's title.
     await updateSpace(space.id, { name: "Billing cutover" });
     expect(
       await getConversationStore().get({
@@ -206,26 +201,34 @@ describe("Lead", () => {
       userId: ana.id,
     });
 
-    // A Lead has no cap on its active children.
-    for (let index = 0; index < 9; index += 1) {
+    // A Lead has at most 8 active children, as every parent does.
+    for (let index = 0; index < 7; index += 1) {
       await startAgent(leadTurn, `call-more-${index}`);
     }
-    // Its children count as roots for the depth limit, so a child starts
-    // its own child agents as a root does.
+    await expect(startAgent(leadTurn, "call-ninth")).rejects.toThrow(
+      "Parent already has 8 active child agents",
+    );
+    // A Lead's children are plain children. With the default depth of 2, a
+    // Lead's grandchild still starts child agents, and the level below it
+    // cannot.
     const grandchild = await startAgent(
-      { ...leadTurn, conversationId: started, maxAgentDepth: 0 },
+      { ...leadTurn, conversationId: started },
       "call-grandchild",
     );
-    expect((await treeRows([grandchild]))[grandchild]).toMatchObject({
-      parentConversationId: started,
+    const greatGrandchild = await startAgent(
+      { ...leadTurn, conversationId: grandchild },
+      "call-great-grandchild",
+    );
+    expect((await treeRows([greatGrandchild]))[greatGrandchild]).toMatchObject({
+      parentConversationId: grandchild,
       rootConversationId: lead.conversationId,
     });
     await expect(
       startAgent(
-        { ...leadTurn, conversationId: grandchild, maxAgentDepth: 0 },
+        { ...leadTurn, conversationId: greatGrandchild },
         "call-too-deep",
       ),
-    ).rejects.toThrow("only 0 level(s) of child agents can start their own");
+    ).rejects.toThrow("only 2 level(s) of child agents can start their own");
   });
 
   it("starts work that a person begins in a Space as a child of the Lead", async () => {
@@ -258,17 +261,13 @@ describe("Lead", () => {
       feed.conversations.map((conversation) => conversation.conversationId),
     ).toEqual([conversationId]);
 
-    // A member's active feed shows the Lead's children until they
-    // unsubscribe from the Lead, as from any root. The Lead stays active.
-    const activeIds = async () =>
+    // A member's own feed lists roots, so it leaves out the Lead's
+    // children.
+    expect(
       (await readConversationFeed({ viewer: ana })).conversations.map(
         (conversation) => conversation.conversationId,
-      );
-    expect(await activeIds()).toContain(conversationId);
-    expect(
-      await updateConversationSubscription(ana, lead.conversationId, false),
-    ).toEqual({ archivedAt: null, subscribed: false });
-    expect(await activeIds()).not.toContain(conversationId);
+      ),
+    ).not.toContain(conversationId);
   });
 
   it("moves a Conversation and its child agents into, between, and out of Spaces", async () => {
@@ -303,12 +302,19 @@ describe("Lead", () => {
     await expect(
       setConversationSpace(conversationId, target(first), null),
     ).resolves.toBeUndefined();
+    // Its work takes the Lead's Destination, as every child stores its
+    // parent's.
+    const firstLeadDestination = (await treeRows([first.lead.conversationId]))[
+      first.lead.conversationId
+    ]!.destinationId;
     expect(await treeRows([conversationId, child])).toMatchObject({
       [conversationId]: {
+        destinationId: firstLeadDestination,
         parentConversationId: first.lead.conversationId,
         rootConversationId: first.lead.conversationId,
       },
       [child]: {
+        destinationId: firstLeadDestination,
         parentConversationId: conversationId,
         rootConversationId: first.lead.conversationId,
       },
@@ -330,18 +336,26 @@ describe("Lead", () => {
       [child]: { rootConversationId: second.lead.conversationId },
     });
 
+    // Out of the Space, the work is a plain root again, with a Destination
+    // of its own.
     await setConversationSpace(conversationId, null, second.space.id);
-    expect(await treeRows([conversationId, child])).toMatchObject({
+    const left = await treeRows([conversationId, child]);
+    expect(left).toMatchObject({
       [conversationId]: {
         parentConversationId: null,
         rootConversationId: conversationId,
       },
       [child]: {
+        destinationId: left[conversationId]!.destinationId,
         parentConversationId: conversationId,
         rootConversationId: conversationId,
       },
     });
-    // Out of the Space, the work is a root again.
+    expect(left[conversationId]!.destinationId).not.toBe(
+      (await treeRows([second.lead.conversationId]))[
+        second.lead.conversationId
+      ]!.destinationId,
+    );
     expect(
       await getConversationStore().get({ conversationId }),
     ).not.toHaveProperty("spaceId");
@@ -358,32 +372,23 @@ describe("Lead", () => {
     );
     await expect(
       setConversationSpace(secret, target(first), null),
-    ).resolves.toBe("private_into_public");
+    ).resolves.toBe("private");
     expect((await treeRows([secret]))[secret]).toMatchObject({
       parentConversationId: null,
       rootConversationId: secret,
     });
   });
 
-  it("keeps delivering a Slack Conversation that moved into a Space to its own Location", async () => {
-    const harness = await createConversationWorkHarness(
-      readRunsAgentRunner().agentRunner,
-    );
+  it("drops a Slack Conversation's own Location when it moves into a Space", async () => {
     const ana = await signedInViewer("lead-slack@example.com");
     const { lead, space } = await spaceLead(ana);
     const slack = await recordSlackRoot(
       getConversationStore(),
       "1700000000.000710",
     );
-    const web = await startAgent(
-      {
-        conversationId: lead.conversationId,
-        person: ana,
-        queue: harness.queue,
-        state: harness.state,
-      },
-      "call-web-child",
-    );
+    const slackDestination = (await getConversationStore().get({
+      conversationId: slack,
+    }))!.destination!;
 
     await setConversationSpace(
       slack,
@@ -391,18 +396,55 @@ describe("Lead", () => {
       null,
     );
 
-    const moved = await getConversationStore().get({ conversationId: slack });
-    expect(moved).toMatchObject({
-      location: expect.objectContaining({ provider: "slack" }),
+    // It uses its Lead's Destination and Location, as every child does, so
+    // the Slack thread gets no replies.
+    const rows = await treeRows([slack, lead.conversationId]);
+    expect(rows[slack]).toMatchObject({
+      destinationId: rows[lead.conversationId]!.destinationId,
+      location: null,
       parentConversationId: lead.conversationId,
     });
-    expect(ownsLocation(moved!)).toBe(true);
-    // A child that the Lead started has no Location of its own.
-    expect(
-      ownsLocation(
-        (await getConversationStore().get({ conversationId: web }))!,
-      ),
-    ).toBe(false);
+    // Later Slack input in the thread, and a Run that read the Slack
+    // Destination before the move, keep the Lead's.
+    await getConversationStore().recordActivity({
+      conversationId: slack,
+      destination: slackDestination,
+      nowMs: Date.now(),
+      source: "slack",
+    });
+    const moved = await getConversationStore().get({ conversationId: slack });
+    await getConversationStore().recordExecution({
+      conversationId: slack,
+      createdAtMs: moved!.createdAtMs,
+      destination: slackDestination,
+      execution: { status: "idle", updatedAtMs: Date.now() },
+      lastActivityAtMs: Date.now(),
+      metrics: null,
+      updatedAtMs: Date.now(),
+    });
+    expect((await treeRows([slack]))[slack]).toMatchObject({
+      destinationId: rows[lead.conversationId]!.destinationId,
+      location: null,
+    });
+
+    // Out of the Space it is a plain root with its own local Destination,
+    // and later Slack input keeps that one.
+    await expect(setConversationSpace(slack, null, space.id)).resolves.toBe(
+      undefined,
+    );
+    const own = (await treeRows([slack]))[slack]!.destinationId;
+    expect(own).not.toBe(rows[lead.conversationId]!.destinationId);
+    await getConversationStore().recordActivity({
+      conversationId: slack,
+      destination: slackDestination,
+      nowMs: Date.now(),
+      source: "slack",
+    });
+    expect((await treeRows([slack]))[slack]).toMatchObject({
+      destinationId: own,
+      location: null,
+      parentConversationId: null,
+    });
   });
 
   it("starts a Lead Turn for each result of its child, as for any parent", async () => {

@@ -48,7 +48,7 @@ const issueSchema = z
     updatedAt: z.iso.datetime({ offset: true }).nullish(),
   })
   .transform((issue, ctx) => {
-    // Hosted MCP uses id for the display identifier; a UUID is not a ticket key.
+    // Hosted MCP puts the display identifier in id. A UUID is not a key.
     const identifier = issueIdentifier.safeParse(issue.identifier ?? issue.id);
     if (!identifier.success) {
       ctx.addIssue({ code: "custom", message: "Missing issue identifier" });
@@ -65,7 +65,7 @@ const issueResultSchema = z.union([
 /** One Linear issue as the hosted Linear MCP returns it. */
 export type LinearIssue = z.output<typeof issueSchema>;
 
-/** Return whether a value has the shape of a Linear issue key, like `ENG-123`. */
+/** Return whether a value looks like a Linear issue key, like `ENG-123`. */
 export function isLinearIssueIdentifier(value: string): boolean {
   return issueIdentifier.safeParse(value).success;
 }
@@ -93,7 +93,7 @@ export function readLinearIssue(result: {
   return issueResultSchema.safeParse(undefined);
 }
 
-/** Return what Junior saves for one Linear issue: its subject, title, and link. */
+/** Return what Junior saves for a Linear issue: subject, title, and link. */
 export function linearSavedIssue(issue: LinearIssue): SavedObjectAnnotation {
   const identifier = issue.identifier;
   return {

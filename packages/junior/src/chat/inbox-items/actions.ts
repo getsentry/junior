@@ -126,19 +126,10 @@ function submittedAnswer(
 }
 
 /**
- * Do one person action on an Inbox item and tell its linked Conversations.
- * The first submit or dismiss closes the item for every
- * assignee. A retry of the same close sends any missing messages again and
- * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
- * only the call that closes the item succeeds, and every other call gets a
- * conflict. Use it when the caller adds its own input for the action, such
- * as a card click in a chat thread, so one action adds one Turn.
- * `exceptConversationId` is the Conversation where the person acted. It gets
- * the person's input from its own surface, so it gets no message here.
- * `delivery` shows the change and sends the messages; see
- * `deliverInboxItemChange`. A submit, dismiss, or done also closes the
- * person's reply notices in the item's Conversations: the item had their
- * attention.
+ * Do one person action on an Inbox item and tell its linked Conversations. A
+ * retry of the same close resends missing messages and succeeds. With
+ * `firstCloseOnly`, only the closing call succeeds, so a card click adds one
+ * Turn. `exceptConversationId`, where the person acted, gets no message.
  */
 export async function actOnInboxItem(args: {
   action: InboxItemAction;
@@ -300,11 +291,9 @@ export async function actOnInboxItem(args: {
 
 /**
  * Dismiss an `assigneeRoles` item for one assignee: the plugin removes them
- * on its provider first, and a refusal fails the dismiss. When others stay
- * on the item, only this person leaves it, and the item is returned. When
- * they are the only one, return `close`: the item closes as any dismiss.
- * Return `closed` when the provider's webhook closed it first, and this
- * dismiss took over that close.
+ * on its provider first, and a refusal fails the dismiss. Return the item
+ * when others stay, `close` when they were the only one, and `closed` when
+ * the provider's webhook closed it first and this dismiss took that over.
  */
 async function leavePluginItemOnDismiss(
   item: InboxItem,
@@ -422,31 +411,11 @@ function messageAnswer(
 }
 
 /**
- * Close the open action items that a person answered with a reply in their
- * thread. Call it after the reply is saved to the Conversation, so the
- * reply always reaches the agent. Each item that it closes saves `text` as
- * its answer, so the item keeps what the person said.
- *
- * A reply closes an item only when all of these are true:
- * - The item is an open `action` item.
- * - The agent added it in this Conversation, its owner.
- * - The replier is an assigned User. A Slack replier without a Junior User
- *   closes no item.
- * - The decision model says that the reply answers this item
- *   (`matchReplyToInboxItems`). Other open items in the thread stay open.
- *   When the decision fails, all items stay open.
- *
- * Items for Everyone (`isInboxItemForEveryone`, also an item with no
- * assignees), or only for other people, stay open. They need an answer on
- * the card or the Inbox. Each item closes as `done` with
- * `INBOX_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
- * is the answer in this Conversation, so only the other linked
- * Conversations get a message. A click that closes the item first wins.
- * A retry of the reply, or a later reply from the same person, delivers
- * the items that it closed again: the cards show the close, and only the
- * missing messages go. Each message has a key, so a message that was sent
- * does not go again. `delivery` shows the change and sends the messages;
- * see `deliverInboxItemChange`.
+ * Close the open action items that a person's thread reply answered, saving
+ * `text` as each answer, after the reply is saved so it reaches the agent. An
+ * item closes only if the agent added it here, the replier is an assigned User,
+ * and the decision model matches it. A failed decision closes none, and a click
+ * that closes first wins. Only other linked Conversations get a keyed message.
  */
 export async function closeInboxItemsAnsweredByReply(args: {
   /**

@@ -26,7 +26,7 @@ Canonical words for Junior code and docs. One concept, one word.
   Space's other Conversations are its child agents. It finds, starts, and
   steers them, and does no work itself.
 - **Top-level Conversation**: a Conversation with no parent, or a child of a
-  Lead. Top-level lists show these. It is not stored.
+  Lead. It is not stored.
 - **Space**: a named, shared home for a body of related work: metadata on
   its Lead. A **Member** of a Space is a Participant of its Lead.
 - **Thread**: a Conversation of kind `thread`, which people can message. It
@@ -45,7 +45,10 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Conversation metadata**: the stored facts about a Conversation: its
   title and summary. A core task updates the summary after each Turn. A
   public summary outlives the transcript.
-  Do not say "Brief"; it is the retired name.
+  Do not call it a Brief.
+- **Brief**: the work that startAgent, startConversation, or messageAgent
+  hands to another agent. Once Guardian allows it, it is the receiver's
+  instruction.
 - **Catch-up**: a short summary of the rows after a reader's read position,
   and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,
@@ -90,19 +93,19 @@ Canonical words for Junior code and docs. One concept, one word.
   provider-scoped. Junior is the web provider, so a web Actor id is the User
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
-- **Participant**: a User who is the Actor of a Turn in a root Conversation or
-  its children, or who was invited to it. Children inherit the Participants
+- **Participant**: a User who started a root Conversation, sent a Slack
+  Message in it or its children, joined it, or was invited to it. Children inherit the Participants
   of their root, so in a Space they are the Lead's. A Participant is active until they
   Leave; an inactive Participant keeps access but leaves the active feed. Access, feeds, and defaults that need people use Participants. A
   Conversation has no owner. The root Actor (`actor_identity_id`, the Actor
   of the first Turn) is a Participant like any other, and is kept only for
   attribution such as spend.
 - **Invite**: a person subscribes someone to a Conversation's feed, with
-  the people picker of its Participants. In a public Conversation, a
-  dashboard or Slack Message that mentions them also does it, and access
-  stays the same, because anyone can already read it and join by posting.
+  the people picker of its Participants or by email. A mention does not
+  Invite. In a public Conversation, access stays the same, because anyone
+  can already read it and Join it.
   In a private Conversation, only a Participant may Invite, and it gives
-  access. A private Space and a Slack-backed private Conversation refuse it.
+  access. A Slack-backed private Conversation refuses it.
 - **Leave**: a Participant takes a Conversation out of their feed, and Join
   puts it back. In a private Conversation with its own Participant list,
   Leave also ends access until someone Invites them again. Nobody removes

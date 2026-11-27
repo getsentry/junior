@@ -151,7 +151,7 @@ export function githubAnnotatedObject(input: {
 export function githubObjectCard(input: {
   repo: string;
   number: number;
-  /** GitHub's id of the object (`databaseId`), as in `githubAnnotatedObject`. */
+  /** GitHub's `databaseId` of the object, as in `githubAnnotatedObject`. */
   id?: number | undefined;
   title: string;
   url: string;

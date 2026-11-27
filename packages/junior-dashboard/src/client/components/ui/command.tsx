@@ -28,7 +28,8 @@ function Command({
 
 /**
  * Show a `Command` in a dialog near the top of the page. Small screens let the
- * list fill the dialog, so every row fits without a hidden scroll.
+ * list fill the dialog, so every row fits without a hidden scroll. A phone
+ * shows a tall sheet, with its close button at the end of the search field.
  */
 function CommandDialog({
   children,
@@ -46,8 +47,10 @@ function CommandDialog({
       <DialogContent
         className={cn(
           "flex max-w-xl flex-col gap-0 overflow-hidden p-0 sm:top-[15vh] sm:translate-y-0",
+          "max-md:flex-1 max-md:[&_[data-slot=command-input-wrapper]]:pr-12",
           className,
         )}
+        phoneSize="full"
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
         {children}

@@ -220,11 +220,9 @@ export interface ObjectLinkContext extends PluginContext {
   viewerMcp: PluginViewerMcp;
   /**
    * Move the saved Annotations of one of this plugin's subject kinds from
-   * the id `from` to the id `to`, such as from an older key to the
-   * provider's stable id. Junior changes only the subject id, never other
-   * saved data. Call it only after the viewer's own read named both ids.
-   * Set `urlPrefix` when `from` is unique only in one part of the provider,
-   * such as one workspace: only Annotations whose url starts with it move.
+   * the id `from` to the id `to`, and change nothing else. Call it only
+   * after the viewer's own read named both ids. Set `urlPrefix` when `from`
+   * is unique only in one part of the provider, such as one workspace.
    */
   replaceSubjectId(subject: {
     from: string;

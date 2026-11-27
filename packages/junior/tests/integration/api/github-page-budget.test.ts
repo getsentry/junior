@@ -3,7 +3,6 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { juniorConversationParticipants } from "@/db/schema";
 import {
@@ -16,6 +15,7 @@ import {
 } from "../../fixtures/github-objects";
 import { signedInViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
+import { patchConfig } from "../../fixtures/config";
 
 const DASHBOARD = "https://junior.example.com";
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
@@ -56,16 +56,15 @@ async function attachAsAlice(url: string) {
 // A page waits at most 20 s for its card queries. The cards that it ran out
 // of time for show only what the cache holds, on that page only.
 describe("GitHub card reads after a page runs out of time", () => {
-  let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
-
   beforeEach(() => {
-    previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: DASHBOARD,
+    patchConfig({
+      dashboard: {
+        baseURL: DASHBOARD,
+      },
     });
   });
 
   afterEach(async () => {
-    setDashboardConversationLinkOptions(previousDashboard);
     vi.useRealTimers();
     await closeDb();
   });
@@ -110,7 +109,7 @@ describe("GitHub card reads after a page runs out of time", () => {
       }),
     );
     await createGitHubApp();
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -182,7 +181,7 @@ describe("GitHub card reads after a page runs out of time", () => {
       }),
     );
     await createGitHubApp();
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     vi.useFakeTimers({ toFake: ["Date"] });

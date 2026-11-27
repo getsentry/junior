@@ -10,6 +10,7 @@ import {
   readConversationAccessFromSql,
 } from "@/api/conversations/access";
 import { getConversationStore, getDb } from "@/chat/db";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -19,8 +20,6 @@ import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { AgentMessageTargetError } from "./errors";
 import { TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE } from "./result-event-type";
 import { PARENT_AGENT_TARGET } from "./types";
-
-const AGENT_MESSAGE_EVENT_NAMESPACE = "junior";
 
 /**
  * Check that a top-level agent can message another top-level agent under
@@ -119,7 +118,7 @@ export async function enqueueTopLevelAgentMessage(args: {
       eventKey: inboundMessageId,
       eventType: TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE,
       identifier: args.senderConversationId,
-      namespace: AGENT_MESSAGE_EVENT_NAMESPACE,
+      namespace: CORE_EVENT_NAMESPACE,
       trustedSummary: summary,
     },
   };

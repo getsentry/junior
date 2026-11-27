@@ -1,6 +1,5 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { closeDb } from "@/chat/db";
 import {
   createGitHubApp,
@@ -12,21 +11,21 @@ import {
   viewerApi,
 } from "../../fixtures/github-objects";
 import { mswServer } from "../../msw/server";
+import { patchConfig } from "../../fixtures/config";
 
 const DASHBOARD = "https://junior.example.com";
 
 // A webhook waits for a card read that loads the same object, then gives up.
 describe("GitHub webhooks during a slow card read", () => {
-  let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
-
   beforeEach(() => {
-    previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: DASHBOARD,
+    patchConfig({
+      dashboard: {
+        baseURL: DASHBOARD,
+      },
     });
   });
 
   afterEach(async () => {
-    setDashboardConversationLinkOptions(previousDashboard);
     vi.useRealTimers();
     await closeDb();
   });
@@ -75,7 +74,7 @@ describe("GitHub webhooks during a slow card read", () => {
     );
     try {
       const app = await createGitHubApp();
-      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      patchConfig({ dashboard: { baseURL: DASHBOARD } });
       await linkGitHubMember();
       const read = await viewerApi("alice@example.com");
       vi.useFakeTimers({ toFake: ["Date"] });
@@ -169,7 +168,7 @@ describe("GitHub webhooks during a slow card read", () => {
     );
     try {
       const app = await createGitHubApp();
-      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      patchConfig({ dashboard: { baseURL: DASHBOARD } });
       await linkGitHubMember();
       const read = await viewerApi("alice@example.com");
       vi.useFakeTimers({ toFake: ["Date"] });

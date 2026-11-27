@@ -1,5 +1,8 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveSignInAuthConfig } from "@/chat/sign-in/auth";
 import { loadConfig, type ConfigInput } from "@/config";
+import { patchConfig } from "../../fixtures/config";
 
 const TEST_DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 const ENCRYPTION_ENV = {
@@ -345,17 +348,35 @@ describe("chat config", () => {
         ...BASE_ENV,
         GOOGLE_CLIENT_ID: " client-id ",
         GOOGLE_CLIENT_SECRET: "client-secret",
-        JUNIOR_ALLOWED_DOMAINS: "[1]",
+        JUNIOR_ALLOWED_DOMAINS: " Sentry.io ",
         JUNIOR_DASHBOARD_TRUSTED_ORIGINS: " https://a.example.com ",
       },
     });
 
     expect(signIn).toMatchObject({
-      allowedDomains: "[1]",
+      allowedDomains: " Sentry.io ",
       googleClientId: " client-id ",
       googleClientSecret: "client-secret",
       trustedOrigins: " https://a.example.com ",
     });
+  });
+
+  it("trims comma-separated list entries and drops empty ones", () => {
+    const config = loadConfig({
+      env: {
+        ...BASE_ENV,
+        JUNIOR_ALLOWED_DOMAINS: "sentry.io, getsentry.com, ,",
+        JUNIOR_DASHBOARD_TRUSTED_ORIGINS:
+          "https://a.example.com, https://b.example.com,,",
+      },
+    });
+    patchConfig({ signIn: config.signIn });
+
+    expect(config.trust.allowedDomains).toEqual(["sentry.io", "getsentry.com"]);
+    expect(resolveSignInAuthConfig("junior", []).trustedOrigins).toEqual([
+      "https://a.example.com",
+      "https://b.example.com",
+    ]);
   });
 
   it("requires dashboard sign-in unless JUNIOR_DASHBOARD_AUTH_REQUIRED is false", () => {
@@ -834,5 +855,94 @@ describe("sandbox config", () => {
       extraCaCertsFile: "/etc/ca.pem",
     });
     expect(config.vercel).toEqual({ token: "tk", projectId: "pj" });
+  });
+});
+
+describe("misc config", () => {
+  it("reads development mode only from NODE_ENV=development", () => {
+    expect(loadConfig({ env: BASE_ENV }).development).toEqual({
+      enabled: false,
+      port: "3000",
+    });
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, NODE_ENV: "development", PORT: " 4000 " },
+      }).development,
+    ).toEqual({ enabled: true, port: "4000" });
+    expect(
+      loadConfig({ env: { ...BASE_ENV, NODE_ENV: "production", PORT: " " } })
+        .development,
+    ).toEqual({ enabled: false, port: "3000" });
+  });
+
+  it("splits SKILL_DIRS on the path delimiter and drops empty entries", () => {
+    expect(loadConfig({ env: BASE_ENV }).skills.dirs).toEqual([]);
+    expect(
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          SKILL_DIRS: ["/a", "", "/b"].join(path.delimiter),
+        },
+      }).skills.dirs,
+    ).toEqual(["/a", "/b"]);
+  });
+
+  it("trims the timezone and Sentry org slug, and treats blank as unset", () => {
+    expect(loadConfig({ env: BASE_ENV }).deployment).toMatchObject({
+      timezone: "America/Los_Angeles",
+      sentryOrgSlug: undefined,
+    });
+    expect(
+      loadConfig({
+        env: {
+          ...BASE_ENV,
+          JUNIOR_TIMEZONE: " Europe/Vienna ",
+          SENTRY_ORG_SLUG: " acme ",
+        },
+      }).deployment,
+    ).toMatchObject({ timezone: "Europe/Vienna", sentryOrgSlug: "acme" });
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_TIMEZONE: " ", SENTRY_ORG_SLUG: " " },
+      }).deployment,
+    ).toMatchObject({
+      timezone: "America/Los_Angeles",
+      sentryOrgSlug: undefined,
+    });
+  });
+
+  it("trims the conversation work topic and treats blank as unset", () => {
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC: " work " },
+      }).queue.conversationWorkTopic,
+    ).toBe("work");
+    expect(
+      loadConfig({
+        env: { ...BASE_ENV, JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC: " " },
+      }).queue.conversationWorkTopic,
+    ).toBeUndefined();
+  });
+});
+
+describe("createApp option groups", () => {
+  it("resolves the memory model: trimmed option, then AI_MEMORY_MODEL", () => {
+    const env = { ...BASE_ENV, AI_MEMORY_MODEL: " openai/env " };
+    const memory = (modelId?: string) =>
+      loadConfig({ env, options: { memory: { modelId } } }).memory.modelId;
+    expect(memory("openai/option")).toBe("openai/option");
+    expect(memory()).toBe("openai/env");
+    expect(
+      loadConfig({ env: { ...BASE_ENV, AI_MEMORY_MODEL: " " } }).memory.modelId,
+    ).toBeUndefined();
+  });
+
+  it("leaves the optional groups off until createApp sets them", () => {
+    const config = loadConfig({ env: BASE_ENV });
+    expect(config.dashboard).toBeUndefined();
+    expect(config.eventEmbeddings.enabled).toBeUndefined();
+    expect(config.experimental).toEqual({});
+    expect(config.configDefaults).toEqual({});
+    expect(config.trust).toEqual({ allowedBotUserIds: [], allowedDomains: [] });
   });
 });

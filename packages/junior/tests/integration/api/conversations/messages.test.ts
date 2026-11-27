@@ -39,12 +39,24 @@ function apiFor(email: string): Hono<JuniorApiEnv> {
   return app;
 }
 
+/** Join a public root through its Subscribe route, as the dashboard does. */
+async function join(email: string, conversationId: string) {
+  return await apiFor(email).request(
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/subscription`,
+    {
+      body: JSON.stringify({ subscribed: true }),
+      headers: { "content-type": "application/json" },
+      method: "PATCH",
+    },
+  );
+}
+
 describe("conversation messages API", () => {
   afterEach(async () => {
     await closeConversationFixture();
   });
 
-  it("lets a signed-in person join a public conversation by posting, but not a private one", async () => {
+  it("takes Messages only from Participants: a reader of a public conversation Joins first", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const post = async (conversationId: string, idempotencyKey: string) =>
@@ -61,6 +73,10 @@ describe("conversation messages API", () => {
       { actor, idempotencyKey: "join-public-root", message: "first" },
       { conversationStore, queue, state },
     );
+    expect((await post(shared.conversationId, "before-join")).status).toBe(403);
+    expect(
+      (await join("newcomer@example.com", shared.conversationId)).status,
+    ).toBe(200);
     const joined = await post(shared.conversationId, "join-public");
     expect(joined.status).toBe(200);
     const accepted = acceptedConversationMessageSchema.parse(
@@ -117,6 +133,7 @@ describe("conversation messages API", () => {
       });
     }
 
+    expect((await join("newcomer@example.com", posted)).status).toBe(200);
     const response = await apiFor("newcomer@example.com").request(
       `http://localhost/api/conversations/${encodeURIComponent(posted)}/messages`,
       {

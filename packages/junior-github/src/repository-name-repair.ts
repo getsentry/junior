@@ -1,13 +1,8 @@
 /**
- * A one-off repair of the repository names in Junior's code index.
- *
- * The GitHub migration 0020 kept the stored name of a repository that the
- * code index already had, so a repository renamed before it can still have
- * its old name. Reads that find a pull request by repository name miss it
- * until a lifecycle webhook records the new name. This task reads the
- * current name of each stored repository from GitHub by its id, once, and
- * records the names that changed. The repository's Annotations get the new
- * name too.
+ * A one-off repair of repository names in the code index. Migration 0020
+ * kept the stored name of a repository renamed before it, so reads by name
+ * miss its pull requests. This task reads each stored repository's name from
+ * GitHub by its id, once, and moves its rows and Annotations to the new name.
  */
 import pLimit from "p-limit";
 import type {

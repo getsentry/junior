@@ -75,11 +75,12 @@ const catalogPlugins = vi.hoisted(
     ] satisfies PluginDefinition[],
 );
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getProviders: () => catalogPlugins,
-  } satisfies Pick<PluginCatalogRuntime, "getProviders">,
-}));
+  } satisfies Pick<PluginCatalogRuntime, "getProviders">;
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/discovery", () => ({
   homeDir: () => "/mock/app",

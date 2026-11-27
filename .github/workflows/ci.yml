@@ -16,7 +16,9 @@ on:
   pull_request:
     branches: [main, core-next]
   # A merge queue tests each pull request merged with the ones ahead of it.
-  # Path filters match everything here, so every path-gated job runs.
+  # Pull request CI already ran every suite, so a queue run checks only what
+  # two green pull requests can break together: lint (with the migration
+  # checks), format, and types. See the `changes` job.
   merge_group:
 
 concurrency:
@@ -47,7 +49,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # On a merge queue run, no filter runs, so every output is empty and
+      # every path-gated job skips. Only `typecheck` opts back in.
       - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
+        if: github.event_name != 'merge_group'
         id: filter
         with:
           filters: |
@@ -190,7 +195,7 @@ jobs:
     name: check / types
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
+    if: github.event_name == 'push' || github.event_name == 'merge_group' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:

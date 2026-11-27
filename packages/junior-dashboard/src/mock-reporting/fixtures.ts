@@ -288,6 +288,9 @@ const mockAutoArchiveByConversationId = new Map<string, boolean>();
 /** Process-local unsubscribes for mock visual QA. */
 const mockUnsubscribedConversationIds = new Set<string>();
 
+/** Process-local Joins of public roots for mock visual QA. */
+const mockJoinedConversationIds = new Set<string>();
+
 /** Process-local Slack detaches for mock visual QA. */
 const mockDeliveryPausedConversationIds = new Set<string>();
 
@@ -316,6 +319,7 @@ export function resetMockConversationViewerState(): void {
   mockAttachedAnnotations.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
+  mockJoinedConversationIds.clear();
   mockDeliveryPausedConversationIds.clear();
   mockArchivedAt.clear();
   mockArchiveCount = 0;
@@ -1762,6 +1766,8 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     conversationId: INCIDENT_CONVERSATION_ID,
     displayTitle: "Checkout latency triage",
     ...mockSummary("expired"),
+    // Composer QA types here, and only a Participant has a composer.
+    isParticipant: true,
     startedAt,
     lastSeenAt: iso(nowMs, -41 * 60_000),
     lastProgressAt: iso(nowMs, -42 * 60_000),
@@ -1946,6 +1952,8 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
   return detail(nowMs, {
     conversationId: MANY_TURNS_CONVERSATION_ID,
     displayTitle: "Quarterly reliability review",
+    // A public root that the viewer has not joined, for Join QA.
+    visibility: "public",
     surface: "slack",
     channel: "CQA456",
     startedAt,
@@ -3190,6 +3198,7 @@ export function setMockConversationSubscribed(
     mockAgentTree(conversation)?.[0]?.conversationId ?? conversationId;
   if (subscribed) {
     mockUnsubscribedConversationIds.delete(rootId);
+    mockJoinedConversationIds.add(rootId);
   } else {
     mockUnsubscribedConversationIds.add(rootId);
     mockPinnedConversationIds.delete(rootId);
@@ -3494,6 +3503,9 @@ export function readMockConversationDetail(
   );
   if (!conversation) return undefined;
   const agentTree = mockAgentTree(conversation);
+  const rootId = agentTree?.[0]?.conversationId ?? conversationId;
+  const isParticipant =
+    conversation.isParticipant || mockJoinedConversationIds.has(rootId);
   // Match the API: only readable root Conversations can be forked.
   const attached = mockAttachedAnnotations.get(conversationId) ?? [];
   const detail = {
@@ -3504,19 +3516,22 @@ export function readMockConversationDetail(
       !conversation.parentConversationId &&
       !isUnlistedMockConversation(conversationId) &&
       conversation.eventHistory.status !== "redacted",
-    // Match the API: anyone who can post in a public one may Invite.
-    ...(conversation.visibility === "public"
+    isParticipant,
+    // Match the API: only a Participant may Invite.
+    ...(isParticipant && conversation.visibility === "public"
       ? { canInvite: true as const }
       : undefined),
-    ...(conversation.isParticipant
+    ...(isParticipant
       ? {
           autoArchive:
             mockAutoArchiveByConversationId.get(conversationId) ?? false,
-          subscribed: !mockUnsubscribedConversationIds.has(
-            agentTree?.[0]?.conversationId ?? conversationId,
-          ),
+          subscribed: !mockUnsubscribedConversationIds.has(rootId),
         }
-      : undefined),
+      : // Match the API: a reader of a public root can Join it.
+        !conversation.parentConversationId &&
+          conversation.visibility === "public"
+        ? { subscribed: false }
+        : undefined),
   };
   const withViewerState = withMockViewerState(
     detail,

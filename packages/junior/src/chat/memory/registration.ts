@@ -24,10 +24,10 @@ import {
   memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "./events";
+import { getChatConfig } from "@/chat/config";
 import { archiveExpiredMemoriesInAllScopes, memoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
-const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
 const HEARTBEAT_REEMBED_BATCH_SIZE = 100;
 // The host stops waiting for a plugin heartbeat after 25s. Leave time for the
 // batch that is in progress when this budget ends.
@@ -45,12 +45,7 @@ export interface MemoryOptions {
 }
 
 function memoryModelId(options: MemoryOptions): string | undefined {
-  const explicitModelId = options.modelId?.trim();
-  if (explicitModelId) {
-    return explicitModelId;
-  }
-  const envModelId = process.env[MEMORY_MODEL_ENV]?.trim();
-  return envModelId || undefined;
+  return options.modelId?.trim() || undefined;
 }
 
 function memoryToolContext(
@@ -201,18 +196,7 @@ export function createMemoryRegistration(
   });
 }
 
-let configuredOptions: MemoryOptions = {};
-let registration = createMemoryRegistration();
-
-/** Replace the app's Memory settings and return the previous settings. */
-export function setMemoryConfig(options: MemoryOptions = {}): MemoryOptions {
-  const previous = configuredOptions;
-  configuredOptions = { ...options };
-  registration = createMemoryRegistration(configuredOptions);
-  return previous;
-}
-
 /** Return the Memory registration for the current app settings. */
 export function memoryRegistration(): PluginRegistration {
-  return registration;
+  return createMemoryRegistration(getChatConfig().memory);
 }

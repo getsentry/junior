@@ -31,6 +31,7 @@
     "oxlint-rules:check": "node --test --test-isolation=none tools/oxlint/junior/rules/*.test.ts packages/junior-dashboard/oxlint/*.test.ts",
     "verify-junior:check": "node --test .agents/skills/verify-junior/scripts/*.test.mjs",
     "test-architecture:check": "node scripts/check.mjs test-architecture",
+    "comment-length:check": "node scripts/check.mjs comment-length",
     "type-assertions:check": "node scripts/check.mjs type-assertions",
     "await-in-loop:check": "node scripts/check.mjs await-in-loop",
     "nav-request-budgets:check": "node scripts/check.mjs nav-request-budgets",
@@ -63,7 +64,7 @@
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged",
-    "pre-push": "pnpm lint"
+    "pre-push": "node scripts/lint.mjs --changed"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}": "oxlint --fix",

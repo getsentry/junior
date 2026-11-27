@@ -10,9 +10,9 @@ import { closePluginInboxItem } from "@/chat/inbox-items/plugin";
 
 /**
  * Apply one plugin's batch of Inbox item changes in one transaction, so
- * readers and the version token see all of it or none of it. Each entry uses the write of its `forConversation` call. The Slack
- * cards and pushes are outside calls, so they show the closed items after
- * the commit.
+ * readers and the version token see all of it or none of it. Each entry
+ * uses the write of its `forConversation` call. The Slack cards and pushes
+ * run after the commit, so they show the closed items.
  */
 export function createPluginConversationChanges(args: {
   plugin: string;

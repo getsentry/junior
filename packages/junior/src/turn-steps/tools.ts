@@ -6,7 +6,7 @@ import type { JsonValue } from "@earendil-works/pi-ai";
 import * as z from "zod";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { createAgentSandbox } from "@/chat/agent/sandbox";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
@@ -135,6 +135,8 @@ export async function turnTools(
       ),
     ],
     hooks: turnToolHooks({
+      ctx: { executor: getSqlExecutor() },
+      turnId: turn.turnId,
       tools: new Map<string, AnyToolDefinition>([
         ["systemTime", systemTime],
         ...sandboxTools,

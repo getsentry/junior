@@ -17,10 +17,12 @@ import {
   type ActorIdentity,
   type ConversationDetailReport,
   type ConversationFeed,
+  type ConversationReportEvent,
   type SpaceRefReport,
   type SpaceReport,
   type SpaceVisibilityReport,
 } from "@sentry/junior/api/schema";
+import type { User } from "@sentry/junior-plugin-api";
 import { errorResponse } from "./errors";
 import {
   NOW_MS,
@@ -28,7 +30,8 @@ import {
   readMockConversationFeed,
   setMockConversationArchived,
 } from "./fixtures";
-import { mockLeadSpaceId } from "./sends";
+import { mockLeadEvents } from "./lead-transcript";
+import { createMockLead, mockLeadId, mockLeadSpaceId } from "./sends";
 
 type MockMember = {
   avatarUrl: string | null;
@@ -47,17 +50,22 @@ type MockSpace = {
   /** Members other than the viewer. */
   others: MockMember[];
   viewerMember: boolean;
+  /**
+   * Like the API, a Leave of a public Lead keeps the viewer's Participant
+   * row. Only a private Leave drops it.
+   */
+  viewerParticipant: boolean;
   visibility: SpaceVisibilityReport;
 };
 
 /** A member of every seeded Space but Docs refresh. */
-export const AVERY: MockMember = {
+const AVERY: MockMember = {
   avatarUrl: null,
   displayName: "Avery Chen",
   email: "avery@sentry.io",
 };
 /** A member of Mobile app and Docs refresh. */
-export const RILEY: MockMember = {
+const RILEY: MockMember = {
   avatarUrl: null,
   displayName: "Riley Park",
   email: "riley@sentry.io",
@@ -67,7 +75,7 @@ export const RILEY: MockMember = {
  * The seeded Spaces. The viewer is a member of all but Docs refresh. Pricing
  * launch is private.
  */
-export const MOCK_SPACE_IDS = {
+const MOCK_SPACE_IDS = {
   billing: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a21",
   docs: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a23",
   ios: "6f1c2a7e-3b4d-4e5f-8a6b-7c8d9e0f1a22",
@@ -88,6 +96,8 @@ function seedSpaces(): MockSpace[] {
       name: "Billing migration",
       others: [AVERY],
       viewerMember: true,
+
+      viewerParticipant: true,
       visibility: "public",
     },
     {
@@ -99,6 +109,8 @@ function seedSpaces(): MockSpace[] {
       name: "Mobile app",
       others: [AVERY, RILEY],
       viewerMember: true,
+
+      viewerParticipant: true,
       visibility: "public",
     },
     {
@@ -110,6 +122,8 @@ function seedSpaces(): MockSpace[] {
       name: "Docs refresh",
       others: [RILEY],
       viewerMember: false,
+
+      viewerParticipant: false,
       visibility: "public",
     },
     {
@@ -121,6 +135,8 @@ function seedSpaces(): MockSpace[] {
       name: "Pricing launch",
       others: [AVERY],
       viewerMember: true,
+
+      viewerParticipant: true,
       visibility: "private",
     },
   ];
@@ -170,15 +186,24 @@ function spaceRef(spaceId: string | undefined): SpaceRefReport | null {
   return space ? { id: space.id, name: space.name } : null;
 }
 
-/** Label each feed row with its Space, as the API does. */
+/**
+ * Label each feed row with its Space, as the API does. A row in a Space is
+ * a child of its Lead there.
+ */
 export function withMockSpaces(feed: ConversationFeed): ConversationFeed {
   return {
     ...feed,
-    conversations: feed.conversations.map((row) => ({
-      ...row,
-      space: spaceRef(mockConversationSpaces.get(row.conversationId)),
-      visibility: visibilityOf(row.conversationId, row.visibility),
-    })),
+    conversations: feed.conversations.map((row) => {
+      const spaceId = mockConversationSpaces.get(row.conversationId);
+      return {
+        ...row,
+        ...(spaceId
+          ? { parentConversationId: mockLeadId(spaceId) }
+          : undefined),
+        space: spaceRef(spaceId),
+        visibility: visibilityOf(row.conversationId, row.visibility),
+      };
+    }),
   };
 }
 
@@ -249,10 +274,10 @@ function leadParticipation(
     })),
   ];
   return {
-    ...(space.visibility === "public" || member
-      ? { canInvite: true as const }
-      : undefined),
-    isParticipant: member,
+    // Match the API: only a Participant may Invite. Set the key either way,
+    // so it replaces the Lead fixture's own canInvite.
+    canInvite: space.viewerParticipant ? true : undefined,
+    isParticipant: space.viewerParticipant,
     participants,
     subscribed: member,
     visibility: space.visibility,
@@ -340,6 +365,7 @@ export function addMockConversationSpaceRoutes(
     if (!space?.viewerMember)
       return errorResponse("Conversation not found.", 404);
     space.viewerMember = false;
+    if (space.visibility === "private") space.viewerParticipant = false;
     return jsonResponse(conversationLeaveResponseSchema, { archivedAt: null });
   });
   app.patch("/conversations/:conversationId/subscription", async (c, next) => {
@@ -352,7 +378,11 @@ export function addMockConversationSpaceRoutes(
       await c.req.json(),
     );
     if (!body.success) return errorResponse("Invalid request body.", 400);
+    // Match the API: only a public Lead takes a Join from a non-Participant.
+    if (!space.viewerParticipant && space.visibility === "private")
+      return errorResponse("Conversation not found.", 404);
     space.viewerMember = body.data.subscribed;
+    if (body.data.subscribed) space.viewerParticipant = true;
     return jsonResponse(conversationSubscriptionResponseSchema, {
       archivedAt: null,
       subscribed: body.data.subscribed,
@@ -408,6 +438,88 @@ export function addMockConversationSpaceRoutes(
   });
 }
 
+const identity = (member: { displayName: string; email: string }) => ({
+  email: member.email,
+  fullName: member.displayName,
+});
+
+/**
+ * The first events of a seeded Space's Lead. Billing migration has the
+ * fixture transcript, which Avery and the viewer both talk in. Docs
+ * refresh, which the viewer is not in, has one exchange with Riley. A Space
+ * without seeds starts empty.
+ */
+function seededLeadEvents(
+  spaceId: string,
+  viewer: ActorIdentity,
+): ConversationReportEvent[] | undefined {
+  if (spaceId === MOCK_SPACE_IDS.billing) {
+    return mockLeadEvents(viewer, identity(AVERY));
+  }
+  if (spaceId !== MOCK_SPACE_IDS.docs) return undefined;
+  const at = (minutes: number) =>
+    new Date(NOW_MS - minutes * 60_000).toISOString();
+  const turnId = "mock-docs-lead-outline";
+  return [
+    {
+      createdAt: at(90),
+      data: {
+        type: "message",
+        messageId: `${turnId}-request`,
+        role: "user",
+        source: "web",
+        actorIdentity: identity(RILEY),
+        text: "Which onboarding pages still describe the old setup flow?",
+      },
+      seq: 0,
+    },
+    {
+      createdAt: at(90),
+      data: {
+        type: "turn_lifecycle",
+        turnId,
+        state: "started",
+        inputMessageIds: [`${turnId}-request`],
+      },
+      seq: 1,
+    },
+    {
+      createdAt: at(89),
+      data: {
+        type: "message",
+        messageId: `${turnId}-reply`,
+        role: "assistant",
+        text: "Three: Quick start, Install the SDK, and Verify your setup. Tell me if you want a conversation started to rewrite them.",
+      },
+      seq: 2,
+    },
+    {
+      createdAt: at(89),
+      data: { type: "turn_lifecycle", turnId, state: "succeeded" },
+      seq: 3,
+    },
+  ];
+}
+
+/**
+ * Make the Lead of each mock Space that does not have one yet. The API makes
+ * it with its Space, but a mock Lead's first Actor is the signed-in viewer.
+ */
+function createMockLeads(viewer: User): void {
+  const actorIdentity = {
+    email: viewer.email,
+    fullName: viewer.displayName ?? viewer.email,
+  };
+  for (const space of mockSpaces.values()) {
+    createMockLead({
+      actorIdentity,
+      events: seededLeadEvents(space.id, actorIdentity) ?? [],
+      spaceId: space.id,
+      title: space.name,
+    });
+  }
+}
+
 const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
 
 /**
@@ -441,6 +553,7 @@ function view(space: MockSpace): SpaceReport {
     updatedAt: space.archivedAt ?? space.createdAt,
     viewerIsMember: space.viewerMember,
     visibility: space.visibility,
+    leadConversationId: mockLeadId(space.id),
   };
 }
 
@@ -512,7 +625,9 @@ export function createMockSpaceRoutes(): Hono<{
 }> {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (c, next) => {
-    if (!c.get("viewer")) return errorResponse("Authentication required.", 401);
+    const viewer = c.get("viewer");
+    if (!viewer) return errorResponse("Authentication required.", 401);
+    createMockLeads(viewer);
     return next();
   });
   app.get("/", (c) => {
@@ -532,9 +647,12 @@ export function createMockSpaceRoutes(): Hono<{
       name: body.data.name,
       others: [],
       viewerMember: true,
+
+      viewerParticipant: true,
       visibility: body.data.visibility,
     };
     mockSpaces.set(space.id, space);
+    createMockLeads(c.get("viewer")!);
     return jsonResponse(spaceSchema, view(space), { status: 201 });
   });
   app.get("/:spaceId", (c) => {

@@ -10,7 +10,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { recordConversationParticipant } from "@/chat/conversations/sql/participants";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { patchConfig } from "../fixtures/config";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
@@ -256,9 +256,7 @@ describe("the Inbox item of an issue that Junior created", () => {
     }
     // The footer that links the issue to its Conversation needs a
     // dashboard link.
-    const previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-    });
+    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
     try {
       await migratePluginSchemas(fixture.sql, [
         {
@@ -500,7 +498,6 @@ describe("the Inbox item of an issue that Junior created", () => {
       );
       expect(await issueItem()).toMatchObject({ status: "dismissed" });
     } finally {
-      setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
     }
   });
@@ -528,9 +525,7 @@ describe("the Inbox item of an issue that Junior created", () => {
       conversationId: slackParentConversationId,
     });
     await makeConversationPrivate();
-    const previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-    });
+    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
     try {
       await migratePluginSchemas(fixture.sql, [
         {
@@ -631,7 +626,6 @@ describe("the Inbox item of an issue that Junior created", () => {
       ]);
       expect(await issueItem()).toMatchObject({ status: "dismissed" });
     } finally {
-      setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
     }
   });

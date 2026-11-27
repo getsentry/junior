@@ -3,12 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import {
-  isLeadConversation,
-  readMentionedUserIds,
-  resolveRootConversationId,
-} from "@/chat/conversations/sql/participants";
-import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
+import { isLeadConversation } from "@/chat/conversations/sql/participants";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
@@ -31,87 +26,17 @@ import {
 } from "./access";
 
 /*
- * Conversation subscription: the owner of this contract.
- *
- * Why: archive applies to everyone. When two people share a Conversation and
- * one hands it off, that person needs a way to drop it from their own feed
- * while the other person keeps working.
- *
- * Behavior. Each scenario has a test in
- * `tests/integration/api/conversations/subscription.test.ts`.
- *
- * - Given two participants, when one unsubscribes, then it leaves only that
- *   person's active feed. The other person's feed does not change.
- * - Given an unsubscribed person, then they keep access. They can open the
- *   Conversation and find it in search and in the archived list.
- * - Given an unsubscribed person, when they post a Message that does not
- *   address Junior (a passive reply in a Slack thread that Junior watches),
- *   or other people keep working, then it stays out of their feed.
- * - Given an unsubscribed person, when they address Junior (a Slack mention,
- *   a Slack DM, or a dashboard Message), then they are subscribed again.
- *   Pin and Subscribe also subscribe them again.
- * - Given the last subscriber, when they unsubscribe, then the root and its
- *   unarchived descendants are archived for everyone. No feed shows it
- *   anymore. The person who started the Conversation is a subscriber before
- *   they post in it, because their first Turn adds their Participant row.
- * - Given an archived root, when a person restores it (any Message that
- *   restores an archive, or Unarchive), then that person is subscribed
- *   again. A restored root never sits in no feed.
- * - Given a Turn, when the agent changes the subscription with its tool,
- *   then only the person who started the Turn changes, in the current
- *   Conversation. The dashboard conversation menu, the agent tool, and the
- *   MCP tool act only on the signed-in person or the Turn actor. No argument
- *   of theirs names a person.
- * - Given a public Conversation that a person can add Messages to, when
- *   they Invite a person, or send a dashboard or Slack Message
- *   that mentions them, then that person becomes a subscribed Participant.
- *   A dashboard Message adds them when it is accepted. Any Message adds them
- *   when it starts or joins a Turn, like its author. This is the only way to
- *   subscribe another person. It gives no access: anyone can already read a
- *   public Conversation and join it by posting.
- * - Invite names a User of this install, the one that user search finds,
- *   so it works the same in every Conversation, with or without Slack. A
- *   Slack mention names the User of that Slack account.
- * - Given a private Conversation, when a Participant Invites a person, then
- *   that person becomes a Participant and can read it. Only Invite does
- *   this: a mention in a Message adds nobody, so sharing private content
- *   is always an explicit act. A Slack-backed private Conversation follows
- *   its Slack channel, so it refuses Invite, with the same error as a
- *   missing Conversation.
- * - Given a Participant, when they Leave, then they unsubscribe. In a
- *   private Conversation with its own Participant list, their row is also
- *   deleted, so they lose access until someone Invites them again.
- *   Elsewhere they keep access and can subscribe again. Nobody removes
- *   another person. When they were the last subscriber, the root and its
- *   unarchived descendants are archived for everyone.
- * - Given any Invite, an archived root refuses it, because no
- *   feed shows it and a restore is for everyone. A Message that mentions
- *   someone in an archived root still adds them, because that Message
- *   restores the root. The mention names a Slack user of the Conversation's
- *   workspace. An existing Participant keeps their row, so Invite does not
- *   undo their unsubscribe. Nobody can unsubscribe another person.
- *
- * Rules that follow:
- * - A subscription belongs to the root, like a pin. A child id resolves to
- *   its root.
- * - Unsubscribe clears the person's pin. Subscribe does not restore an
- *   archive.
- * - A last-subscriber archive and a concurrent mention or pin are ordered by
- *   row locks, so the mention or pin either keeps the archive from happening
- *   or restores it.
- * - An unsubscribed person does not keep the root from auto-archive, and
- *   their own auto-archive run skips it.
- * - Code: the active feed filter (`conversationIsNotUnsubscribedRoot`), Turn
- *   input membership (`recordTurnInputParticipants`), auto-archive
- *   (`archivableRow`), and the entry points: this module's HTTP routes,
- *   `chat/tools/conversation-subscription.ts`, and
- *   `api/mcp/tools/set-conversation-subscription.ts`.
+ * Conversation subscription: archive applies to everyone, so a person drops
+ * a shared root from only their own feed by unsubscribing. Entry points act
+ * only on the signed-in person or the Turn actor, and only Invite adds
+ * another person. The last subscriber's leave archives the tree for
+ * everyone; root row locks order it against a concurrent mention or pin.
  */
 
-/**
- * Subscribe a person to a Conversation, or unsubscribe them, for the HTTP
- * API. The contract is in the comment above.
- */
+const NOT_ROOT_MESSAGE =
+  "Only a root conversation has a subscription. Change it on the root.";
+
+/** Subscribe the viewer to a root Conversation, or unsubscribe them. */
 export async function setConversationSubscription(
   viewer: User,
   conversationId: string,
@@ -122,31 +47,33 @@ export async function setConversationSubscription(
     conversationId,
     body.subscribed,
   );
-  if (!result) throwApiError(404, "Conversation not found.");
+  if (result === "not_participant") {
+    throwApiError(404, "Conversation not found.");
+  }
+  if (result === "not_root") throwApiError(409, NOT_ROOT_MESSAGE);
   return result;
 }
 
 /**
- * Subscribe a person to a Conversation, or unsubscribe them. Every caller
- * passes the person who asked, so nobody changes another person's
- * subscription. Returns undefined when the person is not a participant.
+ * Subscribe a person to a root Conversation, or unsubscribe them. Every
+ * caller passes the person who asked, so nobody changes another person's
+ * subscription.
  */
 export async function updateConversationSubscription(
   person: User,
   conversationId: string,
   subscribed: boolean,
-): Promise<ConversationSubscriptionResponse | undefined> {
-  const access = await readConversationAccessFromSql(
-    getDb(),
-    [conversationId],
-    person,
-  );
-  if (!access.get(conversationId)?.isParticipant) return undefined;
+): Promise<ConversationSubscriptionResponse | "not_participant" | "not_root"> {
+  const access = (
+    await readConversationAccessFromSql(getDb(), [conversationId], person)
+  ).get(conversationId);
+  // A person joins a public root explicitly. A Message on the web does not
+  // add its author.
+  const joins = subscribed && access?.visibility === "public";
+  if (!access || (!access.isParticipant && !joins)) return "not_participant";
+  if (access.rootConversationId !== conversationId) return "not_root";
+  const rootConversationId = conversationId;
   const executor = getSqlExecutor();
-  const rootConversationId = await resolveRootConversationId(
-    executor,
-    conversationId,
-  );
   return await executor.transaction(async () => {
     const db = executor.db();
     // Unsubscribes, pins, archives, and Turns in the root itself all lock the
@@ -162,7 +89,7 @@ export async function updateConversationSubscription(
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .for("no key update");
-    if (!root) return undefined;
+    if (!root) return "not_participant";
     const unsubscribedAt = subscribed ? null : new Date();
     // The detail ETag and the feed version read the subscription on each
     // request.
@@ -198,9 +125,8 @@ export async function updateConversationSubscription(
 }
 
 /**
- * Remove the viewer from a private Conversation's Participants, for the HTTP
- * API. The contract is in the comment above. Only the viewer leaves, so
- * nobody removes another person.
+ * Remove the viewer from a private Conversation's Participants. Only the
+ * viewer leaves, so nobody removes another person.
  */
 export async function leaveConversation(
   viewer: User,
@@ -213,6 +139,9 @@ export async function leaveConversation(
   if (!rootConversationId || !access.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
+  if (rootConversationId !== conversationId) {
+    throwApiError(409, NOT_ROOT_MESSAGE);
+  }
   // Where the Conversation is public, or a Slack channel decides who reads
   // it, Leave only takes it out of the viewer's feed.
   if (!leaveEndsAccess(access)) {
@@ -221,7 +150,9 @@ export async function leaveConversation(
       conversationId,
       false,
     );
-    if (!result) throwApiError(404, "Conversation not found.");
+    if (typeof result === "string") {
+      throwApiError(404, "Conversation not found.");
+    }
     return { archivedAt: result.archivedAt };
   }
   const executor = getSqlExecutor();
@@ -296,8 +227,9 @@ async function archiveWithoutSubscribers(
 }
 
 /**
- * Invite a User into a Conversation's feed, for the HTTP API. The contract is in the comment above. `added` is false when the
- * person was already a Participant.
+ * Invite a User into a Conversation's feed. An existing Participant keeps
+ * their row, so Invite does not undo their unsubscribe. An archived root
+ * refuses Invite, because a restore is for everyone.
  */
 export async function inviteToConversation(
   viewer: User,
@@ -321,33 +253,6 @@ export async function inviteToConversation(
 }
 
 /**
- * Invite each person that a viewer's Message mentions, as if the viewer
- * chose Invite on each mention. The contract is in the comment above, with
- * one change: an archived root still adds them, because the Message itself
- * restores the root. A mention of someone who is not a User adds nobody.
- */
-export async function inviteMentionedPeople(
-  viewer: User,
-  conversationId: string,
-  text: string,
-): Promise<void> {
-  const slackUserIds = slackMentionedUserIds(text);
-  if (slackUserIds.length === 0) return;
-  const conversation = await readInvitableConversation(viewer, conversationId);
-  // A mention never shares a private Conversation. Only Invite does.
-  if (conversation?.visibility !== "public") return;
-  const userIds = await readMentionedUserIds(
-    getSqlExecutor(),
-    slackUserIds,
-    conversation.slackTeamId,
-  );
-  if (userIds.length === 0) return;
-  await addInvitedParticipants(conversation.rootConversationId, userIds, {
-    refuseArchived: false,
-  });
-}
-
-/**
  * The root, visibility, and Slack workspace of a Conversation that the
  * viewer may Invite people to.
  */
@@ -367,6 +272,13 @@ async function readInvitableConversation(
   ).get(conversationId);
   const rootConversationId = access?.rootConversationId;
   if (!rootConversationId || !canInviteToConversation(access)) {
+    // A reader of a public root may Invite once they Join it.
+    if (access?.canViewPrivateContent && !access.isParticipant) {
+      throwApiError(
+        403,
+        "Only participants can invite people. Join the conversation first.",
+      );
+    }
     return undefined;
   }
   return {
@@ -376,10 +288,7 @@ async function readInvitableConversation(
   };
 }
 
-/**
- * Add each User as a subscribed Participant of the root. An existing
- * Participant keeps their row. Returns how many rows it added.
- */
+/** Add each User as a subscribed Participant of the root. */
 async function addInvitedParticipants(
   rootConversationId: string,
   userIds: readonly string[],

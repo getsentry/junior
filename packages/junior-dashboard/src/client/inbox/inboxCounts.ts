@@ -16,22 +16,11 @@ type WaitingCounts = {
 export type TodoCounts = Partial<Record<InboxTypeFilter, number>>;
 
 /**
- * Count the asks in To do, and each type's, from the rows that To do
- * shows, so a badge and its list cannot drift.
- *
- * The counting rule: a count holds the asks that wait on the viewer and
- * that To do shows, one per ask, as a stack shows a row for each of its
- * asks. An Automation alert is an ask too. All is the Inbox badge, the
- * header, the tab, and the To do heading. Pull requests, Decisions,
- * To-dos, and Other split All by `askTypeOf`, so they add up to it.
- *
- * An answered, dismissed, or closed item is in no row, and a snoozed or
- * cleared row is not on the page, so none of them count.
- *
- * The rows hold only the loaded pages. The list loads what waits on the
- * viewer first, so while the last loaded item still waits, more can follow:
- * the server counts those, and each one adds one to the counts until it
- * loads. Returns no count that is not known yet.
+ * Count the asks in To do, and each type's, from the rows that To do shows,
+ * so a badge and its list cannot drift. `design/inbox.md` owns the counting
+ * rule. The rows hold only the loaded pages: while the last loaded item still
+ * waits on the viewer, the server counts the asks not loaded yet, and each
+ * adds one until it loads. Returns no count that is not known yet.
  */
 export function inboxCounts(input: {
   /** More pages of open items follow the loaded ones. */

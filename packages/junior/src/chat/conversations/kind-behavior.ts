@@ -1,5 +1,8 @@
-import type { Source } from "@sentry/junior-plugin-api";
+import type { Actor, Source } from "@sentry/junior-plugin-api";
+import { TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE } from "@/chat/child-agents/result-event-type";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import type { RunDispatch } from "@/chat/automation-result";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import type {
   Conversation,
   ConversationKind,
@@ -343,9 +346,9 @@ export function hasConversationMetadata(kind: ConversationKind): boolean {
 }
 
 /**
- * Return whether a person can put a Conversation in a Space: a top-level
- * `thread`. A child agent is in the Space of its tree, and a Lead, an
- * Automation run, or a Task never moves.
+ * Return whether a person can put a Conversation in a Space: a `thread` that
+ * is a root or a Lead's child. A deeper child agent is in the Space of its
+ * tree, and a Lead, an Automation run, or a Task never moves.
  */
 export function canMoveToSpace(
   conversation: Pick<
@@ -353,7 +356,14 @@ export function canMoveToSpace(
     "kind" | "parentConversationId" | "rootConversationId" | "spaceId"
   >,
 ): boolean {
-  return conversation.kind === "thread" && isTopLevelWork(conversation);
+  if (conversation.kind !== "thread") return false;
+  // A Space's Lead is the root of its tree, so a Lead's child is a direct
+  // child of a root that has a Space.
+  return (
+    isTopLevel(conversation) ||
+    (conversation.spaceId !== undefined &&
+      conversation.parentConversationId === conversation.rootConversationId)
+  );
 }
 
 /**
@@ -364,27 +374,6 @@ export function copiesRootVisibility(
   conversation: Pick<Conversation, "parentConversationId">,
 ): boolean {
   return !isTopLevel(conversation);
-}
-
-/**
- * Return whether a parent of this kind has a cap on its active child agents.
- * A Lead's children are its Space's Conversations, so a Lead has none.
- */
-export function capsActiveChildren(
-  kind: ConversationKind | undefined,
-): boolean {
-  return kind !== "lead";
-}
-
-/**
- * Return whether the children of a parent of this kind are top-level work:
- * a Lead's children are its Space's Conversations. They count as roots for
- * `limits.maxAgentDepth`, and each gets its own Destination.
- */
-export function childrenAreTopLevel(
-  kind: ConversationKind | null | undefined,
-): boolean {
-  return kind === "lead";
 }
 
 /**
@@ -406,46 +395,15 @@ export function storesSpace(
 }
 
 /**
- * Return whether a Conversation is top-level work: it has no parent, or it
- * is a Lead's child. Top-level lists show it, and its child
- * agents move with it.
- */
-export function isTopLevelWork(
-  conversation: Pick<
-    Conversation,
-    "parentConversationId" | "rootConversationId" | "spaceId"
-  >,
-): boolean {
-  // A Space's Lead is the root of its Space, so a Lead's child is a direct
-  // child of a root that has a Space.
-  return (
-    isTopLevel(conversation) ||
-    (conversation.spaceId !== undefined &&
-      conversation.parentConversationId === conversation.rootConversationId)
-  );
-}
-
-/**
- * Return whether a Conversation delivers to its Location: it has no parent,
- * or its Location is its own, such as a Slack Conversation in a Space.
- */
-export function ownsLocation(
-  conversation: Pick<Conversation, "ownLocation" | "parentConversationId">,
-): boolean {
-  return isTopLevel(conversation) || conversation.ownLocation === true;
-}
-
-/**
- * Return whether a write may keep a stored parent that is not its own. A
- * move into, out of, or between Spaces changes the parent only between no
- * parent and a Lead, so a write from before the move keeps the stored one.
+ * Return whether a write keeps the stored parent: only when it names the
+ * same one. A move into or out of a Space changes the parent under the
+ * Conversation's lock, so no write from before the move reaches the row.
  */
 export function keepsStoredParent(
-  stored: { id: string | null; isLead: boolean },
-  incoming: { id: string | undefined; isLead: boolean },
+  stored: string | null,
+  incoming: string | undefined,
 ): boolean {
-  if (stored.id === (incoming.id ?? null)) return true;
-  return (!stored.id || stored.isLead) && (!incoming.id || incoming.isLead);
+  return stored === (incoming ?? null);
 }
 
 /** Return whether a Conversation has no parent. */
@@ -498,6 +456,22 @@ export function isPersonInput(source: string | undefined): boolean {
   return source === "web" || source === "slack";
 }
 
+/**
+ * Return the Actor that a child Turn's update carries to its parent, whose
+ * Turn for it runs as that Actor. Only a Turn that agent work started (a
+ * parent message, or an Event such as a child result) keeps its Actor. Any
+ * other Turn, such as a person's Turn in a Thread or one with no Source,
+ * reports as the Event system Actor, so the parent never gets its access.
+ */
+export function parentResultActor(
+  actor: Actor,
+  source: string | undefined,
+): Actor {
+  return source === "parent_message" || source === "event"
+    ? actor
+    : EVENT_SYSTEM_ACTOR;
+}
+
 /** Narrow a Source to one that a person sent input from. */
 export function isPersonSource(
   source: Source,
@@ -523,6 +497,35 @@ export function personSourcePlatform(
     case "plugin_dispatch":
     case "parent_message":
       return undefined;
+  }
+}
+
+/**
+ * Return who wrote the current instruction of a Run from this Source:
+ * a person, an Automation's stored instruction, an agent's brief, or an
+ * Event. A parent agent's task and another top-level agent's message are
+ * briefs.
+ */
+export function instructionAuthor(
+  source: Source,
+): "person" | "automation" | "brief" | "event" {
+  switch (source.kind) {
+    case "slack":
+    case "local":
+    case "web":
+      return "person";
+    case "scheduled_automation":
+    case "event_automation":
+      return "automation";
+    case "parent_message":
+      return "brief";
+    case "event":
+      return source.namespace === CORE_EVENT_NAMESPACE &&
+        source.eventType === TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE
+        ? "brief"
+        : "event";
+    case "plugin_dispatch":
+      return "event";
   }
 }
 

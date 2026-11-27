@@ -121,12 +121,10 @@ export async function leavePluginInboxItem(args: {
 }
 
 /**
- * Make a plugin's close since `sinceMs` the dismiss of `userId`. A plugin
- * can close an item while a dismiss waits on its provider, because the
- * removal left nobody on it, and that close is the dismiss. Return false
- * when a person closed it, when it closed before the dismiss began, or
- * when another person is still on it: then the provider closed it for
- * another reason, such as a closed issue.
+ * Make a plugin's close since `sinceMs` the dismiss of `userId`: while the
+ * dismiss waited on the provider, the removal left nobody on the item.
+ * Return false when a person closed it, it closed before the dismiss
+ * began, or another person is still on it, such as for a closed issue.
  */
 export async function takeOverPluginClose(args: {
   item: InboxItem;

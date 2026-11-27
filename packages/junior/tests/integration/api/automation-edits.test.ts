@@ -9,7 +9,6 @@ import {
   automationVersionListSchema,
 } from "@/api/schema/automation";
 import { getDb } from "@/chat/db";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import {
   getEventAutomation,
   saveEventAutomation,
@@ -33,10 +32,10 @@ import {
   originalInstruction,
   setupAutomationEditApi as setup,
 } from "../../fixtures/automation-edit-api";
+import { useAppContext } from "../../fixtures/app-context";
 
 describe("Automation edit API", () => {
   afterEach(() => {
-    setPlugins([]);
     vi.unstubAllEnvs();
   });
 
@@ -77,7 +76,7 @@ describe("Automation edit API", () => {
       expect((await preview("Not/AZone")).status).toBe(400);
       expect(await read()).toEqual(initial);
       vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
-      setPlugins([githubPlugin()]);
+      useAppContext({ plugins: [githubPlugin()] });
       const catalog = await app.request("/api/automations/event-catalog");
       expect(catalog.status).toBe(200);
       // The dashboard parses the JSON body with this same schema.
@@ -607,7 +606,7 @@ describe("Automation edit API", () => {
 
   test("validates replacement event selectors through the registered plugin", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
-    setPlugins([githubPlugin()]);
+    useAppContext({ plugins: [githubPlugin()] });
     const { app, fixture, id, read, patch, url } = await setup("event");
     try {
       const initial = await read();
