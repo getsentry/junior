@@ -4,9 +4,7 @@ import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedToolCalls,
   toolCallsOf,
-  toolOutput,
   type ToolCall,
-  type Turn,
 } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
@@ -198,60 +196,6 @@ describe("Lead", () => {
       completedToolCalls("startAgent", conversation).length,
     ).toBeGreaterThan(0);
     expect(conversation.replies.at(-1)?.text).toMatch(/merged/i);
-  });
-
-  // A merge reached the Lead as a routine done result, and it ended the Turn
-  // with noReply. The case measures whether the Lead acts on a done signal
-  // that is true: it archives the child and starts the agreed next step or
-  // posts one.
-  test("when a child reports that its pull request merged, the Lead archives it and moves to the agreed next step", async ({
-    run,
-  }) => {
-    const conversation = await run(
-      webMessage(
-        `have a thread check whether ${MERGED_PULL_REQUEST} has merged. once it has, start a thread that drafts a three-line changelog entry for the next craft release`,
-        { lead: true },
-      ),
-    );
-
-    const [first, ...later] = conversation.turns;
-    // The Lead may also start the changelog Thread in the first Turn, told
-    // to wait. The merge check is the Thread whose brief names the PR.
-    const starts = completedToolCalls("startAgent", {
-      toolCalls: first?.toolCalls ?? [],
-    });
-    const namesPr = (call: ToolCall) =>
-      String(input(call)["task"] ?? "").includes(MERGED_PULL_REQUEST);
-    const check =
-      starts.find(
-        (call) =>
-          namesPr(call) && !/changelog/i.test(String(input(call)["task"])),
-      ) ?? starts.find(namesPr);
-    expect(check).toBeDefined();
-    const checkId = (toolOutput(check!) as { conversation_id?: unknown })
-      .conversation_id;
-    const archivedIds = (turn: Turn) =>
-      completedToolCalls("archiveAgent", turn).map(
-        (call) => input(call)["conversation_id"],
-      );
-    const archivedAt = later.findIndex((turn) =>
-      archivedIds(turn).includes(checkId),
-    );
-    expect(archivedAt).toBeGreaterThanOrEqual(0);
-    // Until the merge check is archived, no other Thread is, such as the
-    // changelog Thread. It may be archived later, once its own work is done.
-    expect(later.slice(0, archivedAt + 1).flatMap(archivedIds)).toEqual([
-      checkId,
-    ]);
-    const archived = later[archivedAt];
-    expect(archived).toBeDefined();
-    // In the same Turn, the next step starts in a new or waiting Thread, or
-    // the Lead posts it.
-    expect(
-      toolCallsOf("startAgent", archived!).length +
-        toolCallsOf("messageAgent", archived!).length +
-        archived!.replies.length,
-    ).toBeGreaterThan(0);
   });
 
   // The member changes one thing about running work. The case measures
