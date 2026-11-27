@@ -20,7 +20,7 @@ import {
 } from "@/chat/plugins/credential-hooks";
 import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
 import { resolveApiHeaderTransforms } from "@/chat/plugins/auth/api-headers-broker";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import {
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
@@ -91,8 +91,8 @@ export class SandboxEgressCredentialError extends Error {
 /** True when the provider's credential is a host-minted workload identity token. */
 export function isWorkloadIdentityProvider(provider: string): boolean {
   return (
-    pluginCatalogRuntime.getDefinition(provider)?.manifest.credentials?.type ===
-    "workload-identity"
+    getAppContext().catalog.getDefinition(provider)?.manifest.credentials
+      ?.type === "workload-identity"
   );
 }
 
@@ -105,7 +105,9 @@ export function isWorkloadIdentityProvider(provider: string): boolean {
 function withStaticApiHeaders(
   lease: SandboxEgressCredentialLease,
 ): SandboxEgressCredentialLease {
-  const manifest = pluginCatalogRuntime.getDefinition(lease.provider)?.manifest;
+  const manifest = getAppContext().catalog.getDefinition(
+    lease.provider,
+  )?.manifest;
   if (manifest?.credentials?.type !== "workload-identity") {
     return lease;
   }
@@ -140,14 +142,14 @@ function defaultGrantForProvider(input: {
 }
 
 function hasGenericCredentials(provider: string): boolean {
-  const manifest = pluginCatalogRuntime.getDefinition(provider)?.manifest;
+  const manifest = getAppContext().catalog.getDefinition(provider)?.manifest;
   return Boolean(manifest?.credentials || manifest?.apiHeaders);
 }
 
 function oauthAuthorizationForProvider(
   provider: string,
 ): PluginAuthorization | undefined {
-  const oauth = pluginCatalogRuntime.getOAuthConfig(provider);
+  const oauth = getAppContext().catalog.getOAuthConfig(provider);
   return oauth
     ? {
         type: "oauth",
@@ -207,7 +209,7 @@ export async function selectSandboxEgressGrant(input: {
   withoutCredential?: true;
 }): Promise<SandboxEgressGrantSelection> {
   if (input.userOAuthOnly) {
-    const manifest = pluginCatalogRuntime.getDefinition(
+    const manifest = getAppContext().catalog.getDefinition(
       input.provider,
     )?.manifest;
     // Without OAuth the broker falls back to an environment token.

@@ -1,6 +1,6 @@
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { isDeepStrictEqual } from "node:util";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginManifest } from "@/chat/plugins/types";
 
 /** Validate hook registrations against the loaded plugin manifest catalog. */
@@ -8,8 +8,8 @@ export function validatePluginRegistrations(
   registrations: PluginRegistration[],
 ): void {
   const loadedPlugins = new Map(
-    pluginCatalogRuntime
-      .getProviders()
+    getAppContext()
+      .catalog.getProviders()
       .map((plugin) => [plugin.manifest.name, plugin]),
   );
 
@@ -21,7 +21,7 @@ export function validatePluginRegistrations(
       );
     }
     const effectiveRegistrationManifest =
-      pluginCatalogRuntime.parseConfiguredInlineManifest(
+      getAppContext().catalog.parseConfiguredInlineManifest(
         registration.manifest as PluginManifest,
         loadedPlugin.dir,
       );
@@ -46,7 +46,7 @@ export function validatePluginEgressCredentialHooks(
     ]),
   );
 
-  for (const provider of pluginCatalogRuntime.getProviders()) {
+  for (const provider of getAppContext().catalog.getProviders()) {
     const hooks = plugins.get(provider.manifest.name)?.hooks;
     const hasGrantHook = Boolean(hooks?.grantForEgress);
     const hasIssueHook = Boolean(hooks?.issueCredential);

@@ -16,8 +16,12 @@ import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import type { ExperimentalFeaturesConfig } from "@/chat/experimental";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
+import {
+  createAppContext,
+  getAppContext,
+  installAppContext,
+} from "@/app/context";
+import { validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
   type PluginRouteRegistration,
   type PluginApiRouteRegistration,
@@ -390,7 +394,7 @@ function warnUnregisteredConfigDefaults(
   defaults: Record<string, unknown> | undefined,
 ): void {
   for (const key of Object.keys(defaults ?? {})) {
-    if (!pluginCatalogRuntime.isConfigKey(key)) {
+    if (!getAppContext().catalog.isConfigKey(key)) {
       logWarn("config.default.unregistered", { "app.config.key": key });
     }
   }
@@ -489,13 +493,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousPluginCatalogConfig =
-    pluginCatalogRuntime.setConfig(pluginConfig);
-  const previousPlugins = setPlugins(plugins);
+  const previousAppContext = installAppContext(
+    createAppContext({ plugins, pluginConfig }),
+  );
   let restoreChatConfig: (() => void) | undefined;
   const restoreRuntimeConfig = (): void => {
-    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
-    setPlugins(previousPlugins);
+    installAppContext(previousAppContext);
     restoreChatConfig?.();
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
@@ -547,7 +550,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     }
     if (shouldValidatePluginCatalog) {
-      pluginCatalogRuntime.getSignature();
+      getAppContext().catalog.getSignature();
       validatePluginRegistrations(configuredPlugins?.registrations ?? []);
       validatePluginEgressCredentialHooks(
         configuredPlugins?.registrations ?? [],

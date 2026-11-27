@@ -318,10 +318,9 @@ export const plugins = {
 
       expect(await runChat(["-p", "hello"], io)).toBe(0);
       expect(runner.runLocalAgentTurn).toHaveBeenCalledOnce();
-      const { pluginCatalogRuntime } =
-        await import("@/chat/plugins/catalog-runtime");
-      const pluginNames = pluginCatalogRuntime
-        .getProviders()
+      const { getAppContext } = await import("@/app/context");
+      const pluginNames = getAppContext()
+        .catalog.getProviders()
         .map((plugin) => plugin.manifest.name);
       expect(pluginNames).toContain("typescript-plugin");
       expect(pluginNames).not.toContain("javascript-plugin");

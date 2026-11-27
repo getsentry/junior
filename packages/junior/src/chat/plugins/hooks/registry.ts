@@ -3,12 +3,12 @@ import {
   pluginEventsSchema,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
+import { getAppContext } from "@/app/context";
 import {
   coreRegistrations,
   isCoreRegistrationName,
 } from "@/chat/plugins/core-registrations";
 
-let registeredPlugins: PluginRegistration[] = [];
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const PLUGIN_TASK_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
 
@@ -58,21 +58,9 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
   }
 }
 
-/** Replace runtime hook plugins and return the previous list for rollback. */
-export function setPlugins(
-  nextPlugins: PluginRegistration[],
-): PluginRegistration[] {
-  validatePlugins(nextPlugins);
-  const previous = registeredPlugins;
-  registeredPlugins = [...nextPlugins].sort((left, right) =>
-    left.manifest.name.localeCompare(right.manifest.name),
-  );
-  return previous;
-}
-
 /** Return the current runtime hook plugins without exposing mutable state. */
 export function getPlugins(): PluginRegistration[] {
-  return [...registeredPlugins];
+  return [...getAppContext().plugins];
 }
 
 /**
@@ -81,5 +69,5 @@ export function getPlugins(): PluginRegistration[] {
  * app plugins.
  */
 export function getRegistrations(): PluginRegistration[] {
-  return [...registeredPlugins, ...coreRegistrations()];
+  return [...getAppContext().plugins, ...coreRegistrations()];
 }

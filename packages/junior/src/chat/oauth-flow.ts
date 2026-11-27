@@ -9,7 +9,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import {
   getSlackClient,
   isDmChannel,
@@ -85,7 +85,7 @@ export function parseOAuthStatePayload(
 
 /** Return the manifest-owned display label for a provider. */
 export function formatProviderLabel(provider: string): string {
-  const displayName = pluginCatalogRuntime.getDisplayName(provider);
+  const displayName = getAppContext().catalog.getDisplayName(provider);
   if (!displayName) {
     throw new Error(`Unknown plugin provider display name: "${provider}"`);
   }
@@ -202,7 +202,7 @@ export async function startOAuthFlow(
 ): Promise<
   { ok: false; error: string } | { ok: true; delivery: PrivateDeliveryResult }
 > {
-  const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
+  const providerConfig = getAppContext().catalog.getOAuthConfig(provider);
   if (!providerConfig) {
     return {
       ok: false,

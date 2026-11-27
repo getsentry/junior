@@ -5,7 +5,8 @@ const { runSnapshotCreate } = vi.hoisted(() => ({
 }));
 vi.mock("@/cli/snapshot-create", () => ({ runSnapshotCreate }));
 
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
+import { useAppContext } from "@junior-tests/fixtures/app-context";
 import { create as createProfile } from "@/chat/sandbox/snapshot/profile";
 import {
   defineJuniorPlugins,
@@ -14,31 +15,29 @@ import {
 import { evalRuntimePlugins } from "../../src/eval-plugin-fixtures";
 import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
 
-const previousCatalog = pluginCatalogRuntime.setConfig(undefined);
 afterEach(() => {
-  pluginCatalogRuntime.setConfig(previousCatalog);
   runSnapshotCreate.mockReset();
 });
 
 it("warms the same Sentry dependency profile the scenario uses and restores the catalog", async () => {
   const packages = ["@sentry/junior-sentry"];
-  pluginCatalogRuntime.setConfig(
-    pluginCatalogConfigFromPluginSet(
+  useAppContext({
+    pluginConfig: pluginCatalogConfigFromPluginSet(
       defineJuniorPlugins([...packages, ...evalRuntimePlugins(packages)]),
     ),
-  );
+  });
   const scenarioProfile = createProfile("node22");
   expect(scenarioProfile?.dependencies).toContainEqual({
     type: "npm",
     package: "sentry",
     version: "latest",
   });
-  pluginCatalogRuntime.setConfig({ packages: [] });
+  useAppContext({ pluginConfig: { packages: [] } });
   const originalProfile = createProfile("node22");
   runSnapshotCreate.mockImplementationOnce(async () => {
     expect(createProfile("node22")).toEqual(scenarioProfile);
     expect(
-      pluginCatalogRuntime.getDefinition("sentry")?.manifest.credentials,
+      getAppContext().catalog.getDefinition("sentry")?.manifest.credentials,
     ).toMatchObject({ type: "oauth-bearer" });
   });
 

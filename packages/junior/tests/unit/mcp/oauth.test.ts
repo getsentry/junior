@@ -35,12 +35,13 @@ describe("createMcpOAuthClientProvider", () => {
       JUNIOR_STATE_ADAPTER: "memory",
     };
     vi.resetModules();
-    vi.doMock("@/chat/plugins/catalog-runtime", () => ({
-      pluginCatalogRuntime: {
+    vi.doMock("@/app/context", () => {
+      const catalog = {
         getDefinition: (provider: string) =>
           provider === "demo" ? buildPlugin() : undefined,
-      },
-    }));
+      };
+      return { getAppContext: () => ({ plugins: [], catalog }) };
+    });
     vi.doMock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
       StreamableHTTPClientTransport: class StreamableHTTPClientTransport {
         constructor(_url: URL, options: { fetch?: typeof fetch } = {}) {
@@ -68,7 +69,7 @@ describe("createMcpOAuthClientProvider", () => {
   afterEach(async () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
-    vi.doUnmock("@/chat/plugins/catalog-runtime");
+    vi.doUnmock("@/app/context");
     vi.doUnmock("@modelcontextprotocol/sdk/client/streamableHttp.js");
     vi.resetModules();
     globalThis.fetch = ORIGINAL_FETCH;

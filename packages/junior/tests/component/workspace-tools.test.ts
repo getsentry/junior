@@ -16,7 +16,6 @@ import {
   type LocalAgentReply,
   type LocalToolResult,
 } from "@/chat/local/runner";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { listWatches } from "@/chat/events/store";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
@@ -29,6 +28,7 @@ import { createSwitchWorkspaceTool } from "@/chat/workspaces/tools/switch";
 import { createUpdateWorkspaceTool } from "@/chat/workspaces/tools/update";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
+import { useAppContext } from "../fixtures/app-context";
 
 const rootTurnTools = turnBehavior({
   kind: "thread",
@@ -57,107 +57,129 @@ describe("Workspace tools", () => {
   });
 
   it("runs Workspace tools through the real agent tool path", async () => {
-    const previousPlugins = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "github",
-          displayName: "GitHub",
-          description: "GitHub",
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "github",
+            displayName: "GitHub",
+            description: "GitHub",
+          },
+          hooks: {
+            async workspacePrepare() {},
+          },
+        }),
+      ],
+    });
+    const now = new Date("2026-08-13T12:00:00.000Z");
+    const workspace = {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "sentry",
+      setupScript: "pnpm install",
+      vcpus: null,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
         },
-        hooks: {
-          async workspacePrepare() {},
-        },
+      ],
+    };
+    const db = getDb();
+    await db.insert(juniorWorkspaces).values({
+      id: workspace.id,
+      name: workspace.name,
+      setupScript: workspace.setupScript,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(juniorWorkspaceRepos).values({
+      workspaceId: workspace.id,
+      ...workspace.repos[0]!,
+    });
+    await expect(
+      listWorkspaceNamesByRepository(db, {
+        provider: "github",
+        repo: "getsentry/sentry",
       }),
-    ]);
-    try {
-      const now = new Date("2026-08-13T12:00:00.000Z");
-      const workspace = {
-        id: "11111111-1111-4111-8111-111111111111",
-        name: "sentry",
-        setupScript: "pnpm install",
+    ).resolves.toEqual(["sentry"]);
+    await expect(
+      listWorkspaceNamesByRepository(db, {
+        provider: "GitHub",
+        repo: "GetSentry/Sentry",
+      }),
+    ).resolves.toEqual(["sentry"]);
+    const conversationId = normalizeLocalConversationId({
+      alias: "workspace-tools",
+      cwd: "/tmp/local-agent-workspace-tools",
+    });
+    expect(conversationId).toBeDefined();
+    const providers = workspaceProviderNames()!;
+    const createTool = createWorkspaceTool(providers);
+    const updateTool = createUpdateWorkspaceTool(providers);
+    const deleteTool = createDeleteWorkspaceTool();
+    expect(createTool.description).toContain("`github`");
+    expect(updateTool.description).toContain("`github`");
+    const createInput = createTool.prepareArguments!({
+      name: "relay",
+      setup_script: "cargo fetch",
+      vcpus: 8,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/relay",
+        },
+      ],
+    });
+    const updateInput = updateTool.prepareArguments!({
+      id: workspace.id,
+      name: "sentry-web",
+      setup_script: "pnpm install",
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+        },
+      ],
+    });
+
+    expect(createTool.approvalMode).toBe("review");
+    expect(createTool.describeProposal?.(createInput)).toBe(
+      "Create Workspace relay (1 repository; includes a setup script; 8 vCPUs).",
+    );
+    expect(updateTool.approvalMode).toBe("review");
+    expect(updateTool.describeProposal?.(updateInput)).toBe(
+      "Replace Workspace sentry-web (1 repository; includes a setup script).",
+    );
+    expect(deleteTool.approvalMode).toBe("review");
+    expect(deleteTool.describeProposal?.({ id: workspace.id })).toBe(
+      `Delete Workspace ${workspace.id}.`,
+    );
+    expect(
+      createTool.prepareArguments!({
+        name: "relay",
+        setup_script: null,
         vcpus: null,
         repos: [
           {
             provider: "github",
-            repo: "getsentry/sentry",
-          },
-        ],
-      };
-      const db = getDb();
-      await db.insert(juniorWorkspaces).values({
-        id: workspace.id,
-        name: workspace.name,
-        setupScript: workspace.setupScript,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await db.insert(juniorWorkspaceRepos).values({
-        workspaceId: workspace.id,
-        ...workspace.repos[0]!,
-      });
-      await expect(
-        listWorkspaceNamesByRepository(db, {
-          provider: "github",
-          repo: "getsentry/sentry",
-        }),
-      ).resolves.toEqual(["sentry"]);
-      await expect(
-        listWorkspaceNamesByRepository(db, {
-          provider: "GitHub",
-          repo: "GetSentry/Sentry",
-        }),
-      ).resolves.toEqual(["sentry"]);
-      const conversationId = normalizeLocalConversationId({
-        alias: "workspace-tools",
-        cwd: "/tmp/local-agent-workspace-tools",
-      });
-      expect(conversationId).toBeDefined();
-      const providers = workspaceProviderNames()!;
-      const createTool = createWorkspaceTool(providers);
-      const updateTool = createUpdateWorkspaceTool(providers);
-      const deleteTool = createDeleteWorkspaceTool();
-      expect(createTool.description).toContain("`github`");
-      expect(updateTool.description).toContain("`github`");
-      const createInput = createTool.prepareArguments!({
-        name: "relay",
-        setup_script: "cargo fetch",
-        vcpus: 8,
-        repos: [
-          {
-            provider: "github",
             repo: "getsentry/relay",
           },
         ],
-      });
-      const updateInput = updateTool.prepareArguments!({
-        id: workspace.id,
-        name: "sentry-web",
-        setup_script: "pnpm install",
-        repos: [
-          {
-            provider: "github",
-            repo: "getsentry/sentry",
-          },
-        ],
-      });
-
-      expect(createTool.approvalMode).toBe("review");
-      expect(createTool.describeProposal?.(createInput)).toBe(
-        "Create Workspace relay (1 repository; includes a setup script; 8 vCPUs).",
-      );
-      expect(updateTool.approvalMode).toBe("review");
-      expect(updateTool.describeProposal?.(updateInput)).toBe(
-        "Replace Workspace sentry-web (1 repository; includes a setup script).",
-      );
-      expect(deleteTool.approvalMode).toBe("review");
-      expect(deleteTool.describeProposal?.({ id: workspace.id })).toBe(
-        `Delete Workspace ${workspace.id}.`,
-      );
-      expect(
+      }),
+    ).toEqual({
+      name: "relay",
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/relay",
+        },
+      ],
+    });
+    expect(
+      createTool.describeProposal?.(
         createTool.prepareArguments!({
           name: "relay",
           setup_script: null,
-          vcpus: null,
           repos: [
             {
               provider: "github",
@@ -165,161 +187,137 @@ describe("Workspace tools", () => {
             },
           ],
         }),
-      ).toEqual({
-        name: "relay",
+      ),
+    ).toBe("Create Workspace relay (1 repository).");
+    expect(() =>
+      createTool.prepareArguments!({
+        name: "broken",
         repos: [
           {
-            provider: "github",
+            provider: "missing",
             repo: "getsentry/relay",
           },
         ],
-      });
-      expect(
-        createTool.describeProposal?.(
-          createTool.prepareArguments!({
-            name: "relay",
-            setup_script: null,
-            repos: [
-              {
-                provider: "github",
-                repo: "getsentry/relay",
+      }),
+    ).toThrow(/Invalid tool arguments/);
+    expect(() =>
+      updateTool.prepareArguments!({
+        id: workspace.id,
+        name: "sentry-web",
+        repos: [
+          {
+            provider: "github",
+            repo: "getsentry/sentry",
+          },
+        ],
+        extra: true,
+      }),
+    ).toThrow(/Invalid tool arguments/);
+    await expect(
+      createTool.execute!(createInput, { toolCallId: "create-workspace" }),
+    ).resolves.toMatchObject({ workspace: { name: "relay" } });
+    await expect(
+      updateTool.execute!(updateInput, { toolCallId: "update-workspace" }),
+    ).resolves.toMatchObject({ workspace: { name: "sentry-web" } });
+
+    const delivered: LocalAgentReply[] = [];
+    const results: LocalToolResult[] = [];
+    let firstRequestText = "";
+
+    await runLocalAgentTurn(
+      {
+        conversationId: conversationId!,
+        message: "List the available Workspaces.",
+      },
+      {
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "toolCall",
+              name: "listWorkspaces",
+              arguments: {},
+              onRequest: (context) => {
+                firstRequestText = JSON.stringify(context.messages);
               },
-            ],
-          }),
+            },
+            {
+              type: "toolCall",
+              name: "switchWorkspace",
+              arguments: { name: "missing" },
+            },
+            { type: "text", text: "The missing Workspace was not found." },
+          ]),
         ),
-      ).toBe("Create Workspace relay (1 repository).");
-      expect(() =>
-        createTool.prepareArguments!({
-          name: "broken",
-          repos: [
-            {
-              provider: "missing",
-              repo: "getsentry/relay",
-            },
-          ],
-        }),
-      ).toThrow(/Invalid tool arguments/);
-      expect(() =>
-        updateTool.prepareArguments!({
-          id: workspace.id,
-          name: "sentry-web",
-          repos: [
-            {
-              provider: "github",
-              repo: "getsentry/sentry",
-            },
-          ],
-          extra: true,
-        }),
-      ).toThrow(/Invalid tool arguments/);
-      await expect(
-        createTool.execute!(createInput, { toolCallId: "create-workspace" }),
-      ).resolves.toMatchObject({ workspace: { name: "relay" } });
-      await expect(
-        updateTool.execute!(updateInput, { toolCallId: "update-workspace" }),
-      ).resolves.toMatchObject({ workspace: { name: "sentry-web" } });
-
-      const delivered: LocalAgentReply[] = [];
-      const results: LocalToolResult[] = [];
-      let firstRequestText = "";
-
-      await runLocalAgentTurn(
-        {
-          conversationId: conversationId!,
-          message: "List the available Workspaces.",
+        deliverReply: async (reply) => {
+          delivered.push(reply);
         },
-        {
-          agentRunner: createModelAgentRunner(
-            createModelStream([
-              {
-                type: "toolCall",
-                name: "listWorkspaces",
-                arguments: {},
-                onRequest: (context) => {
-                  firstRequestText = JSON.stringify(context.messages);
+        onToolResult: async (result) => {
+          results.push(result);
+        },
+      },
+    );
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        ok: true,
+        toolCallId: expect.any(String),
+        toolName: "listWorkspaces",
+        params: {},
+        result: {
+          active_workspace_id: null,
+          workspaces: [
+            {
+              id: expect.any(String),
+              name: "relay",
+              setup_script: "cargo fetch",
+              vcpus: 8,
+              repos: [
+                {
+                  provider: "github",
+                  repo: "getsentry/relay",
+                  checkout_path: "repos/relay",
                 },
-              },
-              {
-                type: "toolCall",
-                name: "switchWorkspace",
-                arguments: { name: "missing" },
-              },
-              { type: "text", text: "The missing Workspace was not found." },
-            ]),
-          ),
-          deliverReply: async (reply) => {
-            delivered.push(reply);
-          },
-          onToolResult: async (result) => {
-            results.push(result);
-          },
+              ],
+            },
+            {
+              id: workspace.id,
+              name: "sentry-web",
+              setup_script: "pnpm install",
+              vcpus: null,
+              repos: [
+                {
+                  provider: "github",
+                  repo: "getsentry/sentry",
+                  checkout_path: "repos/sentry",
+                },
+              ],
+            },
+          ],
         },
-      );
-
-      expect(results).toEqual([
-        expect.objectContaining({
-          ok: true,
-          toolCallId: expect.any(String),
-          toolName: "listWorkspaces",
-          params: {},
-          result: {
-            active_workspace_id: null,
-            workspaces: [
-              {
-                id: expect.any(String),
-                name: "relay",
-                setup_script: "cargo fetch",
-                vcpus: 8,
-                repos: [
-                  {
-                    provider: "github",
-                    repo: "getsentry/relay",
-                    checkout_path: "repos/relay",
-                  },
-                ],
-              },
-              {
-                id: workspace.id,
-                name: "sentry-web",
-                setup_script: "pnpm install",
-                vcpus: null,
-                repos: [
-                  {
-                    provider: "github",
-                    repo: "getsentry/sentry",
-                    checkout_path: "repos/sentry",
-                  },
-                ],
-              },
-            ],
-          },
-        }),
-        expect.objectContaining({
-          error:
-            "Workspace not found: missing. Use listWorkspaces to find its name.",
-          ok: false,
-          toolCallId: expect.any(String),
-          toolName: "switchWorkspace",
-          params: { name: "missing" },
-        }),
-      ]);
-      expect(delivered).toEqual([
-        { text: "The missing Workspace was not found." },
-      ]);
-      // The context message names each Workspace and its repositories, so the
-      // agent can switch without a rejected clone or a listWorkspaces call.
-      expect(firstRequestText).toContain("<workspaces>");
-      expect(firstRequestText).toContain("- relay: getsentry/relay");
-      expect(firstRequestText).toContain("- sentry-web: getsentry/sentry");
-      await expect(
-        deleteTool.execute!(
-          { id: workspace.id },
-          { toolCallId: "delete-workspace" },
-        ),
-      ).resolves.toEqual({ deleted: true });
-    } finally {
-      setPlugins(previousPlugins);
-    }
+      }),
+      expect.objectContaining({
+        error:
+          "Workspace not found: missing. Use listWorkspaces to find its name.",
+        ok: false,
+        toolCallId: expect.any(String),
+        toolName: "switchWorkspace",
+        params: { name: "missing" },
+      }),
+    ]);
+    expect(delivered).toEqual([
+      { text: "The missing Workspace was not found." },
+    ]);
+    // The context message names each Workspace and its repositories, so the
+    // agent can switch without a rejected clone or a listWorkspaces call.
+    expect(firstRequestText).toContain("<workspaces>");
+    expect(firstRequestText).toContain("- relay: getsentry/relay");
+    expect(firstRequestText).toContain("- sentry-web: getsentry/sentry");
+    await expect(
+      deleteTool.execute!(
+        { id: workspace.id },
+        { toolCallId: "delete-workspace" },
+      ),
+    ).resolves.toEqual({ deleted: true });
   });
 
   it("records successful Workspace switches in daily stats", async () => {
