@@ -23,6 +23,11 @@ import {
 import { buttonUserInputField } from "@/chat/inbox-items/user-input-request";
 import { safeLinkUrl } from "@/net/link-url";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import {
+  subjectKindActionLabel,
+  subjectKindActions,
+} from "@/chat/inbox-items/subjects";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { SLACK_MAX_MARKDOWN_CHARS } from "./limits";
 
 // Posted Slack cards and open forms keep the ids that they were sent with,
@@ -32,6 +37,7 @@ export const SLACK_INBOX_ITEM_VIEW_ID = "junior_review_item";
 const ACTION_ID_PREFIX = "junior_review_item:";
 const CHOICE_ACTION_ID_PREFIX = `${ACTION_ID_PREFIX}choice:`;
 const ANSWER_ACTION_ID = `${ACTION_ID_PREFIX}answer`;
+const KIND_ACTION_ID_PREFIX = `${ACTION_ID_PREFIX}action:`;
 const DISMISS_ACTION_ID = `${ACTION_ID_PREFIX}dismiss`;
 // A link: Slack sends its click too, with no value, and nothing reads it.
 const SNOOZE_ACTION_ID = `${ACTION_ID_PREFIX}snooze`;
@@ -164,8 +170,25 @@ function controls(item: InboxItem): Button[] {
   ];
   // A notice has nothing to answer, and it can close by itself, so a person
   // can only dismiss or snooze it.
+  if (item.kind === "notice") return quiet;
   const question = inboxItemQuestion(item.request);
-  if (item.kind === "notice" || !question) return quiet;
+  if (!question) {
+    // The item's kind can put its own buttons on it, such as Resume. Each
+    // is the card's main action. The plugin does the work and reads no
+    // words.
+    return [
+      ...quiet,
+      ...subjectKindActions(item.subject.kind, getPlugins()).map(
+        (action): Button => ({
+          type: "button",
+          action_id: `${KIND_ACTION_ID_PREFIX}${action.id}`,
+          style: "primary",
+          text: plainText(action.label),
+          value: item.id,
+        }),
+      ),
+    ];
+  }
   const buttonField = buttonUserInputField(question);
   if (!buttonField) {
     return [
@@ -191,8 +214,8 @@ function controls(item: InboxItem): Button[] {
       // pick another option after the request changes.
       value: JSON.stringify({ itemId: item.id, label: option.label }),
     })),
-    // One choice is a plugin's action, such as Resume. The plugin does the
-    // work and reads no words, so there is no Other….
+    // A card posted before kinds had actions shows a plugin's action, such
+    // as Resume, as its one choice, with no Other….
     ...(buttonField.options.length > 1
       ? [
           {
@@ -211,6 +234,14 @@ function closedNote(item: InboxItem): string {
   const who = item.closedBy ? personName(item.closedBy) : undefined;
   if (item.closeReason === INBOX_ITEM_REPLIED_REASON) {
     return `${who ?? "A person"} replied in the thread`;
+  }
+  const action = subjectKindActionLabel(
+    item.subject.kind,
+    getPlugins(),
+    item.closeAction,
+  );
+  if (item.status === "done" && action && who) {
+    return `${who} chose *${escapeSlackMrkdwnText(action)}*`;
   }
   const question = inboxItemQuestion(item.request);
   if (item.status === "done" && question && item.answer && item.answeredBy) {
@@ -234,8 +265,8 @@ function closedNote(item: InboxItem): string {
 /**
  * Render an Inbox item as one Slack message. An open item shows its
  * controls: one button per choice when one click can answer it, an Answer
- * button that opens a form otherwise, and only Dismiss and Snooze for a
- * notice. A
+ * button that opens a form otherwise, the buttons of its kind for an action
+ * item without a question, and only Dismiss and Snooze for a notice. A
  * closed item shows a note instead, so nobody can act on it again.
  */
 export function buildSlackInboxItemCard(
@@ -285,6 +316,7 @@ export function buildHiddenSlackInboxItemCard(item: InboxItem): {
 
 /** One click on an Inbox item card. */
 export type SlackInboxItemClick =
+  | { kind: "action"; itemId: string; action: string }
   | { kind: "choice"; itemId: string; label: string }
   | { kind: "answer"; itemId: string }
   | { kind: "dismiss"; itemId: string };
@@ -313,6 +345,10 @@ export function parseSlackInboxItemClick(action: {
   const value = action.value?.trim();
   if (!value || !action.action_id?.startsWith(ACTION_ID_PREFIX)) {
     return undefined;
+  }
+  if (action.action_id.startsWith(KIND_ACTION_ID_PREFIX)) {
+    const id = action.action_id.slice(KIND_ACTION_ID_PREFIX.length);
+    return id ? { kind: "action", itemId: value, action: id } : undefined;
   }
   if (action.action_id.startsWith(CHOICE_ACTION_ID_PREFIX)) {
     const choice = parseChoiceValue(value);

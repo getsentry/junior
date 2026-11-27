@@ -7,34 +7,34 @@ import { createPluginState } from "@/chat/plugins/state";
 import { createPluginConversationWatches } from "@/chat/plugins/watches";
 import { inboxItemPlugin } from "./access";
 import type { InboxItemDelivery } from "./changes";
-import { createPluginInboxItems, PLUGIN_CHOICE_FIELD_ID } from "./plugin";
+import { createPluginInboxItems } from "./plugin";
 import { ownerConversationId, type InboxItem } from "./store";
 
 /**
- * Give the answer of a plugin item with choices to the plugin that added it,
- * so the plugin does the work. The answer starts no Turn. Throws when the
- * plugin fails, so the person can retry the same answer.
+ * Give a kind action that a person ran on a plugin item to the plugin that
+ * added it, so the plugin does the work. The action starts no Turn. Throws
+ * when the plugin fails, so the person can retry the same action.
  */
-export async function answerPluginInboxItem(args: {
+export async function runPluginInboxItemAction(args: {
+  action: string;
   delivery: InboxItemDelivery;
   item: InboxItem;
   nowMs: number;
 }): Promise<void> {
   const { item } = args;
   const pluginName = inboxItemPlugin(item);
-  const choice = item.answer?.values[PLUGIN_CHOICE_FIELD_ID]?.[0];
   // A plugin adds items only for a Conversation.
   const conversationId = ownerConversationId(item);
-  if (!pluginName || !choice || !conversationId) return;
+  if (!pluginName || !conversationId) return;
   const plugin = getPlugins().find((p) => p.manifest.name === pluginName);
-  const hook = plugin?.hooks?.inboxItemAnswered;
+  const hook = plugin?.hooks?.inboxItemAction;
   if (!plugin || !hook) return;
   const events = createEventAppPublisher({
     conversationWork: () => ({ queue: args.delivery.queue }),
   });
   await hook({
     ...basePluginContext(plugin),
-    choice,
+    action: args.action,
     codeChanges: createPluginCodeChanges(pluginName),
     conversationId,
     subject: {

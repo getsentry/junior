@@ -86,13 +86,20 @@ export function addMockInboxItemRoutes(
     const body = inboxItemActionSchema.safeParse(await c.req.json());
     if (!body.success) return errorResponse("Invalid action.", 400);
     // A To-do's item takes Done or Dismiss, which mark the To-do done or
-    // drop it, and only a To-do's item takes Done, like the API.
+    // drop it. Another item takes Done only with an action of its kind,
+    // like the API.
     const { action } = body.data;
     const current = readMockInboxItem(NOW_MS, c.req.param("id"));
     const todo = current?.todoId !== undefined;
+    const actionId = body.data.action === "done" ? body.data.id : undefined;
+    const kindAction = current?.subject.actions?.some(
+      ({ id }) => id === actionId,
+    );
     if (
       current &&
-      (todo ? action !== "done" && action !== "dismiss" : action === "done")
+      (todo
+        ? action !== "done" && action !== "dismiss"
+        : action === "done" && !kindAction)
     )
       return errorResponse("Invalid action.", 400);
     if (current?.todoId !== undefined && current.status === "open")

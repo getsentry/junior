@@ -1,0 +1,1 @@
+ALTER TABLE "junior_inbox_items" ADD COLUMN "close_action" text;

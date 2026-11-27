@@ -20,9 +20,11 @@ import {
   isOnlyAssignee,
   isPluginInboxItem,
 } from "./access";
-import { subjectTodo } from "./subjects";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { subjectKindActions, subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
-import { answerPluginInboxItem } from "./plugin-answer";
+import { legacyChoiceAction } from "./plugin";
+import { runPluginInboxItemAction } from "./plugin-action";
 import {
   hasAssigneeRoles,
   dismissPluginInboxItem,
@@ -43,7 +45,8 @@ import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * What a person can do with an Inbox item. A To-do's item takes only
- * `done` and `dismiss`, and only a To-do's item takes `done`.
+ * `done` and `dismiss`. `done` on another item runs an action of its
+ * subject kind, such as Resume (`PluginInboxSubjectKind.actions`).
  */
 export type InboxItemAction = "take" | "submit" | "dismiss" | "done";
 
@@ -92,15 +95,17 @@ export function reviewItemChange(
  */
 function isSameClose(
   item: InboxItem,
-  action: Exclude<InboxItemAction, "take" | "done">,
+  action: Exclude<InboxItemAction, "take">,
   user: User,
+  kindAction: string | undefined,
 ): boolean {
   return (
     item.closeReason !== INBOX_ITEM_REPLIED_REASON &&
     (action === "submit" ? item.answeredBy : item.closedBy)?.userId ===
       user.id &&
     item.status === closedStatus(action) &&
-    (action === "submit") === Boolean(item.answer)
+    (action === "submit") === Boolean(item.answer) &&
+    item.closeAction === kindAction
   );
 }
 
@@ -139,6 +144,8 @@ export async function actOnInboxItem(args: {
   exceptConversationId?: string;
   firstCloseOnly?: boolean;
   id: string;
+  /** With `done`, the id of the subject kind's action to run. */
+  kindAction?: string;
   nowMs?: number;
   user: User;
 }): Promise<InboxItem> {
@@ -162,11 +169,14 @@ export async function actOnInboxItem(args: {
     });
     return closed;
   }
-  if (action === "done") {
-    throw new InboxItemActionError(
-      "invalid",
-      "Only a To-do item can be marked done.",
-    );
+  const kindAction = action === "done" ? args.kindAction : undefined;
+  if (
+    action === "done" &&
+    !subjectKindActions(item.subject.kind, getPlugins()).some(
+      (registered) => registered.id === kindAction,
+    )
+  ) {
+    throw new InboxItemActionError("invalid", "This item has no such action.");
   }
 
   if (action === "take") {
@@ -243,17 +253,30 @@ export async function actOnInboxItem(args: {
       nowMs,
       status: closedStatus(action),
       ...(answer ? { answer } : undefined),
+      ...(kindAction ? { action: kindAction } : undefined),
     });
     closed = await readInboxItemForUser(user, item.id);
   }
-  if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
+  if (
+    args.firstCloseOnly
+      ? !closedNow
+      : !isSameClose(closed, action, user, kindAction)
+  ) {
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
   }
   await closeHandledReplyNotices(db, { item: closed, nowMs, userId: user.id });
-  // The plugin that added the item does the work, so its answer starts no
-  // Turn. A retry of the same answer calls the plugin again.
-  if (action === "submit" && isPluginInboxItem(closed)) {
-    await answerPluginInboxItem({
+  // The plugin that added the item does the work of its kind action, so
+  // the action starts no Turn. A retry of the same action calls the plugin
+  // again. An item that a plugin added with choices, before kinds had
+  // actions, runs the action that its picked label names.
+  const pluginAction =
+    kindAction ??
+    (action === "submit" && isPluginInboxItem(closed)
+      ? legacyChoiceAction(closed)
+      : undefined);
+  if (pluginAction) {
+    await runPluginInboxItemAction({
+      action: pluginAction,
       delivery: args.delivery,
       item: closed,
       nowMs,

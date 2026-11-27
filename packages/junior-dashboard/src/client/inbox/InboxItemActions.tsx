@@ -1,3 +1,4 @@
+import { Wrench, type LucideIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import {
   inboxItemQuestion,
@@ -19,6 +20,26 @@ import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
 import { RowDismissButton } from "./RowDismissButton";
+
+/**
+ * The actions of an item's subject kind that the viewer can take, such as
+ * Keep fixing. An item added with a question before kinds had actions
+ * shows that question's choice instead.
+ */
+export function itemKindActions(
+  item: InboxItemPayload,
+): NonNullable<InboxItemPayload["subject"]["actions"]> {
+  if (!item.canAct || inboxItemQuestion(item.request)) return [];
+  return item.subject.actions ?? [];
+}
+
+type KindActionIcon = NonNullable<
+  ReturnType<typeof itemKindActions>[number]["icon"]
+>;
+
+const KIND_ACTION_ICONS: Record<KindActionIcon, LucideIcon> = {
+  wrench: Wrench,
+};
 
 // Only an open card snoozes from here, so its snooze code stays out of the
 // first load.
@@ -66,6 +87,9 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
         <InboxItemCloser item={item} /> {what} this{" "}
         {formatRelativeTime(item.closedAt)}.
       </p>
+      {item.closeAction ? (
+        <p className="m-0 text-dashboard-text-muted">{item.closeAction}</p>
+      ) : null}
       {item.closeReason ? (
         <p className="m-0 text-dashboard-text-muted">{item.closeReason}</p>
       ) : null}
@@ -147,8 +171,11 @@ export function InboxItemActions(props: {
     }
   }
 
-  // A To-do for the viewer closes with Mark done, its main action.
+  // A To-do for the viewer closes with Mark done, its main action. A plugin
+  // kind can bring its own, such as Keep fixing.
   const todo = item.todoId !== undefined;
+  const question = inboxItemQuestion(item.request);
+  const kindActions = itemKindActions(item);
   // A reader of a public question can dismiss it, like an assignee.
   const dismiss = item.canAnswer && (props.dismiss ?? true);
   const take = item.canTake ? (props.take ?? "Take") : false;
@@ -190,10 +217,24 @@ export function InboxItemActions(props: {
           Mark done
         </Button>
       ) : null}
+      {kindActions.map((kindAction) => {
+        const Icon = kindAction.icon && KIND_ACTION_ICONS[kindAction.icon];
+        return (
+          <Button
+            disabled={action.isPending || sending}
+            key={kindAction.id}
+            onClick={() =>
+              void run({ action: "done", id: kindAction.id }).catch(() => {})
+            }
+          >
+            {Icon ? <Icon aria-hidden="true" size={16} /> : null}
+            {kindAction.label}
+          </Button>
+        );
+      })}
     </>
   );
 
-  const question = inboxItemQuestion(item.request);
   return (
     <div className="grid gap-3">
       {/* The related links say what the item is about. A question shows
@@ -232,7 +273,12 @@ export function InboxItemActions(props: {
             words={item.owner.kind !== "automation"}
           />
         </div>
-      ) : take || snooze || dismiss || todo || props.extra ? (
+      ) : take ||
+        snooze ||
+        dismiss ||
+        todo ||
+        kindActions.length > 0 ||
+        props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">

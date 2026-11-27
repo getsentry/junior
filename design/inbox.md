@@ -36,7 +36,7 @@ groups and acts on its rows.
 - The Inbox filters its asks by type: PRs (a code change's own asks,
   such as Review requested), Decisions (other asks with a form, also
   when they cite a code change), To-dos (the viewer's To-dos), and Other
-  (the rest, such as Resume). Each count holds the asks
+  (the rest, such as Keep fixing). Each count holds the asks
   that wait on the viewer, one per ask. The type counts add up to All, and
   All is the Inbox count. A type with nothing waiting hides, but All always
   shows.
@@ -59,7 +59,8 @@ groups and acts on its rows.
   has no subject preview: the row head and Related link the subject. In
   the transcript, a waiting card spans the transcript width.
 - A click on a choice picks it. Send answers, with the note line. An
-  action that takes no words, such as a plugin's Resume, is one click.
+  action that takes no words, such as a plugin's Keep fixing, is one
+  click.
 - The first answer closes the item for everyone, and the item records who
   closed it and when.
 - A dismiss closes the item for everyone, unless its subject gives each
@@ -92,9 +93,10 @@ groups and acts on its rows.
   card or add related work to another item.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
-- The answer to an item that a plugin added goes to that plugin, which does
-  the work, such as Resume on a merge conflict fix that did not land. It
-  starts no Turn.
+- A plugin's subject kind can define actions, such as Keep fixing on a
+  merge conflict fix that did not land. Each shows as a button on the
+  kind's open items. A click closes the item as done, the item records the
+  action, and the plugin does the work. It starts no Turn.
 - An item is visible to whoever can see its subject's owner. An item from
   a public Conversation is visible to the whole workspace. Everyone means
   the people who can see the item's owner.

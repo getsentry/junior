@@ -138,6 +138,8 @@ export interface InboxItem {
    * reads it from its close.
    */
   answeredBy?: InboxItemAssignee;
+  /** The id of the subject kind's action that closed it, such as `resume`. */
+  closeAction?: string;
   closeReason?: string;
   closedAt?: Date;
   closedBy?: InboxItemAssignee;
@@ -341,6 +343,7 @@ async function hydrate(
       ...(answeredBy ? { answeredBy } : undefined),
       ...(row.addedByTurnId ? { addedByTurnId: row.addedByTurnId } : undefined),
       ...(addedByAutomationId ? { addedByAutomationId } : undefined),
+      ...(row.closeAction ? { closeAction: row.closeAction } : undefined),
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
@@ -468,13 +471,27 @@ export async function getOpenInboxItemBySubject(
   subject: InboxItemSubject,
 ): Promise<InboxItem | undefined> {
   const rows = await selectItemRows(db).where(
-    and(
-      eq(juniorInboxItems.subjectKind, subject.kind),
-      eq(juniorInboxItems.subjectId, subject.id),
-      eq(juniorInboxItems.status, "open"),
-    ),
+    and(subjectIs(subject), eq(juniorInboxItems.status, "open")),
   );
   return (await hydrate(db, rows))[0];
+}
+
+/** Read every Inbox item of one subject, open and closed, newest first. */
+export async function listInboxItemsBySubject(
+  db: JuniorDatabase,
+  subject: InboxItemSubject,
+): Promise<InboxItem[]> {
+  const rows = await selectItemRows(db)
+    .where(subjectIs(subject))
+    .orderBy(desc(juniorInboxItems.createdAt), desc(juniorInboxItems.id));
+  return await hydrate(db, rows);
+}
+
+function subjectIs(subject: InboxItemSubject): SQL | undefined {
+  return and(
+    eq(juniorInboxItems.subjectKind, subject.kind),
+    eq(juniorInboxItems.subjectId, subject.id),
+  );
 }
 
 /**
@@ -627,6 +644,7 @@ export async function updateInboxItemContent(
 export async function closeInboxItem(
   db: JuniorDatabase,
   input: {
+    action?: string;
     answer?: UserInputAnswer;
     closedByUserId?: string;
     id: string;
@@ -644,6 +662,7 @@ export async function closeInboxItem(
         answer: input.answer
           ? sql`case when ${juniorInboxItems.subjectKind} = ${INBOX_SUBJECT_KINDS.question} then null else ${JSON.stringify(input.answer)}::jsonb end`
           : null,
+        closeAction: input.action ?? null,
         closeReason: input.reason ?? null,
         closedAt: now,
         closedByUserId: input.closedByUserId ?? null,

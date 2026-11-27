@@ -49,6 +49,7 @@ import {
 } from "./CodeChangeTitle";
 import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
 import { inboxItemKind } from "./inboxModel";
+import { itemKindActions } from "./InboxItemActions";
 import {
   INBOX_ROW_META_CLASS,
   inboxCardClass,
@@ -566,7 +567,10 @@ function InboxRowBody(
           onAction={props.onItemAction}
           primaryAction={
             props.itemHead ? (
-              <CodeChangeOpenButton head={props.itemHead} />
+              <CodeChangeOpenButton
+                head={props.itemHead}
+                secondary={itemKindActions(item).length > 0}
+              />
             ) : replyNotice ? (
               <ReplyNoticeLink item={item} open={rowOpenTarget(props)} />
             ) : undefined

@@ -5,6 +5,7 @@
  */
 import { githubAccountLinks } from "./account-links.js";
 import {
+  GITHUB_CONFLICT_RESUME,
   GITHUB_INBOX_SUBJECTS,
   githubInboxSubjectKinds,
 } from "./inbox-subjects.js";
@@ -26,11 +27,7 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
-import { GITHUB_CONFLICT_RESUME } from "./merge-conflict-checks/policy.js";
-import {
-  allowGitHubConflictAsk,
-  resumeGitHubConflictFixes,
-} from "./merge-conflict-checks/resume.js";
+import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { wasGitHubPullRequestOpenedIn } from "./pull-request-requesters/store.js";
 import {
@@ -450,10 +447,10 @@ export function githubPlugin(
           privateKeyEnv,
         });
       },
-      async inboxItemAnswered(ctx) {
+      async inboxItemAction(ctx) {
         if (
           ctx.subject.kind !== GITHUB_INBOX_SUBJECTS.mergeConflict ||
-          ctx.choice !== GITHUB_CONFLICT_RESUME
+          ctx.action !== GITHUB_CONFLICT_RESUME
         ) {
           return;
         }
@@ -470,13 +467,12 @@ export function githubPlugin(
           ? await ctx.codeChanges.list({ providerIds: [pullRequestId] })
           : [];
         if (!change) {
-          // Core closed the item already. Let the next conflict check ask
-          // again, so the Resume is not lost.
+          // Core closed the item already. The Resume starts no fix, so the
+          // next conflict check asks again.
           ctx.log.warn("GitHub merge conflict Resume found no pull request", {
             conversationId: ctx.conversationId,
             pullRequestId,
           });
-          await allowGitHubConflictAsk(db, pullRequestId);
           return;
         }
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };

@@ -7,6 +7,7 @@
  */
 import type {
   ObjectAnnotation,
+  PluginInboxKindAction,
   PluginInboxSubjectKind,
   PluginInboxViewer,
   PluginRegistration,
@@ -144,6 +145,29 @@ export function subjectKindDismissNote(
     viewer,
   );
   return registered?.dismissNote?.(object, reader);
+}
+
+/**
+ * Return the actions that a plugin kind puts on its open items, such as
+ * Resume. Core kinds have none here: a To-do closes with Mark done.
+ */
+export function subjectKindActions(
+  kind: string,
+  plugins: readonly PluginRegistration[],
+): readonly PluginInboxKindAction[] {
+  return (
+    registeredSubjectKind(kind, plugins, undefined).registered?.actions ?? []
+  );
+}
+
+/** Return the label of a kind action by its id, such as Resume. */
+export function subjectKindActionLabel(
+  kind: string,
+  plugins: readonly PluginRegistration[],
+  id: string | undefined,
+): string | undefined {
+  return subjectKindActions(kind, plugins).find((action) => action.id === id)
+    ?.label;
 }
 
 /**

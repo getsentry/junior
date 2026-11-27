@@ -1,4 +1,14 @@
-import { and, asc, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+} from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
 import { juniorGitHubPullRequestRequesters } from "../db/schema.js";
 
@@ -129,6 +139,27 @@ export async function listGitHubPullRequestOpeners(
     }
   }
   return openers;
+}
+
+/**
+ * Find the Conversation that opened a pull request, by GitHub's id of the
+ * pull request. Unlike the name, the id holds after a repository rename.
+ */
+export async function findGitHubPullRequestConversation(
+  db: GitHubDb,
+  pullRequestId: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ conversationId: table.conversationId })
+    .from(table)
+    .where(
+      and(
+        eq(table.pullRequestId, pullRequestId),
+        isNotNull(table.conversationId),
+      ),
+    )
+    .limit(1);
+  return row?.conversationId ?? undefined;
 }
 
 /**
