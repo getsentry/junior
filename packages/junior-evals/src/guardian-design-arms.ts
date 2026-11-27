@@ -44,8 +44,14 @@ export function guardianArm(
   guardian: (modelId: string, batch: GuardianBatch) => Guardian,
 ): GuardianArm {
   return async (request, { signal }) => {
-    const reviewed = await mapBounded(request.actions, (proposal) =>
-      gateReviews(proposal.tool, proposal.input),
+    // Core `bash` skips review until Guardian allows routine Sandbox work
+    // (getsentry/junior#4550). The suite still scores Guardian on commands,
+    // so that review can come back.
+    const reviewed = await mapBounded(
+      request.actions,
+      async (proposal) =>
+        proposal.tool.name === "bash" ||
+        (await gateReviews(proposal.tool, proposal.input)),
     );
     const indexes = request.actions.flatMap((_, index) =>
       reviewed[index] ? [index] : [],
