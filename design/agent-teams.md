@@ -175,7 +175,7 @@ end-of-Turn contract. A person can see and steer each agent.
   by a person or by the limit of automated Turns, sends its parent no
   `stopped`.
 - `opaque-ids`: Junior reads the id of a message or a Turn to tell if it
-  came from a Watch Event.
+  came from a Watch Event or from a person's stop.
 - `tree-auto-archive`: auto-archive covers only roots, so a done child
   agent stays until a person or its parent archives it.
   getsentry/junior#4409 tracks it.
