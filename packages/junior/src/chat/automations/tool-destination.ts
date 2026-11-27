@@ -2,7 +2,12 @@
 import * as z from "zod";
 import { getConversationStore } from "@/chat/db";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
-import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
+import {
+  parseSlackChannelId,
+  parseSlackTeamId,
+  type SlackChannelId,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
 import { getConversationInfo } from "@/chat/slack/channel";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import {
@@ -129,33 +134,24 @@ export async function resolveToolDestination(
 
 /**
  * Where an Automation delivers and who can read it, for Guardian
- * (`audience`). Junior runs no Turn in a channel that another organization
- * shares, so this Conversation's own channel or DM is `internal`. A named
- * channel is `world` when Slack says it is shared with another
- * organization (Slack Connect), and when Slack cannot answer.
+ * (`audience`). A Slack channel or DM, also this Conversation's own, is
+ * `world` when it is shared with another organization or Slack cannot
+ * answer. A channel can be shared after the Automation is created.
  */
 export async function automationDeliveryTarget(
   context: AutomationToolContext,
   value: z.output<typeof automationDestinationParam>,
 ): Promise<NonNullable<Action["target"]>> {
-  if (value === "current_conversation") {
-    return {
-      ref: context.destination
-        ? `Slack channel ${context.destination.channelId}`
-        : "this Conversation",
-      audience: "internal",
-    };
+  const current = value === "current_conversation";
+  if (current && !context.destination) {
+    return { ref: "this Conversation", audience: "internal" };
   }
+  const ref = current ? (context.destination?.channelId ?? value) : value;
   try {
-    const teamId =
-      parseSlackTeamId(context.destination?.teamId) ??
-      parseSlackTeamId(await resolveBotSlackTeamId());
-    if (!teamId) return { ref: `Slack channel ${value}`, audience: "world" };
-    const { channelId } = await resolveSlackChannelRef({
-      field: "destination",
-      value,
-      teamId,
-    });
+    const channelId = current
+      ? parseSlackChannelId(context.destination?.channelId)
+      : await namedChannelId(context, value);
+    if (!channelId) return { ref: `Slack channel ${ref}`, audience: "world" };
     const info = await getConversationInfo(channelId);
     return {
       ref: info.name
@@ -164,6 +160,22 @@ export async function automationDeliveryTarget(
       audience: info.isExtShared ? "world" : "internal",
     };
   } catch {
-    return { ref: `Slack channel ${value}`, audience: "world" };
+    return { ref: `Slack channel ${ref}`, audience: "world" };
   }
+}
+
+async function namedChannelId(
+  context: AutomationToolContext,
+  value: string,
+): Promise<SlackChannelId | undefined> {
+  const teamId =
+    parseSlackTeamId(context.destination?.teamId) ??
+    parseSlackTeamId(await resolveBotSlackTeamId());
+  if (!teamId) return undefined;
+  const { channelId } = await resolveSlackChannelRef({
+    field: "destination",
+    value,
+    teamId,
+  });
+  return channelId;
 }

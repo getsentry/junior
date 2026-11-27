@@ -75,7 +75,9 @@ interface BaseToolDefinition<
    * Describe one call for Guardian from stored records
    * (`facts-from-junior` in `design/guardian.md`).
    */
-  guardian?(input: TInput): ActionDescription | Promise<ActionDescription>;
+  guardian?(
+    input: TInput,
+  ): ActionDescription | undefined | Promise<ActionDescription | undefined>;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;
@@ -139,7 +141,9 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
    * Describe one call for Guardian. Core binds a plugin tool's hook to the
    * Turn's stored facts (`facts-from-junior` in `design/guardian.md`).
    */
-  guardian?(input: unknown): ActionDescription | Promise<ActionDescription>;
+  guardian?(
+    input: unknown,
+  ): ActionDescription | undefined | Promise<ActionDescription | undefined>;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;

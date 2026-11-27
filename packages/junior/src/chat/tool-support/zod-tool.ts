@@ -23,7 +23,7 @@ type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
 > & {
   guardian?(
     input: z.output<TInputSchema>,
-  ): ActionDescription | Promise<ActionDescription>;
+  ): ActionDescription | undefined | Promise<ActionDescription | undefined>;
   inputSchema: TInputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
   resolveApprovalMetadata?(

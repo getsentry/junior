@@ -71,6 +71,7 @@ export default defineConfig({
     // resets, or MSW, so they skip those setup files.
     setupFiles: [
       path.resolve(__dirname, "src/stable-setup.ts"),
+      path.resolve(__dirname, "src/guardian-slack-setup.ts"),
       "@sentry/roach/vitest/setup",
       path.resolve(__dirname, "src/fetch-setup.ts"),
     ],
