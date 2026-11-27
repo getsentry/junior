@@ -69,6 +69,7 @@ async function runScript(source: string) {
       source: SOURCE,
       userIntent: () => "What was the checksum in the earlier deploy log?",
     },
+    onFatal: () => undefined,
     onDecision: async () => undefined,
     guardian: (batch) => createCurrentGuardian({ review }, batch),
   });

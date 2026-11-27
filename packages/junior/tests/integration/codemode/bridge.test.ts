@@ -89,6 +89,7 @@ function pipelineFor(
       source: SOURCE,
       userIntent: () => "Look up the customers and post a summary to #team.",
     },
+    onFatal: () => undefined,
     onDecision: async () => undefined,
     guardian: (batch) => createCurrentGuardian({ review }, batch),
   });
