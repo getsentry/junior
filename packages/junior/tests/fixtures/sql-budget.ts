@@ -146,6 +146,7 @@ type PlanNode = {
   "Total Cost": number;
   "Plan Rows": number;
   "Relation Name"?: string;
+  Alias?: string;
   "Index Cond"?: string;
   "Recheck Cond"?: string;
   Plans?: PlanNode[];

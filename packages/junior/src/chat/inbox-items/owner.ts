@@ -32,6 +32,23 @@ function pluginOwnerCases(): SQL[] {
   );
 }
 
+/**
+ * The subject kinds whose owner is a Conversation: every kind but an
+ * Automation alert.
+ */
+export function conversationOwnedSubjectKinds(): string[] {
+  return [
+    INBOX_SUBJECT_KINDS.question,
+    INBOX_SUBJECT_KINDS.reply,
+    INBOX_SUBJECT_KINDS.todo,
+    ...getPlugins().flatMap((plugin) =>
+      (plugin.inboxSubjects ?? []).map((subject) =>
+        pluginSubjectKind(plugin.manifest.name, subject.kind),
+      ),
+    ),
+  ];
+}
+
 /** SQL: the id of the Conversation that owns a To-do's item. */
 export function todoItemOwnerConversationId(): SQL<string> {
   return sql<string>`regexp_replace(${item.subjectId}, ':[^:]*$', '')`;
