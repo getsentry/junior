@@ -84,6 +84,7 @@ async function pullRequestCallContext(
   const number = parsed.data.pull_request;
   const changes = await ctx.codeChanges.list({
     conversationIds,
+    state: "open",
     repository: { name: repo.ref, numbers: [number] },
   });
   if (changes.length === 0) return [];

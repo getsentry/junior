@@ -3,6 +3,7 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { eventGuardian } from "../calendar/event-audience";
 import {
   googleApiError,
   googleApiRequest,
@@ -53,12 +54,7 @@ export const cancelCalendarEventTool = definePluginTool({
   description:
     "Cancel a Google Calendar event organized by your own Google account. Google removes it from every attendee's calendar and emails them a cancellation. Only people invited to the event can ask to cancel it. You cannot cancel events other people organize. For a repeating event, an occurrence id cancels only that occurrence; its series_event_id cancels every occurrence. Confirm which event, and for a repeating event whether one occurrence or the series, unless the requester already made it clear.",
   inputSchema,
-  // Junior organizes the event, and it invites only people in the
-  // company's Workspace domains.
-  guardian: async (input) => ({
-    target: `Google Calendar event ${input.event_id}`,
-    audience: "internal",
-  }),
+  guardian: async (input, ctx) => await eventGuardian(input.event_id, ctx),
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());

@@ -550,6 +550,16 @@ describe("Google Docs write tools for Guardian", () => {
     ).toBe("world");
   });
 
+  it("counts a reference that is not a Google file as world", async () => {
+    const tool = googlePlugin().hooks!.tools!()["insertGoogleDocContent"]!;
+    await expect(
+      tool.guardian!(
+        { document: "https://example.com/not-a-doc" } as never,
+        { egress: { fetch: vi.fn() } } as never,
+      ),
+    ).resolves.toMatchObject({ audience: "world" });
+  });
+
   it("counts a Doc whose shares Drive does not return as world", async () => {
     expect(
       (await audience(new Response("nope", { status: 403 }))).audience,

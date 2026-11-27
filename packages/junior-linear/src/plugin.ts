@@ -97,15 +97,16 @@ function writeTeam(
   if (tool !== "save_issue" && tool !== "save_comment") return undefined;
   const issue = tool === "save_comment" ? input["issueId"] : input["id"];
   const team = tool === "save_issue" ? input["team"] : undefined;
+  // A named team is where the issue lands, also when the call moves it.
   const named =
-    typeof issue === "string" && issue
-      ? issue
-      : typeof team === "string" && team
-        ? team
+    typeof team === "string" && team
+      ? team
+      : typeof issue === "string" && issue
+        ? issue
         : undefined;
   if (!named) return undefined;
   const key =
-    named === issue ? ISSUE_KEY.exec(named)?.[1] : TEAM_KEY.exec(named)?.[0];
+    named === team ? TEAM_KEY.exec(named)?.[0] : ISSUE_KEY.exec(named)?.[1];
   return key ? { named, key } : { named };
 }
 

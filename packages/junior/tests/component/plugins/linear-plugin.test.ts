@@ -51,6 +51,10 @@ describe("Linear plugin package", () => {
       target: "Linear 6f1c-uuid",
       audience: "world",
     });
+    // A move gets the audience of the team it lands on.
+    await expect(
+      guardian("save_issue", { id: "WEB-12", team: "PY" }),
+    ).resolves.toEqual({ target: "Linear team PY", audience: "world" });
     // A read has no entry, so it keeps the manifest default.
     expect(Object.keys(tools)).toEqual(["save_issue", "save_comment"]);
   });

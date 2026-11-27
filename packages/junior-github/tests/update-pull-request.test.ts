@@ -664,6 +664,24 @@ describe("GitHub call context", () => {
     ]);
   });
 
+  it("asks core only for the open pull requests of this work", async () => {
+    const list = vi.fn(async () => []);
+    await githubGuardianContext(
+      {
+        tool: "github_updatePullRequest",
+        input: { repo: "getsentry/junior", pull_request: 691 },
+      },
+      {
+        ...guardianContext({ own: true }),
+        codeChanges: { list },
+        workspaceRepos: async () => [],
+      },
+    );
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "open" }),
+    );
+  });
+
   it("says nothing about another pull request", async () => {
     await expect(contextOf(false)).resolves.toEqual([]);
   });

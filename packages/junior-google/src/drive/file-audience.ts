@@ -52,8 +52,8 @@ async function fileAudience(
 ): Promise<Audience> {
   const allowedDomains = readGoogleConfig()?.allowedDomains;
   if (!allowedDomains) return "world";
-  const ref = parseFileReference(value);
   try {
+    const ref = parseFileReference(value);
     let pageToken: string | undefined;
     for (let page = 0; page < MAX_PERMISSION_PAGES; page += 1) {
       // oxlint-disable-next-line no-await-in-loop -- Each page needs the page token from the page before.
@@ -88,8 +88,15 @@ export async function fileGuardian(
   value: string,
   ctx: GuardianContext,
 ): Promise<GuardianResult> {
+  let fileId: string;
+  try {
+    fileId = parseFileReference(value).fileId;
+  } catch {
+    // The tool reports the bad reference. Guardian gets an unknown file.
+    return { target: `${noun} ${value}`, audience: "world" };
+  }
   return {
-    target: `${noun} ${parseFileReference(value).fileId}`,
+    target: `${noun} ${fileId}`,
     audience: await fileAudience(ctx, value),
   };
 }
