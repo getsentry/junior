@@ -205,9 +205,8 @@ describe("Lead", () => {
   // that is true: it archives the child and starts the agreed next step or
   // posts one.
   test("when a child reports that its pull request merged, the Lead archives it and moves to the agreed next step", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({ limits: { maxToolCallsPerTurn: 8 } });
     const conversation = await run(
       webMessage(
         `have a thread check whether ${MERGED_PULL_REQUEST} has merged. once it has, start a thread that drafts a three-line changelog entry for the next craft release`,
