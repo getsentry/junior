@@ -90,6 +90,7 @@ import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
 import { completeObject } from "@/chat/core-model";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
@@ -225,7 +226,6 @@ interface ToolWiringArgs {
   /** Manual-only skills that `loadSkill` loaded earlier in the Conversation. */
   conversationSkillNames: readonly string[];
   onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
-  onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
   resume: ResumeState;
@@ -517,6 +517,13 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
+  const reviewer = createGuardianActionReviewer({
+    completeObject,
+    destinationFacts: guardianPluginFacts(
+      pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+    ),
+    modelId: botConfig.guardianModelId,
+  });
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
@@ -555,18 +562,10 @@ export async function wireAgentTools(
         toolName,
         costUsd: decision.costUsd,
         decision: decision.decision,
-        riskLevel: decision.riskLevel,
-        userAuthorization: decision.userAuthorization,
+        rule: decision.rule,
       }),
-    onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
-    reviewer: createGuardianActionReviewer({
-      completeObject,
-      destinationFacts: guardianPluginFacts(
-        pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
-      ),
-      modelId: botConfig.guardianModelId,
-    }),
+    guardian: (batch) => createCurrentGuardian(reviewer, batch),
   });
   const skills = loadableSkills(args.availableSkills, [
     ...args.invokedSkillNames,

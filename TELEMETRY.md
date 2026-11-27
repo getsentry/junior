@@ -131,10 +131,8 @@ attributes. Nested logs and spans inherit them.
   without it ran on a WebSocket client. `db.query.text` keeps placeholders.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
-- A reviewed `gen_ai.execute_tool` span has `app.guardian.decision`,
-  `app.guardian.risk_level`, `app.guardian.rule` (the block rule, or `none`),
-  and `app.guardian.user_consent` (the user authorization level). Sentry's
-  data scrubber hides a key that contains `auth`.
+- A reviewed `gen_ai.execute_tool` span has `app.guardian.decision` and,
+  when a rule blocked the action, `app.guardian.rule`.
 - `guardian.action_review` has `app.guardian.proposal.chars` (the proposal
   JSON that the size limit counts) and, when a review's model call aborts,
   `app.guardian.review.aborted_by` (`timeout` or `run`). The span covers one

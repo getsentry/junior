@@ -1,4 +1,8 @@
 import type { Source } from "@sentry/junior-plugin-api";
+import {
+  AGENT_EVENT_NAMESPACE,
+  TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE,
+} from "@/chat/child-agents/result-event-type";
 import type { RunDispatch } from "@/chat/automation-result";
 import type {
   Conversation,
@@ -523,6 +527,35 @@ export function personSourcePlatform(
     case "plugin_dispatch":
     case "parent_message":
       return undefined;
+  }
+}
+
+/**
+ * Return who wrote the current instruction of a Run from this Source:
+ * a person, an Automation's stored instruction, an agent's brief, or an
+ * Event. A parent agent's task and another top-level agent's message are
+ * briefs.
+ */
+export function instructionAuthor(
+  source: Source,
+): "person" | "automation" | "brief" | "event" {
+  switch (source.kind) {
+    case "slack":
+    case "local":
+    case "web":
+      return "person";
+    case "scheduled_automation":
+    case "event_automation":
+      return "automation";
+    case "parent_message":
+      return "brief";
+    case "event":
+      return source.namespace === AGENT_EVENT_NAMESPACE &&
+        source.eventType === TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE
+        ? "brief"
+        : "event";
+    case "plugin_dispatch":
+      return "event";
   }
 }
 

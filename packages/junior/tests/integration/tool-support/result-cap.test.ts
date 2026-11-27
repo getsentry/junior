@@ -6,6 +6,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { http } from "msw";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -50,16 +51,19 @@ const allowAll = createToolActionReview({
     userIntent: () => "Read the docs page.",
   },
   onDecision: async () => undefined,
-  onFatal: () => undefined,
-  reviewer: {
-    review: async () => ({
-      decision: "allow",
-      reason: "The user asked for this.",
-      riskLevel: "low",
-      rule: "none",
-      userAuthorization: "high",
-    }),
-  },
+  guardian: (batch) =>
+    createCurrentGuardian(
+      {
+        review: async () => ({
+          decision: "allow",
+          reason: "The user asked for this.",
+          riskLevel: "low",
+          rule: "none",
+          userAuthorization: "high",
+        }),
+      },
+      batch,
+    ),
 });
 
 type SavedFile = { content: string | Uint8Array; path: string };

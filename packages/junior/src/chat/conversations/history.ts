@@ -100,8 +100,11 @@ const guardianActionReviewedEventDataSchema = z
     toolName: z.string().min(1),
     costUsd: z.number().finite().nonnegative().optional(),
     decision: z.enum(["allow", "ask", "deny"]),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]),
-    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+    /** Set on decisions recorded since Guardian names one rule. */
+    rule: z.string().min(1).optional(),
+    // Older decisions also kept the reviewer's ratings.
+    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
   })
   .strict();
 

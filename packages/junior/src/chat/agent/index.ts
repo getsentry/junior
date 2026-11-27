@@ -783,10 +783,6 @@ async function executeAgentRunInPrivacyContext(
       invokedSkillNames,
       conversationSkillNames,
       onEvent: run.onEvent,
-      onFatalToolError(error) {
-        pendingPiHookError = error;
-        agent?.abort();
-      },
       preAgentPromptMessages,
       recordConnectedMcpProvider,
       resume: runResume,

@@ -11,6 +11,7 @@ import {
   runCodeModeScript,
 } from "@/chat/codemode/bridge";
 import { botConfig } from "@/chat/config";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
@@ -89,8 +90,7 @@ function pipelineFor(
       userIntent: () => "Look up the customers and post a summary to #team.",
     },
     onDecision: async () => undefined,
-    onFatal: () => undefined,
-    reviewer: { review },
+    guardian: (batch) => createCurrentGuardian({ review }, batch),
   });
   return createToolPipeline({
     actionReview,

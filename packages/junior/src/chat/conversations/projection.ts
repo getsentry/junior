@@ -939,8 +939,7 @@ export async function recordGuardianActionReviewed(args: {
   toolName: string;
   costUsd?: number | undefined;
   decision: "allow" | "ask" | "deny";
-  riskLevel: "low" | "medium" | "high" | "critical";
-  userAuthorization: "high" | "medium" | "low" | "unknown";
+  rule?: string | undefined;
 }): Promise<void> {
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -951,8 +950,7 @@ export async function recordGuardianActionReviewed(args: {
         toolName: args.toolName,
         ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         decision: args.decision,
-        riskLevel: args.riskLevel,
-        userAuthorization: args.userAuthorization,
+        ...(args.rule ? { rule: args.rule } : undefined),
       },
       createdAtMs: Date.now(),
     },
