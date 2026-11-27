@@ -64,26 +64,36 @@ Canonical words for Junior code and docs. One concept, one word.
   Location delivers to it: a root, or a Conversation that moved into a
   Space. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
-  lease, checkpoints, activity status).
-- **Conversation status**: what one Conversation's own work needs, shared
-  by everyone and derived from runtime state only. `needs_input`: it waits on
-  a person: an open action Inbox item it added, a sign-in, or its starter
-  while no Turn is queued or running (a failed latest Turn or an answer the
-  starter has not read). `working`: a Turn is queued or running. `done`:
-  anything else, also a stop. The first that applies wins, in that order.
-  `completed` is a Turn or run outcome, never a Conversation status.
+  lease, checkpoints, execution status). The execution status (`pending`,
+  `running`, `paused`, `idle`, `failed`) is internal to the worker. No
+  surface shows it; surfaces show the Conversation status.
+- **Conversation status**: what one Conversation's own work needs, stored
+  on it and shared by everyone: `working`, `needs_input`, `failed`,
+  `stopped`, `idle`, or `done`. `design/conversation-status.md` defines each.
+  `needs_input` means blocked on a person, never unread. `completed` is a
+  Turn or run outcome, never a Conversation status.
 - **Starter**: the User of a Top-level Conversation's actor, the person whose
   message started it or the creator of an Automation run. Its child
   Conversations share it. In a Space, that is the person who started the
   Thread, not the Lead's actor.
 - **Archived**: a flag on a Conversation, shared by everyone. It is not a
   status, and an archived Conversation keeps its status.
-- **Viewer state**: what a Conversation and its child Conversations need from
-  one viewer. Code and the API call it `treeState`. `needs_you`: the tree's
-  `needs_input` includes the viewer or Everyone. `working`: a Turn is queued
-  or running in the tree. `done`: anything else. The first that applies wins.
-  A separate `watching` flag says that a Conversation in the tree has an
-  active Watch or a pending Timer. It is not a status.
+- **Roll-up**: the status of a Conversation tree, from the statuses of the
+  Conversation and its descendants that are not archived. The same for
+  every viewer. A Space's roll-up is its Lead's. Not `treeState` or
+  "viewer state".
+- **Needs you**: the Inbox items that wait on the viewer. It is not a
+  status; the status word is `needs_input`.
+- **Active**: not a status. It means only an Automation that runs, or a
+  Participant who has not left. A Turn that is queued or running is
+  `working`. A Watch that has not expired is live. A Conversation that is
+  not archived is unarchived, and the feed filter is `archived`.
+- **Blocked**: a Turn or dispatch outcome (`reportBlocked`, the `blocked`
+  agent update, a blocked Automation run). Not a Conversation status: after
+  a blocked Turn, the Conversation is `idle`.
+- **Paused**: an execution status (another execution slice is due), a Turn
+  that waits for a sign-in, or an Automation that a person paused. Not a
+  Conversation status.
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
   as runtime context. It starts no Turn, is not a Message, and has no authority.
 - **User**: one person-level record with zero or more linked Identities.
@@ -154,8 +164,8 @@ Canonical words for Junior code and docs. One concept, one word.
   or new work from a child's parent, ends the stop. A stopped parent gives no
   new work: `messageAgent` to a child leaves a Conversation note, and
   `startAgent` fails. A person's stop keeps the
-  Watches; an agent's `stopAgent` also cancels them. Reports show it as
-  `stopped` while no work runs.
+  Watches; an agent's `stopAgent` also cancels them. Its status is
+  `stopped`, or `needs_input` after a stop by the automated-turn limit.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
   (needs an identifier) per event type. Limits noise, not access.
 - **Inbound message**: one normalized source event given to the agent.
@@ -250,7 +260,8 @@ Canonical words for Junior code and docs. One concept, one word.
   removing an item, on a row, a card, or many FYIs at once. Not Clear or
   Done. Archive is for a Conversation.
 - **Done** (Inbox): the view of done and dismissed Inbox items. Not
-  Conversation archive.
+  Conversation archive. `done` means finished for a Conversation status, an
+  Inbox item, a To-do, and an agent update alike.
 - **Snooze**: one User hides one Inbox item in their Inbox until a
   trigger, such as a timer or an Event, wakes or resolves it. A later item
   in the row is not snoozed.

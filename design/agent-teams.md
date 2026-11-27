@@ -124,11 +124,11 @@ end-of-Turn contract. A person can see and steer each agent.
 
 **Done and archive**
 
-- `child-done` A child agent is done when it delivered a completed result
-  for the latest work from its parent, and nothing in it or below it runs,
-  waits on a person, failed in its latest Turn, or has an active Watch.
-  What the agent says does not make it done. A done Thread shows under
-  Done in the Threads panel, and new work takes it out.
+- `child-done` A child agent is done when the roll-up of its tree is
+  `done`, as the `roll-up` rule in
+  [Conversation status](./conversation-status.md) states. What the agent
+  says does not make it done. A done Thread shows under Done in the Threads
+  panel, and new work takes it out.
 - `tree-auto-archive` Auto-archive treats every Conversation in a tree the
   same way. With the root's setting and grace period, it archives a done
   child before its parent. It never archives a Lead.
@@ -136,11 +136,6 @@ end-of-Turn contract. A person can see and steer each agent.
   restores an auto-archived child. Only a person restores a Conversation
   that a person or an agent archived.
 - `archive-stops` Archiving a Conversation stops it and its child agents.
-
-## Open questions
-
-- Can a root Conversation be done, or only idle? A root has no task from a
-  parent, so nothing yet says when its work is complete.
 
 ## Gaps
 
@@ -180,7 +175,7 @@ end-of-Turn contract. A person can see and steer each agent.
   agent stays until a person or its parent archives it.
   getsentry/junior#4409 tracks it.
 - `auto-restore`: a parent's message does not restore an archived child,
-  and an archived child does not count in its tree's state, so a child
+  and an archived child does not count in its tree's roll-up, so a child
   that needs a person can stay hidden.
 - `archive-stops`: `archiveAgent` refuses a working Thread, and the
   dashboard archives a working Conversation and leaves it running.

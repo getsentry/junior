@@ -93,12 +93,12 @@ Only these sit on top of the tree:
   open a public Space and join it.
 - The sidebar's In flight lists only roots that are not a Lead. A Space's
   Threads show in its Threads panel, not there.
-- Each Space in the sidebar shows what its Threads need from the member, the
-  first that applies: a Thread needs them, one failed, or one works. A Space
-  with none of these shows nothing.
+- Each Space in the sidebar shows its roll-up when it is `needs_input`,
+  `failed`, or `working`, as the `space-roll-up` rule in
+  [Conversation status](./conversation-status.md) states. Otherwise it
+  shows nothing.
 - The Threads panel beside the Lead lists the Space's Threads in one list,
-  in order of what they need from the viewer: needs you, working, waiting,
-  done. It shows no group headings or counts.
+  in the order of the `roll-up` rule. It shows no group headings or counts.
 
 ## Gaps
 
