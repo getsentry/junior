@@ -39,7 +39,13 @@ function stepDelays(forTurnId: string) {
  * knows each wait. 0 gives the wait without jitter.
  */
 function pinRetryJitter(fraction: number) {
-  vi.spyOn(Math, "random").mockReturnValue(fraction);
+  // A jr-rpc command runs just-bash, which freezes `Math` for the rest of
+  // the process, so an earlier file in the worker can leave `Math.random`
+  // impossible to spy on. Replace the global instead.
+  vi.stubGlobal(
+    "Math",
+    Object.create(Math, { random: { value: () => fraction } }),
+  );
 }
 
 /** The step messages that wait for a delivery, for one Turn. */
@@ -60,6 +66,7 @@ describe("advanceTurn after a failed model request", () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     await harness.close();
   });
 
