@@ -28,7 +28,7 @@ export type AgentMessage = {
   conversationId?: string | undefined;
   delivery?: AgentMessageDelivery | undefined;
   direction: "received" | "sent";
-  /** Why a refused message did not go, as the tool error stored it. */
+  /** Why a refused message did not go, in the words meant for a person. */
   reason?: string | undefined;
   /** Absent when the viewer cannot read the message. */
   text?: string | undefined;
@@ -90,7 +90,7 @@ export function sentAgentMessage(
           : output && deliveryByToolResult[output.delivery],
     direction: "sent",
     ...(part.status === "error" && typeof part.output === "string"
-      ? { reason: part.output }
+      ? { reason: refusalReason(part.output, input.data.to) }
       : undefined),
     text: input.data.text,
     to: input.data.to,
@@ -153,8 +153,8 @@ function agentMessageInputText(text: string): string {
  * Name the other Conversation of a message from what this transcript
  * holds: the agent tree above it, then its child agents, by id or by the
  * agent name that `to` can use. The viewer can read each, so no title leaks.
- * A refused message reached none, so its `to` names it. Otherwise a neutral
- * label does.
+ * A refused message reached none, so its `to` names it, unless it is a
+ * Conversation id. Otherwise a neutral label does.
  */
 export function agentMessageConversationTitle(
   conversation: Pick<ConversationTranscript, "agentTree" | "events">,
@@ -180,8 +180,33 @@ export function agentMessageConversationTitle(
     const title = data.title ?? data.agentName;
     if (title) return title;
   }
-  if (message.delivery === "refused" && message.to) return message.to;
+  if (
+    message.delivery === "refused" &&
+    message.to &&
+    !CONVERSATION_ID.test(message.to)
+  ) {
+    return message.to;
+  }
   return "Conversation";
+}
+
+// A `to` that names a top-level agent is its Conversation id, such as
+// `slack:C123:1700000000.000100`, which is no title to show.
+const CONVERSATION_ID = /^[a-z][a-z_-]*:\S/;
+
+/**
+ * Keep the part of a refused message's tool error that is for a person: its
+ * first sentence, without the target that the row already names. The rest
+ * tells the model what to do next.
+ */
+function refusalReason(output: string, to: string): string | undefined {
+  const sentence = output.split(/\.(?:\s|$)/, 1)[0]?.trim();
+  if (!sentence) return undefined;
+  const subject = `"${to}" is `;
+  const rest = sentence.startsWith(subject)
+    ? sentence.slice(subject.length)
+    : sentence;
+  return `${rest.charAt(0).toUpperCase()}${rest.slice(1)}.`;
 }
 
 /** Read a `messageAgent` result, which can be JSON text. */

@@ -133,7 +133,10 @@ function useAgentMessageTitle(
   message: AgentMessage,
 ): string {
   const feedThreads = useContext(FeedThreads);
-  const id = message.conversationId;
+  // A refused message has no target id, but its `to` can be one.
+  const id =
+    message.conversationId ??
+    (message.delivery === "refused" ? message.to : undefined);
   return (
     (id ? feedThreads.get(id)?.displayTitle : undefined) ??
     agentMessageConversationTitle(conversation, message)

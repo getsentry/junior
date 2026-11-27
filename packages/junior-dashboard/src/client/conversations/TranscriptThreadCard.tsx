@@ -7,6 +7,7 @@ import type { TranscriptViewSubagentPart } from "../types";
 import {
   ChildConversationStatusPill,
   subagentChildStatus,
+  useChildStatus,
 } from "./ChildConversationStatus";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
@@ -16,9 +17,9 @@ import { formatCompactAge } from "../time";
 
 /**
  * Link a Thread that the parent started to its page: title, status, and age.
- * A Thread in the feed shows its own title and the status of its sidebar
- * row. A Thread the feed leaves out, such as an archived one, shows the
- * result that the parent recorded.
+ * A Thread in the feed shows its own title and the status its page shows.
+ * A Thread the feed leaves out, such as an archived one, shows the result
+ * that the parent recorded.
  */
 export function TranscriptThreadCard(props: {
   part: TranscriptViewSubagentPart;
@@ -29,7 +30,8 @@ export function TranscriptThreadCard(props: {
   const prefetch = usePrefetchConversation(id);
   const title =
     thread?.displayTitle ?? props.part.title ?? props.part.task ?? "Thread";
-  const status = thread?.status ?? subagentChildStatus(props.part.status);
+  const threadStatus = useChildStatus(thread);
+  const status = thread ? threadStatus : subagentChildStatus(props.part.status);
   const activityAt =
     thread?.lastSeenAt ??
     (typeof props.timestamp === "number"
