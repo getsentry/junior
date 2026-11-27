@@ -120,11 +120,14 @@ export async function mockCodeRepository(
   return codeRepositoryReportSchema.parse(report);
 }
 
-/** The Inbox items that the mock API lists for the query of `/api/inbox-items`. */
+/**
+ * The Inbox items that the mock API lists for `query`, which defaults to the
+ * query of the route's `/api/inbox-items` request.
+ */
 export async function mockInboxItemList(
   route: Route,
+  query = Object.fromEntries(new URL(route.request().url()).searchParams),
 ): Promise<z.output<typeof inboxItemListSchema>> {
-  const query = Object.fromEntries(new URL(route.request().url()).searchParams);
   return inboxItemListSchema.parse((await mockReports()).inboxItemList(query));
 }
 

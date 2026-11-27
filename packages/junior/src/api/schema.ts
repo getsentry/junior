@@ -275,6 +275,14 @@ export {
   watchParamsSchema,
 } from "./schema/watch";
 export {
+  conversationQuestionSchema,
+  conversationQuestionsReportSchema,
+} from "./schema/conversation-questions";
+export type {
+  ConversationQuestion,
+  ConversationQuestionsReport,
+} from "./schema/conversation-questions";
+export {
   conversationTodoSchema,
   conversationTodosReportSchema,
   todoStatusBodySchema,

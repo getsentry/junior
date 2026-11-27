@@ -43,6 +43,7 @@ import {
   conversationWatchesReportSchema,
   watchParamsSchema,
   conversationTodoSchema,
+  conversationQuestionsReportSchema,
   conversationTodosReportSchema,
   todoStatusBodySchema,
   codeOverviewReportSchema,
@@ -90,7 +91,10 @@ import {
   readMockObjectLinks,
 } from "./objects";
 import { readMockConversationOutline } from "./outline";
-import { answerMockInboxItemByReply } from "./inbox-items";
+import {
+  answerMockInboxItemByReply,
+  readMockConversationQuestions,
+} from "./inbox-items";
 import { markMockConversationRead } from "./read-positions";
 import { readMockCodeRepository } from "./code-repository";
 import {
@@ -495,6 +499,16 @@ export function createMockReportingApi(): Hono<{
     )
       ? new Response(null, { status: 204 })
       : errorResponse("Watch not found.", 404);
+  });
+  app.get("/conversations/:conversationId/questions", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    return jsonResponse(
+      conversationQuestionsReportSchema,
+      readMockConversationQuestions(NOW_MS, params.data.conversationId),
+    );
   });
   app.get("/conversations/:conversationId/todos", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

@@ -57,6 +57,7 @@ export const revalidateContent: MiddlewareHandler = async (context, next) => {
 export const REVALIDATED_READ_PATHS = [
   "/api/cache-warming/savings/refill",
   "/api/conversations/:conversationId/agents",
+  "/api/conversations/:conversationId/questions",
   "/api/conversations/:conversationId/todos",
   "/api/conversations/:conversationId/watches",
   // The list. `/:id` also matches an item, `count`, and

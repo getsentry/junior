@@ -190,7 +190,6 @@
     "packages/junior-dashboard/e2e/conversations-quick-question.spec.ts": 3,
     "packages/junior-dashboard/e2e/conversations-read-position-links.spec.ts": 2,
     "packages/junior-dashboard/e2e/inbox/automations.spec.ts": 1,
-    "packages/junior-dashboard/e2e/inbox/command-palette.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/conversation-archive.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/conversation-details.spec.ts": 4,
     "packages/junior-dashboard/e2e/inbox/conversation-object-links.spec.ts": 3,

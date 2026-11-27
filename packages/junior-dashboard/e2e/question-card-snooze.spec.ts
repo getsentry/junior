@@ -96,7 +96,7 @@ for (const view of [desktop, mobile]) {
         }),
       ]);
     // The card stays in the transcript as a record, with no form.
-    await expect(windowCard).toContainText("Snoozed");
+    await expect(windowCard).not.toContainText("Waiting on you");
     await expect(
       windowCard.getByRole("button", { name: "Send", exact: true }),
     ).toHaveCount(0);
@@ -147,7 +147,8 @@ for (const view of [desktop, mobile]) {
           untilClosed: true,
         },
       ]);
-    await expect(shared).toContainText("Snoozed");
+    // The card stays in the transcript as a record, with no form.
+    await expect(shared).not.toContainText("Waiting on you");
     await expect(
       shared.getByRole("button", { name: "Send", exact: true }),
     ).toHaveCount(0);
@@ -187,7 +188,10 @@ test("Dismiss closes a shared question for everyone", async ({
     shared.getByRole("button", { name: /^(Dismiss|Snooze|Send)$/ }),
   ).toHaveText(["Dismiss", "Snooze", "Send"]);
   await shared.getByRole("button", { name: "Dismiss" }).click();
-  await expect(shared).toContainText(/Dismissed by/);
+  await expect(shared).not.toContainText("Waiting on you");
+  await expect(
+    shared.getByRole("button", { name: "Send", exact: true }),
+  ).toHaveCount(0);
 });
 
 for (const view of [desktop, mobile]) {

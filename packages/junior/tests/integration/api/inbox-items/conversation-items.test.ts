@@ -2,6 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import { conversationQuestionsReportSchema } from "@/api/schema";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
@@ -15,6 +16,7 @@ import {
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
+import { measureSql } from "../../../fixtures/sql-budget";
 
 const REQUEST: UserInputRequest = {
   question: "Approve or reject this entry?",
@@ -62,6 +64,10 @@ function api(fixture: ConversationFixture, viewer: User) {
       }),
     get: (path: string) =>
       app.request(`http://localhost/api/inbox-items${path}`),
+    questions: (conversationId: string) =>
+      app.request(
+        `http://localhost/api/conversations/${conversationId}/questions`,
+      ),
   };
 }
 
@@ -151,6 +157,34 @@ describe("inbox items of a Conversation", () => {
       closedBy: { email: "cal@example.com" },
       status: "done",
     });
+    // The transcript reads the question and its answer from the
+    // Conversation alone. It sends no SQL to the Inbox.
+    const read = await measureSql(() =>
+      api(fixture, ana).questions("local:web:shared"),
+    );
+    expect(read.result.status).toBe(200);
+    expect(
+      conversationQuestionsReportSchema.parse(await read.result.json())
+        .questions,
+    ).toEqual([
+      expect.objectContaining({
+        answer: expect.objectContaining({
+          values: { decision: ["Approve"] },
+        }),
+        body: "The pull request merged.",
+        id: item.subject.id,
+        request: expect.objectContaining({ question: REQUEST.question }),
+        title: "Close the tracking issue?",
+      }),
+    ]);
+    const tables = read.statements.flatMap(
+      (statement) => statement.text.match(/"junior_\w+"/g) ?? [],
+    );
+    expect(tables).toContain('"junior_questions"');
+    expect(tables.filter((table) => table.includes("inbox"))).toEqual([]);
+    expect(
+      (await api(fixture, ana).questions("local:web:missing")).status,
+    ).toBe(404);
     // The answer reaches the Conversation as Cal's own message, so his
     // Turn runs as him.
     const [message] = await pendingMessages("local:web:shared");

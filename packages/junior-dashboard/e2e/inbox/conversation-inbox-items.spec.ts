@@ -1,9 +1,9 @@
 import {
   answered,
   conversationId,
+  conversationQuestions,
   migration,
   mockInboxItems,
-  prReady,
   rollout,
 } from "./inbox-fixture";
 import { desktop, screenshot } from "../screenshot";
@@ -66,11 +66,26 @@ test.describe("new UI", () => {
         const before = (detail.events as { createdAt: string }[]).filter(
           (event) => Date.parse(event.createdAt) <= askedAt,
         );
+        // Junior asked both questions here, so their rows read them.
+        const asks = {
+          seq: 99_999,
+          createdAt: rollout.createdAt,
+          data: {
+            type: "tool_calls",
+            calls: [answered, rollout].map((item) => ({
+              name: "addInboxItem",
+              output: { item: { id: item.id } },
+              status: "completed",
+              toolCallId: `add-${item.id}`,
+            })),
+          },
+        };
         await route.fulfill({
           json: {
             ...detail,
             events: [
               ...before,
+              asks,
               change(100_000, "taken", takeText),
               change(100_001, "submitted", answerText),
               eventBatch,
@@ -78,6 +93,17 @@ test.describe("new UI", () => {
           },
         });
       },
+    );
+
+    await page.route(
+      `**/api/conversations/${encodeURIComponent(conversationId)}/questions`,
+      (route) =>
+        route.fulfill({
+          json: conversationQuestions(conversationId, [
+            rollout,
+            { ...answered, owner: rollout.owner },
+          ]),
+        }),
     );
 
     await page.goto(
@@ -105,26 +131,18 @@ test.describe("new UI", () => {
     ).toBeVisible();
     await expect(page.getByText("1 events")).toHaveCount(0);
 
-    // A closed item's link opens Done, with its row expanded. The link is
-    // the shared inbox item path, which the new UI maps.
-    const link = answer.getByRole("link", { name: answered.title });
-    await expect(link).toHaveAttribute("href", `/inbox?item=${answered.id}`);
-    await link.click();
-    await expect(page).toHaveURL(/\/inbox\?view=done$/);
+    // The question has its card in the transcript, so the title goes there.
+    await answer.getByRole("button", { name: answered.title }).click();
     await expect(
-      page.getByRole("region", { name: `${answered.title}: how it closed` }),
-    ).toBeVisible();
+      page.getByRole("region", { name: `Asked ${answered.title}` }),
+    ).toBeInViewport();
   });
 
   test("a message asks before it drops picks on a question card, and Send sends them", async ({
     dashboard,
     page,
   }) => {
-    // A notice fills the first page, so the question loads from the second.
-    const actions = await mockInboxItems(page, {
-      open: [{ ...prReady, conversationIds: [conversationId] }, migration],
-      pageSize: 1,
-    });
+    const actions = await mockInboxItems(page, { open: [migration] });
     // Each message records how many answers were sent before it.
     const messages: { answersBefore: number; message: string }[] = [];
     const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
@@ -175,8 +193,7 @@ test.describe("new UI", () => {
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
-    // The question came from the second page, and its card in the
-    // transcript holds the form.
+    // The question's card in the transcript holds the form.
     const card = page.getByRole("region", { name: `Asked ${migration.title}` });
     // The card shows below the latest message, and the transcript follows
     // it a frame later. A click in that frame finds a moving option, and

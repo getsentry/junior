@@ -3,6 +3,7 @@ import { openAsk } from "./askSheet";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 import { mockInboxItemList } from "./mock-reports";
+import { waitingConversations } from "./inbox/inbox-fixture";
 
 // Mock Conversations with open Inbox items that wait on the viewer.
 const ONE_QUESTION_ID = "internal:question-qa";
@@ -182,24 +183,25 @@ test("the questions pill skips an Everyone question the viewer has not taken", a
   page,
 }) => {
   await page.setViewportSize(desktop);
-  // The list marks one of the three questions as asked of everyone.
-  await page.route("**/api/inbox-items?*", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.searchParams.get("conversationId") !== THREE_QUESTIONS_ID) {
-      await route.fallback();
-      return;
-    }
-    const body = await mockInboxItemList(route);
-    await route.fulfill({
-      json: {
-        items: body.items.map((item) =>
-          item.title === "Pick the billing migration window"
-            ? { ...item, assignedToEveryone: true }
-            : item,
+  // One of the three questions is asked of everyone, so the Inbox says that
+  // it waits on nobody.
+  await page.route(
+    "**/api/inbox-items/waiting-conversations",
+    async (route) => {
+      const { items } = await mockInboxItemList(route, {
+        conversationId: THREE_QUESTIONS_ID,
+      });
+      await route.fulfill({
+        json: waitingConversations(
+          items.map((item) =>
+            item.title === "Pick the billing migration window"
+              ? { ...item, assignedToEveryone: true }
+              : item,
+          ),
         ),
-      },
-    });
-  });
+      });
+    },
+  );
   await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
   await expect(
     page.getByRole("button", { name: "2 questions waiting" }),

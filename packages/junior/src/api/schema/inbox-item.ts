@@ -13,7 +13,8 @@ import {
   inboxSnoozeWakeSchema,
 } from "./inbox-snooze";
 
-const answerSchema = z
+/** The answer that a person gave to a question. */
+export const inboxItemAnswerSchema = z
   .object({
     other: z.string().max(4000).optional(),
     requestId: z.string().min(1),
@@ -41,7 +42,7 @@ export const inboxItemSchema = z
     addedByLabel: z.string().min(1).optional(),
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
-    answer: answerSchema.optional(),
+    answer: inboxItemAnswerSchema.optional(),
     /** True for an item for Everyone, also one with no assignees. */
     assignedToEveryone: z.boolean(),
     assignees: z.array(personSchema),
@@ -345,7 +346,7 @@ export const inboxItemActionSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("submit"),
-      answer: answerSchema.omit({ requestId: true }),
+      answer: inboxItemAnswerSchema.omit({ requestId: true }),
     })
     .strict(),
 ]);
