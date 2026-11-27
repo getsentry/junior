@@ -29,10 +29,8 @@ import {
   juniorInboxItems,
   juniorUsers,
 } from "@/db/schema";
-import {
-  inboxItemNeedsInput,
-  inboxItemOwnedByConversation,
-} from "@/chat/inbox-items/access";
+import { inboxItemNeedsInput } from "@/chat/inbox-items/access";
+import { inboxItemOwnedByThroughSubject } from "@/chat/inbox-items/owner";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -384,7 +382,7 @@ export function conversationFeedVersionQuery(
   // reassign writes `updated_at`, and it changes whom the item waits on.
   const ownedItemsVersion = (conversation: AnyPgColumn) =>
     sql`(select concat(count(*), '/', max(${juniorInboxItems.updatedAt})) from ${juniorInboxItems} where ${and(
-      inboxItemOwnedByConversation(conversation),
+      inboxItemOwnedByThroughSubject(conversation),
       inboxItemNeedsInput(),
     )})`;
   const rowState = (row: typeof juniorConversations) =>

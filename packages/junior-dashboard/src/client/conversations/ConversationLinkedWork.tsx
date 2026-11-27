@@ -1,36 +1,20 @@
-import type { ObjectType } from "@sentry/junior-plugin-api";
-import { useEffect, type ReactNode } from "react";
-import type {
-  ConversationDetailReport,
-  ConversationWatch,
-} from "@sentry/junior/api/schema";
+import { objectPresentation, type ObjectType } from "@sentry/junior-plugin-api";
+import { useEffect } from "react";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { ObjectIcon } from "../components/ObjectIcon";
 import {
   MessageObjectsProvider,
   useResolvedObject,
 } from "../display-text/DisplayText";
-import { Collapsible } from "../components/ui/collapsible";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import {
-  ConversationWatches,
-  type CancelWatch,
-  useCancelConversationWatch,
-  useConversationWatches,
-  WatchDetails,
-  WatchDetailsRow,
-} from "./ConversationWatches";
+import { githubRepositoryFromUrl } from "./ConversationContextTags";
 import { objectSource } from "./objectSource";
-import {
-  DetailsCard,
-  DetailsList,
-  DetailsRow,
-  DetailsRowLine,
-} from "./DetailsList";
+import { DetailsRow, DetailsSection } from "./DetailsList";
 
 type ConversationAnnotation = NonNullable<
   ConversationDetailReport["annotations"]
@@ -119,106 +103,35 @@ export function conversationLinks(
 }
 
 /**
- * Show the linked work of a Conversation and what Junior waits on, as one
- * list: a Watch waits on something. A Watch on linked work shows in that
- * row, so the resource shows once. Participants can cancel a Watch.
- */
-export function ConversationLinkedWorkCard(props: {
-  /** True when the viewer is a Participant, who can cancel Watches. */
-  canCancelWatches: boolean;
-  conversationId: string;
-  links: ConversationLink[];
-}) {
-  const { links } = props;
-  const allWatches =
-    useConversationWatches(props.conversationId).data?.watches ?? [];
-  const cancelWatch = useCancelConversationWatch(props.conversationId);
-  const onCancel = props.canCancelWatches
-    ? (watch: ConversationWatch) => cancelWatch.mutate(watch)
-    : undefined;
-  const linkUrls = new Set(links.map((link) => link.url));
-  const watchesByUrl = new Map<string, ConversationWatch[]>();
-  const watches: ConversationWatch[] = [];
-  for (const watch of allWatches) {
-    if (watch.url && linkUrls.has(watch.url)) {
-      watchesByUrl.set(watch.url, [
-        ...(watchesByUrl.get(watch.url) ?? []),
-        watch,
-      ]);
-    } else {
-      watches.push(watch);
-    }
-  }
-  if (links.length === 0 && watches.length === 0) return null;
-  return (
-    <DetailsCard
-      count={links.length || watches.length}
-      title={links.length > 0 ? "Linked work" : "Waiting on"}
-    >
-      {links.length > 0 ? (
-        <ConversationLinkedWork
-          links={links}
-          onCancelWatch={onCancel}
-          watchesByUrl={watchesByUrl}
-        />
-      ) : null}
-      {links.length > 0 && watches.length > 0 ? (
-        <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-semibold text-dashboard-text-muted">
-          Also waiting on
-        </h4>
-      ) : null}
-      {watches.length > 0 ? (
-        <ConversationWatches onCancel={onCancel} watches={watches} />
-      ) : null}
-    </DetailsCard>
-  );
-}
-
-/**
- * Show the outside work that a Conversation links to, one row each. A row
- * that Junior also watches shows the Watch details under a chevron, so the
- * same resource does not show twice. When one row has a chevron, the other
- * rows keep the same space, so all rows keep the same width.
+ * Show the outside work that a Conversation links to, one row each. Merged
+ * and closed work hides behind "Show finished". A ref in the conversation's
+ * own repository drops the repository, so `#91` stands for
+ * `getsentry/payments#91`.
  */
 export function ConversationLinkedWork(props: {
   links: ConversationLink[];
-  onCancelWatch?: CancelWatch | undefined;
-  /** Watches by the URL of the resource that they watch. */
-  watchesByUrl: ReadonlyMap<string, ConversationWatch[]>;
+  /** The one GitHub repository that the Conversation works in. */
+  repository?: string | undefined;
 }) {
+  const row = (link: ConversationLink) =>
+    link.linkOnly ? (
+      <LiveLinkRow key={link.key} link={link} />
+    ) : (
+      <LinkRow key={link.key} link={link} repository={props.repository} />
+    );
   return (
     <MessageObjectsProvider>
-      <DetailsList
-        itemKey={(link) => link.key}
-        items={props.links}
-        renderItem={(link) => {
-          const row = link.linkOnly ? (
-            <LiveLinkRow link={link} />
-          ) : (
-            <LinkRow link={link} />
-          );
-          const watches = props.watchesByUrl.get(link.url);
-          if (!watches) {
-            return props.watchesByUrl.size > 0 ? (
-              <ChevronSpace>{row}</ChevronSpace>
-            ) : (
-              row
-            );
-          }
-          return (
-            <Collapsible className="min-w-0">
-              <WatchDetailsRow label={link.label}>{row}</WatchDetailsRow>
-              <WatchDetails
-                onCancel={props.onCancelWatch}
-                showTime
-                watches={watches}
-              />
-            </Collapsible>
-          );
-        }}
+      <DetailsSection
+        finished={props.links.filter(linkFinished).map(row)}
+        rows={props.links.filter((link) => !linkFinished(link)).map(row)}
+        title="Linked work"
       />
     </MessageObjectsProvider>
   );
+}
+
+function linkFinished(link: ConversationLink): boolean {
+  return link.status === "merged" || link.status === "closed";
 }
 
 // Ask for the card at once: the row has no other way to start the request.
@@ -230,33 +143,51 @@ function LiveLinkRow(props: { link: ConversationLink }) {
   );
 }
 
-/** Keep the width of the `WatchDetailsRow` chevron beside a row with none. */
-function ChevronSpace(props: { children: ReactNode }) {
-  return (
-    <div className="flex min-w-0 items-start gap-0.5">
-      <div className="min-w-0 flex-1">{props.children}</div>
-      <span aria-hidden="true" className="size-8 shrink-0" />
-    </div>
-  );
+/** Drop the repository from a ref in the conversation's own repository. */
+function shortRef(link: ConversationLink, repository: string | undefined) {
+  const linkRepository = githubRepositoryFromUrl(link.url)?.label;
+  if (
+    repository &&
+    linkRepository?.toLowerCase() === repository.toLowerCase() &&
+    link.label.toLowerCase().startsWith(linkRepository.toLowerCase())
+  ) {
+    return link.label.slice(linkRepository.length);
+  }
+  return link.label;
 }
 
-function LinkRow(props: { link: ConversationLink }) {
+function LinkRow(props: {
+  link: ConversationLink;
+  repository?: string | undefined;
+}) {
   const { link } = props;
   const status = linkStatusLabel(link.status);
+  // The shape shows the state, so only a failure that has no shape for it,
+  // a failed deployment or a failing monitor, keeps its color. The icon
+  // also covers a deployment saved as an Item.
+  const presentation = objectPresentation(link);
+  const tone =
+    presentation.tone === "danger" &&
+    (presentation.icon === "rocket" || presentation.icon === "bell")
+      ? undefined
+      : "neutral";
   const icon = (
     <ObjectIcon
       decorative
       facts={link.facts}
       objectType={link.objectType}
-      size={14}
+      size={16}
       status={link.status}
+      tone={tone}
     />
   );
+  // An object link names its ref in the label and its title in the
+  // description. Other links have only the label.
+  const ref = link.description ? shortRef(link, props.repository) : undefined;
   return (
     <DetailsRow
       href={link.url}
       icon={
-        // The icon shows the status, so the row does not repeat it in text.
         status ? (
           <Tooltip>
             <TooltipTrigger
@@ -272,16 +203,21 @@ function LinkRow(props: { link: ConversationLink }) {
           icon
         )
       }
-      title={link.label}
+      title={
+        ref ? (
+          <>
+            <span className="font-normal tabular-nums text-dashboard-text-muted">
+              {ref}
+            </span>{" "}
+            {link.description}
+          </>
+        ) : (
+          link.label
+        )
+      }
       tooltip={[link.label, objectSource(link.plugin), status, link.description]
         .filter(Boolean)
         .join(" · ")}
-    >
-      {link.description ? (
-        <DetailsRowLine className="line-clamp-2 break-words">
-          {link.description}
-        </DetailsRowLine>
-      ) : null}
-    </DetailsRow>
+    />
   );
 }

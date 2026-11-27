@@ -21,6 +21,7 @@ import {
   requireDetail,
   waitUntilApplicationWaitsOnLock,
 } from "../fixtures/dashboard-reporting";
+import { resetTestEnv } from "../fixtures/stub-env";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV["DATABASE_URL"];
@@ -33,11 +34,10 @@ if (!TEST_DATABASE_URL) {
 
 describe("dashboard canonical event reporting", () => {
   beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       DATABASE_URL: TEST_DATABASE_URL,
       JUNIOR_STATE_ADAPTER: "memory",
-    };
+    });
     vi.resetModules();
   });
 
@@ -47,7 +47,7 @@ describe("dashboard canonical event reporting", () => {
     await closeDb();
     await disconnectStateAdapter();
     vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   });
 
   it("returns one ordered safe event log without legacy detail projections", async () => {

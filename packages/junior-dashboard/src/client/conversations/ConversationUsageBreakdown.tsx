@@ -1,11 +1,8 @@
-import { conversationTurnIsActive } from "./turnActivity";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 import {
   formatCompactNumber,
-  formatCostSummary,
   summarizeCost,
   summarizeModelCost,
   summarizeModelUsage,
@@ -16,11 +13,6 @@ import {
 } from "../format";
 import { ShimmerText } from "../components/ShimmerText";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../components/ui/collapsible";
-import {
   Table,
   TableBody,
   TableCell,
@@ -29,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { liveModelId } from "./ConversationMeta";
 import {
@@ -241,15 +233,10 @@ export function hasConversationUsageBreakdown(props: {
   );
 }
 
-/**
- * Summarize usage and let the reader inspect the breakdown by agent, model,
- * and auxiliary operation.
- */
+/** Break usage down by agent, model, token type, and auxiliary operation. */
 export function ConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport | undefined;
-  /** The page shows the totals in its glance, so the trigger leaves them out. */
-  glance?: boolean;
 }) {
   if (!hasConversationUsageBreakdown(props) || !props.conversation) {
     return null;
@@ -280,7 +267,6 @@ export function ConversationUsageBreakdown(props: {
   const formatMaybeCost = (value: number | undefined) =>
     value === undefined ? NOT_RECORDED : formatCost(value);
   const activeModelId = liveModelId(props.detail);
-  const live = conversationTurnIsActive(props.detail, props.conversation);
   const aggregateTokenTypes = tokenTypeParts(
     modelTokens ? undefined : savedTokens,
     modelCost ? undefined : savedCost,
@@ -321,7 +307,7 @@ export function ConversationUsageBreakdown(props: {
   );
 
   const breakdown = (
-    <div className="grid min-w-0 gap-4 px-1 pb-1">
+    <div className="grid min-w-0 gap-4">
       {childAgentTotals ? (
         <BreakdownTable
           countLabel="Tokens"
@@ -435,37 +421,5 @@ export function ConversationUsageBreakdown(props: {
     </div>
   );
 
-  const summary = [
-    tokens === undefined ? undefined : `${formatTokens(tokens)} tokens`,
-    totalCost
-      ? `${formatCostSummary(totalCost)}${live ? "+" : ""}`
-      : live
-        ? "$…"
-        : undefined,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  return (
-    <Collapsible className="min-w-0 border-t border-dashboard-border-subtle">
-      <h3 className="m-0">
-        <CollapsibleTrigger className="group flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1 py-2 text-left font-sans text-xs font-semibold text-dashboard-text transition-colors hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus">
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              dashboardDisclosureChevronClass,
-              "text-dashboard-text-muted",
-            )}
-          />
-          Usage
-          {summary && !props.glance ? (
-            <span className="ml-auto font-normal tabular-nums text-dashboard-text-muted">
-              <ShimmerText active={live}>{summary}</ShimmerText>
-            </span>
-          ) : null}
-        </CollapsibleTrigger>
-      </h3>
-      <CollapsibleContent hiddenUntilFound>{breakdown}</CollapsibleContent>
-    </Collapsible>
-  );
+  return breakdown;
 }

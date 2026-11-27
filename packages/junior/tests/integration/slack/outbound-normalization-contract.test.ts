@@ -56,7 +56,10 @@ describe("Slack contract: outbound normalization", () => {
     await client?.close();
   });
 
+  // An earlier file in the worker can end with a span still active. Its
+  // scope does not have this client, so bind the client to each test.
   beforeEach(() => {
+    if (client) Sentry.setCurrentClient(client);
     spans.length = 0;
     events.length = 0;
     process.env["SLACK_BOT_TOKEN"] =

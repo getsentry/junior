@@ -318,10 +318,7 @@ export const CONSTRUCTS = [
         ),
       ),
       dashboard: native(
-        at(
-          `${DASHBOARD}/shell/inbox/InboxItemCard.tsx`,
-          "export function InboxItemCard(",
-        ),
+        at(`${DASHBOARD}/inbox/InboxItemSheet.tsx`, "function InboxItemBody("),
       ),
       ios: fallback(
         "the question, with a button that opens it on the web to answer",

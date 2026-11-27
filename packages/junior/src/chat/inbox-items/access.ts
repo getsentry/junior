@@ -215,16 +215,28 @@ function ownerConversationOpenTo(
 /**
  * SQL: the Inbox item has this assigned User. A To-do's item counts only
  * while the User can see its Conversation's private content, so a person
- * who loses access to the Conversation no longer sees or acts on it.
+ * who loses access to the Conversation no longer sees or acts on it. The
+ * set has no outer reference, so Postgres reads it once and checks the
+ * owner of only the User's To-dos.
  */
 export function inboxItemAssignedTo(userId: string): SQL {
-  return and(
-    sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
-    or(
-      ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
-      ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
-    ),
-  )!;
+  const assigned = getDb()
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItemAssignees)
+    .innerJoin(
+      juniorInboxItems,
+      eq(juniorInboxItems.id, juniorInboxItemAssignees.itemId),
+    )
+    .where(
+      and(
+        eq(juniorInboxItemAssignees.userId, userId),
+        or(
+          ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
+          ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
+        ),
+      ),
+    );
+  return sql`${juniorInboxItems.id} = any(array(${assigned}))`;
 }
 
 /**

@@ -15,8 +15,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../fixtures/stub-env";
 const TEST_USAGE = {
   input: 0,
   output: 0,
@@ -101,13 +100,12 @@ describe("paused turn Slack integration", () => {
       ]);
     });
     resetSlackApiMockState();
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
       JUNIOR_SECRET: "resume-secret",
       SLACK_BOT_TOKEN: process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token",
-    };
+    });
 
     vi.resetModules();
     stateAdapterModule = await import("@/chat/state/adapter");
@@ -124,7 +122,7 @@ describe("paused turn Slack integration", () => {
 
   afterEach(async () => {
     await stateAdapterModule.disconnectStateAdapter();
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 

@@ -11,9 +11,9 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { resetTestEnv } from "../../fixtures/stub-env";
 
 const listThreadRepliesMock = vi.fn();
-const ORIGINAL_ENV = { ...process.env };
 // Inline vision summaries are the fallback when a profile model cannot read
 // images.
 const TEXT_ONLY_MODEL_ID = "alibaba/qwen3.7-max";
@@ -27,13 +27,12 @@ async function createRuntime(
   >[0],
   env: NodeJS.ProcessEnv = {},
 ) {
-  process.env = {
-    ...ORIGINAL_ENV,
+  resetTestEnv({
     AI_VISION_MODEL: "",
     SLACK_BOT_TOKEN: "xoxb-test-token",
     SLACK_BOT_USER_TOKEN: "",
     ...env,
-  };
+  });
   vi.resetModules();
   const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
   return createTestChatRuntime(args);
@@ -62,7 +61,7 @@ describe("bot image hydration", () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     vi.resetModules();
   });
 

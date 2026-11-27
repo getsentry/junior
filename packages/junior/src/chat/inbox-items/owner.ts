@@ -1,4 +1,4 @@
-import { sql, type SQL } from "drizzle-orm";
+import { inArray, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
 import {
   INBOX_SUBJECT_KINDS,
@@ -78,6 +78,26 @@ export function inboxItemOwnerConversationId(): SQL<string | null> {
     when ${INBOX_SUBJECT_KINDS.todo} then ${todoItemOwnerConversationId()}
     ${sql.join(pluginOwnerCases(), sql` `)}
   end)`;
+}
+
+/**
+ * SQL: the Conversation owns the item. It is the rule of
+ * `inboxItemOwnerConversationId`, split by subject kind, so that a reply or a
+ * question is found through `junior_inbox_items_open_subject_key_uidx` and
+ * the other kinds read only their own items. Use it where the check runs once
+ * for each Conversation row.
+ */
+export function inboxItemOwnedByThroughSubject(
+  conversationId: SQL | AnyColumn,
+): SQL {
+  const otherKinds = conversationOwnedSubjectKinds().filter(
+    (kind) =>
+      kind !== INBOX_SUBJECT_KINDS.reply &&
+      kind !== INBOX_SUBJECT_KINDS.question,
+  );
+  return sql`((${item.subjectKind} = ${INBOX_SUBJECT_KINDS.reply} and ${item.subjectId} = ${conversationId})
+    or (${item.subjectKind} = ${INBOX_SUBJECT_KINDS.question} and ${item.subjectId} = any(array(select ${juniorQuestions.id} from ${juniorQuestions} where ${juniorQuestions.conversationId} = ${conversationId})))
+    or (${inArray(item.subjectKind, otherKinds)} and ${inboxItemOwnerConversationId()} = ${conversationId}))`;
 }
 
 const isAutomationAlert = sql`${item.subjectKind} = ${INBOX_SUBJECT_KINDS.automation}`;

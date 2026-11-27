@@ -45,6 +45,7 @@ function userText(content: string, timestamp = STEP_TIME): UserMessage {
 
 const INPUT: UnreadInput = {
   inputId: "input-1",
+  actorIdentityId: "actor-1",
   groupKey: "group-1",
   payload: { text: "How many Turns?" },
   sentAt: new Date(INPUT_TIME),

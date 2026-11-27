@@ -32,7 +32,6 @@ import {
   expectPlanCost,
   expectSqlBudget,
   explainNodes,
-  TODO_OWNER_SCAN,
 } from "../../../fixtures/sql-budget";
 import {
   closeConversationFixture,
@@ -695,12 +694,9 @@ describe("conversation tree state", () => {
 
     // The Space list reads its top-level Conversations through indexes,
     // however many other Conversations there are. Its tree states cost
-    // about 53,000. An owner check of the open Inbox items on each tree row
+    // about 43,000. An owner check of the open Inbox items on each tree row
     // costs about five times as much.
     await seedDashboardScale();
-    await expectPlanCost(
-      () => expectNoFullScan(asViewer, { todoOwner: TODO_OWNER_SCAN }),
-      80_000,
-    );
+    await expectPlanCost(() => expectNoFullScan(asViewer), 65_000);
   });
 });

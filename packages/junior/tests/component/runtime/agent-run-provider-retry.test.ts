@@ -688,7 +688,12 @@ vi.mock("@/app/context", () => {
     getMcpProviders: () => [],
     getProviders: () => [],
   };
-  return { getAppContext: () => ({ plugins: [], catalog }) };
+  const context = {
+    plugins: [],
+    catalog,
+    slackTeamDomains: { entries: new Map(), inflight: new Map() },
+  };
+  return { getAppContext: () => context };
 });
 
 vi.mock("@/chat/skills", async (importOriginal) => ({

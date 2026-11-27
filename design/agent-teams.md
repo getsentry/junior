@@ -131,10 +131,7 @@ end-of-Turn contract. A person can see and steer each agent.
   Done in the Threads panel, and new work takes it out.
 - `tree-auto-archive` Auto-archive treats every Conversation in a tree the
   same way. With the root's setting and grace period, it archives a done
-  child before its parent. It never archives a Lead, or a child that a
-  person messaged after its parent last gave it work.
-- `person-use` An agent cannot archive a Thread that a person messaged
-  after the agent last gave it work.
+  child before its parent. It never archives a Lead.
 - `auto-restore` New work from its parent, or a new ask for a person,
   restores an auto-archived child. Only a person restores a Conversation
   that a person or an agent archived.

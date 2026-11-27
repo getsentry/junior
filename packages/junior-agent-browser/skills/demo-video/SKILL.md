@@ -49,6 +49,7 @@ For a raw interaction recording without an edited presentation, use `agent-brows
 - Use a separate artifact directory unless the user asked to change the app. Keep composition source, local assets, scene data, and outputs together.
 - Reuse an existing Remotion project and lockfile. For a new project, follow the rendering reference. Browser runtime setup remains owned by the plugin; report a missing runtime instead of repairing it here.
 - Match the app's type, colors, and approved assets. Keep UI text readable.
+- Keep the frame around the captures quiet: a plain background, 1px borders, small corner radius, and one accent color. Do not add hard shadows, thick outlines, textures, or gradients. If the brand has a separate product style and marketing style, use the product style.
 - Time every move to a spoken word: camera, highlight, cursor click, caption, and on-screen text. Show one focal point at a time. Use pans, zooms, short wipes, and springs instead of expensive effects. Label any illustration that is not a real screen.
 - Bundle images, fonts, and audio locally. Drive motion from frame numbers, not wall-clock timers or network calls during render.
 - Render stills for each scene and transition before a full video. Fix crops, collisions, and empty states, then render again. Use a short frame range to diagnose failures.

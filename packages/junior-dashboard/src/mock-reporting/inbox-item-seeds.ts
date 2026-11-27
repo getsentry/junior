@@ -506,6 +506,15 @@ export function seeds(nowMs: number): MockItemSeed[] {
       conversationId: DASHBOARD_QA_CONVERSATION_ID,
       createdAt: at(6),
       id: "qa-todo-preview-deploy",
+      // A To-do's card shows its related links, as a question's does.
+      request: {
+        related: [
+          {
+            label: "Dashboard QA preview",
+            url: "https://dashboard-qa-preview.vercel.app",
+          },
+        ],
+      },
       status: "open",
       title: "Approve the preview deploy",
       todoId: 43,
