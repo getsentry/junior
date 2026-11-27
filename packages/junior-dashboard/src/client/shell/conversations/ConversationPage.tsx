@@ -85,7 +85,7 @@ import {
 } from "../../conversations/TranscriptTurnContextView";
 import { DashboardApiError } from "../../http";
 import { ConversationForkLinks } from "../../conversations/ConversationForkLinks";
-import { ChildConversationStatusPill } from "../../conversations/ChildConversationStatus";
+import { ChildPageStatusPill } from "../../conversations/ChildConversationStatus";
 import {
   ConversationStateIcon,
   conversationDisplayState,
@@ -803,7 +803,7 @@ export function ConversationPage(props: {
               }
               status={
                 isChildConversation(conversationDetail) && conversation ? (
-                  <ChildConversationStatusPill status={conversation.status} />
+                  <ChildPageStatusPill conversation={conversation} />
                 ) : null
               }
               title={title}
