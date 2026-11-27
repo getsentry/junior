@@ -11,7 +11,7 @@ import {
 import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { juniorConversationBindings, juniorTurnOutbox } from "@/db/schema";
-import { legacyInputMessageId } from "@/turn-steps/legacy-message-id";
+import { compat__inputMessageId } from "@/turn-steps/compat__message-id";
 import { turnEndedConsumer } from "@/turn-steps/turn-ended";
 import {
   modelCalls,
@@ -101,10 +101,10 @@ async function holdDeliveryLock(
 }
 
 /**
- * LEGACY COMPAT: the reply messages and Turn end events that the host writes
+ * Compat: the reply messages and Turn end events that the host writes
  * for main's readers, in event order. The person's messages are left out.
  */
-async function legacyReplyEvents(harness: TurnHarness) {
+async function compatReplyEvents(harness: TurnHarness) {
   return (await harness.events())
     .map((event) => event.data)
     .filter(
@@ -173,7 +173,7 @@ describe("Turn delivery", () => {
     const { turnId, inputId } = await sendForReply("Three.");
     // The person's visible message, as main's readers need it before the
     // reply marks it handled. Nothing on this path writes it yet.
-    const inputMessageId = legacyInputMessageId(inputId);
+    const inputMessageId = compat__inputMessageId(inputId);
     await createSqlConversationEventStore(engineCtx.executor).append(
       conversationId,
       [
@@ -190,11 +190,11 @@ describe("Turn delivery", () => {
       ],
     );
     await harness.runUntilIdle();
-    // LEGACY COMPAT: the Turn has a pending reply, so it has no end yet.
-    await expect(legacyReplyEvents(harness)).resolves.toEqual([]);
+    // Compat: the Turn has a pending reply, so it has no end yet.
+    await expect(compatReplyEvents(harness)).resolves.toEqual([]);
     await runAfterBackoff();
 
-    // LEGACY COMPAT: one reply message, its handled marks, then the end.
+    // Compat: one reply message, its handled marks, then the end.
     const assistantMessageId = expect.stringMatching(
       new RegExp(`^${turnId}:assistant:`),
     );
@@ -212,7 +212,7 @@ describe("Turn delivery", () => {
       { type: "message_handled", messageId: assistantMessageId },
       { type: "turn_completed", turnId, outcome: "success" },
     ];
-    await expect(legacyReplyEvents(harness)).resolves.toEqual(ended);
+    await expect(compatReplyEvents(harness)).resolves.toEqual(ended);
     // The reply marks the person's message handled before the Turn ends.
     const order = (await harness.events()).flatMap(({ data }) =>
       data.type === "message_handled" && data.messageId === inputMessageId
@@ -225,7 +225,7 @@ describe("Turn delivery", () => {
     // A Turn-ended message that comes again writes none of them twice.
     await publishTurnEnded(engineCtx, { conversationId, turnId });
     await harness.runUntilIdle();
-    await expect(legacyReplyEvents(harness)).resolves.toEqual(ended);
+    await expect(compatReplyEvents(harness)).resolves.toEqual(ended);
     await expect(
       engineCtx.executor
         .db()
@@ -302,8 +302,8 @@ describe("Turn delivery", () => {
 
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([]);
     expect(harness.sends()).toEqual([]);
-    // LEGACY COMPAT: the reply message, with no delivery, before the end.
-    await expect(legacyReplyEvents(harness)).resolves.toEqual([
+    // Compat: the reply message, with no delivery, before the end.
+    await expect(compatReplyEvents(harness)).resolves.toEqual([
       expect.objectContaining({ role: "assistant", text: "Three." }),
       expect.objectContaining({ type: "message_handled" }),
       { type: "turn_completed", turnId, outcome: "success" },
@@ -319,8 +319,8 @@ describe("Turn delivery", () => {
 
     const turn = await harness.turn(turnId);
     expect(turn.state).toBe("failed");
-    // LEGACY COMPAT: the failure as the Turn stored it.
-    await expect(legacyReplyEvents(harness)).resolves.toEqual([
+    // Compat: the failure as the Turn stored it.
+    await expect(compatReplyEvents(harness)).resolves.toEqual([
       {
         type: "turn_failed",
         turnId,
@@ -418,8 +418,8 @@ describe("Turn delivery", () => {
       }),
     ]);
     expect(harness.sends()).toHaveLength(1);
-    // LEGACY COMPAT: the Turn still ends, with no reply message.
-    await expect(legacyReplyEvents(harness)).resolves.toEqual([
+    // Compat: the Turn still ends, with no reply message.
+    await expect(compatReplyEvents(harness)).resolves.toEqual([
       expect.objectContaining({ type: "turn_completed", outcome: "success" }),
     ]);
   });

@@ -10,7 +10,7 @@ import { logException } from "@/chat/logging";
 import type { EngineContext } from "@/core/engine-context";
 import { publishTurnEnded, type TurnEndedMessage } from "@/core/turn/ended";
 import { replyText } from "@/core/turn/replies";
-import { writeLegacyReplyDelivered } from "@/delivery/legacy-turn-ended";
+import { compat__writeReplyDelivered } from "@/turn-steps/compat__turn-ended";
 import {
   juniorConversationEvents,
   juniorTurnOutbox,
@@ -209,7 +209,7 @@ async function sendNextRow(
       providerMessageId: result.providerMessageId ?? null,
     })
     .where(eq(juniorTurnOutbox.id, row.id));
-  await writeLegacyReplyDelivered(
+  await compat__writeReplyDelivered(
     { executor },
     {
       conversationId,

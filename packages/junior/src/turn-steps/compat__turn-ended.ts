@@ -1,8 +1,8 @@
-// LEGACY COMPAT: core writes only agent history, but main's readers, such as
-// the dashboard, status, ACP and the eval fixture, read the visible messages
-// and Turn lifecycle events. This writes them for a core Turn's replies and
-// end, with main's shapes and idempotency keys, as `commitAcceptedReply` and
-// the Turn lifecycle do. Delete it once readers read `junior_turns`.
+// Compat: exists only so main's readers keep working; delete it once they
+// read `junior_turns`. Core writes only agent history, but the dashboard,
+// status, ACP and the eval fixture read the visible messages and Turn
+// lifecycle events. This writes them for a core Turn's replies and end, with
+// main's shapes and idempotency keys, as `commitAcceptedReply` does.
 import type { Destination } from "@sentry/junior-plugin-api";
 import { and, eq, inArray } from "drizzle-orm";
 import { botConfig } from "@/chat/config";
@@ -19,7 +19,7 @@ import { findTurnDestination, findTurnInputs } from "@/core/turn/inbox";
 import { findTurnReplies, replyText } from "@/core/turn/replies";
 import { findTurn, type TurnRecord } from "@/core/turn/state";
 import { juniorConversationEvents, juniorTurnOutbox } from "@/db/schema";
-import { legacyInputMessageId } from "@/turn-steps/legacy-message-id";
+import { compat__inputMessageId } from "./compat__message-id";
 
 type Executor = Pick<EngineContext, "executor">;
 
@@ -28,7 +28,7 @@ type Executor = Pick<EngineContext, "executor">;
 const SENTRY_EVENT_ID = /^[a-f0-9]{32}$/i;
 
 /** One reply of a core Turn, as main's visible message records it. */
-type LegacyReply = {
+type CompatReply = {
   eventSeq: number;
   text: string;
   createdAtMs: number;
@@ -37,22 +37,22 @@ type LegacyReply = {
 };
 
 /**
- * LEGACY COMPAT: after the sender posted a reply, writes its visible
+ * Compat: after the sender posted a reply, writes its visible
  * `message`, the `message_handled` events, and for Slack the thread claim.
  * Call it in the transaction that marks the reply sent.
  */
-export async function writeLegacyReplyDelivered(
+export async function compat__writeReplyDelivered(
   { executor }: Executor,
   args: {
     conversationId: string;
     turnId: string;
-    reply: LegacyReply;
+    reply: CompatReply;
     providerConversationId?: string;
   },
 ): Promise<void> {
   await createSqlConversationEventStore(executor).append(
     args.conversationId,
-    await legacyReplyEvents({ executor }, args.conversationId, args.turnId, [
+    await compatReplyEvents({ executor }, args.conversationId, args.turnId, [
       args.reply,
     ]),
   );
@@ -74,12 +74,12 @@ export async function writeLegacyReplyDelivered(
 }
 
 /**
- * LEGACY COMPAT: writes the end event of an ended Turn once its replies are
+ * Compat: writes the end event of an ended Turn once its replies are
  * settled. A Turn with no Destination gets its reply messages here, in the
  * same commit and before the end. A Turn with a pending reply waits for the
  * Turn-ended message that its delivery sends again.
  */
-export async function writeLegacyTurnEnded(
+export async function compat__writeTurnEnded(
   { executor }: Executor,
   message: TurnEndedMessage,
 ): Promise<void> {
@@ -125,13 +125,13 @@ export async function writeLegacyTurnEnded(
       : [];
   await executor.transaction(async () =>
     createSqlConversationEventStore(executor).append(turn.conversationId, [
-      ...(await legacyReplyEvents(
+      ...(await compatReplyEvents(
         { executor },
         turn.conversationId,
         turn.turnId,
         undelivered,
       )),
-      legacyEndEvent(turn, endedAt.getTime(), replies.length > 0),
+      compatEndEvent(turn, endedAt.getTime(), replies.length > 0),
     ]),
   );
 }
@@ -142,17 +142,17 @@ export async function writeLegacyTurnEnded(
  * An input message is marked only once its `message` exists, because a
  * `message_handled` before its `message` breaks main's projection.
  */
-async function legacyReplyEvents(
+async function compatReplyEvents(
   { executor }: Executor,
   conversationId: string,
   turnId: string,
-  replies: LegacyReply[],
+  replies: CompatReply[],
 ): Promise<NewConversationEvent[]> {
   if (replies.length === 0) {
     return [];
   }
   const inputMessageIds = (await findTurnInputs({ executor }, turnId)).map(
-    (input) => legacyInputMessageId(input.inputId),
+    (input) => compat__inputMessageId(input.inputId),
   );
   const stored = await executor
     .db()
@@ -216,7 +216,7 @@ async function legacyReplyEvents(
 }
 
 /** Main's end event of an ended Turn, from its core state. */
-function legacyEndEvent(
+function compatEndEvent(
   turn: TurnRecord,
   endedAtMs: number,
   replied: boolean,
