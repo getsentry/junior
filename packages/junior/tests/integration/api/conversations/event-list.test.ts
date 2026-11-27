@@ -514,17 +514,37 @@ describe("conversation event list API", () => {
         },
         createdAtMs: 3,
       },
-      message("latest-message", 4),
+      // A later Parent message to the same child.
+      {
+        data: {
+          type: "subagent_started",
+          subagentInvocationId: "invocation-on-page",
+          subagentKind: "advisor",
+          childConversationId: "child-before-page",
+          parentToolCallId: "message-on-page",
+        },
+        createdAtMs: 4,
+      },
+      message("latest-message", 5),
     ]);
 
     const app = createJuniorApi();
     const detailResponse = await app.request(
-      `http://localhost/api/conversations/${conversationId}?limit=1`,
+      `http://localhost/api/conversations/${conversationId}?limit=2`,
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),
     );
-    expect(detail.events.map((event) => event.seq)).toEqual([2]);
+    expect(detail.events.map((event) => event.seq)).toEqual([2, 3]);
+    // The child's start is on the older page, and this page still knows
+    // that this start is a later message.
+    expect(detail.events[0]?.data).toMatchObject({
+      type: "subagent",
+      startedSeq: 2,
+      parentToolCallId: "message-on-page",
+      laterParentMessage: true,
+      status: "running",
+    });
     if (!detail.previousCursor) throw new Error("Expected a previous cursor");
 
     const historyResponse = await app.request(

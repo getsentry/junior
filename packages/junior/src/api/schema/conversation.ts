@@ -327,6 +327,12 @@ const conversationReportMessageEventDataSchema = z
     actorIdentityId: z.string().min(1).optional(),
     /** Set on input that a parent agent wrote, not a person. */
     fromParentAgent: z.literal(true).optional(),
+    /**
+     * The words of the Parent messages in this input, without the tags and
+     * instructions that the child model reads around them. Only for viewers
+     * who can see private content.
+     */
+    parentMessageText: z.string().optional(),
     eventType: z.string().min(1).optional(),
     /** Namespace of the first Event, such as `github`. */
     eventNamespace: z.string().min(1).optional(),
@@ -370,12 +376,13 @@ const conversationReportMessageEventDataSchema = z
         data.cards ||
         data.attachments ||
         data.events ||
+        data.parentMessageText !== undefined ||
         data.reviewItemChanges)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, attachments, events, or inbox item changes",
+          "redacted messages must not expose actor identity, cards, attachments, events, Parent message text, or inbox item changes",
       });
     }
   });
@@ -608,6 +615,11 @@ const conversationReportSubagentEventDataSchema = z
     task: z.string().min(1).optional(),
     title: z.string().min(1).optional(),
     parentToolCallId: z.string().min(1).optional(),
+    /**
+     * Set when an earlier Parent message started the child, so this one is
+     * a later message to it.
+     */
+    laterParentMessage: z.literal(true).optional(),
     status: z.enum(["running", "completed", "blocked", "error", "aborted"]),
   })
   .strict();

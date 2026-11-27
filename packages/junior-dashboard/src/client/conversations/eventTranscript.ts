@@ -8,6 +8,7 @@ import type {
   ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
+  TranscriptViewSubagentPart,
 } from "../types";
 
 /** A mailbox row, or a local send that can still carry its own files. */
@@ -46,11 +47,20 @@ function eventMessage(
   };
 }
 
-function specialToolIds(events: ConversationReportEvent[]): Set<string> {
+/**
+ * The tool calls that started a child, which its card replaces. A later
+ * Parent message to the child keeps its tool call, so it shows like any
+ * other message to an agent.
+ */
+function childStartToolIds(events: ConversationReportEvent[]): Set<string> {
   const ids = new Set<string>();
   for (const event of events) {
     const data = event.data;
-    if (data.type === "subagent" && data.parentToolCallId) {
+    if (
+      data.type === "subagent" &&
+      data.parentToolCallId &&
+      !data.laterParentMessage
+    ) {
       ids.add(data.parentToolCallId);
     }
   }
@@ -149,15 +159,23 @@ export function transcriptMessagesFromEvents(
   annotations: ConversationTranscript["annotations"],
   pendingMessages?: readonly PendingTranscriptInput[],
 ): TranscriptViewMessage[] {
-  const replacedToolIds = specialToolIds(events);
+  const replacedToolIds = childStartToolIds(events);
   const tools = new Map<
     string,
     Extract<TranscriptViewPart, { type: "tool_call" }>
   >();
   const standaloneToolMessages = new Map<string, TranscriptViewMessage>();
-  const subagents = new Map<
+  // One card per child, by its id. Each Parent message to the child is one
+  // piece of its work: the card runs while any is open, else shows the
+  // last outcome.
+  const subagents = new Map<string, TranscriptViewSubagentPart>();
+  const childWork = new Map<
     string,
-    Extract<TranscriptViewPart, { type: "subagent" }>
+    {
+      finishedTimestamp?: number;
+      open: Set<number>;
+      status: TranscriptViewSubagentPart["status"];
+    }
   >();
   const messages: TranscriptViewMessage[] = [];
   const messagesById = new Map<string, TranscriptViewMessage>();
@@ -229,6 +247,9 @@ export function transcriptMessagesFromEvents(
           : undefined),
         ...(data.fromParentAgent
           ? { fromParentAgent: data.fromParentAgent }
+          : undefined),
+        ...(data.parentMessageText !== undefined
+          ? { parentMessageText: data.parentMessageText }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         ...(data.eventNamespace
@@ -367,36 +388,51 @@ export function transcriptMessagesFromEvents(
     }
 
     if (data.type === "subagent") {
-      const subagentId = `${data.childConversationId}:${data.startedSeq}`;
-      const existing = subagents.get(subagentId);
-      const finishedTimestamp =
-        data.status === "running" ? undefined : eventTimestamp(event);
-      if (existing) {
-        existing.status = data.status;
-        if (finishedTimestamp === undefined) delete existing.finishedTimestamp;
-        else existing.finishedTimestamp = finishedTimestamp;
-        continue;
-      }
-      const part = {
-        type: "subagent" as const,
-        id: subagentId,
-        childConversationId: data.childConversationId,
-        childKind: data.childKind,
-        subagentKind: data.subagentKind,
+      const childId = data.childConversationId;
+      const work = childWork.get(childId) ?? {
+        open: new Set<number>(),
         status: data.status,
-        ...(finishedTimestamp === undefined
-          ? undefined
-          : { finishedTimestamp }),
-        ...(data.agentName ? { agentName: data.agentName } : undefined),
-        ...(data.task ? { task: data.task } : undefined),
-        ...(data.title ? { title: data.title } : undefined),
       };
-      subagents.set(subagentId, part);
-      messages.push({
-        ...eventMessage(event, "tool", [part]),
-        sourceSeq: data.startedSeq,
-        timestamp: Date.parse(data.startedAt),
-      });
+      childWork.set(childId, work);
+      if (data.status === "running") {
+        work.open.add(data.startedSeq);
+      } else {
+        work.open.delete(data.startedSeq);
+        work.status = data.status;
+        work.finishedTimestamp = eventTimestamp(event);
+      }
+      let part = subagents.get(childId);
+      if (!part) {
+        // The child's start places its card. When that start is on an
+        // earlier page, its card comes with that page.
+        if (data.laterParentMessage) continue;
+        part = {
+          type: "subagent" as const,
+          id: childId,
+          childConversationId: childId,
+          childKind: data.childKind,
+          subagentKind: data.subagentKind,
+          status: data.status,
+          ...(data.agentName ? { agentName: data.agentName } : undefined),
+          ...(data.task ? { task: data.task } : undefined),
+          ...(data.title ? { title: data.title } : undefined),
+        };
+        subagents.set(childId, part);
+        messages.push({
+          ...eventMessage(event, "tool", [part]),
+          sourceSeq: data.startedSeq,
+          timestamp: Date.parse(data.startedAt),
+        });
+      }
+      if (work.open.size > 0) {
+        part.status = "running";
+        delete part.finishedTimestamp;
+      } else {
+        part.status = work.status;
+        if (work.finishedTimestamp !== undefined) {
+          part.finishedTimestamp = work.finishedTimestamp;
+        }
+      }
       continue;
     }
 

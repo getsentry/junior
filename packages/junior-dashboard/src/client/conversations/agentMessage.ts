@@ -1,4 +1,9 @@
-import { readTag, unescapeTagText } from "@sentry/junior-plugin-api";
+import {
+  findTags,
+  readTag,
+  unescapeClosingTags,
+  unescapeTagText,
+} from "@sentry/junior-plugin-api";
 import { isAgentMessageEventType } from "@sentry/junior/api/schema";
 import * as z from "zod";
 
@@ -30,7 +35,11 @@ export type AgentMessage = {
   direction: "received" | "sent";
   /** Absent when the viewer cannot read the message. */
   text?: string | undefined;
-  /** The `to` of a sent message, such as `parent` or a child agent name. */
+  /**
+   * The `to` that reaches the other agent from this Conversation, such as
+   * `parent` or a child agent name: the one that a sent message used, or
+   * `parent` for a Parent message.
+   */
   to?: string | undefined;
 };
 
@@ -86,10 +95,15 @@ export function sentAgentMessage(
 
 type ReceivedMessage = Pick<
   TranscriptViewMessage,
-  "eventIdentifier" | "eventType" | "parts" | "role"
+  | "eventIdentifier"
+  | "eventType"
+  | "fromParentAgent"
+  | "parentMessageText"
+  | "parts"
+  | "role"
 >;
 
-/** True for an Event message that another agent sent. */
+/** True for a message that another agent sent to this Conversation. */
 export function isReceivedAgentMessage(
   message: TranscriptViewMessage,
 ): boolean {
@@ -97,21 +111,45 @@ export function isReceivedAgentMessage(
 }
 
 /**
- * Read an Event message that another agent sent: a child agent's message to
- * its parent, or a message from another top-level agent. Returns undefined
- * for other messages.
+ * Read a message that another agent sent to this Conversation: a Parent
+ * message, a child agent's message to its parent, or a message from another
+ * top-level agent. Returns undefined for other messages. A child's first
+ * task is a Parent message too, so it shows the same way as later ones.
  */
 export function receivedAgentMessage(
   message: ReceivedMessage,
 ): AgentMessage | undefined {
-  if (message.role !== "user" || !message.eventType) return undefined;
-  if (!isAgentMessageEventType(message.eventType)) return undefined;
+  if (message.role !== "user") return undefined;
   const text = message.parts.find((part) => part.type === "text")?.text;
+  // A Watch Event that reaches a child is not a Parent message.
+  if (message.fromParentAgent && !message.eventType) {
+    return {
+      direction: "received",
+      text:
+        message.parentMessageText ??
+        (text === undefined ? undefined : parentMessageInputText(text)),
+      to: PARENT_AGENT_TARGET,
+    };
+  }
+  if (!message.eventType || !isAgentMessageEventType(message.eventType)) {
+    return undefined;
+  }
   return {
     conversationId: message.eventIdentifier,
     direction: "received",
     text: text === undefined ? undefined : agentMessageInputText(text),
   };
+}
+
+/**
+ * Return the words of Parent messages without the `<parent-agent-task>` tag
+ * that core writes around each one for the child model. Only messages saved
+ * before the transcript kept the parent's own words need this.
+ */
+function parentMessageInputText(text: string): string {
+  const blocks = findTags(text, "parent-agent-task");
+  if (blocks.length === 0) return text;
+  return blocks.map((block) => unescapeClosingTags(block.body)).join("\n\n");
 }
 
 /**
@@ -126,36 +164,33 @@ function agentMessageInputText(text: string): string {
 }
 
 /**
- * Name the other Conversation of a message from what this transcript
+ * Find the other Conversation of a message from what this transcript
  * already holds: the agent tree above it, then the child agents that it
  * started, by id or by the agent name that `to` can use. The viewer can read
  * each of them, so no title leaks. Without one, a neutral label names it.
  */
-export function agentMessageConversationTitle(
+export function agentMessageConversation(
   conversation: Pick<ConversationTranscript, "agentTree" | "events">,
   message: Pick<AgentMessage, "conversationId" | "to">,
-): string {
+): { conversationId?: string | undefined; title: string } {
   const ids = [message.conversationId, message.to].filter(Boolean);
-  const ancestor = conversation.agentTree?.find((node) =>
-    ids.includes(node.conversationId),
-  );
-  if (ancestor) return ancestor.label;
   // The tree ends with this Conversation, so its parent is the node before.
   // A message to `parent` has no target id until its result arrives.
-  const parent =
-    message.to === PARENT_AGENT_TARGET
+  const node =
+    conversation.agentTree?.find((node) => ids.includes(node.conversationId)) ??
+    (message.to === PARENT_AGENT_TARGET
       ? conversation.agentTree?.at(-2)
-      : undefined;
-  if (parent) return parent.label;
+      : undefined);
+  if (node) return { conversationId: node.conversationId, title: node.label };
   for (const event of conversation.events) {
     const data = event.data;
     if (data.type !== "subagent") continue;
     const named = message.to !== undefined && data.agentName === message.to;
     if (!named && !ids.includes(data.childConversationId)) continue;
     const title = data.title ?? data.agentName;
-    if (title) return title;
+    if (title) return { conversationId: data.childConversationId, title };
   }
-  return "Conversation";
+  return { conversationId: message.conversationId, title: "Conversation" };
 }
 
 /** Read a `messageAgent` result, which can be JSON text. */
