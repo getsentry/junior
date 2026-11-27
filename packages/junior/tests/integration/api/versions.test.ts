@@ -6,6 +6,7 @@ import {
 } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
+import { seedDashboardScale } from "../../fixtures/dashboard-scale";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -142,22 +143,22 @@ describe("versions API", () => {
         await app.request(`http://localhost/api/conversations/${OWN}`)
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
+    const detail = await expectPlanCost(() => detailVersion(), 1_500);
+    await seedDashboardScale();
     const first = await expectPlanCost(
       () =>
         expectSqlBudget(() => read(), {
           statements: 1,
           serialRounds: 1,
         }),
-      // About 1,010. An Inbox item's owner comes from its subject on
-      // purpose, since the item stores no owner, so each owner check costs
-      // one more index lookup than a stored owner column. A feed token that
-      // works out each row's status again costs about 1,330.
-      1_100,
+      // About 3,100. An Inbox item's owner comes from its subject on
+      // purpose, since the item stores no owner, so each running row finds
+      // its items by subject kind. A read of every open item for each
+      // running row costs about 8,600.
+      4_500,
     );
     expect(await read()).toEqual(first);
-    expect(await expectPlanCost(() => detailVersion(), 1_500)).toBe(
-      first.conversation,
-    );
+    expect(detail).toBe(first.conversation);
     // A Conversation that does not exist has no token.
     expect(
       (await read("slack:CVERSIONS:missing")).conversation,
@@ -570,25 +571,18 @@ describe("versions API", () => {
         )
       ).headers.get(CONVERSATION_VERSION_HEADER);
 
+    await seedDashboardScale();
     const first = await expectPlanCost(
       () =>
-        expectNoFullScan(
-          () =>
-            expectSqlBudget(() => readVersions(app, onScreen), {
-              statements: 1,
-              serialRounds: 1,
-            }),
-          {
-            inboxItemsNeedingUser: {
-              reason:
-                "The Inbox token reads every open action item to find the ones assigned to the viewer. It needs a fix of its own.",
-              statement:
-                'from "junior_inbox_items" where (((("junior_inbox_items"."status" =',
-              table: "junior_inbox_items",
-            },
-          },
+        expectNoFullScan(() =>
+          expectSqlBudget(() => readVersions(app, onScreen), {
+            statements: 1,
+            serialRounds: 1,
+          }),
         ),
-      5_000,
+      // About 9,400. A read of every open item for each running row costs
+      // about 14,900.
+      12_000,
     );
     // Each token is the one that the detail report sends. A Conversation
     // that does not exist has no entry.

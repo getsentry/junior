@@ -23,7 +23,7 @@ import {
 } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress/schemas";
 import {
   authorizationId,
@@ -137,7 +137,7 @@ export function createPluginAuthOrchestration(
     if (pendingPause) {
       throw pendingPause;
     }
-    if (!input.actorId || !pluginCatalogRuntime.getOAuthConfig(provider)) {
+    if (!input.actorId || !getAppContext().catalog.getOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
     if (input.interactiveAuthEnabled === false) {
@@ -268,7 +268,7 @@ export function createPluginAuthOrchestration(
         );
       }
 
-      if (!pluginCatalogRuntime.getOAuthConfig(authorization.provider)) {
+      if (!getAppContext().catalog.getOAuthConfig(authorization.provider)) {
         throw new PluginCredentialFailureError(
           provider,
           signal.message ??

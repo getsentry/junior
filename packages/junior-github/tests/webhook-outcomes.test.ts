@@ -1,7 +1,6 @@
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
-  conversationAnnotationInputSchema,
   eventMatches,
   type ConversationAnnotationInput,
   type EventInput,
@@ -23,7 +22,7 @@ import { githubPlugin } from "../src/index";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import { recordJuniorPullRequest } from "./code-index";
 import { conversationChangesThrough } from "./conversation-changes";
-import { memoryState } from "./plugin-harness";
+import { memoryState, passThroughHttpCache } from "./plugin-harness";
 import {
   buildCheckSuiteUrl,
   needsCheckSuitePullRequestFacts,
@@ -322,7 +321,7 @@ function webhookRoute(
     botEmail,
     classifyPullRequestCommits,
     codeChanges: fixture.codeIndex.codeChanges,
-    conversationChanges: conversationChangesThrough({ annotations: stores }),
+    conversationChanges: conversationChangesThrough({}),
     db: fixture.db(),
     installationId: () => "456",
     installationIdEnv: "GITHUB_INSTALLATION_ID",
@@ -1826,7 +1825,7 @@ describe("GitHub webhook events", () => {
 });
 
 describe("GitHub-owned issue outcomes", () => {
-  it("marks a closed Junior issue closed only where its card is", async () => {
+  it("changes no Annotation when a Junior issue closes", async () => {
     const fixture = await createGitHubFixture();
     try {
       const annotations: Array<{
@@ -1871,17 +1870,9 @@ describe("GitHub-owned issue outcomes", () => {
             "issues",
           ),
         );
-      // Junior never saw the opening delivery of this issue.
+      // Cards read the issue live, so the close writes nothing.
       expect((await closed({ number: 990 })).status).toBe(202);
-      // A person's issue with a copied footer is not Junior's.
-      await closed({ number: 991, user: "human" });
-
-      expect(annotations).toEqual([
-        {
-          annotation: { ...card(990), status: "closed" },
-          conversationId: "slack:C123:1712345.0001",
-        },
-      ]);
+      expect(annotations).toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -2258,15 +2249,8 @@ describe("GitHub-owned pull request outcomes", () => {
           state: "closed",
         },
       ]);
-      expect(
-        annotations.map(({ annotation }) => [
-          annotation.key,
-          annotation.status,
-        ]),
-      ).toEqual([
-        ["getsentry/junior#946", "merged"],
-        ["getsentry/junior#947", "closed"],
-      ]);
+      // A merge or close changes no Annotation: cards read it live.
+      expect(annotations).toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -2285,6 +2269,7 @@ describe("GitHub-owned pull request outcomes", () => {
         botEmailEnv: "CUSTOM_GITHUB_BOT_EMAIL",
       });
       const [route] = plugin.hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: objectCache,
         annotations: {
           forConversation() {
@@ -2337,6 +2322,7 @@ describe("GitHub-owned pull request outcomes", () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     try {
       const [route] = githubPlugin().hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: objectCache,
         annotations: {
           forConversation() {
@@ -2456,6 +2442,7 @@ describe("GitHub-owned pull request outcomes", () => {
     try {
       const plugin = githubPlugin();
       const [route] = plugin.hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: objectCache,
         annotations: {
           forConversation() {
@@ -2583,6 +2570,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
     try {
       const [route] = githubPlugin().hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: objectCache,
         annotations: {
           forConversation() {
@@ -2698,6 +2686,7 @@ describe("GitHub-owned pull request outcomes", () => {
     try {
       const cached = new Map<string, unknown>();
       const [route] = githubPlugin().hooks!.routes!({
+        httpCache: passThroughHttpCache,
         cache: {
           async getOrLoad<T>(
             key: string,
@@ -2852,6 +2841,7 @@ describe("GitHub-owned pull request outcomes", () => {
       plugin: { name: "github" },
     };
     const [route] = plugin.hooks!.routes!({
+      httpCache: passThroughHttpCache,
       ...pluginCtx,
       annotations: {
         forConversation() {
@@ -3203,32 +3193,10 @@ describe("GitHub-owned pull request outcomes", () => {
           state: "merged",
         }),
       ]);
-      expect(annotations.slice(-2)).toEqual(
-        expect.arrayContaining([
-          {
-            annotation: {
-              kind: "resource_link",
-              objectType: "code_change",
-              key: "getsentry/junior#946",
-              label: "getsentry/junior#946",
-              status: "merged",
-              url: "https://github.com/getsentry/junior/pull/946",
-            },
-            conversationId: "slack:C123:1712345.0001",
-          },
-          {
-            annotation: {
-              kind: "resource_link",
-              objectType: "code_change",
-              key: "getsentry/junior#946",
-              label: "getsentry/junior#946",
-              status: "merged",
-              url: "https://github.com/getsentry/junior/pull/946",
-            },
-            conversationId: "slack:C456:1719999.0002",
-          },
-        ]),
-      );
+      // The merge changes no Annotation: cards read it live.
+      expect(
+        annotations.filter(({ annotation }) => annotation.status === "merged"),
+      ).toEqual([]);
       expect(published).toEqual([
         expect.objectContaining({
           eventType: "pull_request.opened",
@@ -3293,224 +3261,6 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("updates each chip when one stored chip has facts for another object type", async () => {
-    const fixture = await createGitHubFixture();
-    const key = "getsentry/junior#946";
-    // Like the core store, each conversation validates what it saves.
-    const chips = new Map<string, ConversationAnnotationInput>([
-      [
-        "slack:C123:1712345.0001",
-        {
-          facts: { labels: ["bug"], type: "task" },
-          key,
-          kind: "object",
-          label: key,
-          objectType: "task",
-          title: "Fix the bug",
-          url: "https://github.com/getsentry/junior/pull/946",
-        },
-      ],
-    ]);
-    const annotations: PluginConversationAnnotations = {
-      forConversation(conversationId) {
-        return {
-          async upsert(annotation) {
-            chips.set(
-              conversationId,
-              conversationAnnotationInputSchema.parse(annotation),
-            );
-          },
-          async remove() {},
-          async list() {
-            const chip = chips.get(conversationId);
-            return chip
-              ? [
-                  {
-                    ...chip,
-                    createdAt: "2026-07-01T12:00:00.000Z",
-                    plugin: "github",
-                    updatedAt: "2026-07-01T12:00:00.000Z",
-                  },
-                ]
-              : [];
-          },
-        };
-      },
-    };
-    try {
-      const route = createGitHubWebhookRoute({
-        annotations,
-        appIdEnv: "GITHUB_APP_ID",
-        cache: objectCache,
-        botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
-        classifyPullRequestCommits: async () => "mixed",
-        codeChanges: fixture.codeIndex.codeChanges,
-        conversationChanges: conversationChangesThrough({ annotations }),
-        db: fixture.db(),
-        installationId: () => "456",
-        installationIdEnv: "GITHUB_INSTALLATION_ID",
-        markFeedbackReviewing: async () => {},
-        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-        events: { async publish() {} },
-        webhookSecret: () => "test-secret",
-      });
-      const opened = pullRequestPayload({
-        pull_request: {
-          ...(pullRequestPayload().pull_request as Record<string, unknown>),
-          body: "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-conversation-id:slack%3AC456%3A1719999.0002 -->\n<!-- junior-session-footer:end -->",
-        },
-      });
-      expect((await route.handler(signedRequest(opened))).status).toBe(202);
-      const merged = pullRequestPayload({
-        action: "closed",
-        pull_request: {
-          ...(opened.pull_request as Record<string, unknown>),
-          closed_at: "2026-07-03T12:00:00.000Z",
-          merged: true,
-          merged_at: "2026-07-03T12:00:00.000Z",
-          updated_at: "2026-07-03T12:00:00.000Z",
-        },
-      });
-      expect((await route.handler(signedRequest(merged))).status).toBe(202);
-
-      expect(Object.fromEntries(chips)).toEqual({
-        "slack:C123:1712345.0001": {
-          key,
-          kind: "object",
-          label: key,
-          objectType: "code_change",
-          status: "merged",
-          title: "Fix the bug",
-          url: "https://github.com/getsentry/junior/pull/946",
-        },
-        "slack:C456:1719999.0002": expect.objectContaining({
-          kind: "resource_link",
-          status: "merged",
-        }),
-      });
-      const [row] = await fixture.db().select().from(juniorGitHubPullRequests);
-      expect(row?.commitComposition).toBe("mixed");
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("closes the ask with its chip when another linked conversation is stale", async () => {
-    const fixture = await createGitHubFixture();
-    const opener = "slack:C123:1712345.0001";
-    const stale = "slack:C456:1719999.0002";
-    const other = "slack:C789:1719999.0003";
-    const chips = new Map<string, string | undefined>();
-    const closes: Array<[conversationId: string, subject: string]> = [];
-    const errors: string[] = [];
-    const annotations: PluginConversationAnnotations = {
-      forConversation(conversationId) {
-        return {
-          async upsert(annotation) {
-            // Like core, a chip for a purged conversation fails its write.
-            if (conversationId === stale) {
-              throw new Error("violates foreign key constraint");
-            }
-            chips.set(conversationId, annotation.status);
-          },
-          async remove() {},
-          async list() {
-            return [];
-          },
-        };
-      },
-    };
-    const inboxItems: PluginConversationInboxItems = {
-      forConversation(conversationId) {
-        return {
-          async upsert() {},
-          async close(input) {
-            closes.push([
-              conversationId,
-              `${input.subject.kind}:${input.subject.id}`,
-            ]);
-            return true;
-          },
-        };
-      },
-    };
-    try {
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequestRequesters)
-        .values({
-          conversationId: opener,
-          createdAt: new Date("2026-07-01T12:00:00.000Z"),
-          identityId: "identity-requester",
-          number: 946,
-          repositoryFullName: "getsentry/junior",
-          updatedAt: new Date("2026-07-01T12:00:00.000Z"),
-        });
-      const route = createGitHubWebhookRoute({
-        annotations,
-        appIdEnv: "GITHUB_APP_ID",
-        cache: objectCache,
-        botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
-        codeChanges: fixture.codeIndex.codeChanges,
-        conversationChanges: conversationChangesThrough({
-          annotations,
-          inboxItems,
-        }),
-        db: fixture.db(),
-        inboxItems,
-        installationId: () => "456",
-        installationIdEnv: "GITHUB_INSTALLATION_ID",
-        log: { error: (message) => errors.push(message), warn() {} },
-        markFeedbackReviewing: async () => {},
-        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-        events: { async publish() {} },
-        webhookSecret: () => "test-secret",
-      });
-      const opened = pullRequestPayload({
-        pull_request: {
-          ...(pullRequestPayload().pull_request as Record<string, unknown>),
-          body: [
-            "<!-- junior-session-footer:start -->",
-            ...[opener, stale, other].map(
-              (id) =>
-                `<!-- junior-conversation-id:${encodeURIComponent(id)} -->`,
-            ),
-            "<!-- junior-session-footer:end -->",
-          ].join("\n"),
-        },
-      });
-      expect((await route.handler(signedRequest(opened))).status).toBe(202);
-      closes.length = 0;
-      const merged = pullRequestPayload({
-        action: "closed",
-        pull_request: {
-          ...(opened.pull_request as Record<string, unknown>),
-          closed_at: "2026-07-03T12:00:00.000Z",
-          merged: true,
-          merged_at: "2026-07-03T12:00:00.000Z",
-          updated_at: "2026-07-03T12:00:00.000Z",
-        },
-      });
-      expect((await route.handler(signedRequest(merged))).status).toBe(202);
-
-      // The stale conversation loses only its own chip.
-      expect(Object.fromEntries(chips)).toEqual({
-        [opener]: "merged",
-        [other]: "merged",
-      });
-      expect(closes.slice(0, 1)).toEqual([[opener, "pull_request:1001"]]);
-      expect(
-        errors.filter(
-          (message) =>
-            message === "GitHub conversation annotation update failed",
-        ),
-      ).toHaveLength(1);
-      expect(errors).not.toContain("GitHub ended pull request change failed");
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("starts a task that applies the whole outcome when the owner lookup fails", async () => {
     const fixture = await createGitHubFixture();
     const opener = "slack:C123:1712345.0001";
@@ -3566,7 +3316,6 @@ describe("GitHub-owned pull request outcomes", () => {
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
         codeChanges: fixture.codeIndex.codeChanges,
         conversationChanges: conversationChangesThrough({
-          annotations,
           inboxItems,
         }),
         db,
@@ -3638,7 +3387,6 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         codeChanges: fixture.codeIndex.codeChanges,
         conversationChanges: conversationChangesThrough({
-          annotations,
           inboxItems,
         }),
         db,
@@ -3650,156 +3398,10 @@ describe("GitHub-owned pull request outcomes", () => {
         plugin: { name: "github" },
         state: memoryState(),
       });
-      expect(Object.fromEntries(chips)).toEqual({
-        [opener]: "merged",
-        [other]: "merged",
-      });
+      // The merge changes no Annotation: cards read it live.
+      expect(chips.size).toBe(0);
       expect(closes.slice(0, 1)).toEqual([[opener, "pull_request:1001"]]);
     } finally {
-      await fixture.close();
-    }
-  });
-
-  it("sets and clears the preview image when the body is edited", async () => {
-    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com/");
-    const fixture = await createGitHubFixture();
-    const key = "getsentry/junior#946";
-    const conversationId = "slack:C123:1712345.0001";
-    let chip: ConversationAnnotationInput = {
-      // A size, merge state and reviewers from before someone else's push.
-      facts: {
-        additions: 12,
-        changedFiles: 2,
-        deletions: 3,
-        mergeable: true,
-        reviewers: ["octocat"],
-        sourceBranch: "feat/preview",
-        type: "code_change",
-      },
-      key,
-      kind: "object",
-      label: key,
-      objectType: "code_change",
-      sourceUpdatedAt: "2026-07-01T12:00:00Z",
-      status: "open",
-      title: "Add previews",
-      url: "https://github.com/getsentry/junior/pull/946",
-    };
-    try {
-      const route = createGitHubWebhookRoute({
-        annotations: {
-          forConversation(id) {
-            return {
-              async upsert(annotation) {
-                if (id === conversationId) {
-                  chip = conversationAnnotationInputSchema.parse(annotation);
-                }
-              },
-              async remove() {},
-              async list() {
-                return id === conversationId
-                  ? [
-                      {
-                        ...chip,
-                        createdAt: "2026-07-01T12:00:00.000Z",
-                        plugin: "github",
-                        updatedAt: "2026-07-01T12:00:00.000Z",
-                      },
-                    ]
-                  : [];
-              },
-            };
-          },
-        },
-        appIdEnv: "GITHUB_APP_ID",
-        cache: objectCache,
-        botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
-        codeChanges: fixture.codeIndex.codeChanges,
-        db: fixture.db(),
-        installationId: () => "456",
-        installationIdEnv: "GITHUB_INSTALLATION_ID",
-        markFeedbackReviewing: async () => {},
-        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-        events: { async publish() {} },
-        webhookSecret: () => "test-secret",
-      });
-      const footer =
-        "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-session-footer:end -->";
-      const edited = (body: string, updatedAt: string) =>
-        pullRequestPayload({
-          action: "edited",
-          changes: { body: { from: "" } },
-          pull_request: {
-            ...(pullRequestPayload().pull_request as Record<string, unknown>),
-            body: `${body}\n\n${footer}`,
-            updated_at: updatedAt,
-          },
-          sender: { login: "BYK" },
-        });
-      const artifact =
-        "https://junior.example.com/public/artifacts/0123456789abcdef.png";
-      expect(
-        (await route.handler(signedRequest(pullRequestPayload()))).status,
-      ).toBe(202);
-
-      await route.handler(
-        signedRequest(
-          edited(
-            `![Private](https://github.com/user-attachments/assets/1)\n\n<img alt="Inbox" src="${artifact}">`,
-            "2026-07-02T12:00:00.000Z",
-          ),
-        ),
-      );
-      // Cards read the size, merge state and reviewers live, so the saved
-      // card does not keep the old ones.
-      expect(chip.kind === "object" && chip.facts).toEqual({
-        previewImageUrls: [artifact],
-        sourceBranch: "feat/preview",
-        type: "code_change",
-      });
-
-      // A late delivery of an older body changes nothing.
-      await route.handler(
-        signedRequest(edited("No image.", "2026-07-01T18:00:00.000Z")),
-      );
-      expect(
-        chip.kind === "object" && chip.facts?.type === "code_change"
-          ? chip.facts.previewImageUrls
-          : undefined,
-      ).toEqual([artifact]);
-
-      // A newer body with the same image moves the check time forward, so a
-      // late body from between the two changes nothing.
-      await route.handler(
-        signedRequest(
-          edited(`![Inbox](${artifact})`, "2026-07-02T18:00:00.000Z"),
-        ),
-      );
-      await route.handler(
-        signedRequest(edited("No image.", "2026-07-02T15:00:00.000Z")),
-      );
-      expect(chip).toMatchObject({
-        facts: { previewImageUrls: [artifact] },
-        sourceUpdatedAt: "2026-07-02T18:00:00.000Z",
-      });
-
-      await route.handler(
-        signedRequest(
-          edited(
-            "![Private](https://private-user-images.githubusercontent.com/1/2.png)",
-            "2026-07-03T12:00:00.000Z",
-          ),
-        ),
-      );
-      expect(chip).toMatchObject({
-        facts: { sourceBranch: "feat/preview", type: "code_change" },
-        sourceUpdatedAt: "2026-07-03T12:00:00.000Z",
-      });
-      expect(chip.kind === "object" && chip.facts).not.toHaveProperty(
-        "previewImageUrls",
-      );
-    } finally {
-      vi.unstubAllEnvs();
       await fixture.close();
     }
   });

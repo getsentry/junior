@@ -162,7 +162,7 @@ async function sentTurn(
     {
       ...fullContext("slack", behavior.promptMode),
       // No Turn here is a Lead's child.
-      ...bindTurnTools(run, behavior, false),
+      ...bindTurnTools(run, behavior),
     },
   );
   return {

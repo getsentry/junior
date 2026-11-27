@@ -261,6 +261,13 @@ test.describe("new UI", () => {
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations?scope=all`);
     await openWeekly.click();
     await page.setViewportSize({ width: 390, height: 844 });
+    // A phone shows the way back in the shell header, not in the page.
+    await expect(
+      page.getByRole("button", { name: "Back to automations" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Back to automations" }),
+    ).toBeHidden();
     await page
       .getByRole("button", { name: "About pausing", exact: true })
       .click();

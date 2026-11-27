@@ -27,7 +27,7 @@ description: Internal provider workflows
 | `target`               | target/config metadata      | `config-key` must be in `config-keys`                                                             |
 | `runtime-dependencies` | sandbox packages            | `npm` or `system`                                                                                 |
 | `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`                                                           |
-| `mcp`                  | hosted HTTP MCP             | HTTPS `url`; omit `allowed-tools` by default; optional `wrapped-tools`, `auth`, or `oauth-client` |
+| `mcp`                  | hosted HTTP MCP             | HTTPS `url`; omit `allowed-tools` by default; optional `wrapped-tools`, `viewer-tools`, `auth`, or `oauth-client` |
 
 ## OAuth bearer
 
@@ -133,6 +133,10 @@ mcp: {
 - Prefer `afterMcpTool` when the only junior-owned work is a post-success side
   effect such as conversation annotations. Keep `wrappedTools` for cases that
   need a different product verb, idempotency, or a non-provider contract.
+- `viewerTools` (`viewer-tools` in YAML) lists provider tools that link
+  cards and their images may call as the viewer through `ctx.viewerMcp`.
+  Without it, `viewerMcp` calls no tool. Each tool must be loaded, and the
+  provider must mark it read-only.
 
 ## MCP bot auth
 

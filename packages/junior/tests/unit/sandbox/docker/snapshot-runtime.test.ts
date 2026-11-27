@@ -4,15 +4,16 @@ vi.hoisted(() => {
   process.env["JUNIOR_SANDBOX_PROVIDER"] = "docker";
 });
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getRuntimeDependencies: () => [
       { type: "system", package: "gh" },
       { type: "npm", package: "vercel", version: "latest" },
     ],
     getRuntimePostinstall: () => [{ cmd: "agent-browser", args: ["install"] }],
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [

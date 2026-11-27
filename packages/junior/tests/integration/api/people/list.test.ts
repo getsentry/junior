@@ -13,6 +13,7 @@ import {
   measureSql,
 } from "../../../fixtures/sql-budget";
 import { createWaitUntilCollector } from "../../../fixtures/wait-until";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
 import {
   recordTurnFailure,
@@ -150,6 +151,7 @@ describe("people list API", () => {
 
       // One round of bounded reads, whatever the history length. Each read
       // of a big table uses an index. The Turn range read costs the most.
+      await seedDashboardScale();
       const report = await expectPlanCost(
         () =>
           expectNoFullScan(() =>

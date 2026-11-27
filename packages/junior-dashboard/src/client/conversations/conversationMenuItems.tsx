@@ -1,5 +1,4 @@
 import { conversationTurnIsActive } from "./turnActivity";
-import type { ComponentType } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
   Archive,
@@ -18,6 +17,7 @@ import {
   Unlink,
 } from "lucide-react";
 
+import type { ActionSheetItem } from "../components/BottomSheet";
 import { useCopyText } from "../components/CopyButton";
 import type { Conversation } from "../types";
 import type { PinnedRowMove } from "./PinnedConversationOrder";
@@ -25,18 +25,7 @@ import { SlackMark } from "./SlackMark";
 import { useShareConversationLink } from "./useShareConversationLink";
 
 /** One conversation menu row. Each menu renders it with its own primitive. */
-export type ConversationMenuItem = {
-  disabled?: boolean;
-  /** Status text for assistive technology, such as a share result. */
-  feedback?: string;
-  /** Opens in a new tab. */
-  href?: string;
-  icon: ComponentType<{ "aria-hidden"?: "true"; className?: string }>;
-  key: string;
-  label: string;
-  onClick?(): void;
-  /** Only the label shows the result, so the menu stays open. */
-  stayOpen?: boolean;
+export type ConversationMenuItem = ActionSheetItem & {
   /** The label flips to the opposite action after a click. */
   toggle?: boolean;
 };
@@ -198,17 +187,17 @@ export function useConversationMenuItems(
   });
 
   const notifyItems: ConversationMenuItem[] = [];
-  // Leave takes it out of your feed, and Join puts it back. A Participant
-  // of a private Conversation is in it even when not subscribed, so they
-  // always get Leave. That Leave also ends access, so it asks first, and
-  // only a menu with that dialog offers it. Only participants have a
-  // subscription. A child follows its root's, so it offers neither.
+  // Leave takes it out of your feed, and Join puts it back. A private
+  // Participant always gets Leave, which ends access, so only a menu with
+  // its dialog offers it. With no subscription from the API, as outside a
+  // private Conversation, there is no Join. A child follows its root's.
   const subscribed = detail?.subscribed === true;
   const leaveEndsAccess = detail?.leaveEndsAccess === true;
   const joined = subscribed || leaveEndsAccess;
   if (
     !conversation?.parentConversationId &&
-    (!leaveEndsAccess || actions.leave)
+    (!leaveEndsAccess || actions.leave) &&
+    (!detail || detail.subscribed !== undefined || leaveEndsAccess)
   ) {
     notifyItems.push({
       disabled: detail?.subscribed === undefined || pending.subscription,
@@ -272,7 +261,10 @@ export function useConversationMenuItems(
         : "Archive",
     onClick: actions.archive,
   };
-  return [actItems, notifyItems, viewItems, [archiveItem]];
+  // An empty group, such as notify on a child, would draw two separators.
+  return [actItems, notifyItems, viewItems, [archiveItem]].filter(
+    (items) => items.length > 0,
+  );
 }
 
 function SlackIcon(props: { className?: string }) {

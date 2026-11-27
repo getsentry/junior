@@ -511,6 +511,7 @@ test.describe("new UI", () => {
         "true",
       );
       await screenshot(page, "inbox-palette-todos", {
+        hover: true,
         lightTheme: true,
         view: view.name,
       });
@@ -588,6 +589,7 @@ test.describe("new UI", () => {
         "true",
       );
       await screenshot(page, "inbox-palette-search", {
+        hover: true,
         lightTheme: true,
         view: view.name,
       });

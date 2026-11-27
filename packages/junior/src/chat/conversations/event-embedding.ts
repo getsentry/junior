@@ -24,12 +24,16 @@ import {
   juniorConversationEvents,
 } from "@/db/schema";
 import { getDb } from "@/chat/db";
-import { logException, logInfo } from "@/chat/logging";
+import { logException, logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
 import { createConversationEmbedder } from "./embedding";
 import { isEventEmbeddingsEnabled } from "./event-embedding-config";
-import { seqIn, storeConversationEventLexemes } from "./event-lexemes";
+import {
+  DEFAULT_MAX_LEXEME_EVENTS,
+  seqIn,
+  storeConversationEventLexemes,
+} from "./event-lexemes";
 import {
   eventSearchTextSql,
   SEARCHABLE_EVENT_TYPES,
@@ -171,43 +175,67 @@ export async function indexConversationEvents(args: {
   turnId: string;
 }): Promise<void> {
   const { conversationId, turnId } = args;
-  const attempt = await withLock(
-    getStateAdapter(),
-    eventIndexLockKey(conversationId),
-    async () => {
-      // Wait for both before the lock is released, even when one fails.
-      const [lexemeResult, embeddingResult] = await Promise.allSettled([
-        storeConversationEventLexemes(getDb(), conversationId),
-        args.embedEvents
-          ? embedConversationEvents(
-              getDb(),
-              createConversationEmbedder({
-                cost: { conversationId, turnId },
-                operation: "conversation_embedding",
-              }),
-              conversationId,
-            )
-          : 0,
-      ]);
-      if (lexemeResult.status === "rejected") {
-        throw lexemeResult.reason;
-      }
-      if (embeddingResult.status === "rejected") {
-        throw embeddingResult.reason;
-      }
-      logInfo("event_search.index.completed", {
-        conversationId,
-        embedded: embeddingResult.value,
-        lexemes: lexemeResult.value,
+  await withSpan(
+    "event_search.index",
+    "event_search.index",
+    { conversationId },
+    async (setSpanAttributes) => {
+      const waitStartedAtMs = Date.now();
+      const attempt = await withLock(
+        getStateAdapter(),
+        eventIndexLockKey(conversationId),
+        async () => {
+          setSpanAttributes({
+            "app.event_search.index.lock.wait_ms": Date.now() - waitStartedAtMs,
+          });
+          // Wait for both before the lock is released, even when one fails.
+          const [lexemeResult, embeddingResult] = await Promise.allSettled([
+            storeConversationEventLexemes(getDb(), conversationId),
+            args.embedEvents
+              ? embedConversationEvents(
+                  getDb(),
+                  createConversationEmbedder({
+                    cost: { conversationId, turnId },
+                    operation: "conversation_embedding",
+                  }),
+                  conversationId,
+                )
+              : 0,
+          ]);
+          if (lexemeResult.status === "rejected") {
+            throw lexemeResult.reason;
+          }
+          if (embeddingResult.status === "rejected") {
+            throw embeddingResult.reason;
+          }
+          setSpanAttributes({
+            "app.event_search.index.lexeme.count": lexemeResult.value,
+            "app.event_search.index.vector.count": embeddingResult.value,
+            "app.event_search.index.capped":
+              lexemeResult.value >= DEFAULT_MAX_LEXEME_EVENTS ||
+              embeddingResult.value >= MAX_EVENTS_PER_RUN,
+          });
+          logInfo("event_search.index.completed", {
+            conversationId,
+            embedded: embeddingResult.value,
+            lexemes: lexemeResult.value,
+          });
+        },
+        // The heartbeat backfill holds the lock for at most its run budget.
+        // Waiting indexes this Turn's events now instead of in a later pass.
+        { ttlMs: EVENT_INDEX_LOCK_TTL_MS, waitMs: EVENT_INDEX_LOCK_WAIT_MS },
+      );
+      setSpanAttributes({
+        "app.event_search.index.lock.acquired": attempt.acquired,
       });
+      if (!attempt.acquired) {
+        setSpanAttributes({
+          "app.event_search.index.lock.wait_ms": Date.now() - waitStartedAtMs,
+        });
+        logInfo("event_search.index.busy", { conversationId });
+      }
     },
-    // The heartbeat backfill holds the lock for at most its run budget.
-    // Waiting indexes this Turn's events now instead of in a later pass.
-    { ttlMs: EVENT_INDEX_LOCK_TTL_MS, waitMs: EVENT_INDEX_LOCK_WAIT_MS },
   );
-  if (!attempt.acquired) {
-    logInfo("event_search.index.busy", { conversationId });
-  }
 }
 
 /**

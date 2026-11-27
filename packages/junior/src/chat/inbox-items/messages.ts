@@ -12,10 +12,14 @@ import {
   getConversationEventStore,
   getConversationStore,
   getDb,
+  getSqlExecutor,
 } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
-import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import {
+  resolveActorIdentityId,
+  SYSTEM_IDENTITY_ID,
+} from "@/chat/identities/actor";
 import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -174,6 +178,12 @@ async function recordInboxItemChange(args: {
       text: `${personName(change.user)} dismissed inbox item "${args.item.title}" (${args.item.id}). It is closed with no answer. Do not treat it as open.`,
     });
   }
+  // The dashboard finds the person, and their photo, by this Identity.
+  const authorIdentityId = await resolveActorIdentityId(
+    getSqlExecutor(),
+    webActorFromUser(change.user),
+    args.nowMs,
+  );
   await getConversationEventStore().append(args.conversationId, [
     {
       idempotencyKey: `message:${messageId}`,
@@ -182,6 +192,7 @@ async function recordInboxItemChange(args: {
         type: "message",
         messageId,
         role: "user",
+        ...(authorIdentityId ? { authorIdentityId } : undefined),
         text: renderInboxItemMessage(args.item, change),
         meta: {
           author: {

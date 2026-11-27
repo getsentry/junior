@@ -21,7 +21,7 @@ import { mapBounded } from "@/chat/fan-out";
 import { recordChildAgentEnded } from "./markers";
 import { dropWaitingParentMessages } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
-import { parentResultActor } from "./parent-result";
+import { parentResultActor } from "@/chat/conversations/kind-behavior";
 import { isStopResult } from "./child-input";
 import { getChildAgentLockName } from "./ids";
 

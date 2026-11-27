@@ -742,6 +742,7 @@ test.describe("new UI", () => {
         "Open Newer conversation",
       );
       await screenshot(page, "repository-conversations-held", {
+        hover: true,
         lightTheme: true,
         view: "desktop",
       });

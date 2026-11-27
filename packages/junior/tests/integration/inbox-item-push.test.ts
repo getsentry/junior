@@ -18,7 +18,6 @@ import type { JuniorApiEnv } from "@/api/route";
 import { createSlackActor } from "@/chat/actor";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
   getConversationStore,
@@ -47,7 +46,7 @@ import {
   juniorInboxItemDeliveries,
   juniorInboxItems,
 } from "@/db/schema";
-import { useConfig } from "../fixtures/config";
+import { patchConfig, useConfig } from "../fixtures/config";
 import { createConversationFixture } from "../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { useGitHubEvents } from "../fixtures/event-automations";
@@ -249,7 +248,6 @@ const ASK = {
 
 describe("inbox item push", () => {
   let webPushConfig: { privateKey: string; publicKey: string; subject: string };
-  let previousLinks: ReturnType<typeof setDashboardConversationLinkOptions>;
   let pushes: Record<string, unknown>[];
 
   beforeEach(async () => {
@@ -260,8 +258,10 @@ describe("inbox item push", () => {
       subject: "mailto:junior@example.com",
     };
     useConfig({ webPush: webPushConfig });
-    previousLinks = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     await getStateAdapter().connect();
     pushes = [];
@@ -281,7 +281,6 @@ describe("inbox item push", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    setDashboardConversationLinkOptions(previousLinks);
     await disconnectStateAdapter();
     await closeDb();
   });
@@ -377,11 +376,11 @@ describe("inbox item push", () => {
         }),
       ]),
     });
-    // The app loads config again, without the web push keys, and reads the
-    // dashboard link from its own config.
-    useConfig({ webPush: webPushConfig });
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    // The app loads config again, without the web push keys or the dashboard
+    // link, so install them again.
+    useConfig({
+      webPush: webPushConfig,
+      dashboard: { baseURL: "https://junior.example.com" },
     });
     const ana = await anaWithPhone();
     const identityId = await resolveActorIdentityId(
@@ -694,8 +693,10 @@ describe("inbox item push", () => {
     await useGitHubEvents();
     // The app loads config again, without the web push keys.
     useConfig({ webPush: webPushConfig });
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     const fixture = await createConversationFixture();
     // A User of the Slack workspace, so she can see the items of its thread.

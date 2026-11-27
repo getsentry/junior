@@ -329,25 +329,25 @@ describe("dashboard canonical-event mock routes", () => {
     expect(dashboardQa.annotations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          kind: "resource_link",
+          kind: "object",
           key: "getsentry/getsentry#21571",
           plugin: "github",
           status: "merged",
         }),
         expect.objectContaining({
-          kind: "resource_link",
+          kind: "object",
           key: "getsentry/getsentry#21572",
           plugin: "github",
           status: "open",
         }),
         expect.objectContaining({
-          kind: "resource_link",
+          kind: "object",
           key: "getsentry/getsentry#21569",
           plugin: "github",
           status: "draft",
         }),
         expect.objectContaining({
-          kind: "resource_link",
+          kind: "object",
           key: "getsentry/sentry#121727",
           plugin: "github",
           status: "merged",

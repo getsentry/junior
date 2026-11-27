@@ -85,6 +85,7 @@ function restPullRequest(draft: DraftFixture) {
     draft: !readied.has(draft.number),
     head: { ref: `feat/cache-warmup-${draft.number}`, sha: draft.sha },
     html_url: `${web}/pull/${draft.number}`,
+    id: 30_000 + draft.number,
     merged: false,
     node_id: `PR_eval_${draft.number}`,
     number: draft.number,

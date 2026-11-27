@@ -1,4 +1,4 @@
-// The queue group: the Vercel Queues API.
+// The queue group: the Vercel Queues API and the conversation work topic.
 import * as z from "zod";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import type { Env } from "@/config/fields";
@@ -16,6 +16,12 @@ export const queueSchema = z
       .string()
       .refine(isHttpUrl, "must be an http or https URL")
       .optional(),
+    /**
+     * Topic for conversation wake-up nudges, when it is not the default. The
+     * build reads the same env var for the queue trigger, so both stay on one
+     * topic.
+     */
+    conversationWorkTopic: z.string().optional(),
   })
   .prefault({});
 
@@ -34,5 +40,9 @@ function parseQueueApiUrl(rawValue: string | undefined): string | undefined {
 
 /** Read the queue group from env. */
 export function readQueueEnv(env: Env) {
-  return { apiUrl: parseQueueApiUrl(env["JUNIOR_QUEUE_API_URL"]) };
+  return {
+    apiUrl: parseQueueApiUrl(env["JUNIOR_QUEUE_API_URL"]),
+    conversationWorkTopic:
+      env["JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC"]?.trim() || undefined,
+  };
 }

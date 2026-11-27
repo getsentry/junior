@@ -27,9 +27,13 @@ function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
 }
 
-/** True when an entry is non-message activity that can collapse between turns. */
+/**
+ * True when an entry is non-message activity that can collapse between
+ * turns. `cardChildIds` names the children whose card the entries hold.
+ */
 export function isCollapsibleActivityEntry(
   entry: RenderedTranscriptEntry,
+  cardChildIds: ReadonlySet<string>,
 ): boolean {
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
@@ -40,7 +44,7 @@ export function isCollapsibleActivityEntry(
   // activity of the Turn it started. Its Thread card or Task line shows the
   // outcome.
   if (entry.kind === "message") {
-    return isChildResultMessage(entry.message);
+    return isChildResultMessage(entry.message, cardChildIds);
   }
   // A message to another agent stays in view, like a message from one.
   return !(entry.kind === "tool" && isSentAgentMessage(entry.part));

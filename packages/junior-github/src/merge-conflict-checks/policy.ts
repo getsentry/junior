@@ -1,32 +1,9 @@
 /**
  * When a merge conflict wakes Junior. A fix is a full agent turn, so only a
- * Junior pull request that people still work on gets one:
- *
- * - A draft gets nothing.
- * - In the first 2 days after the latest activity by a person, Junior fixes
- *   the conflict, at most once a day, and at most 3 times in a row with no
- *   activity by a person between them.
- * - After that, a conflict does nothing, and nobody is told. The next
- *   activity by a person starts the fixes again.
- * - An approved pull request would be ready to merge but for the conflict,
- *   so it gets a fix after the 2 days too, and without the daily wait. The
- *   ready to merge notice needs a clean merge state, so it waits for the
- *   fix. The limit of fixes in a row still holds.
- * - When a day after its fix the head commit is the same, the fix did not
- *   land, and Junior is stuck. Then it asks the person who asked for the
- *   pull request to resume, with an Inbox item, once after each Resume. So
- *   Dismiss ends the asks on the pull request. Resume counts as activity by
- *   a person, and starts a fix at once (`resume.ts`).
- *
- * Each conflict reads the pull request's history from GitHub for the latest
- * activity by a person. Opening the pull request counts as activity,
- * because a person asked for it. Only the fixes that this policy or Resume
- * started count as fixes, so a merge or force push for work that a person
- * asked for does not. The plugin stores them with the time of the latest
- * Resume and of the latest ask. The event key names the head commit, so a
- * check of the same commit, or a webhook and the heartbeat at once, publish
- * one fix. A conflict on a pull request that Junior did not open goes to its
- * Watch as before, except for a draft.
+ * non-draft Junior PR within `ACTIVE_MS` of activity by a person gets one;
+ * past that, a conflict tells nobody. An approved PR skips that wait, since
+ * ready to merge needs a clean merge. A fix that did not land in a day asks
+ * to resume, once per Resume. One head commit publishes one fix.
  */
 import type {
   EventInput,
@@ -97,7 +74,11 @@ const timelineItemSchema = z.union([
     createdAt: z.string(),
   }),
   z.object({
-    __typename: z.literal("HeadRefForcePushedEvent"),
+    __typename: z.enum([
+      "AutomaticBaseChangeSucceededEvent",
+      "BaseRefChangedEvent",
+      "HeadRefForcePushedEvent",
+    ]),
     actor: actorSchema,
     createdAt: z.string(),
   }),
@@ -107,6 +88,9 @@ const historyResponseSchema = z.object({
   data: z.object({
     repository: z.object({
       pullRequest: z.object({
+        baseChanges: z.object({
+          nodes: z.array(timelineItemSchema.nullable()),
+        }),
         createdAt: z.string(),
         discussion: z.object({
           nodes: z.array(timelineItemSchema.nullable()),
@@ -122,14 +106,17 @@ const historyResponseSchema = z.object({
 
 /** What GitHub says about the people on one pull request. */
 interface GitHubConflictHistory {
-  /** The latest push, review, or comment by a person, or the opening. */
+  /** The latest activity by a person, or the opening. */
   activeAtMs: number;
   approved: boolean;
 }
 
 /**
- * Read the history from GitHub's answer. A deleted account has no author,
- * and counts as a person. Activity by a bot is not activity.
+ * Read the history from GitHub's answer. A deleted account counts as a
+ * person, and a bot's activity is not activity. The opening counts, since a
+ * person asked for it. So does a person's base change, such as the merge of
+ * the PR below in a stack: its conflicts come from that merge, not from a
+ * loop of fixes.
  */
 function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   const pullRequest =
@@ -141,6 +128,7 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   for (const item of [
     ...pullRequest.pushes.nodes,
     ...pullRequest.discussion.nodes,
+    ...pullRequest.baseChanges.nodes,
   ]) {
     if (!item) continue;
     switch (item.__typename) {
@@ -150,6 +138,8 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
           item.commit.committedDate,
         );
         break;
+      case "AutomaticBaseChangeSucceededEvent":
+      case "BaseRefChangedEvent":
       case "HeadRefForcePushedEvent":
         record(item.actor?.__typename === "Bot", item.createdAt);
         break;
@@ -307,6 +297,7 @@ export async function applyGitHubConflictPolicy(args: {
     .from(t)
     .where(pullRequest)
     .limit(1);
+  // A pull request that Junior did not open goes to its Watch as before.
   if (!row) return args.events;
   const nowMs = args.now.getTime();
   const action = gitHubConflictAction({

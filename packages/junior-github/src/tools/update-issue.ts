@@ -1,5 +1,4 @@
-import { githubObjectFacts } from "../object-facts.js";
-import { githubObjectAnnotation } from "../annotations.js";
+import { githubAnnotatedObject } from "../annotations.js";
 import {
   type Actor,
   type PluginWorkOwner,
@@ -95,6 +94,7 @@ const providerIssueSchema = z.object({
     .transform((assignees) => assignees?.map(({ login }) => login) ?? []),
   body: z.string().nullable().optional().default(null),
   html_url: z.string(),
+  id: z.number().optional(),
   number: z.number(),
   state: z.string(),
   title: z.string(),
@@ -237,15 +237,20 @@ export const gitHubUpdateIssueTool = definePluginTool({
     });
     return {
       objectAnnotations: [
-        githubObjectAnnotation({
-          ...githubObjectFacts("task", parsed),
-          repo: repo.ref,
-          number: providerResult.number,
-          title: providerResult.title,
-          url: providerResult.html_url,
-          objectType: "task",
-          status: providerResult.state,
-        }),
+        {
+          action: "changed",
+          ...githubAnnotatedObject({
+            repo: repo.ref,
+            number: providerResult.number,
+            id:
+              providerResult.id === undefined
+                ? undefined
+                : String(providerResult.id),
+            title: providerResult.title,
+            url: providerResult.html_url,
+            objectType: "task",
+          }),
+        },
       ],
       target: "updateIssue",
       assignees: providerResult.assignees,

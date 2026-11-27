@@ -7,7 +7,7 @@ import { stopConversationTree } from "@/chat/conversations/session-stop";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { createWatch, listWatches } from "@/chat/events/store";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { buildTurnContextPrompt } from "@/chat/prompt";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -172,7 +172,7 @@ describe("Quiet Events from GitHub", () => {
     // A merge webhook records the pull request outcome in GitHub's tables.
     await migratePluginSchemas(
       getSqlExecutor(),
-      pluginCatalogRuntime.getMigrationRoots(),
+      getAppContext().catalog.getMigrationRoots(),
     );
   });
 

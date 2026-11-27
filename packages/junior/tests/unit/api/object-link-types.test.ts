@@ -5,7 +5,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { findObjectLinkType } from "@/api/objects/link-types";
 import { readObjectLinkTypes } from "@/api/objects/resolve";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { patchConfig } from "../../fixtures/config";
 
 function plugin(name: string, filters: ObjectLinkFilter[]) {
   return defineJuniorPlugin({
@@ -26,9 +26,7 @@ function ownerOf(url: string, plugins: ReturnType<typeof plugin>[]) {
 }
 
 describe("object link types", () => {
-  afterEach(() => {
-    setDashboardConversationLinkOptions(undefined);
-  });
+  afterEach(() => {});
 
   it("picks the most specific filter", () => {
     const plugins = [
@@ -65,8 +63,10 @@ describe("object link types", () => {
   });
 
   it("matches dashboard pages and mailto links to core types", () => {
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     const types = readObjectLinkTypes([]);
     expect(
@@ -100,8 +100,49 @@ describe("object link types", () => {
       ]),
     ).not.toThrow();
 
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    // A sign-in page that opens different pages claims different URLs.
+    const chooser = (host: string) => ({
+      host: "accounts.example.com",
+      path: "/choose",
+      target: { param: "continue", filters: [{ host }] },
+    });
+    expect(() =>
+      readObjectLinkTypes([
+        plugin("first", [chooser("calendar.example.com")]),
+        plugin("second", [chooser("docs.example.com")]),
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      readObjectLinkTypes([
+        plugin("first", [chooser("calendar.example.com")]),
+        plugin("second", [chooser("calendar.example.com")]),
+      ]),
+    ).toThrow(/claim the same URLs/);
+    // A broader target claims the URLs of a narrower one.
+    const chooserOf = (target: Omit<ObjectLinkFilter, "target">) => ({
+      host: "accounts.example.com",
+      path: "/choose",
+      target: { param: "continue", filters: [target] },
+    });
+    for (const broad of [
+      { host: "*.example.com" },
+      { host: "calendar.example.com" },
+      { host: "calendar.example.com", pathPrefix: "/r" },
+    ]) {
+      expect(() =>
+        readObjectLinkTypes([
+          plugin("first", [chooserOf(broad)]),
+          plugin("second", [
+            chooserOf({ host: "calendar.example.com", path: "/r/event" }),
+          ]),
+        ]),
+      ).toThrow(/claim the same URLs/);
+    }
+
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     expect(() =>
       readObjectLinkTypes([plugin("mail", [{ scheme: "mailto" }])]),

@@ -92,27 +92,27 @@ export async function readSkillDetailReport(
 
 /** Read safe configured plugin metadata for authenticated runtime diagnostics. */
 export async function readPlugins(): Promise<Plugin[]> {
-  const { pluginCatalogRuntime } =
-    await import("@/chat/plugins/catalog-runtime");
+  const { getAppContext } = await import("@/app/context");
   return pluginsSchema.parse(
-    pluginCatalogRuntime.getProviders().map((plugin) => ({
-      configKeys: plugin.manifest.configKeys ?? [],
-      description: plugin.manifest.description,
-      displayName: plugin.manifest.displayName,
-      name: plugin.manifest.name,
-    })),
+    getAppContext()
+      .catalog.getProviders()
+      .map((plugin) => ({
+        configKeys: plugin.manifest.configKeys ?? [],
+        description: plugin.manifest.description,
+        displayName: plugin.manifest.displayName,
+        name: plugin.manifest.name,
+      })),
   );
 }
 
 /** Read authenticated runtime discovery data. */
 export async function readRuntimeInfoReport(): Promise<RuntimeInfoReport> {
-  const [{ homeDir }, { pluginCatalogRuntime }, plugins, skills] =
-    await Promise.all([
-      import("@/chat/discovery"),
-      import("@/chat/plugins/catalog-runtime"),
-      readPlugins(),
-      readSkillReports(),
-    ]);
+  const [{ homeDir }, { getAppContext }, plugins, skills] = await Promise.all([
+    import("@/chat/discovery"),
+    import("@/app/context"),
+    readPlugins(),
+    readSkillReports(),
+  ]);
   const home = homeDir();
 
   return runtimeInfoReportSchema.parse({
@@ -121,7 +121,7 @@ export async function readRuntimeInfoReport(): Promise<RuntimeInfoReport> {
     descriptionText: readDescriptionText(home),
     providers: plugins.map((plugin) => plugin.name),
     skills,
-    packagedContent: pluginCatalogRuntime.getPackageContent(),
+    packagedContent: getAppContext().catalog.getPackageContent(),
   });
 }
 

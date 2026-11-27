@@ -36,6 +36,16 @@ for (const view of [desktop, mobile]) {
       name: "Asked Approve the payments-v42 rollout",
     });
     await expect(card).toContainText("Waiting on you");
+    if (view === desktop) {
+      // The answered question above reads its closed item after the list,
+      // and its row then grows. A click while the transcript follows that
+      // growth finds a moving button, and Playwright's retry scrolls the
+      // button to the bottom edge, which leaves the latest message. A phone
+      // shows the form in a sheet, out of the transcript.
+      await expect(
+        page.getByRole("region", { name: "Asked Pick the canary region" }),
+      ).toBeVisible();
+    }
     // Nothing docks over the message box, and nothing takes the focus.
     await expect(page.getByRole("region", { name: /^Question:/ })).toHaveCount(
       0,

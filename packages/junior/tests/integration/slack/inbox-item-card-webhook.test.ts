@@ -7,7 +7,6 @@ import {
   resumeConversationDelivery,
 } from "@/chat/conversations/delivery-pause";
 import { getConversationStore, getDb } from "@/chat/db";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import {
@@ -44,6 +43,7 @@ import {
   tearDownInboxItemCards,
   updateItem,
 } from "../../fixtures/slack/inbox-item-cards";
+import { patchConfig } from "../../fixtures/config";
 import {
   ownedPluginInboxItems,
   TEST_PLUGIN_INBOX_OWNER,
@@ -460,153 +460,143 @@ describe("Slack webhook: Inbox item cards", () => {
   });
 
   it("lists the related links that a stored item has below its body", async () => {
-    setDashboardConversationLinkOptions({ baseURL: "https://junior.example" });
-    try {
-      inboxItemCardHarness();
-      await slackThread(THREAD, "public");
-      await slackThread(OTHER_THREAD, "public");
-      const related = [
-        { label: "Canary [errors]", url: "https://example.com/canary" },
-        // The same link again shows once.
-        { label: "Canary", url: "https://example.com/canary" },
-        { label: "Checkout latency", conversationId: OTHER_THREAD },
-      ];
-      // Agents stored related links before `askUserQuestion`, on a question
-      // and on a notice.
-      const show = createInboxItemShow();
-      const stored = [
-        {
-          body: "The canary is green.",
-          kind: "action" as const,
-          request: {
-            question: "Ship release 1.2.3?",
-            fields: [
-              {
-                id: "decision",
-                kind: "choice" as const,
-                label: "Decision",
-                options: [{ label: "Ship it" }, { label: "Hold" }],
-              },
-            ],
-            related,
-          },
-          title: "Roll out payments-v42?",
+    patchConfig({ dashboard: { baseURL: "https://junior.example" } });
+    inboxItemCardHarness();
+    await slackThread(THREAD, "public");
+    await slackThread(OTHER_THREAD, "public");
+    const related = [
+      { label: "Canary [errors]", url: "https://example.com/canary" },
+      // The same link again shows once.
+      { label: "Canary", url: "https://example.com/canary" },
+      { label: "Checkout latency", conversationId: OTHER_THREAD },
+    ];
+    // Agents stored related links before `askUserQuestion`, on a question
+    // and on a notice.
+    const show = createInboxItemShow();
+    const stored = [
+      {
+        body: "The canary is green.",
+        kind: "action" as const,
+        request: {
+          question: "Ship release 1.2.3?",
+          fields: [
+            {
+              id: "decision",
+              kind: "choice" as const,
+              label: "Decision",
+              options: [{ label: "Ship it" }, { label: "Hold" }],
+            },
+          ],
+          related,
         },
-        {
-          body: "All regions are on payments-v42.",
-          kind: "notice" as const,
-          request: { related },
-          title: "payments-v42 rolled out",
-        },
-      ];
-      for (const [index, item] of stored.entries()) {
-        const added = await insertInboxItem(getDb(), {
-          ...item,
-          assignedToEveryone: true,
-          assigneeUserIds: [],
-          conversationIds: [THREAD],
-          nowMs: Date.now(),
-          owner: { id: THREAD, kind: "conversation" },
-          subject: { id: `ask:legacy-${index}`, kind: "question" },
-        });
-        await show(added!.id);
-      }
-
-      const conversation = `https://junior.example/conversations/${encodeURIComponent(OTHER_THREAD)}`;
-      const lines = slackApiOutbox.messages().map((post) => {
-        const markdown = blocksOf(post).find(
-          (block) => block.type === "markdown",
-        );
-        return markdown?.text;
+        title: "Roll out payments-v42?",
+      },
+      {
+        body: "All regions are on payments-v42.",
+        kind: "notice" as const,
+        request: { related },
+        title: "payments-v42 rolled out",
+      },
+    ];
+    for (const [index, item] of stored.entries()) {
+      const added = await insertInboxItem(getDb(), {
+        ...item,
+        assignedToEveryone: true,
+        assigneeUserIds: [],
+        conversationIds: [THREAD],
+        nowMs: Date.now(),
+        owner: { id: THREAD, kind: "conversation" },
+        subject: { id: `ask:legacy-${index}`, kind: "question" },
       });
-      // The links show on the card as plain links, and the title links to
-      // nothing: they do not decide the card.
-      expect(lines[0]).toContain(
-        `**Roll out payments-v42?**\n\nThe canary is green.\n\nRelated: [Canary \\[errors\\]](https://example.com/canary) · [Checkout latency](${conversation})\n\n`,
-      );
-      expect(lines[1]).toBe(
-        `**payments-v42 rolled out**\n\nAll regions are on payments-v42.\n\nRelated: [Canary \\[errors\\]](https://example.com/canary) · [Checkout latency](${conversation})`,
-      );
-    } finally {
-      setDashboardConversationLinkOptions(undefined);
+      await show(added!.id);
     }
+
+    const conversation = `https://junior.example/conversations/${encodeURIComponent(OTHER_THREAD)}`;
+    const lines = slackApiOutbox.messages().map((post) => {
+      const markdown = blocksOf(post).find(
+        (block) => block.type === "markdown",
+      );
+      return markdown?.text;
+    });
+    // The links show on the card as plain links, and the title links to
+    // nothing: they do not decide the card.
+    expect(lines[0]).toContain(
+      `**Roll out payments-v42?**\n\nThe canary is green.\n\nRelated: [Canary \\[errors\\]](https://example.com/canary) · [Checkout latency](${conversation})\n\n`,
+    );
+    expect(lines[1]).toBe(
+      `**payments-v42 rolled out**\n\nAll regions are on payments-v42.\n\nRelated: [Canary \\[errors\\]](https://example.com/canary) · [Checkout latency](${conversation})`,
+    );
   });
 
   it("orders a card Dismiss, Snooze, then the answer, with Snooze in the dashboard", async () => {
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
-    try {
-      inboxItemCardHarness();
-      await slackThread(THREAD, "public");
-      const ana = await linkSlackUser("ana@example.com", "U123");
-      const { item } = await addItem(ana, {
-        assignees: ["everyone"],
-        questions: [SHIP_QUESTION],
-      });
+    inboxItemCardHarness();
+    await slackThread(THREAD, "public");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const { item } = await addItem(ana, {
+      assignees: ["everyone"],
+      questions: [SHIP_QUESTION],
+    });
 
-      const [post] = slackApiOutbox.messages();
-      const controls = blocksOf(post).find((block) => block.type === "actions");
-      // A Slack message looks the same to everyone, so Snooze opens the
-      // item's snooze form in the dashboard, for the person who clicks.
-      expect(
-        controls?.elements?.map((element) => [
-          element.action_id,
-          element.url ?? null,
-        ]),
-      ).toEqual([
-        ["junior_review_item:dismiss", null],
-        [
-          "junior_review_item:snooze",
-          `https://junior.example.com/inbox?item=${encodeURIComponent(item.id)}&snooze=1`,
-        ],
-        ["junior_review_item:choice:0", null],
-        ["junior_review_item:choice:1", null],
-        ["junior_review_item:answer", null],
-      ]);
-    } finally {
-      setDashboardConversationLinkOptions(undefined);
-    }
+    const [post] = slackApiOutbox.messages();
+    const controls = blocksOf(post).find((block) => block.type === "actions");
+    // A Slack message looks the same to everyone, so Snooze opens the
+    // item's snooze form in the dashboard, for the person who clicks.
+    expect(
+      controls?.elements?.map((element) => [
+        element.action_id,
+        element.url ?? null,
+      ]),
+    ).toEqual([
+      ["junior_review_item:dismiss", null],
+      [
+        "junior_review_item:snooze",
+        `https://junior.example.com/inbox?item=${encodeURIComponent(item.id)}&snooze=1`,
+      ],
+      ["junior_review_item:choice:0", null],
+      ["junior_review_item:choice:1", null],
+      ["junior_review_item:answer", null],
+    ]);
   });
 
   it("keeps a long answer inside the Slack limits of a card", async () => {
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
-    try {
-      const { queue } = inboxItemCardHarness();
-      await slackThread(THREAD, "public");
-      const ana = await linkSlackUser("ana@example.com", "U123");
-      const { item } = await addItem(ana, {
-        assignees: ["ana@example.com"],
-        questions: [SHIP_QUESTION],
-      });
+    const { queue } = inboxItemCardHarness();
+    await slackThread(THREAD, "public");
+    const ana = await linkSlackUser("ana@example.com", "U123");
+    const { item } = await addItem(ana, {
+      assignees: ["ana@example.com"],
+      questions: [SHIP_QUESTION],
+    });
 
-      await actOnInboxItem({
-        action: "submit",
-        answer: { requestId: item.id, other: "x".repeat(3_000), values: {} },
-        delivery: { queue, show: createInboxItemShow() },
-        id: item.id,
-        user: ana,
-      });
+    await actOnInboxItem({
+      action: "submit",
+      answer: { requestId: item.id, other: "x".repeat(3_000), values: {} },
+      delivery: { queue, show: createInboxItemShow() },
+      id: item.id,
+      user: ana,
+    });
 
-      // Slack rejects a context element over 3,000 characters, and then the
-      // card keeps its controls.
-      const [update] = slackApiOutbox.calls("chat.update");
-      const context = blocksOf(update).find(
-        (block) => block.type === "context",
-      );
-      const texts = (context?.elements ?? []).map(
-        (element) => element.text as string,
-      );
-      expect(texts).toEqual([
-        expect.stringContaining("ana@example.com answered"),
-        expect.stringContaining("|Open in the Inbox>"),
-      ]);
-      for (const text of texts) expect(text.length).toBeLessThanOrEqual(3_000);
-    } finally {
-      setDashboardConversationLinkOptions(undefined);
-    }
+    // Slack rejects a context element over 3,000 characters, and then the
+    // card keeps its controls.
+    const [update] = slackApiOutbox.calls("chat.update");
+    const context = blocksOf(update).find((block) => block.type === "context");
+    const texts = (context?.elements ?? []).map(
+      (element) => element.text as string,
+    );
+    expect(texts).toEqual([
+      expect.stringContaining("ana@example.com answered"),
+      expect.stringContaining("|Open in the Inbox>"),
+    ]);
+    for (const text of texts) expect(text.length).toBeLessThanOrEqual(3_000);
   });
 
   it("shortens the body of a long item to fit Slack's markdown limit", async () => {

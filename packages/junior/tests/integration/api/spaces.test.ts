@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationDetailReportSchema,
-  conversationFeedSchema,
   conversationInviteResponseSchema,
   userSearchReportSchema,
   setConversationSpaceResponseSchema,
@@ -16,10 +15,6 @@ import {
 import { canReadConversation } from "@/api/conversations/access";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
-import {
-  getConfigDefaults,
-  setConfigDefaults,
-} from "@/chat/configuration/defaults";
 import { createLocationConfigurationService } from "@/chat/configuration/service";
 import type {
   ConfigEntry,
@@ -44,6 +39,10 @@ import {
   startThread,
 } from "../../fixtures/spaces-api";
 import { signedInViewer } from "../../fixtures/user";
+import { patchConfig } from "../../fixtures/config";
+import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { chatPostMessageOk } from "../../fixtures/slack/factories/api";
+import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
 
 async function detail(app: Hono<JuniorApiEnv>, conversationId: string) {
   const response = await request(
@@ -189,9 +188,9 @@ describe("Spaces API", () => {
       viewerIsMember: false,
     });
 
-    // A web Message adds nobody either. Bo joins the public Lead himself.
+    // Only a Participant posts. Bo joins the public Lead himself first.
     const lead = await leadOf(bo, space.id);
-    expect((await postMessage(bo, lead, "spaces-api-post")).status).toBe(200);
+    expect((await postMessage(bo, lead, "spaces-api-post")).status).toBe(403);
     expect(await readByBo()).toMatchObject({ viewerIsMember: false });
     expect(await detail(bo, lead)).toHaveProperty("subscribed", false);
     const joined = await request(
@@ -214,7 +213,7 @@ describe("Spaces API", () => {
     });
     expect(await listNames(bo)).not.toContain("Billing migration");
 
-    // Anyone can still message the public Lead.
+    // Leave of a public Lead keeps Bo a Participant, so he can still post.
     expect((await postMessage(bo, lead, "spaces-api-rejoin")).status).toBe(200);
   });
 
@@ -244,12 +243,39 @@ describe("Spaces API", () => {
       description: null,
     });
 
+    // A rename that fails keeps the old description too.
+    const sql = getSqlExecutor();
+    await sql.query(
+      `create function fail_lead_rename() returns trigger language plpgsql as $$ begin raise exception 'rename failed'; end $$`,
+    );
+    await sql.query(
+      `create trigger fail_lead_rename before update of title on junior_conversations for each row execute function fail_lead_rename()`,
+    );
+    try {
+      const failed = await send(ana, "PATCH", `/${space.id}`, {
+        name: "Junior on iPad",
+        description: "Not saved.",
+      });
+      expect(failed.status).toBe(500);
+    } finally {
+      await sql.query(`drop trigger fail_lead_rename on junior_conversations`);
+      await sql.query(`drop function fail_lead_rename()`);
+    }
+    expect(
+      spaceSchema.parse(await (await send(ana, "GET", `/${space.id}`)).json()),
+    ).toMatchObject({ name: "Junior for iOS", description: null });
+
     const archived = spaceSchema.parse(
       await (
         await send(ana, "PATCH", `/${space.id}/archive`, { archived: true })
       ).json(),
     );
     expect(archived.archivedAt).not.toBeNull();
+    // Only a Participant posts, so a reader's Message never restores one.
+    expect(
+      (await postMessage(bo, await leadOf(bo, space.id), "spaces-api-visit"))
+        .status,
+    ).toBe(403);
     expect(await listNames(ana)).not.toContain("Junior for iOS");
     expect(await listNames(ana, "?archived=true")).toContain("Junior for iOS");
     const restored = spaceSchema.parse(
@@ -299,9 +325,9 @@ describe("Spaces API", () => {
       spaceId: space.id,
     });
     const oneOff = await startConversation(ana, "one-off");
-    // Anyone posts in a public Space's Conversations, as in any public root.
+    // Only members post in a Space's Conversations, as in any root.
     expect((await postMessage(bo, inSpace, "bo-in-ledger-plan")).status).toBe(
-      200,
+      403,
     );
 
     // Anyone can read the public Space's list. Rows and the detail name the
@@ -317,11 +343,15 @@ describe("Spaces API", () => {
       name: "Ledger",
     });
     expect((await moveTo(ana, thread, null)).status).toBe(409);
-    // A member's own feed lists the Space's work, with its Threads.
-    const anaRow = (await spaceFeed(ana, "")).find(
+    // The Space's feed lists its work, with each one's Threads. A member's
+    // own feed lists roots, so it leaves the Space's work out.
+    const anaRow = (await spaceFeed(ana, space.id)).find(
       (row) => row.conversationId === inSpace,
     );
     expect(anaRow?.threads?.map((row) => row.conversationId)).toEqual([thread]);
+    expect(
+      (await spaceFeed(ana, "")).map((row) => row.conversationId),
+    ).not.toContain(inSpace);
 
     // A move writes only the root, and the child's detail token still
     // changes, so an open child detail refreshes its Space.
@@ -367,12 +397,8 @@ describe("Spaces API", () => {
       );
       expect(refused.status).toBe(409);
     }
-    const ownFeed = async () =>
-      (await spaceFeed(ana, "")).map((row) => row.conversationId);
-    expect(await ownFeed()).toContain(inSpace);
 
-    // Leaving the Lead takes all of the Space's work out of the leaver's
-    // feed. The last subscriber leaving never archives it.
+    // The last subscriber leaving the Lead never archives it.
     expect(await detail(ana, leadId)).toHaveProperty("subscribed", true);
     const left = await request(
       ana,
@@ -381,7 +407,6 @@ describe("Spaces API", () => {
     );
     expect(left.status).toBe(200);
     expect(await left.json()).toEqual({ archivedAt: null });
-    expect(await ownFeed()).not.toContain(inSpace);
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
@@ -455,7 +480,7 @@ describe("Spaces API", () => {
     expect(
       await move({ conversation_id: conversationId, space: null }),
     ).toMatchObject({ space: null });
-    // A conversation in a private Space stays in it.
+    // Nothing moves into a private Space.
     const hidden = spaceSchema.parse(
       await (
         await send(ana, "POST", "", {
@@ -464,10 +489,9 @@ describe("Spaces API", () => {
         })
       ).json(),
     );
-    await move({ conversation_id: conversationId, space: hidden.id });
     await expect(
-      move({ conversation_id: conversationId, space: null }),
-    ).rejects.toThrow("A conversation in a private Space stays in it.");
+      move({ conversation_id: conversationId, space: hidden.id }),
+    ).rejects.toThrow("A conversation can't move into a private Space.");
 
     // The person finds every public Space, and a private one only from a
     // conversation in it.
@@ -580,14 +604,16 @@ describe("Spaces API", () => {
     ).toEqual([inSpace]);
 
     // Data stays in the Space: Conversations in it read each other, and a
-    // Conversation outside it reads none of them.
-    expect((await moveTo(ana, oneOff, space.id)).status).toBe(200);
-    expect(await detail(ana, oneOff)).toMatchObject({ visibility: "private" });
-    expect(await canReadConversation(getDb(), oneOff, inSpace)).toBe(true);
-    const outside = await startConversation(ana, "payroll-outside");
-    expect(await canReadConversation(getDb(), outside, inSpace)).toBe(false);
-    expect(await canReadConversation(getDb(), inSpace, outside)).toBe(true);
-    expect((await moveTo(ana, oneOff, null)).status).toBe(409);
+    // Conversation outside it reads none of them. Nothing moves in, and its
+    // private work never moves out.
+    expect((await moveTo(ana, oneOff, space.id)).status).toBe(409);
+    const sibling = await startConversation(ana, "payroll-sibling", {
+      spaceId: space.id,
+    });
+    expect(await canReadConversation(getDb(), sibling, inSpace)).toBe(true);
+    expect(await canReadConversation(getDb(), oneOff, inSpace)).toBe(false);
+    expect(await canReadConversation(getDb(), inSpace, oneOff)).toBe(true);
+    expect((await moveTo(ana, inSpace, null)).status).toBe(409);
 
     // A Space keeps the visibility it was created with.
     expect(
@@ -597,23 +623,26 @@ describe("Spaces API", () => {
     expect(await detailSpace(cy, inSpace)).toBeNull();
 
     // A member who leaves the Lead no longer finds its Conversations.
-    const inbox = async () =>
-      conversationFeedSchema
-        .parse(await (await request(bo, "GET", "/conversations")).json())
-        .conversations.map((row) => row.conversationId);
-    expect(await inbox()).toContain(inSpace);
     expect((await leave(bo, lead)).status).toBe(200);
-    expect(await inbox()).not.toContain(inSpace);
+    expect(await spaceFeed(bo, space.id)).toEqual([]);
     expect(await detailSpace(bo, inSpace)).toBeNull();
   });
 
-  it("keeps a Slack Conversation out of a private Space", async () => {
+  it("keeps a Slack Conversation out of a private Space and tells its thread once when it moves", async () => {
+    patchConfig({ dashboard: { baseURL: "https://junior.example.com" } });
     const ana = apiFor("spaces-slack-ana@example.com");
     const conversationId = "slack:CSPACES:1700000000.000100";
     await getConversationStore().recordActivity({
       conversationId,
       destination: { platform: "slack", teamId: "T123", channelId: "CSPACES" },
       nowMs: 1_000,
+      sessionSource: {
+        kind: "slack",
+        visibility: "public",
+        teamId: "T123",
+        channelId: "CSPACES",
+        threadTs: "1700000000.000100",
+      },
       source: "slack",
       visibility: "public",
     });
@@ -634,6 +663,25 @@ describe("Spaces API", () => {
       ).json(),
     );
     expect((await moveTo(ana, conversationId, hidden.id)).status).toBe(409);
+    expect(slackApiOutbox.messages()).toHaveLength(0);
+
+    // The move into a public Space drops the Slack Location, so the thread
+    // hears about it once. Later moves find no Slack thread to tell.
+    const open = await createSpace(ana, "Escalations");
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({ channel: "CSPACES", ts: "1700000000.000200" }),
+    });
+    expect((await moveTo(ana, conversationId, open.id)).status).toBe(200);
+    expect((await moveTo(ana, conversationId, null)).status).toBe(200);
+    expect((await moveTo(ana, conversationId, open.id)).status).toBe(200);
+    const link = `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`;
+    expect(slackApiOutbox.messages().map((call) => call.params)).toEqual([
+      expect.objectContaining({
+        channel: "CSPACES",
+        text: `This conversation moved to the web: <${link}|${link}>`,
+        thread_ts: "1700000000.000100",
+      }),
+    ]);
   });
 
   it("lets members ask Junior to set the configuration that a Space's Conversations use", async () => {
@@ -769,18 +817,14 @@ describe("Spaces API", () => {
     });
     expect(configuration).toEqual({ "sentry.org": "getsentry" });
     // Removing it brings back the install default for the rest of the Turn.
-    const previousDefaults = getConfigDefaults();
-    setConfigDefaults({ "sentry.org": "install-org" });
-    try {
-      await setting(
-        "spaces-config-ana@example.com",
-        inSpace,
-        { key: "sentry.org", value: null },
-        { configuration, locationConfiguration: channel },
-      );
-    } finally {
-      setConfigDefaults(previousDefaults);
-    }
+    patchConfig({ configDefaults: { "sentry.org": "install-org" } });
+    await setting(
+      "spaces-config-ana@example.com",
+      inSpace,
+      { key: "sentry.org", value: null },
+      { configuration, locationConfiguration: channel },
+    );
+    patchConfig({ configDefaults: {} });
     expect(configuration).toEqual({ "sentry.org": "install-org" });
     await setting(
       "spaces-config-ana@example.com",

@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import {
+  conversationOwnedSubjectKinds,
   inboxItemOwnerConversationId,
   todoItemOwnerConversationId,
   inboxItemTenantId,
@@ -10,6 +11,7 @@ import {
   and,
   eq,
   exists,
+  inArray,
   isNotNull,
   isNull,
   ne,
@@ -33,7 +35,6 @@ import {
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
-  juniorSpaces,
 } from "@/db/schema";
 import {
   automationCreatorUserId,
@@ -120,9 +121,31 @@ export function inboxItemOwnedByConversation(
   return eq(inboxItemOwnerConversationId(), conversationId);
 }
 
+/**
+ * SQL: the Conversation owns an Inbox item that matches `condition`, which
+ * must not read the outer row. No index holds an item's owner, so a check
+ * on each row would read every matching item again. The set has no outer
+ * reference, so Postgres reads the items once for the statement, through
+ * the subject kind index.
+ */
+export function conversationOwnsInboxItem(
+  conversationId: SQL | AnyColumn,
+  condition: SQL,
+): SQL<boolean> {
+  const owned = getDb()
+    .select({ ownerId: inboxItemOwnerConversationId() })
+    .from(juniorInboxItems)
+    .where(
+      and(
+        inArray(juniorInboxItems.subjectKind, conversationOwnedSubjectKinds()),
+        condition,
+      ),
+    );
+  return sql<boolean>`coalesce(${conversationId} in (${owned}), false)`;
+}
+
 const todoOwner = alias(juniorConversations, "todo_owner");
 const todoRoot = alias(juniorConversations, "todo_root");
-const ownerSpace = alias(juniorSpaces, "owner_space");
 
 /** SQL: the User is a Participant of this root Conversation. */
 function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
@@ -146,19 +169,17 @@ function participantOf(userId: string, rootConversationId: AnyColumn): SQL {
  * SQL: the User can see the private content of the Conversation that owns
  * the item. This is the rule of `conversationAccessFromRows`: the User is a
  * Participant of the owner when it has no parent, even with no stored root.
- * Otherwise the owner needs a valid stored root, whose Destination is public
- * or whose Participants include the User. With `privateSpaces`, a valid
- * root in a private Space is open to the Space's members, and only to them.
- * A To-do's check leaves it out (a Gap in `design/inbox.md`). Pass the
+ * Otherwise the owner needs a valid stored root that is public or whose
+ * Participants include the User. A Space's Lead is the root of every
+ * Conversation in it, so a private Space is open only to its members. Pass the
  * narrowest expression of the owner id that fits the item's subject kind,
  * since each owner check runs once per Conversation in the version reads.
  */
 function ownerConversationOpenTo(
   userId: string,
   ownerConversationId: SQL<string | null>,
-  options: { privateSpaces?: boolean } = {},
 ): SQL {
-  const openWithoutSpace = or(
+  const open = or(
     and(
       isNull(todoOwner.parentConversationId),
       participantOf(userId, todoOwner.conversationId),
@@ -186,55 +207,36 @@ function ownerConversationOpenTo(
         ),
       ),
     );
-  if (!options.privateSpaces) {
-    return exists(
-      query.where(
-        and(
-          eq(todoOwner.conversationId, ownerConversationId),
-          openWithoutSpace,
-        ),
-      ),
-    );
-  }
   return exists(
-    query
-      .leftJoin(
-        ownerSpace,
-        and(
-          eq(ownerSpace.id, todoRoot.spaceId),
-          eq(ownerSpace.visibility, "private"),
-        ),
-      )
-      .where(
-        and(
-          eq(todoOwner.conversationId, ownerConversationId),
-          or(
-            and(isNull(ownerSpace.id), openWithoutSpace),
-            // A private Space's members are the Participants of its Lead,
-            // the root of every Conversation in it.
-            and(
-              isNotNull(ownerSpace.id),
-              participantOf(userId, todoRoot.conversationId),
-            ),
-          ),
-        ),
-      ),
+    query.where(and(eq(todoOwner.conversationId, ownerConversationId), open)),
   );
 }
 
 /**
  * SQL: the Inbox item has this assigned User. A To-do's item counts only
  * while the User can see its Conversation's private content, so a person
- * who loses access to the Conversation no longer sees or acts on it.
+ * who loses access to the Conversation no longer sees or acts on it. The
+ * set has no outer reference, so Postgres reads it once and checks the
+ * owner of only the User's To-dos.
  */
 export function inboxItemAssignedTo(userId: string): SQL {
-  return and(
-    sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
-    or(
-      ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
-      ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
-    ),
-  )!;
+  const assigned = getDb()
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItemAssignees)
+    .innerJoin(
+      juniorInboxItems,
+      eq(juniorInboxItems.id, juniorInboxItemAssignees.itemId),
+    )
+    .where(
+      and(
+        eq(juniorInboxItemAssignees.userId, userId),
+        or(
+          ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
+          ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
+        ),
+      ),
+    );
+  return sql`${juniorInboxItems.id} = any(array(${assigned}))`;
 }
 
 /**
@@ -304,9 +306,7 @@ function inboxItemForEveryoneOfOwner(userId: string): SQL {
       eq(juniorInboxItems.assignedToEveryone, true),
       sql`not exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
     ),
-    ownerConversationOpenTo(userId, inboxItemOwnerConversationId(), {
-      privateSpaces: true,
-    }),
+    ownerConversationOpenTo(userId, inboxItemOwnerConversationId()),
   )!;
 }
 

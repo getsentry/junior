@@ -29,7 +29,7 @@
   "packages/junior/src/chat/inbox-items/prompt-input.ts": {
     "question-answer": ["tool_use_id"]
   },
-  "packages/junior/src/chat/services/conversation-memory.ts": {
+  "packages/junior/src/chat/slack/thread-context.ts": {
     "message": [
       "author_id",
       "author_name",

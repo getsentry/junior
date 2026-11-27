@@ -39,13 +39,18 @@ afterEach(async () => {
 });
 
 // Release shared runtime handles after each integration test file, including
-// failed suites. Other test layers can replace these modules.
+// failed suites. Other test layers can replace these modules. A file that
+// builds the app keeps its plugins until the file ends, so drop them too: the
+// next file in the same worker then starts with no plugins.
 afterAll(async () => {
   if (!isIntegrationTest()) return;
-  const [{ closeDb }, { disconnectStateAdapter }] = await Promise.all([
-    vi.importActual<typeof import("@/chat/db")>("@/chat/db"),
-    importStateAdapter(),
-  ]);
+  const [{ closeDb }, { disconnectStateAdapter }, { installAppContext }] =
+    await Promise.all([
+      vi.importActual<typeof import("@/chat/db")>("@/chat/db"),
+      importStateAdapter(),
+      vi.importActual<typeof import("@/app/context")>("@/app/context"),
+    ]);
+  installAppContext(undefined);
   await disconnectStateAdapter();
   await closeDb();
 });

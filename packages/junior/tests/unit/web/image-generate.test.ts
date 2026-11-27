@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/chat/pi/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/pi/client")>()),
   completeText: vi.fn(),
+}));
+
+vi.mock("@/chat/pi/gateway-models", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/gateway-models")>()),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
 

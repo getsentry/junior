@@ -1,23 +1,9 @@
 /**
- * Prepared-summary swap.
- *
- * A background job writes `compaction_prepared` with a summary of the history
- * up to `markSeq`. The Turn swaps it in without a model call: retained user
- * messages, the summary, then every message after the mark. A swap runs only
- * above the compaction threshold, at Turn start or between model calls, in
- * place of a blocking summary call. Below it, a swap would only rewrite the
- * provider's prompt cache. A summary that no longer matches the history is
- * discarded, and the Turn carries on as if none existed.
- *
- * An idle Conversation can swap a summary in below the threshold too
- * (`swapPreparedCompactionOnIdle`), when its cache is about to expire. Then
- * the swap rewrites no warm cache.
- *
- * A summary that is still running replaces the blocking summary too, for a
- * limited time from its request. Below the input limit, the Turn defers: the
- * next model call gets the full history, and a later check swaps the summary
- * in. At the input limit, the Turn polls for it. The time counts from the
- * durable request, so a yield or a new request does not reset it.
+ * Swap a background summary of history up to `markSeq` in place of a blocking
+ * summary call: retained user messages, the summary, then later messages. A
+ * stale summary is discarded. A running one stands in for a limited time from
+ * its durable request, so a yield does not reset it. Below the input limit the
+ * Turn defers, and at the limit it polls.
  */
 import { setTimeout as sleep } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
@@ -268,13 +254,10 @@ async function swapPreparedCompaction(
 }
 
 /**
- * Swap a ready prepared summary into the committed history of an idle
- * Conversation. The caller decides that the history is large enough, and
- * keeps a Run from starting until this returns. `shouldReplace` gets the
- * estimated size of the replacement and decides whether it commits.
- * `beforeReplace` runs right before the replacement commits, and throws when
- * the caller can no longer keep a Run out. A summary that is still running
- * is not awaited: the caller warms the cache instead.
+ * Swap a ready prepared summary into an idle Conversation's history. The
+ * caller decides the size and keeps Runs out until this returns, and
+ * `beforeReplace` throws once it can't. `shouldReplace` decides from the
+ * estimated size. A running summary is not awaited: the caller warms instead.
  */
 export async function swapPreparedCompactionOnIdle(args: {
   beforeReplace: () => Promise<void>;

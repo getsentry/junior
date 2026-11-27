@@ -1,3 +1,4 @@
+import { getChatConfig } from "@/chat/config";
 import {
   clearSandboxEgressSignals,
   consumeSandboxEgressAuthRequiredSignal,
@@ -10,7 +11,7 @@ const SANDBOX_EGRESS_TOKEN_HEADER = "x-junior-sandbox-egress-token";
 function isLoopbackDevelopmentRequest(request: Request): boolean {
   const hostname = new URL(request.url).hostname;
   return (
-    process.env["NODE_ENV"] === "development" &&
+    getChatConfig().development.enabled &&
     (hostname === "127.0.0.1" || hostname === "localhost")
   );
 }

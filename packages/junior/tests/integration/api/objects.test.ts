@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
   getConversationStore,
@@ -37,6 +36,7 @@ import { createPluginTaskQueueTestAdapter } from "../../fixtures/plugin-task-que
 import { linkSlackUser } from "../../fixtures/slack-user";
 import { queueSlackApiResponse } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
+import { patchConfig } from "../../fixtures/config";
 
 const DASHBOARD = "https://junior.example.com";
 const CONVERSATION_ID = "slack:CPRIVATE:1712345.0001";
@@ -66,16 +66,15 @@ async function recordPrivateConversation() {
 }
 
 describe("object links API", () => {
-  let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
-
   beforeEach(() => {
-    previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: DASHBOARD,
+    patchConfig({
+      dashboard: {
+        baseURL: DASHBOARD,
+      },
     });
   });
 
   afterEach(async () => {
-    setDashboardConversationLinkOptions(previousDashboard);
     vi.useRealTimers();
     await closeDb();
   });
@@ -183,7 +182,7 @@ describe("object links API", () => {
   it("resolves GitHub profile links to known people and GitHub accounts", async () => {
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     // App setup reads the dashboard URL from the environment.
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    patchConfig({ dashboard: { baseURL: DASHBOARD } });
     const alice = await linkSlackUser("alice@example.com", "UALICE");
     await upsertLinkedIdentity(getSqlExecutor(), alice.id, {
       handle: "alice_acme",
@@ -306,7 +305,7 @@ describe("object links API", () => {
     );
     try {
       await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      patchConfig({ dashboard: { baseURL: DASHBOARD } });
       await linkGitHubMember();
       const bob = await linkSlackUser("bob@example.com", "UBOB");
       await upsertLinkedIdentity(getSqlExecutor(), bob.id, {
@@ -493,9 +492,12 @@ describe("object links API", () => {
       title: "Move this issue",
     };
     let moved = false;
+    // The validators that each read of the moving issue sends.
+    const validators: Array<string | null> = [];
     mswServer.use(
-      http.get(`${GITHUB_API}/issues/14`, () => {
+      http.get(`${GITHUB_API}/issues/14`, ({ request }) => {
         reads.push("issues/14");
+        validators.push(request.headers.get("if-none-match"));
         return moved
           ? new HttpResponse(null, {
               headers: {
@@ -503,7 +505,7 @@ describe("object links API", () => {
               },
               status: 301,
             })
-          : HttpResponse.json(moving);
+          : HttpResponse.json(moving, { headers: { etag: '"issue-14"' } });
       }),
       // The moved issue, in a repository that the viewer can also see.
       http.get("https://api.github.com/repositories/2002/issues/9", () =>
@@ -543,7 +545,7 @@ describe("object links API", () => {
     try {
       const tasks = createPluginTaskQueueTestAdapter();
       const app = await createGitHubApp(tasks);
-      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      patchConfig({ dashboard: { baseURL: DASHBOARD } });
       await linkGitHubMember();
       const read = await viewerApi("alice@example.com");
       vi.useFakeTimers({ toFake: ["Date"] });
@@ -647,8 +649,10 @@ describe("object links API", () => {
         `${GITHUB_REPO}/pull/78`,
         `${GITHUB_REPO}/pull/90`,
       );
-      // Only the moved issue is read again.
+      // Only the moved issue is read again. Its webhook deleted the card,
+      // and the read asks GitHub with the saved response's ETag.
       expect(reads.slice(readsBefore)).toEqual(["issues/14"]);
+      expect(validators).toEqual([null, '"issue-14"']);
       expect(next.objects.get(`${GITHUB_REPO}/issues/12`)).toMatchObject({
         status: "closed",
       });

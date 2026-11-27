@@ -2,9 +2,20 @@ import type { PluginCache } from "@sentry/junior-plugin-api";
 import { createCache } from "@/chat/state/cache";
 import { getStateAdapter } from "@/chat/state/adapter";
 
-/** Create the cache scoped to one plugin. */
-export function createPluginCache(plugin: string): PluginCache {
-  const cache = () => createCache(getStateAdapter(), `plugin:${plugin}`);
+/**
+ * Create the cache scoped to one plugin. `onStale` gets the time that a
+ * `staleIfError` entry served after its TTL was stored.
+ */
+export function createPluginCache(
+  plugin: string,
+  onStale?: (storedAtMs: number) => void,
+): PluginCache {
+  const cache = () =>
+    createCache(
+      getStateAdapter(),
+      `plugin:${plugin}`,
+      onStale ? { onStale } : undefined,
+    );
   return {
     async get(key) {
       return await cache().get(key);

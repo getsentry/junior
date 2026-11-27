@@ -11,8 +11,8 @@ import {
 import { createTools } from "@/chat/tool-support/create-tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { createApp } from "@/app";
+import { useAppContext } from "../../fixtures/app-context";
 
 const rootTurnTools = turnBehavior({
   kind: "thread",
@@ -100,38 +100,39 @@ function ctx(
 
 describe("Slack tool registration", () => {
   beforeEach(() => {
-    setPlugins([]);
+    useAppContext();
   });
 
   afterEach(() => {
-    setPlugins([]);
     vi.restoreAllMocks();
   });
 
   it("lists only plugins that can verify or search identity accounts", () => {
-    setPlugins([
-      eventPlugin(),
-      defineJuniorPlugin({
-        manifest: {
-          name: "identity-test",
-          displayName: "Identity test",
-          description: "Verifies test accounts",
-        },
-        hooks: {
-          resolveOAuthAccount: () => ({ id: "account-1" }),
-        },
-      }),
-      defineJuniorPlugin({
-        manifest: {
-          name: "search-test",
-          displayName: "Search test",
-          description: "Searches test accounts",
-        },
-        hooks: {
-          searchUsers: () => [],
-        },
-      }),
-    ]);
+    useAppContext({
+      plugins: [
+        eventPlugin(),
+        defineJuniorPlugin({
+          manifest: {
+            name: "identity-test",
+            displayName: "Identity test",
+            description: "Verifies test accounts",
+          },
+          hooks: {
+            resolveOAuthAccount: () => ({ id: "account-1" }),
+          },
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "search-test",
+            displayName: "Search test",
+            description: "Searches test accounts",
+          },
+          hooks: {
+            searchUsers: () => [],
+          },
+        }),
+      ],
+    });
 
     const tools = createTools([], {}, ctx("D12345"));
     expect(tools["userLookup"]?.inputSchema).toMatchObject({
@@ -243,7 +244,7 @@ describe("Slack tool registration", () => {
   });
 
   it("registers the same tools for every Turn origin in a Slack Conversation", () => {
-    setPlugins([eventPlugin()]);
+    useAppContext({ plugins: [eventPlugin()] });
     const slackActor = {
       platform: "slack" as const,
       teamId: "T123",
@@ -417,7 +418,7 @@ describe("Slack tool registration", () => {
 
 describe("agent tool binding", () => {
   afterEach(async () => {
-    // Restore the default maxAgentDepth, 1.
+    // Restore the default maxAgentDepth, 2.
     await createApp();
   });
 
@@ -445,37 +446,20 @@ describe("agent tool binding", () => {
     };
   }
 
-  // A root always spawns. A Lead's child counts as a root. Any other child
-  // spawns only when maxAgentDepth is above 0, and it can always message its
-  // parent. A root's messageAgent rejects `parent` when it is called, as the
-  // root has no parent agent.
+  // A root always spawns. A child spawns only when maxAgentDepth is above 0,
+  // and it can always message its parent. A root's messageAgent rejects
+  // `parent` when it is called, as the root has no parent agent.
   it.each([
-    { agents: "children", maxAgentDepth: 0, topLevelWork: true, spawns: true },
-    {
-      agents: "children_and_parent",
-      maxAgentDepth: 0,
-      topLevelWork: false,
-      spawns: false,
-    },
-    {
-      agents: "children_and_parent",
-      maxAgentDepth: 0,
-      topLevelWork: true,
-      spawns: true,
-    },
-    {
-      agents: "children_and_parent",
-      maxAgentDepth: 1,
-      topLevelWork: false,
-      spawns: true,
-    },
+    { agents: "children", maxAgentDepth: 0, spawns: true },
+    { agents: "children_and_parent", maxAgentDepth: 0, spawns: false },
+    { agents: "children_and_parent", maxAgentDepth: 1, spawns: true },
   ] as const)(
-    "binds spawnAgent for $agents with maxAgentDepth $maxAgentDepth, top-level $topLevelWork: $spawns",
-    async ({ agents, maxAgentDepth, topLevelWork, spawns }) => {
+    "binds spawnAgent for $agents with maxAgentDepth $maxAgentDepth: $spawns",
+    async ({ agents, maxAgentDepth, spawns }) => {
       await createApp({ limits: { maxAgentDepth } });
       const { environment, messageAgent, run, spawnAgent } = agentRun();
 
-      expect(bindAgentTools(run, agents, topLevelWork)).toEqual(
+      expect(bindAgentTools(run, agents)).toEqual(
         spawns ? { spawnAgent, messageAgent } : { messageAgent },
       );
       expect(environment.bindMessageAgent).toHaveBeenCalledWith(run, agents);

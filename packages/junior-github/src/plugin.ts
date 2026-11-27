@@ -40,6 +40,7 @@ import {
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
+  loadGitHubObjectNames,
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
@@ -108,6 +109,12 @@ import {
   githubPullRequestActionSyncTask,
 } from "./webhooks/pull-request-action.js";
 import { githubSidebarAnnotations } from "./annotations.js";
+import {
+  GITHUB_ANNOTATION_NAMES_TASK,
+  githubAnnotationNamesTask,
+  startGitHubAnnotationNames,
+} from "./annotation-names.js";
+import { dismissGitHubItem } from "./inbox-dismiss.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
 import {
@@ -141,6 +148,7 @@ import {
   requireEnv,
   resolveUserAccount,
 } from "./credential-support.js";
+import { installationResponses } from "./installation-http-cache.js";
 
 // A failed check suite reports incidents that are open or ended in the last
 // hour. Older incidents rarely explain a suite that just finished.
@@ -233,6 +241,14 @@ export function githubPlugin(
     inboxSubjects: githubInboxSubjectKinds,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     tasks: {
+      [GITHUB_ANNOTATION_NAMES_TASK]: githubAnnotationNamesTask(
+        async () =>
+          await loadGitHubObjectNames({
+            appIdEnv,
+            installationIdEnv,
+            privateKeyEnv,
+          }),
+      ),
       [GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK]:
         githubPullRequestActionBackfillTask({
           botEmail: () => readEnv(botEmailEnv),
@@ -427,6 +443,13 @@ export function githubPlugin(
           },
         ];
       },
+      async inboxItemDismissed(ctx) {
+        await dismissGitHubItem(ctx, {
+          appIdEnv,
+          installationIdEnv,
+          privateKeyEnv,
+        });
+      },
       async inboxItemAnswered(ctx) {
         if (
           ctx.subject.kind !== GITHUB_INBOX_SUBJECTS.mergeConflict ||
@@ -501,8 +524,8 @@ export function githubPlugin(
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({
-          annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
+          cache: ctx.cache,
           codeChanges: ctx.codeChanges,
           conversationChanges: ctx.conversationChanges,
           db,
@@ -514,6 +537,8 @@ export function githubPlugin(
           log: ctx.log,
           nowMs: ctx.nowMs,
           inboxItems: ctx.inboxItems,
+          objectChanged: async (subject) =>
+            await ctx.annotations.objectChanged(subject),
           state: ctx.state,
         });
         await startGitHubRepositoryNameRepair({
@@ -521,6 +546,10 @@ export function githubPlugin(
           tasks: ctx.tasks,
         });
         await startGitHubPullRequestRequesterBackfill({
+          state: ctx.state,
+          tasks: ctx.tasks,
+        });
+        await startGitHubAnnotationNames({
           state: ctx.state,
           tasks: ctx.tasks,
         });
@@ -540,7 +569,9 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
-          responses: ctx.state,
+          responses: installationResponses(ctx.httpCache, () =>
+            readEnv(installationIdEnv),
+          ),
           tokens: new Map(),
         };
         return [
@@ -593,6 +624,7 @@ export function githubPlugin(
             privateKeyEnv,
             events: ctx.events,
             inboxItems: ctx.inboxItems,
+            responses: installationEnv.responses,
             state: ctx.state,
             tasks: ctx.tasks,
             tokens: installationEnv.tokens,

@@ -251,22 +251,10 @@ function TextField(props: {
 }
 
 /**
- * Render the answer controls of an action item request. A question with one
- * short choice field shows one button per choice: a click picks it, and Send
- * answers with the pick and the additional notes. Notes alone answer in the
- * reader's own words. With `custom`, each choice question also takes the
- * reader's own answer, its Other choice. Choices with descriptions stack
- * as rows, so each description stays with its choice. A plugin action that
- * reads no words, or one choice, such as Resume, has no notes: a click is
- * the answer. Other requests show a form with every field and the notes.
- * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
- * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
- * the form has picks or text that the reader has not sent. `draft` fills the
- * form once, when it mounts. Without it, the form starts from the answers
- * saved by `requestId` (the Inbox item id) as the reader made them, so it
- * shows them again after it unmounts or the page reloads. Restored answers
- * are still unsent. They clear when the item closes, which a sent answer
- * does.
+ * Render the answer controls of an action item request: one button per
+ * choice for a single short choice field, otherwise every field, then the
+ * additional notes. `custom` adds Other to each choice question. `draft`, or
+ * else the unsent answers saved by `requestId`, fills the form on mount.
  */
 export function UserInputForm(props: {
   /** Each choice question takes the reader's own answer too. */

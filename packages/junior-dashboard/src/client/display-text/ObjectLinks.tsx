@@ -13,9 +13,9 @@ import {
 import { HoverPreview } from "../components/ui/hover-preview";
 import { ObjectCard } from "../conversations/ObjectCard";
 import {
-  SavedObjectsContext,
-  savedObjectsFromAnnotations,
-} from "../conversations/savedObjects";
+  ObjectPreviewsContext,
+  objectPreviewsFromAnnotations,
+} from "../conversations/objectPreviews";
 import {
   knownObjectsFromAnnotations,
   objectUrlKey,
@@ -29,11 +29,7 @@ import { PersonInline, PersonReference } from "../components/PersonReference";
 // scrolls in its body.
 const RESERVED_PREVIEW_HEIGHT_CLASS = "h-[min(22rem,var(--available-height))]";
 
-const KnownObjectsContext = createContext<{
-  // The URL keys whose Annotation saves only the link, such as an Attach.
-  links: ReadonlySet<string>;
-  objects: KnownObjects;
-}>({ links: new Set(), objects: new Map() });
+const KnownObjectsContext = createContext<KnownObjects>(new Map());
 
 /**
  * Let display text show the saved object of each link that points to an
@@ -49,52 +45,35 @@ export function KnownObjectsProvider(props: {
   children: ReactNode;
 }) {
   const value = useMemo(() => {
-    // The first Annotation for a URL wins, as in `knownObjectsFromAnnotations`.
-    const kinds = new Map<string, string>();
-    for (const annotation of props.annotations ?? []) {
-      const key = annotation.url ? objectUrlKey(annotation.url) : undefined;
-      if (key && !kinds.has(key)) kinds.set(key, annotation.kind);
-    }
     const objects = new Map(knownObjectsFromAnnotations(props.annotations));
     for (const card of props.cards ?? []) {
       const key = card.url ? objectUrlKey(card.url) : undefined;
       if (key && !objects.has(key)) objects.set(key, card);
     }
-    const links = new Set(
-      [...kinds].flatMap(([key, kind]) =>
-        kind === "resource_link" ? [key] : [],
-      ),
-    );
-    return { links, objects };
+    return objects;
   }, [props.annotations, props.cards]);
-  const saved = useMemo(
-    () => savedObjectsFromAnnotations(props.annotations),
+  const previews = useMemo(
+    () => objectPreviewsFromAnnotations(props.annotations),
     [props.annotations],
   );
   return (
     <KnownObjectsContext.Provider value={value}>
-      <SavedObjectsContext.Provider value={saved}>
+      <ObjectPreviewsContext.Provider value={previews}>
         {props.children}
-      </SavedObjectsContext.Provider>
+      </ObjectPreviewsContext.Provider>
     </KnownObjectsContext.Provider>
   );
 }
 
 /**
  * Return the saved object that a link points to, when one is known.
- * `linkOnly` is true when the Annotation saves only the link, such as an
- * Attach.
  */
 export function useKnownObject(href: string | undefined): {
   card: OwnedObjectAnnotation | undefined;
-  linkOnly: boolean;
 } {
-  const { links, objects } = useContext(KnownObjectsContext);
+  const objects = useContext(KnownObjectsContext);
   const key = href ? objectUrlKey(href) : undefined;
-  return {
-    card: key ? objects.get(key) : undefined,
-    linkOnly: key ? links.has(key) : false,
-  };
+  return { card: key ? objects.get(key) : undefined };
 }
 
 // A long title would fill a sentence. The card shows all of it.
@@ -146,7 +125,6 @@ export function ObjectLinkPreview(props: {
   children: ReactNode;
   className: string;
   href: string;
-  live?: boolean | undefined;
   reserveHeight?: boolean | undefined;
 }) {
   return (
@@ -160,7 +138,6 @@ export function ObjectLinkPreview(props: {
           card={props.card}
           className="my-0 rounded-none border-0"
           fill={props.reserveHeight}
-          live={props.live}
         />
       }
       // Running text links carry no outbound icon, so a paragraph of links
@@ -179,7 +156,6 @@ export function ObjectLinkPreview(props: {
 export function ObjectTitleLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
-  live?: boolean;
   reserveHeight?: boolean;
 }) {
   const className = useAnchorClass();
@@ -188,7 +164,6 @@ export function ObjectTitleLink(props: {
       card={props.card}
       className={className}
       href={props.href}
-      live={props.live}
       reserveHeight={props.reserveHeight}
     >
       {objectLinkText(props.card)}
@@ -204,7 +179,6 @@ export function ObjectTitleLink(props: {
 export function ObjectThumbnailLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
-  live?: boolean;
   src: string;
 }) {
   const [failed, setFailed] = useState(false);
@@ -214,7 +188,6 @@ export function ObjectThumbnailLink(props: {
       card={props.card}
       className="block w-fit max-w-full rounded-md focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       href={props.href}
-      live={props.live}
     >
       <img
         alt={props.card.title}
@@ -235,7 +208,6 @@ export function ObjectThumbnailLink(props: {
 export function PersonLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
-  live?: boolean;
   reserveHeight?: boolean;
 }) {
   const { card } = props;
@@ -262,7 +234,6 @@ export function PersonLink(props: {
         card={card}
         className={className}
         href={props.href}
-        live={props.live}
         reserveHeight={props.reserveHeight}
       >
         @{card.label}

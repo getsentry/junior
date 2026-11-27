@@ -98,7 +98,7 @@ async function resolveSearchFilters(input: {
 
 export const searchConversationMessagesToolDefinition = zodToolDefinition({
   description:
-    "Search retained user and assistant messages from public Slack conversations. Filter by message text, channel, time range, or linked annotation such as a resource key. Excludes the current conversation. Not live Slack workspace search.",
+    "Search retained user and assistant messages from public Slack conversations. Filter by message text, channel, time range, or linked resource. Excludes the current conversation. Not live Slack workspace search.",
   exposure: "deferred",
   source: CONVERSATIONS_TOOL_SOURCE,
   annotations: {
@@ -122,7 +122,7 @@ export const searchConversationMessagesToolDefinition = zodToolDefinition({
         .max(256)
         .nullable()
         .describe(
-          "Linked resource key. Matches that key, or nested children that continue with #.",
+          "Linked resource, by its reference such as owner/repo#123 or by its link. owner/repo matches each resource of the repository.",
         )
         .optional(),
       before: z

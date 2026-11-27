@@ -43,12 +43,10 @@ import {
 const ASKED_NEXT_STEP = `The questions were sent. There is no answer yet. The answer arrives in a later Turn as a \`<question-answer>\` with the id of this call; a dismiss comes as a note. Do not guess the answer. If your next step needs it, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Otherwise, finish the work that does not need it, then end the Turn.`;
 
 /**
- * Pick the assignees of a new item when the agent names none: the User of
- * the Actor, or else the creator of the Automation of this run. A Turn with
- * a system Actor, such as an event Turn, or an app Actor falls back to the
- * active Participants of the Conversation, except the app. A Slack Actor
- * without a Junior User gets an item with no assignees, so that the agent can
- * still ask; any person in the thread can then answer it on its card.
+ * Pick the assignees when the agent names none: the Actor's User, else the
+ * Automation's creator, else the Conversation's active Participants. A Slack
+ * Actor without a Junior User gets no assignees, so the agent can still ask
+ * and any person in the thread can answer on the card.
  */
 async function defaultAssignees(
   scope: InboxItemAgentScope,

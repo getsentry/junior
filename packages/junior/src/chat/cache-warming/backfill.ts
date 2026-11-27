@@ -1,26 +1,9 @@
 /**
- * Fill of the empty cache warming gap lists from stored Conversation
- * history, about once a month.
- *
- * `warmup.ts` learns reply gaps only from idle periods after it is deployed.
- * Until a `gapSegment` has gaps, Junior sends no warmups for it. This replays
- * the stored model calls of the last `GLOBAL_GAPS_TTL_MS` with the same rules
- * as live recording, so warming can start soon after the first deploy.
- *
- * The heartbeat runs it. Only one run claims it, and a completed run marks
- * the install as done, also when it stopped on its time budget or skipped a
- * batch that the statement timeout canceled. It fills only segment lists
- * that are empty when it starts, so it does not add history to gaps that
- * live recording already has.
- *
- * History does not tell the plugin work state or the archive state that a
- * Conversation had when an idle period started. So it fills only the
- * segments of Conversations that are not archived and have work state
- * `none`, which most Conversations have. The `open` and `done` segments and
- * the `archived:*` segments stay empty until live gaps arrive. Until then,
- * `decideWarmup` leans on their `parentGapSegment`, a `none` segment that
- * this fills. Each idle period still records its gap, so the segment fills
- * from live idle periods.
+ * Fill of the empty cache warming gap lists from stored history, so warming
+ * starts soon after the first deploy. It fills only lists that are empty at
+ * its start. History lacks the work and archive state of an idle period, so
+ * it fills only unarchived `none` segments. The others fill live, and until
+ * then `decideWarmup` uses their `parentGapSegment`.
  */
 import { performance } from "node:perf_hooks";
 import {
@@ -66,9 +49,7 @@ import {
 } from "./warmup";
 
 // The key names the segment format. A change of the `gapSegment` keys must
-// change it, so that the fill runs again for the new segment lists. `v2`
-// replaces a key whose `done` had no TTL. Existing installs run the backfill
-// once more after deploy, and that run fills only segments that are empty.
+// change it, so that the fill runs again for the new segment lists.
 const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
 // A run that fails or is stopped before it marks the install as done holds
 // the claim for this long. Then a later heartbeat tries again.
@@ -90,12 +71,11 @@ const QUERY_CANCELED = "57014";
  * most of its function time for the writes and the other heartbeat work.
  */
 export const BACKFILL_BUDGET_MS = 60_000;
-// State lists have no atomic replace, so live recording can append to a
-// segment list while the backfill writes it. Each append over
-// `GLOBAL_GAPS_MAX` drops the oldest entry. The backfill writes at most half
-// the list, so live gaps are dropped only if more than half a list of them
-// arrives during the write. The model reads the list as a histogram, so mixed
-// order does not matter.
+// State lists have no atomic replace, so live recording can append while the
+// backfill writes, and each append over `GLOBAL_GAPS_MAX` drops the oldest.
+// Writing at most half the list drops live gaps only if more than half a
+// list arrives during the write. The model reads a histogram, so order does
+// not matter.
 const BACKFILL_GAPS_MAX = GLOBAL_GAPS_MAX / 2;
 // Each segment that the backfill fills. `gapSegment` puts 3 or more ended
 // Turns in one group.
@@ -229,8 +209,8 @@ export async function countHistoryConversations(
   return row?.count ?? 0;
 }
 
-// Each warmup call appends a `cache_warmup` cost event to its Conversation
-// (`core-model.ts`), also a warmup that missed.
+// Each warmup call appends a `cache_warmup` cost event to its Conversation,
+// also a warmup that missed.
 const isWarmupEvent = and(
   eq(juniorConversationEvents.type, "structured_event"),
   sql`${juniorConversationEvents.payload}->>'namespace' = ${JUNIOR_NATIVE_EVENT_NAMESPACE}`,
@@ -401,16 +381,11 @@ async function loadChildAgents(
 }
 
 /**
- * Replay the model calls of one Conversation the way the recorders in
- * `warmup.ts` and `tool-wait.ts` see them, and return each idle period and
- * tool wait. An idle period starts at a call that ends the Turn: a `stop`
- * call or an answer tool call that succeeded. A tool wait starts at any
- * other `toolUse` call, so no pair of calls is in both.
- *
- * Live recording measures from the start of the request that ended a Turn to
- * the start of the next recorded request. Here both times are the
- * `timestamp` of the stored assistant message, which Pi sets when it starts
- * the request. That is the closest stored time to the recorder's clock.
+ * Replay the model calls of one Conversation as the live recorders see them,
+ * and return each idle period and tool wait. An idle period starts at a call
+ * that ends the Turn, and a tool wait at any other `toolUse` call. Both times
+ * are the stored assistant message `timestamp`, which Pi sets when the
+ * request starts: the closest stored time to the recorder's clock.
  */
 function replayConversation(
   conversation: { kind: ConversationKind; hasParent: boolean },
@@ -728,13 +703,11 @@ function gapsBySegment(
 }
 
 /**
- * Fill each empty cache warming gap list from the stored Conversation
- * history. The heartbeat calls it each minute. After a run completes, a call
- * makes one state request and returns, until the completed run expires.
- *
- * A run that uses its scan budget writes the gaps that it has and also
- * completes. Some gaps are better than none, and a run that cannot finish
- * would otherwise try again each hour.
+ * Fill each empty cache warming gap list from stored history. The heartbeat
+ * calls it each minute; after a run completes, a call makes one state
+ * request until the completed run expires. A run that uses its budget writes
+ * what it has and completes, because a run that cannot finish would
+ * otherwise retry each hour.
  */
 export async function backfillCacheWarmingGaps(args: {
   nowMs: number;

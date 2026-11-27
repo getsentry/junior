@@ -23,6 +23,12 @@ import {
 import { INBOX_SUBJECT_KINDS, subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
+import {
+  hasAssigneeRoles,
+  dismissPluginInboxItem,
+  leavePluginInboxItem,
+  takeOverPluginClose,
+} from "./plugin-dismiss";
 import { matchReplyToInboxItems } from "./reply-match";
 import { closeHandledReplyNotices } from "./reply-notice";
 import {
@@ -126,19 +132,10 @@ function submittedAnswer(
 }
 
 /**
- * Do one person action on an Inbox item and tell its linked Conversations.
- * The first submit or dismiss closes the item for every
- * assignee. A retry of the same close sends any missing messages again and
- * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
- * only the call that closes the item succeeds, and every other call gets a
- * conflict. Use it when the caller adds its own input for the action, such
- * as a card click in a chat thread, so one action adds one Turn.
- * `exceptConversationId` is the Conversation where the person acted. It gets
- * the person's input from its own surface, so it gets no message here.
- * `delivery` shows the change and sends the messages; see
- * `deliverInboxItemChange`. A submit, dismiss, or done also closes the
- * person's reply notices in the item's Conversations: the item had their
- * attention.
+ * Do one person action on an Inbox item and tell its linked Conversations. A
+ * retry of the same close resends missing messages and succeeds. With
+ * `firstCloseOnly`, only the closing call succeeds, so a card click adds one
+ * Turn. `exceptConversationId`, where the person acted, gets no message.
  */
 export async function actOnInboxItem(args: {
   action: InboxItemAction;
@@ -187,6 +184,14 @@ export async function actOnInboxItem(args: {
         "Only an assignee can take this item.",
       );
     }
+    // The roles on the object are the assignees, and a take cannot change
+    // them on the provider.
+    if (hasAssigneeRoles(item)) {
+      throw new InboxItemActionError(
+        "invalid",
+        "Roles on the object set who is on this item.",
+      );
+    }
     // A retry after a failed send finds the User already the only assignee.
     // It still sends: each take message has a key, so only missing ones go.
     if (
@@ -208,7 +213,27 @@ export async function actOnInboxItem(args: {
 
   let closed = item;
   let closedNow = false;
-  if (item.status === "open") {
+  if (
+    action === "dismiss" &&
+    item.status === "open" &&
+    hasAssigneeRoles(item)
+  ) {
+    const left = await leavePluginItemOnDismiss(item, user, nowMs);
+    if (left === "closed") {
+      // The dismiss took over the close that its removal caused.
+      closedNow = true;
+      closed = await readInboxItemForUser(user, item.id);
+    } else if (left !== "close") {
+      await deliverInboxItemChange({
+        delivery: args.delivery,
+        item: left,
+        nowMs,
+      });
+      return left;
+    }
+  }
+
+  if (!closedNow && item.status === "open") {
     // Anyone who can see a public question can answer it. Dismiss keeps the
     // assignee rule (`canAnswerInboxItem`).
     const allowed =
@@ -268,6 +293,59 @@ export async function actOnInboxItem(args: {
     nowMs,
   });
   return closed;
+}
+
+/**
+ * Dismiss an `assigneeRoles` item for one assignee: the plugin removes them
+ * on its provider first, and a refusal fails the dismiss. Return the item
+ * when others stay, `close` when they were the only one, and `closed` when
+ * the provider's webhook closed it first and this dismiss took that over.
+ */
+async function leavePluginItemOnDismiss(
+  item: InboxItem,
+  user: User,
+  nowMs: number,
+): Promise<InboxItem | "close" | "closed"> {
+  if (!canActOnInboxItem(item, user.id)) {
+    throw new InboxItemActionError(
+      "forbidden",
+      "Only an assignee can act on this item.",
+    );
+  }
+  try {
+    await dismissPluginInboxItem({ item, nowMs, user });
+  } catch (error) {
+    logWarn("inbox_item.plugin_dismiss.failed", {
+      "app.inbox_item.id": item.id,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    throw new InboxItemActionError(
+      "conflict",
+      "The provider did not remove you, so you stay on this item. Try again.",
+    );
+  }
+  const outcome = await leavePluginInboxItem({ item, nowMs, userId: user.id });
+  if (outcome === "closed") {
+    // The provider's webhook for this removal can close the item first,
+    // when it left nobody on it. That close is this dismiss.
+    const taken = await takeOverPluginClose({
+      item,
+      nowMs: Date.now(),
+      sinceMs: nowMs,
+      userId: user.id,
+    });
+    if (taken) return "closed";
+    throw new InboxItemActionError("conflict", "Inbox item is closed.");
+  }
+  if (outcome === "last") return "close";
+  // Their role may have been their only way to see the item, and they just
+  // left it, so this read does not check their access again.
+  const left = await getInboxItem(getDb(), item.id);
+  if (!left) {
+    throw new InboxItemActionError("not_found", "Inbox item not found.");
+  }
+  return left;
 }
 
 /**
@@ -339,31 +417,11 @@ function messageAnswer(
 }
 
 /**
- * Close the open action items that a person answered with a reply in their
- * thread. Call it after the reply is saved to the Conversation, so the
- * reply always reaches the agent. Each item that it closes saves `text` as
- * its answer, so the item keeps what the person said.
- *
- * A reply closes an item only when all of these are true:
- * - The item is an open `action` item.
- * - The agent added it in this Conversation, its owner.
- * - The replier is an assigned User. A Slack replier without a Junior User
- *   closes no item.
- * - The decision model says that the reply answers this item
- *   (`matchReplyToInboxItems`). Other open items in the thread stay open.
- *   When the decision fails, all items stay open.
- *
- * Items for Everyone (`isInboxItemForEveryone`, also an item with no
- * assignees), or only for other people, stay open. They need an answer on
- * the card or the Inbox. Each item closes as `done` with
- * `INBOX_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
- * is the answer in this Conversation, so only the other linked
- * Conversations get a message. A click that closes the item first wins.
- * A retry of the reply, or a later reply from the same person, delivers
- * the items that it closed again: the cards show the close, and only the
- * missing messages go. Each message has a key, so a message that was sent
- * does not go again. `delivery` shows the change and sends the messages;
- * see `deliverInboxItemChange`.
+ * Close the open action items that a person's thread reply answered, saving
+ * `text` as each answer, after the reply is saved so it reaches the agent. An
+ * item closes only if the agent added it here, the replier is an assigned User,
+ * and the decision model matches it. A failed decision closes none, and a click
+ * that closes first wins. Only other linked Conversations get a keyed message.
  */
 export async function closeInboxItemsAnsweredByReply(args: {
   /**

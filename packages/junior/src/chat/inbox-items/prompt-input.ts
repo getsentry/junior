@@ -1,13 +1,8 @@
 /**
- * Prompt inputs for person answers to questions. An answer is its own
- * prompt content part, tied to the `askUserQuestion` call that asked it, as
- * Claude Code ties a background task's notification to its tool call.
- * The runtime builds it from the stored change record and the item, so the
- * model never reads status prose. A question that `askUserQuestion` asked
- * reads like Claude Code's AskUserQuestion result: each question with its
- * answer, then a nudge to go on. An older item with one shared question
- * repeats it, then one line for each answered field. `input-tags.ts` lists
- * the input tags.
+ * Prompt inputs for person answers to questions. Each answer is its own
+ * prompt part, tied to the `askUserQuestion` call that asked it, and reads
+ * like Claude Code's AskUserQuestion result. The runtime builds it from the
+ * stored change record and the item, so the model never reads status prose.
  */
 import { mapBounded } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";

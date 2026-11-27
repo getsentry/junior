@@ -140,6 +140,13 @@ export interface PluginMcpConfig {
   oauthClient?: PluginMcpOAuthClientConfig;
   transport: "http";
   url: string;
+  /**
+   * Provider tools that link cards and their images may call as the viewer
+   * (`viewerMcp`). Omit for none. Each must be loaded: listed in
+   * `allowedTools` or `wrappedTools`, or any tool when `allowedTools` is
+   * unset. The provider must also mark each call read-only.
+   */
+  viewerTools?: string[];
   /** Provider tools hidden from the model and callable only by plugin-owned wrapper tools. */
   wrappedTools?: string[];
 }

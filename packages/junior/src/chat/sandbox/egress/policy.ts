@@ -5,7 +5,7 @@ import {
 } from "@/chat/sandbox/egress/tracing";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginManifest } from "@/chat/plugins/types";
 import type { SandboxNetworkPolicy } from "@/chat/sandbox/workspace";
 
@@ -36,8 +36,8 @@ function manifestDomains(manifest: PluginManifest): string[] {
 }
 
 function providerEntries(): Array<{ provider: string; domains: string[] }> {
-  return pluginCatalogRuntime
-    .getProviders()
+  return getAppContext()
+    .catalog.getProviders()
     .map((plugin) => ({
       provider: plugin.manifest.name,
       domains: manifestDomains(plugin.manifest),
@@ -119,8 +119,8 @@ export async function resolveSandboxCommandEnvironment(): Promise<
   Record<string, string>
 > {
   const env: Record<string, string> = {};
-  for (const plugin of pluginCatalogRuntime
-    .getProviders()
+  for (const plugin of getAppContext()
+    .catalog.getProviders()
     .sort((left, right) =>
       left.manifest.name.localeCompare(right.manifest.name),
     )) {

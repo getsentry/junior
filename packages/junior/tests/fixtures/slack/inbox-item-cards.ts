@@ -7,7 +7,7 @@ import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { closeDb, getConversationStore } from "@/chat/db";
-import { setTrustConfig } from "@/chat/identities/trust";
+import { patchConfig } from "../config";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
@@ -168,11 +168,10 @@ export function setUpInboxItemCards(): void {
   resetSlackApiMockState();
 }
 
-/** Restore the env, trust config, state, and database after each test. */
+/** Restore the env, state, and database after each test. */
 export async function tearDownInboxItemCards(): Promise<void> {
   process.env = { ...ORIGINAL_ENV };
   resetSlackApiMockState();
-  setTrustConfig({ allowedBotUserIds: [], allowedDomains: [] });
   await disconnectStateAdapter();
   await closeDb();
 }
@@ -185,9 +184,11 @@ export function inboxItemCardHarness(
   options: { allowedDomains?: string[] } = {},
 ) {
   // Slack ingress reads the allowed domains that `createApp` applies.
-  setTrustConfig({
-    allowedBotUserIds: [],
-    allowedDomains: options.allowedDomains ?? [],
+  patchConfig({
+    trust: {
+      allowedBotUserIds: [],
+      allowedDomains: options.allowedDomains ?? [],
+    },
   });
   const state = getStateAdapter();
   const queue = createConversationWorkQueueTestAdapter();

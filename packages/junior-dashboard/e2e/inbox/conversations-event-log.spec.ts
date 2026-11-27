@@ -673,8 +673,6 @@ test.describe("new UI", () => {
     expect(await mounted.count()).toBeLessThan(80);
     await details.getByRole("button", { name: "Close event details" }).click();
     await expect(details).toBeHidden();
-    // Move the pointer off the toolbar, so no tooltip covers the capture.
-    await entry(1000).hover();
     await screenshot(page, "conversation-event-log-virtual");
 
     // ⌘K reads every loaded event, not only the mounted rows.

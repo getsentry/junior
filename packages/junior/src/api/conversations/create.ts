@@ -91,7 +91,7 @@ export async function requireWebMessageConversation(
   if (!canAddConversationMessages(access.get(conversationId))) {
     throwApiError(
       403,
-      "Only participants can add messages to a private conversation.",
+      "Only participants can add messages. Join the conversation first.",
     );
   }
   return conversationId;

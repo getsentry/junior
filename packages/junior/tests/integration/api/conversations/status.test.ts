@@ -403,8 +403,8 @@ describe("conversation status", () => {
     await recordStarterMessage(dashboard);
     await expect(fixture.status(dashboard)).resolves.toBe("done");
 
-    // A Slack thread that moves into the Space still delivers to Slack, so
-    // an answer that Slack accepted is read.
+    // A Slack thread that moves into the Space drops its Location, so only
+    // the starter's read of an answer counts, as for any child.
     const slack = await recordSlackRoot(
       fixture.conversationStore,
       "1700000000.000270",
@@ -413,7 +413,7 @@ describe("conversation status", () => {
       undefined,
     );
     await recordAnswer(slack, 1, Date.now(), "slack");
-    await expect(fixture.status(slack)).resolves.toBe("done");
+    await expect(fixture.status(slack)).resolves.toBe("needs_input");
   });
 
   it("does not wait on a read when the root has no starter", async () => {

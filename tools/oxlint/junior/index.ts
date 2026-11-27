@@ -3,6 +3,7 @@ import { definePlugin } from "@oxlint/plugins";
 import { boundedFanOutRule } from "./rules/bounded-fan-out.ts";
 import { githubGraphqlSchemaRule } from "./rules/github-graphql-schema.ts";
 import { noHandBuiltPromptTagsRule } from "./rules/no-hand-built-prompt-tags.ts";
+import { noOrInArraySubqueriesRule } from "./rules/no-or-in-array-subqueries.ts";
 import { noPromptTagMatchingRule } from "./rules/no-prompt-tag-matching.ts";
 import { noPromptTextEscapesRule } from "./rules/no-prompt-text-escapes.ts";
 import { noRawSqlQueriesRule } from "./rules/no-raw-sql-queries.ts";
@@ -27,6 +28,7 @@ const juniorPlugin = definePlugin({
     "bounded-fan-out": boundedFanOutRule,
     "github-graphql-schema": githubGraphqlSchemaRule,
     "no-hand-built-prompt-tags": noHandBuiltPromptTagsRule,
+    "no-or-in-array-subqueries": noOrInArraySubqueriesRule,
     "no-prompt-tag-matching": noPromptTagMatchingRule,
     "no-prompt-text-escapes": noPromptTextEscapesRule,
     "no-raw-sql-queries": noRawSqlQueriesRule,

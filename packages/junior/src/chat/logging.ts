@@ -1,33 +1,8 @@
 /**
- * Structured logging for Junior runtime events.
- *
- * Application code should call `logInfo`, `logWarn`, `logError`, or
- * `logException` with a stable dot-namespaced event name and only attributes
- * specific to that occurrence:
- *
- * `logWarn("agent.turn.empty_output.exhausted", {
- *   "app.ai.empty_output.attempt": 1,
- * })`
- *
- * Event names describe the semantic domain, operation, and outcome. They are
- * lowercase, use dots for namespaces, use snake case within a namespace
- * component, and never contain identifiers or other occurrence-specific data.
- * Use singular domain and operation nouns unless one event represents a real
- * collection. End completed events with a past participle such as `completed`,
- * `failed`, or `skipped`; reserve present participles such as `retrying` for
- * work currently underway, and adjectives such as `busy` for observed states.
- *
- * Correlation context is implicit. Bind authoritative request, conversation,
- * actor, destination, and run context once with `withContext`,
- * `withLogContext`, or `withSpan`; nested logs inherit it through
- * AsyncLocalStorage, and active trace/span IDs are attached during emission.
- * Durable boundaries such as queues and callbacks must still carry and
- * reconstruct their context explicitly before binding it.
- *
- * Internal event calls do not provide a human-readable body. Export adapters
- * derive any required display message from the event name. Free-form messages
- * received from libraries or plugins belong in safe attributes at the adapter
- * boundary.
+ * Structured logging for Junior runtime events: a stable event name plus the
+ * attributes of one occurrence. `policies/observability.md` owns the naming
+ * and emission rules. Bind context once with `withContext`, `withLogContext`,
+ * or `withSpan`; durable boundaries must carry it explicitly.
  */
 import path from "node:path";
 import { styleText } from "node:util";
@@ -57,7 +32,6 @@ import {
 } from "@/chat/log-context";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import * as Sentry from "@/chat/sentry";
-import { formatSentryEventReference } from "@/chat/sentry-links";
 import {
   captureException as captureSentryException,
   captureMessage,
@@ -1346,7 +1320,7 @@ function createChatSdkLoggerImpl(
   };
 }
 
-/** Create a Chat SDK logger that routes records through Junior's logging backend. */
+/** Create a Chat SDK logger that writes through Junior's logging. */
 export function createChatSdkLogger(): ChatSdkLogger {
   return createChatSdkLoggerImpl(["chat-sdk"], resolveChatSdkLogLevel());
 }
@@ -1369,7 +1343,7 @@ export function getLogContextAttributes(): LogAttributes {
   return getBoundLogAttributes();
 }
 
-/** Return inherited log context filtered to attributes valid for the span operation. */
+/** Inherited log context, limited to attributes valid for the span op. */
 export function getLogContextAttributesForSpan(op: string): LogAttributes {
   const attributes = { ...getLogContextAttributes() };
   delete attributes["gen_ai.request.model"];
@@ -1598,7 +1572,7 @@ export function logException<const N extends string>(
   return log.exception(eventName, normalizedError, attributes);
 }
 
-/** Run an optional side effect without changing the successful primary outcome. */
+/** Run an optional side effect without changing the primary outcome. */
 export async function runBestEffort<const N extends string>(
   operation: () => Promise<void>,
   eventName: LogEventName<N>,
@@ -1731,11 +1705,6 @@ export function getActiveTraceId(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-/** Build the static user-facing response for a failed turn. */
-export function buildTurnFailureResponse(eventId: string): string {
-  return `I ran into an internal error while processing that. Reference: ${formatSentryEventReference(eventId)}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1897,7 +1866,7 @@ function readPiUsage(source: unknown): AgentTurnUsage {
   if (!record) {
     return {};
   }
-  // Accept either a pi-ai AssistantMessage (has `.usage`) or a bare Usage record.
+  // Accept a pi-ai AssistantMessage (with `.usage`) or a bare Usage record.
   const usage = asRecord(record["usage"]) ?? record;
   const summary: AgentTurnUsage = {};
   for (const [piKey, ourKey] of PI_USAGE_FIELDS) {

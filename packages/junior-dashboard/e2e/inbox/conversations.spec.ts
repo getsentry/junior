@@ -306,8 +306,9 @@ test.describe("new UI", () => {
       }
     });
     const repeated = () => asked.filter((url, at) => asked.indexOf(url) !== at);
-    // A pull request of a row below the fold.
-    const below = "https://github.com/getsentry/relay/pull/3396";
+    // A link in the text of a row below the fold. The server reads the
+    // cards of a row's Annotations, so only text links come here.
+    const below = "https://code.example.com/acme/checkout/pull/5378";
     const firstRead = page.waitForResponse(
       (response) => new URL(response.url()).pathname === "/api/objects",
     );
@@ -711,9 +712,6 @@ test.describe("new UI", () => {
     ).toBeVisible();
     await screenshot(page, "conversation-child-agent-drawer");
     await expect(
-      drawer.getByText(childConversationId, { exact: true }),
-    ).toBeVisible();
-    await expect(
       drawer.getByRole("link", { name: "Open conversation" }),
     ).toHaveAttribute(
       "href",
@@ -743,23 +741,16 @@ test.describe("new UI", () => {
     expect(await readClipboard(page)).toBe(
       "Review complete; no blocking issues found.",
     );
+    await reply.getByRole("button", { name: "Copy link to message" }).click();
+    expect(await readClipboard(page)).toBe(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:output`)}`,
+    );
 
-    // Its input copies too, and links to itself. Only replies take a rating.
-    const input = drawer
-      .getByRole("article")
-      .filter({ hasText: "Review the dashboard plan before editing." });
-    await input.hover();
-    await expect(input.getByRole("button", { name: "Good reply" })).toHaveCount(
-      0,
-    );
-    await input.getByRole("button", { name: "Copy message" }).click();
-    expect(await readClipboard(page)).toBe(
-      "Review the dashboard plan before editing.",
-    );
-    await input.getByRole("button", { name: "Copy link to message" }).click();
-    expect(await readClipboard(page)).toBe(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
-    );
+    // Its input is a Parent message, so it shows as a message from the
+    // parent, like every other message between agents.
+    await expect(
+      drawer.getByRole("group", { name: /^Message from / }),
+    ).toContainText("Review the dashboard plan before editing.");
 
     // The shortcut searches the drawer's transcript, not the page behind it.
     await page.keyboard.press("ControlOrMeta+f");

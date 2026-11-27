@@ -30,7 +30,7 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { ownsLocation } from "@/chat/conversations/kind-behavior";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 
 export interface PausedTurnRequest {
   conversationId: string;
@@ -151,10 +151,9 @@ export async function wakePausedTurn(
   ).get({ conversationId: request.conversationId });
   await requestConversationWork({
     conversationId: request.conversationId,
-    // A child without its own Location keeps no Destination. Its workers
-    // read the Conversation.
+    // A child keeps no Destination. Its workers read the Conversation.
     destination:
-      conversation && !ownsLocation(conversation)
+      conversation && !isTopLevel(conversation)
         ? undefined
         : request.destination,
     nowMs,

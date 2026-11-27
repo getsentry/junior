@@ -1,9 +1,17 @@
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  createPluginAnnotations,
+  listConversationAnnotations,
+} from "@/chat/plugins/annotations";
+import { readConversationDetail } from "@/api/conversations/detail";
+import { saveAutomationCardResult } from "@/chat/automations/result";
+import { http, HttpResponse } from "msw";
+import { githubPlugin } from "@sentry/junior-github";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import {
   blockEventAutomation,
   createEventAutomation,
@@ -19,9 +27,20 @@ import {
   createConversationWorkQueueTestAdapter,
   createNoopSlackWebhookRuntime,
 } from "../../fixtures/conversation-work";
+import {
+  GITHUB_API,
+  GITHUB_REPO,
+  linkGitHubMember,
+  pullRequest,
+  stubGitHubApp,
+} from "../../fixtures/github-objects";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { linkSlackUser } from "../../fixtures/slack-user";
+import { signedInViewer } from "../../fixtures/user";
+import { mswServer } from "../../msw/server";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
+import { patchConfig } from "../../fixtures/config";
 
 const SIGNING_SECRET = "test-signing-secret";
 const ORIGINAL_ENV = { ...process.env };
@@ -117,20 +136,21 @@ async function saveReminder(): Promise<ScheduledAutomation> {
 describe("Slack Work Object details", () => {
   beforeEach(() => {
     process.env["SLACK_BOT_TOKEN"] = "xoxb-test-token";
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     resetSlackApiMockState();
   });
 
   afterEach(async () => {
     process.env = { ...ORIGINAL_ENV };
-    setDashboardConversationLinkOptions(undefined);
     resetSlackApiMockState();
     await disconnectStateAdapter();
   });
 
-  it("shows saved annotation facts only within the viewer's Conversation access", async () => {
+  it("shows an annotation's label and link only within the viewer's Conversation access", async () => {
     await saveReminder();
     const conversationId = "slack:D123:annotation";
     // A long key must still fit the 128-character Slack reference.
@@ -148,11 +168,8 @@ describe("Slack Work Object details", () => {
     }).upsert({
       kind: "object",
       key,
-      label: "ENG-1",
       title: "Saved issue",
       objectType: "task",
-      status: "Started",
-      facts: { type: "task", assignees: ["Sam"], priority: "High" },
       url: "https://example.com/issues/1",
     });
     const id = renderSlackObjectCard(
@@ -168,88 +185,17 @@ describe("Slack Work Object details", () => {
       conversationId,
     ).entity!.external_ref.id;
     expect(id).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
-    expect(
-      await requestDetails(id, "U123", "T123", "annotation"),
-    ).toMatchObject({
+    // No plugin reads the object, so details show only the label and link.
+    const details = await requestDetails(id, "U123", "T123", "annotation");
+    expect(details).toMatchObject({
       metadata: {
         entity_type: "slack#/entities/task",
         external_ref: { id, type: "annotation" },
-        entity_payload: {
-          attributes: { title: { text: "Saved issue" } },
-          fields: { status: { value: "Started" } },
-          display_order: ["status", "assignees", "priority"],
-          custom_fields: [
-            {
-              key: "assignees",
-              label: "Assignees",
-              type: "string",
-              value: "Sam",
-            },
-            {
-              key: "priority",
-              label: "Priority",
-              type: "string",
-              value: "High",
-            },
-          ],
-        },
+        url: "https://example.com/issues/1",
+        entity_payload: { attributes: { title: { text: "example.com" } } },
       },
     });
-    await createPluginAnnotations({
-      conversationId,
-      plugin: "objects",
-      db: getDb(),
-    }).upsert({
-      kind: "object",
-      key,
-      label: "ENG-1",
-      title: "Updated issue",
-      objectType: "task",
-      status: "Done",
-      url: "https://example.com/issues/1",
-    });
-    expect(
-      await requestDetails(id, "U123", "T123", "annotation"),
-    ).toMatchObject({
-      metadata: {
-        external_ref: { id, type: "annotation" },
-        entity_payload: {
-          attributes: { title: { text: "Updated issue" } },
-          fields: { status: { value: "Done" } },
-        },
-      },
-    });
-    // Detail responses retain the fields omitted from compact code change cards.
-    const description = "Full description. ".repeat(100);
-    await createPluginAnnotations({
-      conversationId,
-      plugin: "objects",
-      db: getDb(),
-    }).upsert({
-      kind: "object",
-      key,
-      label: "repo#1",
-      title: "Saved code change",
-      objectType: "code_change",
-      description,
-      status: "draft",
-      facts: { type: "code_change", sourceBranch: "feature/parser" },
-      url: "https://example.com/pull/1",
-    });
-    expect(
-      await requestDetails(id, "U123", "T123", "annotation"),
-    ).toMatchObject({
-      metadata: {
-        entity_payload: {
-          display_order: ["status", "description", "sourceBranch"],
-          custom_fields: [
-            { key: "status", value: "draft" },
-            { key: "description", value: description.trim() },
-            { key: "sourceBranch", value: "feature/parser" },
-          ],
-        },
-      },
-    });
+    expect(JSON.stringify(details)).not.toContain("Saved issue");
     const denied = await requestDetails(id, "U999", "T123", "annotation");
     expect(denied).toMatchObject({ error: { status: "not_found" } });
     expect(denied).not.toHaveProperty("metadata");
@@ -261,7 +207,6 @@ describe("Slack Work Object details", () => {
     }).upsert({
       kind: "object",
       key: "repo#2",
-      label: "repo#2",
       title: "Legacy card",
       objectType: "task",
       url: "https://example.com/issues/2",
@@ -274,7 +219,7 @@ describe("Slack Work Object details", () => {
     ).toMatchObject({
       metadata: {
         external_ref: { id: legacyId, type: "annotation" },
-        entity_payload: { attributes: { title: { text: "Legacy card" } } },
+        entity_payload: { attributes: { title: { text: "example.com" } } },
       },
     });
     expect(
@@ -288,6 +233,140 @@ describe("Slack Work Object details", () => {
         await requestDetails(invalidId, "U123", "T123", "annotation"),
       ).toMatchObject({ error: { status: "not_found" } });
     }
+  });
+
+  it("reads an annotation's object live for the viewer, and shows only its label to a viewer who cannot read it", async () => {
+    stubGitHubApp();
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/37`, () =>
+        HttpResponse.json(
+          pullRequest(37, {
+            merged: true,
+            state: "closed",
+            title: "Show live card details",
+          }),
+        ),
+      ),
+      // What GitHub shows signed out.
+      http.get(
+        `${GITHUB_REPO}/pull/37`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    // Alice sees the repository on GitHub. Bob has no GitHub account.
+    await linkGitHubMember();
+    await linkSlackUser("bob@example.com", "UBOB");
+    const annotation = {
+      kind: "object" as const,
+      key: "getsentry/junior#37",
+      title: "Draft: live card details",
+      objectType: "code_change" as const,
+      url: `${GITHUB_REPO}/pull/37`,
+    };
+    // The posted card is a snapshot. Details never show it.
+    const card = {
+      ...annotation,
+      plugin: "github",
+      label: "Saved label",
+      status: "open",
+    };
+    const details = async (slackUserId: string) => {
+      const conversationId = `slack:D${slackUserId}:pull-request`;
+      await getConversationStore().recordActivity({
+        conversationId,
+        actor: { platform: "slack", teamId: "T123", slackUserId },
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: `D${slackUserId}`,
+        },
+        visibility: "private",
+      });
+      await createPluginAnnotations({
+        conversationId,
+        plugin: "github",
+        db: getDb(),
+      }).upsert(annotation);
+      const id = renderSlackObjectCard(card, conversationId).entity!
+        .external_ref.id;
+      return await requestDetails(id, slackUserId, "T123", "annotation");
+    };
+
+    try {
+      expect(await details("UALICE")).toMatchObject({
+        metadata: {
+          entity_payload: {
+            attributes: { title: { text: "Show live card details" } },
+            custom_fields: expect.arrayContaining([
+              expect.objectContaining({ key: "status", value: "merged" }),
+            ]),
+          },
+        },
+      });
+      const outsider = await details("UBOB");
+      expect(outsider).toMatchObject({
+        metadata: {
+          entity_payload: {
+            attributes: { title: { text: "getsentry/junior#37" } },
+          },
+        },
+      });
+      expect(JSON.stringify(outsider)).not.toMatch(
+        /Draft: live card details|Saved label|Show live card details|"open"|"merged"/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("reads an Automation's annotation live, so a later change shows without a write", async () => {
+    const task = await saveReminder();
+    const conversationId = "slack:C123:automation";
+    await getConversationStore().recordActivity({
+      conversationId,
+      actor: { platform: "slack", teamId: "T123", slackUserId: "U123" },
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      visibility: "public",
+    });
+    const url = getDashboardTaskLink(task.id)!;
+    await saveAutomationCardResult(
+      conversationId,
+      { id: task.id, title: task.title ?? null, url },
+      { task: task.task, fallbackTitle: "Scheduled automation" },
+      "created",
+    );
+    const stored = await listConversationAnnotations(getDb(), conversationId);
+    expect(stored).toMatchObject([{ key: task.id, title: task.title, url }]);
+    expect(JSON.stringify(stored)).not.toMatch(/active|Every day|drink/);
+    const owner = await signedInViewer("owner@example.com");
+    const live = async () =>
+      (await readConversationDetail(conversationId, { viewer: owner }))
+        ?.annotations;
+    expect(await live()).toMatchObject([
+      {
+        kind: "object",
+        key: task.id,
+        objectType: "automation",
+        plugin: "junior",
+        status: "active",
+        title: "Water reminder",
+        trigger: "Every day at noon",
+        url,
+      },
+    ]);
+    await saveScheduledAutomation(getDb(), { ...task, status: "paused" });
+    expect(await live()).toMatchObject([{ key: task.id, status: "paused" }]);
+    // Another person cannot see the private Automation: only its label.
+    expect(
+      await readConversationDetail(conversationId, {
+        viewer: await signedInViewer("other@example.com"),
+      }),
+    ).toMatchObject({
+      annotations: [
+        { kind: "resource_link", key: task.id, label: "Automation", url },
+      ],
+    });
   });
 
   it("loads a private scheduled Automation for its owner and refreshes its saved facts", async () => {

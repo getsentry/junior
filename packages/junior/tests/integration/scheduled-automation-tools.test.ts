@@ -24,8 +24,8 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tool-support/definition";
@@ -37,6 +37,7 @@ import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
+import { useConfig } from "../fixtures/config";
 import {
   createSlackSource,
   createWebSource,
@@ -52,6 +53,7 @@ import {
   conversationsInfoOk,
   usersInfoOk,
 } from "../fixtures/slack/factories/api";
+import { useAppContext } from "../fixtures/app-context";
 
 const rootTurnTools = turnBehavior({
   kind: "thread",
@@ -288,7 +290,6 @@ describe("Scheduled automation tools", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    delete process.env["JUNIOR_TIMEZONE"];
     await cleanupSchedulerSqlStore();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
@@ -430,11 +431,22 @@ describe("Scheduled automation tools", () => {
           objectType: "automation",
           plugin: "junior",
           key: created.automation.id,
-          label: "Weekly issue digest",
-          trigger: "Every week on Monday at 09:00 (America/Los_Angeles)",
+          title: "Weekly issue digest",
         },
       ],
     });
+    // The saved card names the Automation as its subject.
+    expect(
+      await listConversationAnnotations(
+        dbModule.getDb(),
+        "test:schedule-cards",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        key: created.automation.id,
+        subject: { id: created.automation.id, kind: "automation" },
+      }),
+    ]);
     expect(created).toMatchObject({
       automation: {
         conversation_access: {
@@ -791,11 +803,6 @@ describe("Scheduled automation tools", () => {
           instruction: "Wash hands reminder: Remind David to wash his hands.",
         },
       },
-      objectCards: [
-        {
-          trigger: "May 26, 2026, 5:25 PM · America/Los_Angeles",
-        },
-      ],
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),
@@ -1703,7 +1710,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("uses JUNIOR_TIMEZONE when the creator has no timezone", async () => {
-    process.env["JUNIOR_TIMEZONE"] = "America/New_York";
+    useConfig({ deployment: { timezone: "America/New_York" } });
     queueSlackTimezone("UNOZONE", "");
 
     const created = await createTask(
@@ -1729,7 +1736,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("rejects invalid default timezones", async () => {
-    process.env["JUNIOR_TIMEZONE"] = "not/a-zone";
+    useConfig({ deployment: { timezone: "not/a-zone" } });
     queueSlackTimezone("UBADDEFAULT", "");
 
     await expect(
@@ -2266,7 +2273,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
   it("scheduler tools bind to the runtime-owned source", async () => {
     // Verifies that real getPluginTools wiring passes Source through to
     // the scheduler, which stores it as the task destination.
-    const previous = setPlugins([]);
+    useAppContext();
     const fixture = await useSchedulerSqlPlugin();
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
@@ -2353,7 +2360,6 @@ describe("Scheduled automation tool wiring via createTools", () => {
     } finally {
       await fixture.close();
       vi.restoreAllMocks();
-      setPlugins(previous);
     }
   });
 

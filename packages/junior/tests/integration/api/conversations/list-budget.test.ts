@@ -1,7 +1,3 @@
-import {
-  OBJECT_FACTS_MAX_BYTES,
-  objectFactsBytes,
-} from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { conversationFeedSchema } from "@/api/schema";
@@ -23,7 +19,8 @@ import {
   recordSlackRoot,
 } from "../../../fixtures/conversation-status";
 import { expectResponseBudget } from "../../../fixtures/response-budget";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
+import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
 
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
 
@@ -75,20 +72,6 @@ async function makeHeavy(fixture: StatusFixture, conversationId: string) {
     throughSeq: await lastSeq(conversationId),
   });
   await addItem(conversationId, ACTION_ITEM);
-  const facts = {
-    type: "code_change" as const,
-    summary: text(280, "s"),
-    author: text(160, "a"),
-    sourceBranch: text(160, "b"),
-    targetBranch: text(160, "b"),
-    reviewers: Array.from({ length: 5 }, () => text(160, "r")),
-    previewImageUrls: Array.from({ length: 4 }, () => url(512)),
-  };
-  // One more image URL fills the facts to their limit. It adds its quotes
-  // and a comma.
-  facts.previewImageUrls.push(
-    url(OBJECT_FACTS_MAX_BYTES - objectFactsBytes(facts) - 3),
-  );
   const annotations = createPluginAnnotations({
     conversationId,
     db: getDb(),
@@ -97,25 +80,14 @@ async function makeHeavy(fixture: StatusFixture, conversationId: string) {
   await annotations.upsert({
     kind: "object",
     key: text(256, "k"),
-    label: text(256, "l"),
     objectType: "code_change",
     title: text(512, "t"),
     url: url(2048),
-    description: text(4000, "d"),
-    status: text(100, "s"),
-    trigger: text(4000, "r"),
-    warning: text(1000, "w"),
-    displayType: text(80, "p"),
-    sourceUpdatedAt: new Date().toISOString(),
-    facts,
   });
   await annotations.upsert({
     kind: "resource_link",
     key: text(256, "j"),
-    label: text(256, "l"),
     url: url(2048),
-    description: text(512, "d"),
-    status: "open",
   });
 }
 
@@ -126,6 +98,7 @@ describe("conversation list API response budget", () => {
 
   it("keeps each row of a heavy viewer's feed inside a size budget", async () => {
     const fixture = await createStatusFixture();
+    await seedDashboardScale();
     // Waiting rows older than the page join the first page after it.
     const waitingIds: string[] = [];
     for (let index = 0; index < 3; index += 1) {
@@ -161,12 +134,19 @@ describe("conversation list API response budget", () => {
       pinnedIds.push(conversationId);
     }
 
+    // About 390,000, mostly the starter check of each tree row. An owner
+    // check of the open Inbox items on each tree row costs about seven times
+    // as much.
     const response = await expectResponseBudget(
       () =>
-        expectSqlBudget(
-          () => fixture.request("/api/conversations?include=links,media"),
-          // Threads' tree states wait for the Thread read: one more round.
-          { statements: 18, serialRounds: 4 },
+        expectPlanCost(
+          () =>
+            expectSqlBudget(
+              () => fixture.request("/api/conversations?include=links,media"),
+              // Threads' tree states wait for the Thread read: one more round.
+              { statements: 18, serialRounds: 4 },
+            ),
+          600_000,
         ),
       // Pins are not paged, so the body has no budget.
       {

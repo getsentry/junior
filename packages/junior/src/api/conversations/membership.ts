@@ -4,7 +4,6 @@ import {
   exists,
   inArray,
   isNotNull,
-  isNull,
   not,
   or,
   sql,
@@ -88,11 +87,9 @@ function inParticipantRoot(userId: string): SQL {
 }
 
 /**
- * True when the person is a Participant of the root conversation, or of the
- * root whose child it is, such as a Lead's Thread that top-level lists
- * show. Participant rows belong to roots, so a child never matches its own
- * id. Feeds filter with this id set instead of a per-row membership check,
- * so Postgres reads only that person's conversations, not every root.
+ * True when the person is a Participant of the root conversation. Feeds
+ * filter with this id set instead of a per-row membership check, so Postgres
+ * reads only that person's conversations, not every root.
  */
 export function conversationIsMemberRoot(member: ConversationMember): SQL {
   const participating = getDb()
@@ -111,14 +108,7 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
             eq(juniorUsers.id, juniorConversationParticipants.userId),
           )
           .where(eq(juniorUsers.primaryEmailNormalized, member.email));
-  // Top-level filters keep only a parent match whose parent is a Lead.
-  return or(
-    and(
-      isNull(juniorConversations.parentConversationId),
-      inArray(juniorConversations.conversationId, memberRoots),
-    ),
-    inArray(juniorConversations.parentConversationId, memberRoots),
-  )!;
+  return inArray(juniorConversations.conversationId, memberRoots);
 }
 
 /**

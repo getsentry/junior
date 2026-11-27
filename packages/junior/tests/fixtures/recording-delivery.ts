@@ -1,5 +1,5 @@
 import type { Destination } from "@sentry/junior-plugin-api";
-import type { Delivery } from "@/core/delivery/deliver";
+import type { Delivery } from "@/delivery/deliver";
 
 /** One try of a send, as the recording Delivery saw it. */
 export type RecordedSend = { text: string; destination: Destination };

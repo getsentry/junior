@@ -1,9 +1,11 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   uniqueIndex,
@@ -13,6 +15,7 @@ import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
 } from "@/chat/conversations/history";
+import type { UsageTokens } from "@/usage-schema";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
@@ -51,6 +54,15 @@ export const juniorTurns = pgTable(
     failureReason:
       text("failure_reason").$type<ConversationTurnFailureReason>(),
     failureEventId: text("failure_event_id"),
+    // Model replies that the Turn paid for but did not keep, such as a failed
+    // reply before a retry. Its history holds the usage of every kept reply.
+    discardedCostMicroUsd: bigint("discarded_cost_micro_usd", {
+      mode: "number",
+    })
+      .default(0)
+      .notNull(),
+    // Token counts only. The cost is in `discarded_cost_micro_usd`.
+    discardedTokens: jsonb("discarded_tokens").$type<UsageTokens>(),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
     updatedAt: timestamptz("updated_at").defaultNow().notNull(),
     // Set by the first claim. A Turn that ends while queued never starts.

@@ -1,42 +1,9 @@
 /**
- * System prompt rules.
- *
- * This module owns the core rule blocks 2 to 6 of the static system prompt.
- * `prompt.ts` adds the identity block before them and the consumer blocks
- * after them. The model reads the prompt as one ordered set of blocks, and
- * each rule has one block, so order and priority stay stable:
- *
- * 1. Identity: one header sentence with the role and the precedence rule,
- *    then the name and platform identity.
- * 2. Working principles: `<task-execution>` (or `<automation-run>`,
- *    `<child-agent-run>`) says what the job is, when to continue, and when
- *    to ask. A Lead also gets `<lead>`, which says how it runs the Space's
- *    work. `<evidence>` says what to claim, how to mark
- *    inference, how to find a failure cause, and how to handle pushback.
- * 3. Context and trust: `<context-trust>` holds generic rules for context
- *    inputs, with no tag table and no context data.
- * 4. Actions and safety: `<safety>` holds action limits, approvals, and
- *    retries with side effects.
- * 5. Tools and skills: `<tool-policy>` and `<skill-policy>` hold rules
- *    that span tools. A rule for one tool goes in its description.
- * 6. Communication and output: `<tool-call-style>`, `<conversation>`,
- *    `<slack-actions>`, `<failure-reporting>`, `<output>`.
- * 7. Personality: the consumer's `SOUL.md`, for voice and tone only.
- * 8. World: the consumer's `WORLD.md`, for operator facts and workflow.
- * 9. Plugin guidance: `<plugin-system-context>` from plugin `systemPrompt`
- *    hooks.
- *
- * Blocks 7 to 9 come last, and the identity header says that core rules win
- * over them. A Prompt mode can replace the content of a block, but cannot add
- * or move one. `<tool-call-style>`, `<conversation>`, and the conversation
- * lines of `<context-trust>` are only for a person's input. `child_agent`
- * also gets the Inbox item line of `<context-trust>`, because a child gets
- * answers to its own items. `<slack-actions>` is only for a person's input on
- * Slack. `thread` and `automation` hold two rule sets, with `for` set to the
- * sender.
- *
- * Put a new rule in the block that owns it. If no block fits, change this map
- * in the same change. The `build-tools` repo skill says how to write a rule.
+ * Block map: 1 and 7-9 (`SOUL.md`, `WORLD.md`, plugins) are in `prompt.ts`.
+ * 2 `<task-execution>` or `<automation-run>`/`<child-agent-run>`, `<lead>`,
+ * `<evidence>`; 3 `<context-trust>`; 4 `<safety>`; 5 `<tool-policy>`,
+ * `<skill-policy>`; 6 `<tool-call-style>`, `<conversation>`, `<slack-actions>`,
+ * `<failure-reporting>`, `<output>`. A mode never adds or moves a block.
  */
 import { renderTag, type Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
@@ -44,12 +11,10 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 
 /**
- * Prompt mode for one Run. `child_agent` is for Task Turns: it replaces the
- * interactive conversation rules. `thread` and `automation` are for every
- * Turn of a child Thread (a `thread` with a parent) and of an Automation
- * Conversation. Each holds the `conversation` rules for a person's input and
- * the rules for its other sender, so the Conversation keeps one system
- * prompt. `lead` is for every Turn of a Lead.
+ * Prompt mode for one Run. `child_agent` (Task Turns) replaces the interactive
+ * rules. `thread` (a child Thread) and `automation` hold the `conversation`
+ * rules for a person's input plus the rules for the other sender, so the
+ * Conversation keeps one system prompt. `lead` is for a Lead's Turns.
  */
 export type PromptMode =
   | "automation"
@@ -118,9 +83,9 @@ export function buildIdentityHeader(
 /**
  * Block 2, `<task-execution>`: what the job is in a conversation, when to keep
  * going, and when to ask. Junior acts as a colleague who owns the task, so it
- * makes small decisions itself instead of asking. Junior may infer intent here, but it must not
- * present an inferred fact as verified. The
- * `automation` and `child_agent` modes replace this section with their own.
+ * makes small decisions itself instead of asking. It may infer intent, but it
+ * must not present an inferred fact as verified. The `automation` and
+ * `child_agent` modes replace this section with their own.
  */
 const TASK_EXECUTION_RULES = [
   "- Work as a trusted colleague who owns the task. Make the reasonable small decisions yourself and take the next appropriate step. Do not ask the user to confirm each step.",
@@ -158,12 +123,10 @@ const AUTOMATION_RUN_RULES = [
 ];
 
 /**
- * Block 2, `<lead>`: how a Space's Lead runs the Space's work. The identity
- * header states its role. It plans, starts, reviews, and connects the work
- * of its child agents, and never does that work itself. Its tool list has no
- * tools for the work, so the rules say where work goes. `<task-execution>`
- * holds the rules that it shares with other Conversations, such as how to
- * ask a person.
+ * Block 2, `<lead>`: how a Space's Lead runs the Space's work. It plans,
+ * starts, reviews, and connects its child agents' work and never does it
+ * itself. Its tool list has no tools for the work, so the rules say where work
+ * goes. `<task-execution>` holds the rules it shares, such as how to ask.
  */
 const LEAD_RULES = [
   "- The members of the Space talk to you, and the person of a Turn is the member who sent its input. Your child agents are the Space's other Conversations.",
@@ -410,7 +373,7 @@ const TOOL_CALL_STYLE_RULES = [
 
 /**
  * Block 6, `<conversation>`: how replies fit the thread, including follow-ups
- * and resumed Turns.
+ * and resumed Turns. It and `<slack-actions>` apply only to a person's input.
  */
 const CONVERSATION_RULES = [
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",

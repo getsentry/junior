@@ -43,8 +43,9 @@ export type ConversationLink = {
   key: string;
   label: string;
   /**
-   * The Annotation saves only the link, with no title. The row asks for the
-   * live card, so a viewer who can open the object sees its title.
+   * The server read no card, so the row has only the label and the link.
+   * The row asks for the live card, so a viewer who can open the object
+   * sees its title.
    */
   linkOnly?: boolean;
   objectType: ObjectType;
@@ -85,25 +86,28 @@ export function conversationLinks(
         (candidate) => candidate.key === annotation.key,
       );
       const objectType = annotation.objectType ?? sidebar?.objectType ?? "item";
+      if (annotation.kind === "resource_link") {
+        return [
+          {
+            key: `${annotation.plugin}:${annotation.key}`,
+            label: annotation.label,
+            linkOnly: true,
+            objectType,
+            plugin: annotation.plugin,
+            url: annotation.url,
+          },
+        ];
+      }
       const description =
-        annotation.kind === "object"
-          ? annotation.title !== annotation.label
-            ? annotation.title
-            : annotation.description
+        annotation.title !== annotation.label
+          ? annotation.title
           : annotation.description;
       return [
         {
           ...(description ? { description } : undefined),
-          ...(annotation.kind === "object" && annotation.facts
-            ? { facts: annotation.facts }
-            : undefined),
+          ...(annotation.facts ? { facts: annotation.facts } : undefined),
           key: `${annotation.plugin}:${annotation.key}`,
           label: annotation.label,
-          // An attached link uses its own URL as the label.
-          ...(annotation.kind === "resource_link" &&
-          annotation.url.startsWith(annotation.label)
-            ? { linkOnly: true }
-            : undefined),
           objectType,
           plugin: annotation.plugin,
           ...(annotation.status ? { status: annotation.status } : undefined),
