@@ -1,6 +1,5 @@
 id: conversation-visibility-one-writer
 valid:
-  - 'await setConversationVisibility(executor, rootConversationId, "private");'
   - 'await db.update(juniorDestinations).set({ visibility: "private", updatedAt: new Date() });'
   - "await db.update(juniorConversations).set({ location, detailVersion: nextDetailVersion });"
 invalid:

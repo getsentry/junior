@@ -1,8 +1,6 @@
+import { getAppContext } from "@/app/context";
 import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
-
-// The team of a bot token never changes, so each token is looked up once.
-const teamIdsByToken = new Map<string, Promise<string>>();
 
 /**
  * Resolve the single-bot Slack team id for event-automation indexing, Event
@@ -17,6 +15,8 @@ export async function resolveBotSlackTeamId(): Promise<string | undefined> {
   // Event automations and Event people need a Slack team key.
   const token = getSlackBotToken();
   if (!token) return undefined;
+  // The team of a bot token never changes, so each token is looked up once.
+  const teamIdsByToken = getAppContext().slackBotTeamIds;
   let pending = teamIdsByToken.get(token);
   if (!pending) {
     pending = getSlackClient()
