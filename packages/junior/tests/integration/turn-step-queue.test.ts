@@ -81,7 +81,10 @@ afterAll(async () => {
   }
 });
 
+// An earlier file in the worker can end with a span still active. Its
+// scope does not have this client, so bind the client to each test.
 beforeEach(() => {
+  if (client) Sentry.setCurrentClient(client);
   turnId = `turn_${randomUUID()}`;
   runs = [];
   spans.length = 0;
