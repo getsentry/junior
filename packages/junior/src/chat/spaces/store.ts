@@ -190,9 +190,7 @@ export async function createSpace(args: {
   const now = new Date();
   await executor.db().insert(juniorSpaces).values({
     id,
-    name: args.name,
     description: args.description,
-    visibility: args.visibility,
     createdByUserId: args.creator.id,
     createdAt: now,
     updatedAt: now,
@@ -235,8 +233,6 @@ export async function updateSpace(
 ): Promise<void> {
   const executor = getSqlExecutor();
   // One transaction, so a failed rename does not keep a new description.
-  // It writes the Lead before the Space row, in the order that an archive
-  // writes them, so the two cannot deadlock.
   await executor.transaction(async () => {
     if (changes.name !== undefined) {
       const [lead] = await executor
@@ -259,7 +255,6 @@ export async function updateSpace(
         ...(changes.description !== undefined
           ? { description: changes.description }
           : undefined),
-        ...(changes.name !== undefined ? { name: changes.name } : undefined),
         updatedAt: new Date(),
       })
       .where(eq(juniorSpaces.id, spaceId));
