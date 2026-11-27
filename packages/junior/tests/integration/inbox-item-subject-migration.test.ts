@@ -234,6 +234,11 @@ describe("inbox item subject migration", () => {
       await fixture.sql.execute(
         `DROP INDEX IF EXISTS "junior_inbox_items_open_subject_uidx"`,
       );
+      // A run that fails before the migration step can leave two open items
+      // for one subject, which the index rejects.
+      await fixture.sql.execute(
+        `UPDATE junior_inbox_items SET status = 'dismissed', closed_at = now() WHERE status = 'open'`,
+      );
       await fixture.sql.execute(
         `CREATE UNIQUE INDEX IF NOT EXISTS "junior_inbox_items_open_subject_key_uidx" ON "junior_inbox_items" USING btree ("subject_kind","subject_id") WHERE "junior_inbox_items"."status" = 'open'`,
       );
