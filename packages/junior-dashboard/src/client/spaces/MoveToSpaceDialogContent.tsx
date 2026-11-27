@@ -139,11 +139,7 @@ export function MoveToSpaceDialogContent(props: MoveToSpaceDialogProps) {
                   row(
                     space.id,
                     space.name,
-                    <ConversationIcon
-                      iconId={space.id}
-                      name={space.name}
-                      size="sm"
-                    />,
+                    <ConversationIcon name={space.name} size="sm" />,
                   ),
                 )}
               </CommandList>

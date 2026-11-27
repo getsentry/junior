@@ -150,11 +150,12 @@ test("the Lead's own link shows the Conversation header", async ({
     page.getByRole("heading", { name: "Billing migration" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Conversation menu" }),
-  ).toBeVisible();
-  await expect(
     page.getByRole("complementary", { name: "Conversation details" }),
   ).toBeVisible();
+  // A Space is always in the pane, so its menu has no Pin or Unpin.
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(conversationMenuRow(page, "Rename")).toBeVisible();
+  await expect(conversationMenuRow(page, /^(Pin|Unpin)$/)).toHaveCount(0);
 });
 
 test("home opens the Inbox, and the pane has no Lead", async ({

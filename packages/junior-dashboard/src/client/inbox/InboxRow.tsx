@@ -93,6 +93,7 @@ import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import { SpaceChip } from "../spaces/SpaceChip";
+import { canPinConversation } from "../conversations/conversationMenuItems";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
@@ -298,7 +299,7 @@ function ConversationInboxRow(
           tooltip={actions.archived ? "Restore" : "Archive"}
         />
       ) : null}
-      {participant && !actions.archived ? (
+      {participant && !actions.archived && canPinConversation(conversation) ? (
         <RowActionButton
           disabled={actions.pending.pin}
           icon={

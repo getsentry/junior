@@ -20,11 +20,7 @@ export function SpaceChip(props: {
       )}
       to={spacePath(props.space.id)}
     >
-      <ConversationIcon
-        iconId={props.space.id}
-        name={props.space.name}
-        size="sm"
-      />
+      <ConversationIcon name={props.space.name} size="sm" />
       <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
         {props.space.name}
       </span>
