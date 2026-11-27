@@ -19,8 +19,8 @@ import { agentActionFacts, agentHasTool } from "./guardian-tools";
  * The messages of the work, as core builds them. A line of the person from
  * the request that started the work is a message of the root Conversation,
  * which core reads only for a Run of a person: an event Turn gets none. A
- * line from the person's linked account reaches the Turn as an Event, so it
- * is context.
+ * line from the person's linked account is already in the Event's `<task>`
+ * block, so it adds nothing here.
  */
 function designMessages(
   proposal: ToolActionProposal,
@@ -42,17 +42,10 @@ function designMessages(
           truncated: proposal.rootConversation?.truncated ?? false,
         }
       : proposal.rootConversation;
-  return [
-    ...guardianMessages({
-      ...proposal,
-      ...(root ? { rootConversation: root } : undefined),
-    }),
-    ...lines.flatMap((line) =>
-      line.via === "linked-account"
-        ? [{ from: "context" as const, text: line.text }]
-        : [],
-    ),
-  ];
+  return guardianMessages({
+    ...proposal,
+    ...(root ? { rootConversation: root } : undefined),
+  });
 }
 
 const mcpArguments = z.record(z.string(), z.unknown()).catch(() => ({}));

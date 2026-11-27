@@ -39,8 +39,8 @@ export interface GuardianDesignFacts {
    * Lines of the person whose instruction the action serves: from the
    * request that started the work (`instruction`), or as a message from the
    * person's linked account. The request builds them as core does: an event
-   * Turn reads no root Conversation, and a linked-account message is an
-   * Event, so it is context.
+   * Turn reads no root Conversation, and a linked-account message is the
+   * Event's own text in its `<task>` block.
    */
   personLines?: Array<{
     text: string;
