@@ -59,8 +59,11 @@ groups and acts on its rows.
   12 lines, then Show more). The transcript leaves that message out,
   because it sits right above the card. The card has no subject preview: the row head and Related link the subject. In
   the transcript, a waiting card spans the transcript width.
-- A click on a choice picks it. Send answers, with the note line. An
-  action that takes no words, such as a plugin's Resume, is one click.
+- A click on a choice picks it. Each choice question also has Other, where
+  the person writes their own answer, which replaces a pick. A card has one
+  Additional notes box: Enter adds a line, and Send or Cmd/Ctrl+Enter sends
+  the answers with the notes. An action that takes no words, such as a
+  plugin's Resume, is one click.
 - The first answer closes the item for everyone, and the item records who
   closed it and when.
 - A dismiss closes the item for everyone, unless its subject gives each
