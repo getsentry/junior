@@ -131,6 +131,11 @@ jobs:
         run: brew bundle --file=apps/ios/Brewfile.ci
       - name: Start the mock MCP server
         run: apps/ios/scripts/start-mock-server.sh "$RUNNER_TEMP/mock-server.log"
+      # On the outer display, where the app opens, a pushed screen's header
+      # Back is the way back.
+      - name: Run the navigation UI test
+        if: matrix.device == 'iphone-duo' && matrix.orientation == 'portrait'
+        run: apps/ios/scripts/sim.sh ui-test NavigationUITests/testHomeOpensConversation
       - name: Take screenshots
         run: apps/ios/scripts/screenshots.sh "$RUNNER_TEMP/ios-device-screenshots" "$ORIENTATION"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

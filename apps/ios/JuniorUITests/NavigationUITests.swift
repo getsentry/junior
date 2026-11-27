@@ -108,6 +108,18 @@ final class NavigationUITests: XCTestCase {
     row.tap()
     XCTAssertTrue(app.buttons["Conversation menu"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.staticTexts["Junior is working…"].waitForExistence(timeout: 10))
+
+    // The header's Back returns to the list. On iPhone Duo, it is the only
+    // way back when the device is closed.
+    let back = app.buttons["Back"]
+    XCTAssertTrue(back.isHittable, "Back at \(back.frame) in \(app.windows.firstMatch.frame) is not hittable")
+    back.tap()
+    if !app.buttons["Conversation menu"].waitForNonExistence(timeout: 10) {
+      // Where every element sits, to find what took the tap.
+      print(app.debugDescription)
+      XCTFail("Back at \(back.frame) did not leave the Conversation")
+    }
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
   }
 
   /// Open a Conversation and return its composer field, focused.
