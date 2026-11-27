@@ -613,7 +613,7 @@ function buildContextSection(params: {
   if (configLines) {
     blocks.push(
       renderTag("configuration", {}, [
-        "Ambient provider defaults; explicit targets win.",
+        "Ambient provider defaults; explicit targets win. A link or reference that is only context is not a target.",
         ...configLines,
       ]),
     );

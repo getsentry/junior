@@ -95,7 +95,7 @@ const childInputSchema = z
 /** Static definition of `startAgent`. */
 export const startAgentToolDefinition = zodToolDefinition({
   description:
-    "Start an asynchronous child agent with its own sandbox and tool budget. Its result arrives in a later turn. A Thread is a work item that people own and message. A Task is work that you delegate: use Tasks to run independent work in parallel and to keep long investigations out of your context. Delegate a Task for each independent track that needs real investigation, such as several repos, services, or sites (start every track in the same message).",
+    "Start an asynchronous child agent with its own sandbox and tool budget. Its result arrives in a later turn. A Thread is a work item that people own and message. A Task is work that you delegate: use Tasks to run independent work in parallel. Delegate a Task for each independent track that needs real investigation, such as several repos, services, or sites (start every track in the same message).",
   exposure: "modelOnly",
   // Action review judges the actions that the task names.
   approvalMode: "auto",
