@@ -85,12 +85,14 @@ export function useInboxItemTurnMessage(
 
 /**
  * The last message of the Turn that asked a question, under the question on
- * its card in the Inbox and in the transcript. It shows about 12 lines, then
- * Show more, and nothing until it is read.
+ * its card in the Inbox. It shows about 12 lines, then Show more, and
+ * nothing until it is read. In the transcript, that message is right above
+ * the card, so the card does not show it again.
  */
 export function InboxItemTurnMessage(props: { item: InboxItemPayload }) {
   const message = useInboxItemTurnMessage(props.item);
-  if (!message) return null;
+  const inTranscript = use(TranscriptEvents) !== undefined;
+  if (!message || inTranscript) return null;
   const label = `${agentNamePossessive()} message`;
   return (
     <section
