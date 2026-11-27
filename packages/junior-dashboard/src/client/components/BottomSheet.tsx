@@ -8,15 +8,12 @@ import {
 
 // A sheet opens only after a tap, so base-ui's drawer loads with the first
 // open instead of with the page.
+const loadContent = () => import("./BottomSheetContent");
 const BottomSheetContent = lazy(() =>
-  import("./BottomSheetContent").then((module) => ({
-    default: module.BottomSheetContent,
-  })),
+  loadContent().then((module) => ({ default: module.BottomSheetContent })),
 );
 const ActionSheetContent = lazy(() =>
-  import("./BottomSheetContent").then((module) => ({
-    default: module.ActionSheetContent,
-  })),
+  loadContent().then((module) => ({ default: module.ActionSheetContent })),
 );
 
 /** Props of a bottom sheet. */
@@ -141,12 +138,13 @@ export type ActionSheetProps = {
    * owner can run it after focus goes back, as `useMenuSheet` does.
    */
   onClose(action?: () => void): void;
+  /** Names the sheet for assistive technology. It does not show. */
   title: string;
 };
 
 /**
- * The phone form of a menu: a `BottomSheet` with a centered title, rows in
- * cards, and a Cancel row instead of a close button. A tap on a row shuts
+ * The phone form of a menu: a `BottomSheet` with rows in cards, and a
+ * Cancel row instead of a close button. A tap on a row shuts
  * the sheet and passes the row's action to `onClose`.
  */
 export function ActionSheet(props: ActionSheetProps) {

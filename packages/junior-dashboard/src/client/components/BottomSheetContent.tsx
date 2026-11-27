@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { useKeyboardBand } from "../mobileViewport";
+import { keyboardBandStyle, useKeyboardBand } from "../keyboardBand";
 import { cn } from "../styles";
 import type {
   ActionSheetItem,
@@ -60,18 +60,7 @@ export function BottomSheetContent(props: BottomSheetProps) {
       )}
       sheet={sheet}
       stayBehind={props.stayBehind}
-      // While a touch keyboard is open, the sheet fills the band above it,
-      // as the shell does, so the field in focus stays in view.
-      style={
-        band
-          ? {
-              bottom: "auto",
-              height: `${band.heightPx}px`,
-              maxHeight: `${band.heightPx}px`,
-              top: `${band.offsetTopPx}px`,
-            }
-          : undefined
-      }
+      style={keyboardBandStyle(band)}
     >
       {/* Positioned so header overlays, such as transcript search,
               float over the body. */}
@@ -142,12 +131,16 @@ export function BottomSheetContent(props: BottomSheetProps) {
   );
 }
 
-const ROW_CLASS =
+/** A row of an action sheet. */
+const ACTION_SHEET_ROW_CLASS =
   "flex min-h-12 w-full cursor-pointer items-center gap-3 px-4 text-left font-sans text-base text-dashboard-text no-underline transition-colors active:bg-dashboard-fill-soft disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:text-dashboard-text-muted";
-// Rows sit in a group, which owns the border and the fill.
-const PLAIN_ROW_CLASS = cn(ROW_CLASS, "border-0 bg-transparent");
-const GROUP_CLASS =
+
+/** A card of action sheet rows. It owns the border and the fill. */
+const ACTION_SHEET_GROUP_CLASS =
   "overflow-hidden rounded-xl border border-dashboard-border-subtle bg-dashboard-fill-faint";
+
+// Rows sit in a group, which owns the border and the fill.
+const PLAIN_ROW_CLASS = cn(ACTION_SHEET_ROW_CLASS, "border-0 bg-transparent");
 
 /** Render the open action sheet. `ActionSheet` loads this module on demand. */
 export function ActionSheetContent(props: ActionSheetProps) {
@@ -164,18 +157,19 @@ export function ActionSheetContent(props: ActionSheetProps) {
       className="max-w-lg pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       sheet={sheet}
     >
-      <DrawerTitle className="m-0 truncate px-5 pt-3 pb-2 text-center font-sans text-sm font-medium text-dashboard-text-muted">
-        {props.title}
-      </DrawerTitle>
+      {/* The title names the sheet for assistive technology only. The page
+          header above the sheet already shows it, and a row menu sheet has
+          no visible title either. */}
+      <DrawerTitle className="sr-only">{props.title}</DrawerTitle>
       <div
-        className="grid min-h-0 gap-2 overflow-y-auto overscroll-contain px-3 outline-none"
+        className="grid min-h-0 gap-2 overflow-y-auto overscroll-contain px-3 pt-3 outline-none"
         ref={listRef}
         tabIndex={-1}
       >
         {props.groups.map((items, index) => (
           <ul
             className={cn(
-              GROUP_CLASS,
+              ACTION_SHEET_GROUP_CLASS,
               "m-0 list-none divide-y divide-dashboard-border-subtle p-0",
             )}
             key={index}
@@ -192,7 +186,11 @@ export function ActionSheetContent(props: ActionSheetProps) {
           </ul>
         ))}
         <DrawerClose
-          className={cn(ROW_CLASS, GROUP_CLASS, "justify-center font-medium")}
+          className={cn(
+            ACTION_SHEET_ROW_CLASS,
+            ACTION_SHEET_GROUP_CLASS,
+            "justify-center font-medium",
+          )}
         >
           Cancel
         </DrawerClose>

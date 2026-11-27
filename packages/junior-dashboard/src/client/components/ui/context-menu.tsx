@@ -2,6 +2,14 @@ import type * as React from "react";
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 import { cn } from "@dashboard/lib/utils";
 import { ChevronRightIcon, CheckIcon } from "lucide-react";
+import { useMobileLayout } from "@dashboard/layoutMedia";
+
+import {
+  PHONE_MENU_GROUP_CLASS,
+  PHONE_MENU_ITEM_CLASS,
+  PHONE_SHEET_POPUP_CLASS,
+  PHONE_SHEET_POSITIONER_CLASS,
+} from "./phoneSheet";
 
 /** Own a right-click menu's open state. */
 function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {
@@ -26,9 +34,9 @@ function ContextMenuTrigger({
       data-slot="context-menu-trigger"
       className={cn("select-none", className)}
       onTouchEnd={(event) => {
-        // A long press opens the menu while the finger is down. The menu
-        // can open under the finger, so the release must not tap one of
-        // its items.
+        // A long press opens the menu while the finger is down. On a phone
+        // the menu is a sheet that can be under the finger, so the release
+        // must not tap one of its rows.
         if (event.currentTarget.hasAttribute("data-popup-open")) {
           event.preventDefault();
         }
@@ -68,9 +76,13 @@ function leaveToBrowser(
   event.stopPropagation();
 }
 
-/** Place menu items at the pointer on the popover surface. */
+/**
+ * Place menu items at the pointer on the popover surface. A phone shows
+ * them as an action sheet on the bottom edge, with a Cancel row.
+ */
 function ContextMenuContent({
   className,
+  children,
   align = "start",
   alignOffset = 4,
   side = "right",
@@ -81,10 +93,14 @@ function ContextMenuContent({
     ContextMenuPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
+  const mobile = useMobileLayout();
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Positioner
-        className="isolate z-50 outline-none"
+        className={cn(
+          "isolate z-50 outline-none",
+          PHONE_SHEET_POSITIONER_CLASS,
+        )}
         align={align}
         alignOffset={alignOffset}
         side={side}
@@ -95,9 +111,29 @@ function ContextMenuContent({
           className={cn(
             "z-50 max-h-(--available-height) min-w-44 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
             className,
+            PHONE_SHEET_POPUP_CLASS,
           )}
           {...props}
-        />
+        >
+          {mobile ? (
+            <>
+              <div className={PHONE_MENU_GROUP_CLASS}>{children}</div>
+              <div className={cn(PHONE_MENU_GROUP_CLASS, "mt-2")}>
+                <ContextMenuPrimitive.Item
+                  className={cn(
+                    CONTEXT_MENU_ITEM_CLASS,
+                    PHONE_MENU_ITEM_CLASS,
+                    "justify-center font-medium",
+                  )}
+                >
+                  Cancel
+                </ContextMenuPrimitive.Item>
+              </div>
+            </>
+          ) : (
+            children
+          )}
+        </ContextMenuPrimitive.Popup>
       </ContextMenuPrimitive.Positioner>
     </ContextMenuPrimitive.Portal>
   );
@@ -149,7 +185,7 @@ function ContextMenuItem({
       data-slot="context-menu-item"
       data-inset={inset}
       data-variant={variant}
-      className={cn(CONTEXT_MENU_ITEM_CLASS, className)}
+      className={cn(CONTEXT_MENU_ITEM_CLASS, PHONE_MENU_ITEM_CLASS, className)}
       {...props}
     />
   );
@@ -163,7 +199,7 @@ function ContextMenuLinkItem({
   return (
     <ContextMenuPrimitive.LinkItem
       data-slot="context-menu-item"
-      className={cn(CONTEXT_MENU_ITEM_CLASS, className)}
+      className={cn(CONTEXT_MENU_ITEM_CLASS, PHONE_MENU_ITEM_CLASS, className)}
       {...props}
     />
   );
