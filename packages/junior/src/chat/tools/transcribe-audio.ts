@@ -8,7 +8,7 @@ import {
 } from "@/chat/attachments/download";
 import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { readLiveAttachment } from "@/chat/attachments/store";
+import { readAccessibleAttachment } from "@/chat/attachments/access";
 import { attachmentIdParam } from "@/chat/attachments/tool-params";
 import {
   transcribeFromUrl,
@@ -142,14 +142,14 @@ export function createTranscribeAudioTool(args: {
     }),
     outputSchema: transcribeAudioOutputSchema,
     execute: async ({ attachment_id }, { signal }) => {
-      const attachment = await readLiveAttachment({
+      const attachment = await readAccessibleAttachment({
         attachmentId: attachment_id,
         conversationId: args.conversationId,
         db: args.db,
       });
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
         throw new ToolInputError(
-          "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+          "Attachment not found. Use an attachment_id from the attachment context, a Slack read result, or a Conversation that this one can read.",
         );
       }
       if (!mayHaveAudio(attachment.contentType)) {

@@ -26,7 +26,7 @@ import {
 import { mswServer } from "../../msw/server";
 
 const CONVERSATION_ID = "slack:C-transcribe-audio:1";
-const OTHER_CONVERSATION_ID = "slack:C-transcribe-audio:other";
+const OTHER_CONVERSATION_ID = "slack:D-transcribe-audio:other";
 const TRANSCRIPTION_MODEL_URL =
   "https://ai-gateway.vercel.sh/v4/ai/transcription-model";
 // A bearer credential in production. It must stay inside the tool call.
@@ -388,7 +388,14 @@ describe("transcribeAudio tool", () => {
   });
 
   it("refuses attachments that it cannot transcribe before it signs a URL", async () => {
-    await recordConversation(OTHER_CONVERSATION_ID);
+    // Private, in another tree and at another Destination.
+    await getConversationStore().recordActivity({
+      conversationId: OTHER_CONVERSATION_ID,
+      destination: { channelId: "DOTHER", platform: "slack", teamId: "TAUDIO" },
+      nowMs: 1,
+      source: "slack",
+      visibility: "private",
+    });
     const files = signedStorage();
     const elsewhere = await files.store({
       conversationId: OTHER_CONVERSATION_ID,
@@ -406,7 +413,7 @@ describe("transcribeAudio tool", () => {
       tool.execute?.({ attachment_id: elsewhere.id }, {}),
     ).rejects.toThrow(
       new ToolInputError(
-        "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+        "Attachment not found. Use an attachment_id from the attachment context, a Slack read result, or a Conversation that this one can read.",
       ),
     );
     await expect(
