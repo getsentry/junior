@@ -21,7 +21,7 @@ const DESCRIPTION_CHECKS = [
   },
   {
     question:
-      "Does the description narrate the author's own work session, such as what the author investigated, approaches or names the author tried first and dropped, or how many runs the author looked at? Old behavior compared with new behavior does not count.",
+      "Does the description narrate the author's own work session, such as what the author investigated, approaches or names the author tried first and dropped, or how many runs the author looked at? Old behavior compared with new behavior does not count. Evidence of the failure that the change fixes, such as failed runs, how often it fails, or how it reproduces, does not count.",
     fix: "Remove the work log. Describe the change as it is now.",
   },
   {
