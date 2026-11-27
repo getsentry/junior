@@ -123,6 +123,13 @@ const ABLATIONS: Record<string, Ablation> = {
       proposals: batch.proposals.map((proposal) => omit(proposal, "script")),
     }),
   },
+  no_prior_decisions: {
+    batch: (batch) => ({
+      proposals: batch.proposals.map((proposal) =>
+        omit(proposal, "priorRejectedActions"),
+      ),
+    }),
+  },
   no_provenance: {
     batch: (batch) => ({
       proposals: batch.proposals.map((proposal) => omit(proposal, "evidence")),
