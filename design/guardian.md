@@ -87,7 +87,8 @@ untrusted text set up, does not run.
 - `review-by-default` Every tool call is reviewed, except calls of
   tools marked read-only and of core tools whose effects stay in the
   Sandbox or the current Conversation, such as file edits and replies.
-  A plugin cannot turn review off.
+  Only Junior's or a plugin's own code can mark a tool read-only. A remote
+  MCP server's marks are hints to Guardian. A plugin cannot turn review off.
 - `sandbox-boundary` Guardian reviews each command before it runs. An
   effect that stays in the Sandbox matches no rule, such as file edits,
   scratch cleanup, local commits, or stopping its own processes. Risk
@@ -231,8 +232,6 @@ nobody asked for, asks (`unrequested`).
 
 ## Gaps
 
-- `handoff-check`: messageAgent is not reviewed, so a message can hand a
-  child agent wider work than the sender's thread backs.
 - `review-by-default`, `sandbox-boundary`: core `bash` is reviewed only by
   the new Guardian, so under the current Guardian a command whose effect
   leaves the Sandbox runs without review.
@@ -265,6 +264,8 @@ nobody asked for, asks (`unrequested`).
 - `sandbox-boundary`: an action that stays in the Sandbox, such as
   deleting a checkout, can destroy unpushed work that the person asked
   for, and no rule catches it.
+- `review-by-default`: every remote MCP call is reviewed, also a read,
+  because nothing tells reliably which remote MCP calls are safe.
 - `review-by-default`, `same-outcome`: some core tools with side effects,
   and outbound network, are not reviewed.
 - `placeholders`: Guardian is not told about the placeholders of the
