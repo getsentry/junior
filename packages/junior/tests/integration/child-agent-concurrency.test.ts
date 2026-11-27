@@ -741,6 +741,7 @@ describe("child agent identity and concurrency", () => {
       expect(requests[1]!.instruction.text).toBe(
         [
           `<inbox-item-answer id="${id}">`,
+          "Answered by: alice@example.com",
           "Question: Who should own the login bug?",
           "Owner (owner): Bob",
           "</inbox-item-answer>",
