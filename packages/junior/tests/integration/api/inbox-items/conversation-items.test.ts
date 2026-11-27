@@ -205,6 +205,16 @@ describe("inbox items of a Conversation", () => {
         request: expect.objectContaining({ question: REQUEST.question }),
         title: "Close the tracking issue?",
       }),
+      // A dismissed question closes with no answer.
+      {
+        body: "The release shipped.",
+        closedAt: expect.any(String),
+        createdAt: expect.any(String),
+        id: other.subject.id,
+        request: REQUEST,
+        title: "Delete the release branch?",
+        updatedAt: expect.any(String),
+      },
     ]);
     const tables = read.statements.flatMap(
       (statement) => statement.text.match(/"junior_\w+"/g) ?? [],
