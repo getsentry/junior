@@ -317,17 +317,16 @@ class SqlConversationEventStore implements ConversationEventStore {
       // not address this Conversation, so they do not join it.
       if (data.meta?.["eventType"]) continue;
       const unarchives = eventUnarchivesConversation(data);
-      // A Message that restores an archived root is an explicit act, like
-      // Unarchive, so it adds and subscribes its author on any surface.
-      const restoresRoot = rootArchived && unarchives;
-      const isPerson = await recordConversationParticipant(this.executor, {
+      // Only a Participant restores an archive, as only one may Unarchive.
+      // A Slack Message adds its author first. A web Message does not.
+      const isParticipant = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
-        message: !restoresRoot,
-        resubscribe: eventAddressesJunior(data) || restoresRoot,
+        message: true,
+        resubscribe: eventAddressesJunior(data) || (rootArchived && unarchives),
       });
-      restores ||= isPerson && unarchives;
+      restores ||= isParticipant && unarchives;
     }
     /* oxlint-enable no-await-in-loop */
     // Archive is shared, so any person's message restores it for everyone.

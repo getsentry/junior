@@ -150,8 +150,8 @@ describe("conversation list authors", () => {
       });
       expect(feed.conversations).toEqual([]);
 
-      // A web Message that restores an archived root is an explicit act,
-      // like Unarchive, so it adds and subscribes its author.
+      // Only a Participant restores an archive, so a web Message from a
+      // person who is not one adds nobody and leaves it archived.
       await setArchivedAt(
         fixture.sql.db(),
         ["slack:C1:dashboard-author"],
@@ -187,17 +187,11 @@ describe("conversation list authors", () => {
           idempotencyKey: "turn:turn-dashboard-msg-2:started",
         },
       ]);
-      expect(await readParticipantUserIds()).toContain(participantUserId);
-      const restored = await readConversationFeedFromSql({
-        viewer: {
-          ...testViewer("dashboard-participant@example.com"),
-          id: participantUserId!,
-        },
-        limit: 10,
-      });
-      expect(restored.conversations.map((item) => item.conversationId)).toEqual(
-        ["slack:C1:dashboard-author"],
-      );
+      expect(await readParticipantUserIds()).not.toContain(participantUserId);
+      expect(
+        (await store.get({ conversationId: "slack:C1:dashboard-author" }))
+          ?.archivedAtMs,
+      ).toBe(5_700);
     } finally {
       await fixture.close();
     }

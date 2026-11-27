@@ -272,6 +272,11 @@ describe("Spaces API", () => {
       ).json(),
     );
     expect(archived.archivedAt).not.toBeNull();
+    // Only a Participant restores an archive, and a Message restores one.
+    expect(
+      (await postMessage(bo, await leadOf(bo, space.id), "spaces-api-visit"))
+        .status,
+    ).toBe(403);
     expect(await listNames(ana)).not.toContain("Junior for iOS");
     expect(await listNames(ana, "?archived=true")).toContain("Junior for iOS");
     const restored = spaceSchema.parse(

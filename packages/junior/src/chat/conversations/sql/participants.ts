@@ -42,12 +42,12 @@ export async function rootConversationIsArchived(
 }
 
 /**
- * Upsert one linked user as a participant on a root conversation.
- * No-ops and returns false when the identity is missing, unlinked, or not a
- * user. `resubscribe` ends an unsubscribe: the user addressed Junior again.
- * With `message`, only a Slack author is added: on the web and other
- * surfaces a person joins explicitly, so their Message only updates a row
- * that they already have.
+ * Upsert one linked user as a participant on a root conversation, and
+ * return whether they are one now. No-ops and returns false when the
+ * identity is missing, unlinked, or not a user. `resubscribe` ends an
+ * unsubscribe: the user addressed Junior again. With `message`, only a Slack
+ * author is added: on the web and other surfaces a person joins explicitly,
+ * so their Message only updates a row that they already have.
  */
 export async function recordConversationParticipant(
   executor: JuniorSqlDatabase,
@@ -87,7 +87,7 @@ export async function recordConversationParticipant(
   // no bump, because its detail version sums its subtree.
   if (args.message && identity.provider !== "slack") {
     // oxlint-disable-next-line junior/touch-conversation-detail -- callers bump in the same transaction.
-    await executor
+    const updated = await executor
       .db()
       .update(juniorConversationParticipants)
       .set(set)
@@ -99,8 +99,9 @@ export async function recordConversationParticipant(
             rootConversationId,
           ),
         ),
-      );
-    return true;
+      )
+      .returning({ userId: juniorConversationParticipants.userId });
+    return updated.length > 0;
   }
   // oxlint-disable-next-line junior/touch-conversation-detail -- callers bump in the same transaction.
   await executor
