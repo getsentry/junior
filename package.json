@@ -63,7 +63,7 @@
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged",
-    "pre-push": "pnpm lint"
+    "pre-push": "node scripts/lint.mjs --changed"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}": "oxlint --fix",

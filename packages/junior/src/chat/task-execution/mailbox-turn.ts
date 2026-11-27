@@ -257,9 +257,6 @@ function isActiveMailboxTurn(
 ): boolean {
   return (
     !record.dispatchId &&
-    // A Turn of the removed child worker of an earlier release is never a
-    // mailbox Turn, so a saved one never resumes.
-    record.surface !== "internal" &&
     (record.source?.kind === "web" ||
       record.source?.kind === "event" ||
       record.source?.kind === "parent_message" ||
@@ -294,7 +291,6 @@ export async function getAuthPausedConversationTurnId(
     : undefined;
 }
 
-/** Read one web input batch as Turn input. A batch with no web input gives []. */
 /** Return the transcript author of a web Actor's Message. */
 export function webMessageAuthor(actor: WebActor): ConversationAuthor {
   return {
@@ -305,6 +301,7 @@ export function webMessageAuthor(actor: WebActor): ConversationAuthor {
   };
 }
 
+/** Read one web input batch as Turn input. A batch with no web input gives []. */
 function parseWebMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {

@@ -88,10 +88,18 @@ export async function requireWebMessageConversation(
     [conversationId],
     viewer,
   );
-  if (!canAddConversationMessages(access.get(conversationId))) {
+  const viewerAccess = access.get(conversationId);
+  if (!canAddConversationMessages(viewerAccess)) {
     throwApiError(
       403,
       "Only participants can add messages to a private conversation.",
+    );
+  }
+  // A Message restores an archive, and only a Participant may restore one.
+  if (conversation.archivedAtMs !== undefined && !viewerAccess?.isParticipant) {
+    throwApiError(
+      403,
+      "Only participants can add messages to an archived conversation.",
     );
   }
   return conversationId;

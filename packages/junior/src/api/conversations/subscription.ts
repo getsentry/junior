@@ -49,9 +49,10 @@ import {
  *   unarchived descendants are archived for everyone. No feed shows it
  *   anymore. The person who started the Conversation is a subscriber before
  *   they post in it, because starting it adds their Participant row.
- * - Given an archived root, when a person restores it (any Message that
+ * - Given an archived root, when a Participant restores it (any Message that
  *   restores an archive, or Unarchive), then that person is subscribed
- *   again. A restored root never sits in no feed.
+ *   again. A restored root never sits in no feed. A person who is not a
+ *   Participant cannot restore it.
  * - Given a Turn, when the agent changes the subscription with its tool,
  *   then only the person who started the Turn changes, in the current
  *   Conversation. The dashboard conversation menu, the agent tool, and the
