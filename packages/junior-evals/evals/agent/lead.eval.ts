@@ -215,15 +215,18 @@ describe("Lead", () => {
     );
 
     const [first, ...later] = conversation.turns;
-    const [child] = completedToolCalls("startAgent", {
+    // The Lead may start the follow-up Thread in the first Turn too, told
+    // to wait. The first archive of a first-Turn Thread is the merge check.
+    const childIds = completedToolCalls("startAgent", {
       toolCalls: first?.toolCalls ?? [],
-    });
-    expect(child).toBeDefined();
-    const childId = (toolOutput(child!) as { conversation_id?: unknown })
-      .conversation_id;
+    }).map(
+      (call) =>
+        (toolOutput(call) as { conversation_id?: unknown }).conversation_id,
+    );
+    expect(childIds.length).toBeGreaterThan(0);
     const archived = later.find((turn) =>
-      completedToolCalls("archiveAgent", turn).some(
-        (call) => input(call)["conversation_id"] === childId,
+      completedToolCalls("archiveAgent", turn).some((call) =>
+        childIds.includes(input(call)["conversation_id"]),
       ),
     );
     expect(archived).toBeDefined();
