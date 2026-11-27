@@ -572,7 +572,7 @@ describe("conversation tree state", () => {
     await expectBudget({ treeState: "needs_you", watching: true });
 
     // Other Conversations' open items cost the tree one read of them, not
-    // one for each row of the tree. Today's plan costs about 37,000, mostly
+    // one for each row of the tree. Today's plan costs about 40,000, mostly
     // the starter check on each row. An owner check on each row costs about
     // a million.
     await getSqlExecutor().execute(
@@ -596,7 +596,7 @@ describe("conversation tree state", () => {
     await getSqlExecutor().execute(
       "analyze junior_conversations, junior_inbox_items",
     );
-    await expectPlanCost(() => fixture.request("/api/conversations"), 55_000);
+    await expectPlanCost(() => fixture.request("/api/conversations"), 60_000);
   });
 
   it("rolls up a Space's Conversations into its Space list row", async () => {

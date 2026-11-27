@@ -134,7 +134,7 @@ describe("conversation list API response budget", () => {
       pinnedIds.push(conversationId);
     }
 
-    // About 204,000, mostly the starter check of each tree row. An owner
+    // About 207,000, mostly the starter check of each tree row. An owner
     // check of the open Inbox items on each tree row costs about 2.7
     // million.
     const response = await expectResponseBudget(
