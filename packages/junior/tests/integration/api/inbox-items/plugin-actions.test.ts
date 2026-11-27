@@ -101,7 +101,7 @@ it("gives a kind action on a plugin item to the plugin, and starts no Turn", asy
       defineJuniorPlugin({
         inboxSubjects: [
           {
-            actions: [{ id: "resume", label: "Resume" }],
+            actions: [{ id: "resume", label: "Keep fixing" }],
             kind: "deploy_stopped",
             label: "Deploys stopped",
             owner: TEST_PLUGIN_INBOX_OWNER,
@@ -172,7 +172,7 @@ it("gives a kind action on a plugin item to the plugin, and starts no Turn", asy
   expect(shown).toMatchObject({
     canAct: true,
     kind: "action",
-    subject: { actions: [{ id: "resume", label: "Resume" }] },
+    subject: { actions: [{ id: "resume", label: "Keep fixing" }] },
   });
   expect(shown.request).toBeUndefined();
   expect(
@@ -185,7 +185,7 @@ it("gives a kind action on a plugin item to the plugin, and starts no Turn", asy
   });
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({
-    closeAction: "Resume",
+    closeAction: "Keep fixing",
     status: "done",
   });
   expect(actions).toEqual([
@@ -207,7 +207,8 @@ it("gives a kind action on a plugin item to the plugin, and starts no Turn", asy
   expect(actions).toHaveLength(2);
 
   // An item from before kinds had actions asks with a choice. Its pick
-  // runs the action that the label names, and its history reads the same.
+  // runs the action that the old label names by id, and its history reads
+  // the same.
   await items.upsert(notice);
   const [legacy] = await getDb()
     .select()

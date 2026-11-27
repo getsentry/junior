@@ -284,7 +284,7 @@ async function addUnlandedItem(args: {
     // The policy asks once per Resume, so each upsert is a new ask.
     askedIdentityIds: [opener.identityId],
     assigneeIdentityIds: [opener.identityId],
-    body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
+    body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Keep fixing tries again. Dismiss stops these asks for this pull request.`,
     subject: pullRequestSubject(
       GITHUB_INBOX_SUBJECTS.mergeConflict,
       args.pullRequestId,

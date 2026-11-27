@@ -84,13 +84,14 @@ const NOBODY_LEFT_REASON = "Nobody on the item has an ask now.";
 /**
  * Return the kind action of a plugin item that closed with a pick of a
  * choice field named `choice`, as items did before kinds defined actions.
- * The picked label names the action, such as Resume.
+ * The picked label names the action by its label or, after the label
+ * changed, by its id, as "Resume" names `resume`.
  */
 export function legacyChoiceAction(item: InboxItem): string | undefined {
   const label = item.answer?.values["choice"]?.[0];
   if (!label) return undefined;
   return subjectKindActions(item.subject.kind, getPlugins()).find(
-    (action) => action.label === label,
+    (action) => action.label === label || action.id === label.toLowerCase(),
   )?.id;
 }
 

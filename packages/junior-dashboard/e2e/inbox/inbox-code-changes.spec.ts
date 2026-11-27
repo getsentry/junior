@@ -48,7 +48,7 @@ const conflict = {
       },
       url: "https://github.com/getsentry/payments/pull/57",
     }),
-    actions: [{ id: "resume", label: "Resume" }],
+    actions: [{ id: "resume", label: "Keep fixing" }],
   },
   title: "Merge conflict · #57",
 };
@@ -96,7 +96,7 @@ test.describe("new UI", () => {
     await screenshot(page, "inbox-code-change-rows", { lightTheme: true });
   });
 
-  test("a merge conflict card runs its kind's Resume", async ({
+  test("a merge conflict card runs its kind's Keep fixing", async ({
     dashboard,
     page,
   }) => {
@@ -105,7 +105,7 @@ test.describe("new UI", () => {
     const conflictRow = row(page, "Keep thread replies in order");
     await expandRow(rowHead(page, "Keep thread replies in order"));
     await conflictRow
-      .getByRole("button", { exact: true, name: "Resume" })
+      .getByRole("button", { exact: true, name: "Keep fixing" })
       .click();
     await expect(conflictRow).toHaveCount(0);
     expect(actions).toEqual([
@@ -143,6 +143,11 @@ test.describe("new UI", () => {
         name: "Resume",
       }),
     ).toHaveCount(1);
+    await expect(
+      row(page, "Keep thread replies in order").getByRole("button", {
+        name: "Keep fixing",
+      }),
+    ).toHaveCount(0);
   });
 
   test("a code change row opens its pull request first", async ({

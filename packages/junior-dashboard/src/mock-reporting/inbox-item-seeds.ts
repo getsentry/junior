@@ -296,14 +296,14 @@ export function seeds(nowMs: number): MockItemSeed[] {
     {
       // The GitHub plugin's last conflict fix of this pull request did not
       // land. Resume starts a fix and the fix count again.
-      body: "#2188 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
+      body: "#2188 conflicts with `main`, and the last fix did not land. Keep fixing tries again. Dismiss stops these asks for this pull request.",
       conversationId: RELEASE_CONVERSATION_ID,
       createdAt: at(40),
       id: "qa-conflict-2188",
       plugin: "github",
       status: "open",
       subject: {
-        actions: [{ id: "resume", label: "Resume" }],
+        actions: [{ id: "resume", label: "Keep fixing" }],
         id: "https://github.com/getsentry/junior/pull/2188",
         kind: "github:merge_conflict",
         label: "Merge conflict",

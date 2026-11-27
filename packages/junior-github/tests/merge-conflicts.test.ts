@@ -722,7 +722,7 @@ describe("merge conflict check on webhook events", () => {
           notice: {
             askedIdentityIds: ["identity-jane"],
             assigneeIdentityIds: ["identity-jane"],
-            body: "#946 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
+            body: "#946 conflicts with `main`, and the last fix did not land. Keep fixing tries again. Dismiss stops these asks for this pull request.",
             subject: {
               id: "9460",
               kind: "merge_conflict",

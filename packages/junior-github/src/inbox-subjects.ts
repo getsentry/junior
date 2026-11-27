@@ -96,7 +96,7 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
     owner: pullRequestOwner,
   },
   {
-    actions: [{ id: GITHUB_CONFLICT_RESUME, label: "Resume" }],
+    actions: [{ id: GITHUB_CONFLICT_RESUME, label: "Keep fixing" }],
     codeChange: true,
     kind: GITHUB_INBOX_SUBJECTS.mergeConflict,
     label: "Merge conflict",
