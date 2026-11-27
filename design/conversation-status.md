@@ -51,7 +51,7 @@ failed, or still runs, without opening each Conversation.
 - `done` When the latest Turn ended and nothing on this Conversation is
   pending, the status is `done`. This is the same for every kind of
   Conversation, so a root is done when it answered the person and nothing
-  waits. A Turn that ended blocked is `done`: the parent has the result.
+  waits.
 - `own-order` When more than one status applies, the first of these wins:
   `stopped`, `working`, `needs_input`, `failed`, `idle`, `done`. So an agent
   that keeps working while its question is open shows `working`.
