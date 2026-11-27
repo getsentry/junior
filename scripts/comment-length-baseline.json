@@ -278,7 +278,7 @@
     "packages/junior/src/chat/identities/slack-mention-text.ts": 1,
     "packages/junior/src/chat/identities/trust.ts": 6,
     "packages/junior/src/chat/identities/user-cache.ts": 5,
-    "packages/junior/src/chat/inbox-items/access.ts": 14,
+    "packages/junior/src/chat/inbox-items/access.ts": 13,
     "packages/junior/src/chat/inbox-items/change-record.ts": 2,
     "packages/junior/src/chat/inbox-items/changes.ts": 1,
     "packages/junior/src/chat/inbox-items/messages.ts": 3,
