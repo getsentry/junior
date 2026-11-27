@@ -94,8 +94,6 @@ untrusted text set up, does not run.
   starts where an effect leaves the Sandbox, such as a push, a network
   write, or a provider call, or where it breaks a person's explicit limit.
   A command that only shows whether a credential is set does not probe it.
-  For a push to a `world` repo, Guardian also reads the commits that the
-  push sends, as context.
 - `same-outcome` A block holds for the outcome, not for the tool. The same
   side effect through another tool, a file, a Code Mode script, the
   network, or a child agent gets the same decision. Guardian judges each
@@ -119,9 +117,7 @@ untrusted text set up, does not run.
   tools, a plugin gives the target, which is what the call changes, such
   as `getsentry/junior#12`, and the target's audience. A plugin can give
   one audience for all of its MCP tools, such as `internal` for Notion.
-  When Junior clones a repo, it records the repo's audience. A push gets
-  the audience recorded for its push URL. A target with no audience, and a
-  push to a URL with no record, count as `world`.
+  A target with no audience counts as `world`.
 - `plugin-decision` A plugin can also give a decision for a call of its
   tool, with the reason. A plugin's ask or deny holds, and Guardian does
   not overrule it. The person's yes to that exact action still clears an
@@ -210,10 +206,10 @@ customers, it is denied (`no-exposure`). The same issue on a team that does
 not sync is `internal`, and it is allowed.
 
 **Bash.** Alice asks Junior to fix a flaky test in getsentry/junior and open
-a PR. Junior recorded the repo's audience, `world`, when it cloned the
-repo. Guardian reads the commits that the push sends (`sandbox-boundary`).
-A plain code fix is allowed (`conventional-steps`). A commit that copies a
-production error log into a fixture asks (`internal-disclosure`).
+a PR. Guardian judges `git push origin fix-flaky-test` from the command.
+A push of the work branch is a conventional step of the requested PR, so
+it is allowed (`conventional-steps`). A push to the default branch, which
+nobody asked for, asks (`unrequested`).
 
 **GitHub.** Junior opened getsentry/junior#12 for Alice.
 
@@ -263,9 +259,9 @@ production error log into a fixture asks (`internal-disclosure`).
   comment says.
 - `plugin-decision`: resolving a review thread does not name its PR, so
   the GitHub plugin gives no decision and the call can ask.
-- `facts-from-junior`: a repo cloned with a bash command has no recorded
-  audience, so a push from it counts as `world`, and internal detail in it
-  asks.
+- `internal-disclosure`, `sandbox-boundary`: Guardian does not see what a
+  `git push` publishes, so a commit that carries internal detail to a
+  public repo runs with no ask.
 - `sandbox-boundary`: an action that stays in the Sandbox, such as
   deleting a checkout, can destroy unpushed work that the person asked
   for, and no rule catches it.
