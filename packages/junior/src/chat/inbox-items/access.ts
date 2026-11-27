@@ -654,12 +654,11 @@ export function canActOnInboxItem(item: InboxItem, userId: string): boolean {
 }
 
 /**
- * Return whether a User can answer an open question. Anyone who can act on
- * it can (`canActOnInboxItem`). A public question that an agent asked in a
- * Conversation is open to anyone who can see it, such as a member of its
- * public Slack channel. A private item, a To-do, a plugin's item, and an
- * Automation alert keep the assignee rule, and so do Take and Dismiss. The
- * caller checks that the User can see the item.
+ * Return whether a User can answer or dismiss an open item. Anyone who can
+ * act on it can (`canActOnInboxItem`). A public question that an agent
+ * asked in a Conversation is open to anyone who can see it, such as a
+ * member of its public Slack channel. Other items, and Take, keep the
+ * assignee rule. The caller checks that the User can see the item.
  */
 export function canAnswerInboxItem(item: InboxItem, userId: string): boolean {
   if (canActOnInboxItem(item, userId)) return true;

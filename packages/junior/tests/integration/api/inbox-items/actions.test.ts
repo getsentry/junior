@@ -298,7 +298,7 @@ describe("inbox item actions API", () => {
       request: REQUEST,
     });
     // A notice does not need Ana, so it does not count.
-    await addItem({
+    const noticeId = await addItem({
       kind: "notice",
       title: "Weekly report is ready",
       body: "Read it when you have time.",
@@ -361,8 +361,10 @@ describe("inbox item actions API", () => {
     expect((await (await api(fixture, outsider).get("")).json()).items).toEqual(
       [],
     );
+    // Only a public question opens to its readers. Cal cannot dismiss a
+    // notice for Ana.
     expect(
-      (await api(fixture, cal).act(id, { action: "dismiss" })).status,
+      (await api(fixture, cal).act(noticeId, { action: "dismiss" })).status,
     ).toBe(403);
 
     const submitted = await api(fixture, ana).act(id, {

@@ -149,9 +149,8 @@ export function InboxItemActions(props: {
 
   // A To-do for the viewer closes with Mark done, its main action.
   const todo = item.todoId !== undefined;
-  // A person who may only answer, such as a reader of a public question,
-  // gets no Dismiss or Snooze.
-  const dismiss = item.canAct && (props.dismiss ?? true);
+  // A reader of a public question can dismiss it, like an assignee.
+  const dismiss = item.canAnswer && (props.dismiss ?? true);
   const take = item.canTake ? (props.take ?? "Take") : false;
   // A card on its own, as in a transcript, snoozes its item itself. The
   // Inbox brings its own Snooze, so its row leaves with motion.
