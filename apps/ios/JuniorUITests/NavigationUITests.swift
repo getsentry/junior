@@ -25,7 +25,7 @@ final class NavigationUITests: XCTestCase {
     ]
     switch auth {
     case .token: app.launchArguments += ["-JuniorAccessToken", "mock-access-token"]
-    case .signedOut: app.launchArguments += ["-JuniorSignOut", "YES"]
+    case .signedOut: app.launchArguments += ["-JuniorSignOut", "YES", "-JuniorSignInWithoutSheet", "YES"]
     case .kept: break
     }
     app.launch()
@@ -36,7 +36,7 @@ final class NavigationUITests: XCTestCase {
     app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
   }
 
-  /// The whole OAuth flow: the browser sheet, the mock's consent, the
+  /// The OAuth flow without the browser sheet: the mock's consent, the
   /// `junior-ios` redirect, the token exchange, and a Keychain that survives a
   /// relaunch. The drawer shows the changelog, and Sign out returns to Sign in.
   func testSignInAndOut() {

@@ -245,8 +245,9 @@ struct KeychainCredentialStore: CredentialStore {
 
 /// Launch arguments for development and screenshots:
 /// `-JuniorServer <url> -JuniorFixedNow <iso> -JuniorOpen <path> -JuniorTheme <dark|light>`,
-/// and in debug builds `-JuniorAccessToken <token>` to start signed in or
-/// `-JuniorSignOut YES` to start signed out.
+/// and in debug builds `-JuniorAccessToken <token>` to start signed in,
+/// `-JuniorSignOut YES` to start signed out, or `-JuniorSignInWithoutSheet YES`
+/// to sign in without the browser sheet.
 struct LaunchOptions {
   var server: URL?
   var fixedNow: Date?
@@ -254,6 +255,7 @@ struct LaunchOptions {
   var theme: ThemeChoice?
   var accessToken: String?
   var signOut = false
+  var signInWithoutSheet = false
 
   static var current: LaunchOptions {
     let defaults = UserDefaults.standard
@@ -263,6 +265,7 @@ struct LaunchOptions {
       open: defaults.string(forKey: "JuniorOpen"),
       theme: defaults.string(forKey: "JuniorTheme").flatMap(ThemeChoice.init(rawValue:)),
       accessToken: defaults.string(forKey: "JuniorAccessToken"),
-      signOut: defaults.bool(forKey: "JuniorSignOut"))
+      signOut: defaults.bool(forKey: "JuniorSignOut"),
+      signInWithoutSheet: defaults.bool(forKey: "JuniorSignInWithoutSheet"))
   }
 }
