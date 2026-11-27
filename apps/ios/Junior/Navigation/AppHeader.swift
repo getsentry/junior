@@ -11,7 +11,7 @@ struct AppHeader<Trailing: View, Below: View>: View {
   @Environment(WindowModel.self) private var window
   @Environment(\.dismiss) private var dismiss
   @Environment(\.splitColumn) private var column
-  @Environment(\.barsAreVertical) private var barsAreVertical
+  @Environment(\.verticalBarEdge) private var verticalBarEdge
   var title: String
   var leading: Leading = .menu
   /// Outfit 14 medium (Conversation titles) instead of Inter 14 semibold.
@@ -40,7 +40,7 @@ struct AppHeader<Trailing: View, Below: View>: View {
           // The open item beside the list has nothing to go back to, and the
           // list's header has the menu. The slot keeps titles aligned.
           Color.clear.frame(width: 40, height: 40)
-        } else if leading == .back && barsAreVertical {
+        } else if leading == .back && verticalBarEdge != nil {
           // The system Back shows at the top of the vertical bar instead.
         } else {
           Button {
@@ -85,11 +85,11 @@ struct AppHeader<Trailing: View, Below: View>: View {
 }
 
 extension EnvironmentValues {
-  /// The system places bars on the side, as on iPhone Duo closed or open in
-  /// landscape. A pushed screen then shows the navigation bar for its Back.
-  var barsAreVertical: Bool {
-    guard #available(iOS 27.1, *) else { return false }
-    return toolbarVerticalEdge != nil
+  /// The side where the system places bars, as on iPhone Duo closed or open
+  /// in landscape. A pushed screen then shows the navigation bar for its Back.
+  var verticalBarEdge: HorizontalEdge? {
+    guard #available(iOS 27.1, *) else { return nil }
+    return toolbarVerticalEdge
   }
 }
 

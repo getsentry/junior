@@ -7,7 +7,7 @@ struct ConversationScreen: View {
   @Environment(AppModel.self) private var app
   @Environment(WindowModel.self) private var window
   @Environment(\.splitColumn) private var column
-  @Environment(\.barsAreVertical) private var barsAreVertical
+  @Environment(\.verticalBarEdge) private var verticalBarEdge
   @State private var model: ConversationModel
   @State private var showDetails = false
   @State private var shareURL: URL?
@@ -27,7 +27,7 @@ struct ConversationScreen: View {
     }
     .background(Tokens.bg)
     // With vertical bars, the system Back replaces the header's.
-    .toolbar(barsAreVertical && column != .detailRoot ? .visible : .hidden, for: .navigationBar)
+    .toolbar(verticalBarEdge != nil && column != .detailRoot ? .visible : .hidden, for: .navigationBar)
     .inspector(isPresented: Binding(get: { showDetails && detailsBeside }, set: { showDetails = $0 })) {
       details
         .background(Tokens.bgElevated)
