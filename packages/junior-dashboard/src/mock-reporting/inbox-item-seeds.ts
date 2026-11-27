@@ -303,7 +303,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       plugin: "github",
       status: "open",
       subject: {
-        actions: [{ id: "resume", label: "Keep fixing" }],
+        actions: [{ icon: "wrench", id: "resume", label: "Keep fixing" }],
         id: "https://github.com/getsentry/junior/pull/2188",
         kind: "github:merge_conflict",
         label: "Merge conflict",

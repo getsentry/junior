@@ -1,3 +1,4 @@
+import { Wrench, type LucideIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import {
   inboxItemQuestion,
@@ -22,8 +23,8 @@ import { DismissNote, RowDismissButton } from "./RowDismissButton";
 
 /**
  * The actions of an item's subject kind that the viewer can take, such as
- * Resume. An item added with a question before kinds had actions shows that
- * question's choice instead.
+ * Keep fixing. An item added with a question before kinds had actions
+ * shows that question's choice instead.
  */
 export function itemKindActions(
   item: InboxItemPayload,
@@ -31,6 +32,14 @@ export function itemKindActions(
   if (!item.canAct || inboxItemQuestion(item.request)) return [];
   return item.subject.actions ?? [];
 }
+
+type KindActionIcon = NonNullable<
+  ReturnType<typeof itemKindActions>[number]["icon"]
+>;
+
+const KIND_ACTION_ICONS: Record<KindActionIcon, LucideIcon> = {
+  wrench: Wrench,
+};
 
 // Only an open card snoozes from here, so its snooze code stays out of the
 // first load.
@@ -209,17 +218,21 @@ export function InboxItemActions(props: {
           Mark done
         </Button>
       ) : null}
-      {kindActions.map((kindAction) => (
-        <Button
-          disabled={action.isPending || sending}
-          key={kindAction.id}
-          onClick={() =>
-            void run({ action: "done", id: kindAction.id }).catch(() => {})
-          }
-        >
-          {kindAction.label}
-        </Button>
-      ))}
+      {kindActions.map((kindAction) => {
+        const Icon = kindAction.icon && KIND_ACTION_ICONS[kindAction.icon];
+        return (
+          <Button
+            disabled={action.isPending || sending}
+            key={kindAction.id}
+            onClick={() =>
+              void run({ action: "done", id: kindAction.id }).catch(() => {})
+            }
+          >
+            {Icon ? <Icon aria-hidden="true" size={16} /> : null}
+            {kindAction.label}
+          </Button>
+        );
+      })}
     </>
   );
 

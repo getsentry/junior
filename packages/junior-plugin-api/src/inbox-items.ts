@@ -51,7 +51,7 @@ export interface PluginInboxSubjectKind {
   owner: PluginInboxSubjectOwner | "annotation";
   /**
    * Buttons on each open item of the kind, in display order, such as
-   * Resume. An item of a kind with actions waits on its assignees. The
+   * Keep fixing. An item of a kind with actions waits on its assignees. The
    * first click closes it as done, records the action's `id`, and calls the
    * plugin's `inboxItemAction` hook. It starts no Turn: the plugin does the
    * work.
@@ -66,11 +66,19 @@ export interface PluginInboxSubjectKind {
   assigneeRoles?: boolean;
 }
 
+/**
+ * The icons that a kind action can show next to its label. The dashboard
+ * maps each name to one of its icons, so add a name there too.
+ */
+export const PLUGIN_INBOX_ACTION_ICONS = ["wrench"] as const;
+
 /** One button on the open items of a subject kind. */
 export interface PluginInboxKindAction {
   /** Stable id, recorded on the item that it closes, such as `resume`. */
   id: string;
   label: string;
+  /** The dashboard shows it before the label. Slack shows no icons. */
+  icon?: (typeof PLUGIN_INBOX_ACTION_ICONS)[number];
 }
 
 /** The table and columns that map a subject id to its owner Conversation. */

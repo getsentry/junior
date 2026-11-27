@@ -6,7 +6,10 @@ import {
 } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
 import type { PluginImageSource } from "./images";
-import type { PluginInboxSubjectKind } from "./inbox-items";
+import {
+  PLUGIN_INBOX_ACTION_ICONS,
+  type PluginInboxSubjectKind,
+} from "./inbox-items";
 import type { PluginManifest } from "./manifest";
 import {
   objectLinkFilterSchema,
@@ -296,12 +299,14 @@ function validateInboxSubjects(
           typeof action?.id !== "string" ||
           !INBOX_SUBJECT_KIND_RE.test(action.id) ||
           typeof action.label !== "string" ||
-          !action.label.trim(),
+          !action.label.trim() ||
+          (action.icon !== undefined &&
+            !PLUGIN_INBOX_ACTION_ICONS.includes(action.icon)),
       ) ||
       new Set(actionIds).size !== actionIds.length
     ) {
       throw new Error(
-        `Plugin "${name}" inbox subject "${subject.kind}" actions need unique snake_case ids and labels.`,
+        `Plugin "${name}" inbox subject "${subject.kind}" actions need unique snake_case ids, labels, and icons from ${PLUGIN_INBOX_ACTION_ICONS.join(", ")}.`,
       );
     }
     if (seen.has(subject.kind)) {

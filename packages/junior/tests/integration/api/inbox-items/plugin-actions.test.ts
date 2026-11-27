@@ -101,7 +101,7 @@ it("gives a kind action on a plugin item to the plugin, and starts no Turn", asy
       defineJuniorPlugin({
         inboxSubjects: [
           {
-            actions: [{ id: "resume", label: "Keep fixing" }],
+            actions: [{ icon: "wrench", id: "resume", label: "Keep fixing" }],
             kind: "deploy_stopped",
             label: "Deploys stopped",
             owner: TEST_PLUGIN_INBOX_OWNER,
@@ -172,7 +172,9 @@ it("gives a kind action on a plugin item to the plugin, and starts no Turn", asy
   expect(shown).toMatchObject({
     canAct: true,
     kind: "action",
-    subject: { actions: [{ id: "resume", label: "Keep fixing" }] },
+    subject: {
+      actions: [{ icon: "wrench", id: "resume", label: "Keep fixing" }],
+    },
   });
   expect(shown.request).toBeUndefined();
   expect(
@@ -283,4 +285,27 @@ it("gives a kind action on a plugin item to the plugin, and starts no Turn", asy
       ),
     ),
   ).toHaveLength(2);
+});
+
+it("rejects a kind action icon that the dashboard does not have", () => {
+  expect(() =>
+    defineJuniorPlugin({
+      inboxSubjects: [
+        {
+          actions: [
+            // @ts-expect-error An untyped plugin can pass any icon.
+            { icon: "rocket", id: "resume", label: "Keep fixing" },
+          ],
+          kind: "deploy_stopped",
+          label: "Deploys stopped",
+          owner: TEST_PLUGIN_INBOX_OWNER,
+        },
+      ],
+      manifest: {
+        name: "deploys",
+        displayName: "Deploys",
+        description: "Deploy test plugin",
+      },
+    }),
+  ).toThrow(/icons from wrench/);
 });

@@ -48,7 +48,7 @@ const conflict = {
       },
       url: "https://github.com/getsentry/payments/pull/57",
     }),
-    actions: [{ id: "resume", label: "Keep fixing" }],
+    actions: [{ icon: "wrench", id: "resume", label: "Keep fixing" }],
   },
   title: "Merge conflict · #57",
 };

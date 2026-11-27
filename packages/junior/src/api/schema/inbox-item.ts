@@ -1,5 +1,6 @@
 import * as z from "zod";
 import {
+  PLUGIN_INBOX_ACTION_ICONS,
   objectTypeSchema,
   ownedObjectAnnotationSchema,
 } from "@sentry/junior-plugin-api";
@@ -136,7 +137,11 @@ export const inboxItemSchema = z
         actions: z
           .array(
             z
-              .object({ id: z.string().min(1), label: z.string().min(1) })
+              .object({
+                icon: z.enum(PLUGIN_INBOX_ACTION_ICONS).optional(),
+                id: z.string().min(1),
+                label: z.string().min(1),
+              })
               .strict(),
           )
           .optional(),

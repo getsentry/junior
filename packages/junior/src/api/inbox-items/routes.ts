@@ -215,7 +215,13 @@ function subjectPayload(
     id: subject.id,
     kind: subject.kind,
     ...(actions.length > 0
-      ? { actions: actions.map(({ id, label }) => ({ id, label })) }
+      ? {
+          actions: actions.map(({ icon, id, label }) => ({
+            id,
+            label,
+            ...(icon ? { icon } : undefined),
+          })),
+        }
       : undefined),
     ...(label ? { label } : undefined),
     ...(dismissNote ? { dismissNote } : undefined),
