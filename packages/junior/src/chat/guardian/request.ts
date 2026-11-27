@@ -5,9 +5,8 @@
  * who wrote each message from the Run's Source and the author labels of the
  * root Conversation, never from what the text says.
  */
-import type { ToolAnnotations } from "@sentry/junior-plugin-api";
 import { instructionAuthor } from "@/chat/conversations/kind-behavior";
-import type { Call, Message } from "@/chat/guardian/guardian";
+import type { Message } from "@/chat/guardian/guardian";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 
 /**
@@ -52,7 +51,7 @@ export function guardianMessages(proposal: ToolActionProposal): Message[] {
         message.author === "user"
           ? "instruction"
           : message.author === "other person"
-            ? "person"
+            ? "other_person"
             : "context",
       text: message.text,
     });
@@ -68,15 +67,4 @@ export function guardianMessages(proposal: ToolActionProposal): Message[] {
     });
   }
   return messages;
-}
-
-/**
- * The call of a tool that does not describe its own, from its marks: a
- * read-only tool reads, and any other writes. The marks name no target.
- */
-export function defaultCall(
-  annotations: ToolAnnotations | undefined,
-  summary: string,
-): Call {
-  return { effect: annotations?.readOnlyHint ? "read" : "write", summary };
 }
