@@ -511,7 +511,9 @@ function InboxRowBody(
   const controls = props.actionsBelow
     ? `${asksShown ? `${regionId}-asks ` : ""}${regionId}`
     : regionId;
-  const state = conversation ? statusIndicatorState(conversation) : undefined;
+  const state = conversation
+    ? statusIndicatorState({ ...conversation, waitsOnViewer: waiting })
+    : undefined;
   // Comfortable rows show images, linked work, links and files under the
   // head.
   const cards =
