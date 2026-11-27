@@ -31,6 +31,8 @@ type StatusIndicatorSource = {
 export function statusIndicatorState(
   source: StatusIndicatorSource,
 ): StatusIndicatorState | undefined {
+  // Planned statuses: needs_input or failed is yellow, working pulses, idle
+  // is the ring, and done, stopped, or archived shows nothing.
   if (source.archivedAt) return undefined;
   if (
     source.treeState === "needs_you" ||
