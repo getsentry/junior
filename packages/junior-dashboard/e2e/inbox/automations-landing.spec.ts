@@ -47,6 +47,7 @@ test.describe("new UI", () => {
       .hover();
     await expect(page.getByRole("tooltip")).toContainText("Duration");
     await screenshot(page, "automation-details-long-instruction", {
+      hover: true,
       view: "desktop",
     });
 
