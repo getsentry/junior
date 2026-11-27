@@ -92,9 +92,10 @@ groups and acts on its rows.
   another item.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
-- The answer to an item that a plugin added goes to that plugin, which does
-  the work, such as Resume on a merge conflict fix that did not land. It
-  starts no Turn.
+- A plugin's subject kind can define actions, such as Resume on a merge
+  conflict fix that did not land. Each shows as a button on the kind's open
+  items. A click closes the item as done, the item records the action, and
+  the plugin does the work. It starts no Turn.
 - An item is visible to whoever can see its subject's owner. An item from
   a public Conversation is visible to the whole workspace. Everyone means
   the people who can see the item's owner.

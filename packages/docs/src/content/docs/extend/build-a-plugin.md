@@ -557,9 +557,15 @@ the Destination of that Conversation sets who can see the item. Save the row
 before you add the item. Add a unique index, so that at most one row with a
 Conversation has each subject id.
 
+A kind can set `actions`: buttons that each open item of the kind shows, such
+as `{ id: "resume", label: "Resume" }`. A click closes the item as done and
+calls your `inboxItemAction` hook with the item and the action id. Do the work
+there. A retry of the same click calls the hook again, so make it safe to
+repeat.
+
 `history(subject)` returns the items of a subject, newest first. Each closed
-item says when and how it closed, and the choice that closed it. Read what
-people did, such as a dismiss or a choice, from it. Do not copy it into a
+item says when and how it closed, and the action that closed it. Read what
+people did, such as a dismiss or an action, from it. Do not copy it into a
 table of your plugin.
 
 ```ts
@@ -567,6 +573,7 @@ inboxSubjects: [
   {
     kind: "deploy_stopped",
     label: "Deploy stopped",
+    actions: [{ id: "retry", label: "Retry" }],
     owner: {
       table: "my_provider_deploys",
       subjectId: "deploy_id",
