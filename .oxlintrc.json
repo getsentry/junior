@@ -148,7 +148,6 @@
         "packages/junior/src/chat/logging.ts",
         "packages/junior/src/chat/mcp/jwt-bearer-provider.ts",
         "packages/junior/src/chat/mcp/oauth-provider.ts",
-        "packages/junior/src/chat/memory/registration.ts",
         "packages/junior/src/chat/oauth-flow.ts",
         "packages/junior/src/chat/plugins/auth/api-headers-broker.ts",
         "packages/junior/src/chat/plugins/auth/oauth-bearer-broker.ts",

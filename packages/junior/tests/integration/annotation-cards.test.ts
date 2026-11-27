@@ -1,6 +1,5 @@
 import { readConversationDetail } from "@/api/conversations/detail";
 import { testViewer } from "../fixtures/user";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   defineJuniorPlugin,
   definePluginTool,
@@ -23,6 +22,7 @@ import {
 } from "../fixtures/conversation";
 import { createModelStream } from "../fixtures/model-stream";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import { patchConfig } from "../fixtures/config";
 
 const annotation: ObjectAnnotation = {
   kind: "object",
@@ -114,9 +114,11 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       },
     }),
   ]);
-  const previousDashboard = setDashboardConversationLinkOptions({
-    baseURL: "https://junior.example.com",
-    basePath: "/ops",
+  patchConfig({
+    dashboard: {
+      baseURL: "https://junior.example.com",
+      basePath: "/ops",
+    },
   });
   try {
     const harness = await createConversationWebHarness(
@@ -407,7 +409,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       "Automation",
     ])
       expect(mixedPost?.["text"]).toContain(type);
-    setDashboardConversationLinkOptions(undefined);
+    patchConfig({ dashboard: undefined });
     await sendSlackReply({
       channelId: "C123",
       conversationId,
@@ -425,9 +427,11 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       "product_icon",
     );
     expect(headless?.["text"]).toContain("Ticket");
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-      basePath: "/ops",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+        basePath: "/ops",
+      },
     });
 
     await createPluginAnnotations({
@@ -508,6 +512,5 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
     expect(last?.data).not.toHaveProperty("meta.objectCards");
   } finally {
     setPlugins(previous);
-    setDashboardConversationLinkOptions(previousDashboard);
   }
 });

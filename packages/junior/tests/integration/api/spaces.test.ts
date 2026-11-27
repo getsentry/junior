@@ -16,10 +16,6 @@ import {
 import { canReadConversation } from "@/api/conversations/access";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
-import {
-  getConfigDefaults,
-  setConfigDefaults,
-} from "@/chat/configuration/defaults";
 import { createLocationConfigurationService } from "@/chat/configuration/service";
 import type {
   ConfigEntry,
@@ -44,6 +40,7 @@ import {
   startThread,
 } from "../../fixtures/spaces-api";
 import { signedInViewer } from "../../fixtures/user";
+import { patchConfig } from "../../fixtures/config";
 
 async function detail(app: Hono<JuniorApiEnv>, conversationId: string) {
   const response = await request(
@@ -769,18 +766,14 @@ describe("Spaces API", () => {
     });
     expect(configuration).toEqual({ "sentry.org": "getsentry" });
     // Removing it brings back the install default for the rest of the Turn.
-    const previousDefaults = getConfigDefaults();
-    setConfigDefaults({ "sentry.org": "install-org" });
-    try {
-      await setting(
-        "spaces-config-ana@example.com",
-        inSpace,
-        { key: "sentry.org", value: null },
-        { configuration, locationConfiguration: channel },
-      );
-    } finally {
-      setConfigDefaults(previousDefaults);
-    }
+    patchConfig({ configDefaults: { "sentry.org": "install-org" } });
+    await setting(
+      "spaces-config-ana@example.com",
+      inSpace,
+      { key: "sentry.org", value: null },
+      { configuration, locationConfiguration: channel },
+    );
+    patchConfig({ configDefaults: {} });
     expect(configuration).toEqual({ "sentry.org": "install-org" });
     await setting(
       "spaces-config-ana@example.com",
