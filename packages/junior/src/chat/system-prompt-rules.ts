@@ -611,7 +611,7 @@ function buildOutputSection(
       "- Start with the result, not internal process narration.",
       RESULT_REPORTING_RULE,
       "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
-      "- Reply with text only when the task is finished.",
+      "- Reply with text only when the task is finished or waits on a watched Event, such as CI. That Event starts your next Turn.",
     ]);
   }
   // A Lead ends a Turn with no reply when nothing changed for the members,
