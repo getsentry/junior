@@ -4,6 +4,7 @@
 // stopTurns cancels a queued or running Turn. completed, failed and cancelled
 // are final. A lease covers one step.
 import { randomUUID } from "node:crypto";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   and,
   asc,
@@ -24,6 +25,7 @@ import type {
   ConversationTurnFailureReason,
 } from "@/chat/conversations/history";
 import { contextProvenance } from "@/chat/conversations/provenance";
+import { extractGenAiUsageSummary } from "@/chat/logging";
 import {
   addAgentTurnUsage,
   agentTurnCostUsd,
@@ -509,16 +511,16 @@ function promptEventKey(
 /**
  * Commits a step in one transaction: appends the prompt's new messages, with
  * the inputs the step read, then the step's messages to history, adds an
- * outbox row per new reply, and releases the lease. A Turn that continues, or
- * completes with unread inputs, queues for a new claim. Undefined, with no
- * write, when the lease is lost or the step is already committed.
+ * outbox row per new reply, and releases the lease. A Turn that continues
+ * queues for a new claim. A `stale` final reply is not committed. Undefined,
+ * with no write, when the lease is lost or the step is already committed.
  */
 export async function commitStep(
   { executor }: Pick<EngineContext, "executor">,
   turn: TurnLease & { conversationId: string; stepSeq: number },
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
   prompt: PromptMessage[],
-): Promise<"continue" | "completed" | "superseded" | undefined> {
+): Promise<"continue" | "completed" | "superseded" | "stale" | undefined> {
   const nextStep = {
     stepSeq: sql`${juniorTurns.stepSeq} + 1`,
     attempts: 0,
@@ -534,6 +536,11 @@ export async function commitStep(
         step,
         prompt,
       );
+      if (outcome === "stale") {
+        return (await requeueStep({ executor }, turn, step))
+          ? outcome
+          : undefined;
+      }
       const rows = await executor
         .db()
         .update(juniorTurns)
@@ -591,14 +598,15 @@ export async function commitStep(
 /**
  * A completed step ends the Turn only when the commit reads every unread
  * input. The scheduler can add an input after the step read them, and the
- * Conversation lock keeps more out until the commit ends.
+ * Conversation lock keeps more out until the commit ends. A final reply that
+ * missed an input is `stale`, so the Turn ends with one reply to every input.
  */
 async function commitOutcome(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
   prompt: PromptMessage[],
-): Promise<"continue" | "completed" | "superseded"> {
+): Promise<"continue" | "completed" | "superseded" | "stale"> {
   if (step.outcome === "completed") {
     const read = new Set(
       prompt.flatMap((entry) =>
@@ -610,8 +618,58 @@ async function commitOutcome(
       return "completed";
     }
   }
-  // A superseded Turn's unread inputs stay on it and are dropped.
-  return (await isSuperseded({ executor }, turnId)) ? "superseded" : "continue";
+  // A superseded Turn's unread inputs stay on it and are dropped, so its
+  // final reply is the last answer that it gives.
+  if (await isSuperseded({ executor }, turnId)) {
+    return "superseded";
+  }
+  // A tool batch already ran its tools, so only a model reply is dropped.
+  return step.outcome === "completed" && finalReplyOf(step)
+    ? "stale"
+    : "continue";
+}
+
+function finalReplyOf(
+  step: Extract<StepResult, { outcome: "continue" | "completed" }>,
+): AssistantMessage | undefined {
+  const [message] = step.messages;
+  return message?.role === "assistant" ? message : undefined;
+}
+
+/**
+ * Queues the Turn for the same step again, with nothing committed, after a
+ * stale final reply. The attempt does not count: the step did not fail. The
+ * dropped reply's usage adds to the Turn's discarded usage.
+ */
+async function requeueStep(
+  { executor }: Pick<EngineContext, "executor">,
+  turn: TurnLease & { conversationId: string; stepSeq: number },
+  step: Extract<StepResult, { outcome: "continue" | "completed" }>,
+): Promise<boolean> {
+  const rows = await executor
+    .db()
+    .update(juniorTurns)
+    .set({
+      ...(await discardedUsageUpdate(
+        { executor },
+        turn,
+        extractGenAiUsageSummary(finalReplyOf(step)),
+      )),
+      state: "queued",
+      attempts: 0,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        leaseFence(turn),
+        eq(juniorTurns.conversationId, turn.conversationId),
+        eq(juniorTurns.stepSeq, turn.stepSeq),
+      ),
+    )
+    .returning({ id: juniorTurns.id });
+  return rows.length > 0;
 }
 
 /**
