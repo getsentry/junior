@@ -337,8 +337,9 @@ export function ConversationOutline(props: {
  * Read the outline of the whole Conversation once per mount. It does not
  * poll: messages that arrive later come with the transcript.
  */
-function useConversationOutline(conversationId: string) {
+export function useConversationOutline(conversationId: string, enabled = true) {
   return useQuery({
+    enabled,
     // A new visit reads the outline again, so a cached copy cannot miss
     // messages that arrived while the reader was away.
     gcTime: 0,
