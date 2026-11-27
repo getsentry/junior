@@ -138,12 +138,13 @@ export type ActionSheetProps = {
    * owner can run it after focus goes back, as `useMenuSheet` does.
    */
   onClose(action?: () => void): void;
+  /** Names the sheet for assistive technology. It does not show. */
   title: string;
 };
 
 /**
- * The phone form of a menu: a `BottomSheet` with a centered title, rows in
- * cards, and a Cancel row instead of a close button. A tap on a row shuts
+ * The phone form of a menu: a `BottomSheet` with rows in cards, and a
+ * Cancel row instead of a close button. A tap on a row shuts
  * the sheet and passes the row's action to `onClose`.
  */
 export function ActionSheet(props: ActionSheetProps) {

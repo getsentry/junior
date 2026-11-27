@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 import { cn } from "@dashboard/lib/utils";
@@ -32,6 +33,11 @@ export function DialogSheetContent({
   ...props
 }: DialogContentProps) {
   const band = useKeyboardBand();
+  const grabberRef = useRef<HTMLDivElement>(null);
+  const formHeight = useFormHeight(
+    grabberRef,
+    Boolean(band) && phoneSize !== "full",
+  );
   return (
     <DrawerContent
       {...props}
@@ -45,10 +51,14 @@ export function DialogSheetContent({
       forceOverlay
       // While a touch keyboard is open, a tall sheet fills the band above
       // it, and a form sheet ends at the keyboard's top edge.
-      style={keyboardBandStyle(band, phoneSize === "full")}
+      style={keyboardBandStyle(
+        band,
+        phoneSize === "full" ? undefined : formHeight,
+      )}
     >
       <div
         aria-hidden="true"
+        ref={grabberRef}
         className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-dashboard-border-strong"
       />
       <DialogPrimitive.Close
@@ -84,4 +94,27 @@ export function DialogSheetContent({
       </div>
     </DrawerContent>
   );
+}
+
+// The layout height of a form sheet while a touch keyboard is open. It is
+// read before paint, so the sheet never sits under the keyboard, and again
+// when the form changes size, such as when a field shows an error. The
+// caller's `ref` owns the popup, so this finds it from a child.
+function useFormHeight(
+  childRef: RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+): number {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    const element = childRef.current?.closest<HTMLElement>(
+      '[data-slot="dialog-content"]',
+    );
+    if (!enabled || !element) return;
+    const sync = () => setHeight(element.offsetHeight);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [childRef, enabled]);
+  return height;
 }

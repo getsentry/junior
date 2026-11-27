@@ -14,17 +14,17 @@ import {
 /**
  * Place a fixed sheet in the band above an open touch keyboard, so the
  * field in focus stays in view. A sheet that fills the band, such as a
- * tall sheet, takes its full height. A sheet that fits its content ends
- * at the keyboard's top edge. Without a band, the sheet keeps its own
- * place.
+ * tall sheet, takes its full height. A sheet that fits its content passes
+ * its height, and its bottom edge goes to the keyboard's top edge. Without
+ * a band, the sheet keeps its own place.
  */
 export function keyboardBandStyle(
   band: MobileViewportMetrics | undefined,
-  fill = true,
+  contentHeightPx?: number,
 ): CSSProperties | undefined {
   if (!band) return undefined;
   const height = `${band.heightPx}px`;
-  if (fill) {
+  if (contentHeightPx === undefined) {
     return {
       bottom: "auto",
       height,
@@ -32,14 +32,13 @@ export function keyboardBandStyle(
       top: `${band.offsetTopPx}px`,
     };
   }
-  // The top edge goes to the keyboard, and `translate` lifts the sheet by
-  // its own height. The drawer moves the sheet with `transform`, which
-  // adds to `translate`.
+  // Place the layout box itself in the band, not only its painted image, so
+  // Safari does not pan to a field that it thinks is under the keyboard.
+  const lift = Math.min(contentHeightPx, band.heightPx);
   return {
     bottom: "auto",
     maxHeight: height,
-    top: `${band.offsetTopPx + band.heightPx}px`,
-    translate: "0 -100%",
+    top: `${band.offsetTopPx + band.heightPx - lift}px`,
   };
 }
 

@@ -157,11 +157,12 @@ export function ActionSheetContent(props: ActionSheetProps) {
       className="max-w-lg pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       sheet={sheet}
     >
-      <DrawerTitle className="m-0 truncate px-5 pt-3 pb-2 text-center font-sans text-sm font-medium text-dashboard-text-muted">
-        {props.title}
-      </DrawerTitle>
+      {/* The title names the sheet for assistive technology only. The page
+          header above the sheet already shows it, and a row menu sheet has
+          no visible title either. */}
+      <DrawerTitle className="sr-only">{props.title}</DrawerTitle>
       <div
-        className="grid min-h-0 gap-2 overflow-y-auto overscroll-contain px-3 outline-none"
+        className="grid min-h-0 gap-2 overflow-y-auto overscroll-contain px-3 pt-3 outline-none"
         ref={listRef}
         tabIndex={-1}
       >

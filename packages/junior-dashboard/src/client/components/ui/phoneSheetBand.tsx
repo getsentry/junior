@@ -20,6 +20,9 @@ export function PhoneSheetBand(props: {
     }
     const vars: CSSProperties & Record<`--phone-sheet-${string}`, string> = {
       "--phone-sheet-bottom": "auto",
+      // The keyboard covers the home indicator, so the sheet needs no
+      // inset for it.
+      "--phone-sheet-pb": "0.75rem",
       "--phone-sheet-height": `${band.heightPx}px`,
       "--phone-sheet-top": `${band.offsetTopPx}px`,
     };
