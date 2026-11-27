@@ -29,6 +29,7 @@ export type ModelRule = {
   match?: { stream?: boolean; hasToolResult?: boolean };
   times?: number;
   reply?: ModelReplyEvent[];
+  finish?: "stop" | "tool_calls" | "length" | "refusal" | "content_filter";
   error?: { status: number; message: string; headers?: Record<string, string> };
   fault?: { kind: "disconnect"; afterChunks: number };
 };
@@ -123,6 +124,11 @@ export function modelRateLimited(retryAfterSeconds: number): ModelRule {
       headers: { "retry-after": String(retryAfterSeconds) },
     },
   };
+}
+
+/** Injected fault: the reply `text` hits the output token limit. */
+export function replyCutOff(text: string): ModelRule {
+  return { reply: [{ type: "text", text }], finish: "length" };
 }
 
 /** Injected fault: the stream closes after the first chunk of `text`. */

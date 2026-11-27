@@ -7,6 +7,7 @@ import {
   modelOverloaded,
   modelRateLimited,
   modelRejected,
+  replyCutOff,
   setModelReplies,
   streamDisconnected,
 } from "../fixtures/ai-emulator";
@@ -75,6 +76,25 @@ describe("advanceTurn after a failed model request", () => {
     });
     await expect(harness.history()).resolves.toEqual([]);
     expect(pendingSteps(turnId)).toBe(0);
+  });
+
+  it("fails the Turn when the reply hits the output token limit, and writes none of its text", async () => {
+    await setModelReplies([replyCutOff("Here is the first half")]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+
+    await harness.runStep();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "failed",
+      endReason: "The reply hit the output token limit",
+      failureCode: "model_execution_failed",
+      failureReason: "cut_off_output",
+      stepSeq: 0,
+    });
+    await expect(harness.history()).resolves.toEqual([]);
+    await expect(modelCalls()).resolves.toHaveLength(1);
+    const discarded = await findDiscardedUsage(harness.engineCtx, turnId);
+    expect(discarded?.tokens?.outputTokens).toBeGreaterThan(0);
   });
 
   it("runs the step again after a backoff when the model stream closes mid-reply, and writes the reply once", async () => {
