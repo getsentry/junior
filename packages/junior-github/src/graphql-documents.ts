@@ -253,13 +253,17 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
  * Read what decides the requester's next action on one pull request: its
  * state, merge state, review requests, latest reviews, and latest comments
  * and review requests. A review comment reply is a review, so `reviews`
- * holds it too.
+ * holds it too. The open pull requests whose head is the base branch show
+ * that the base has not merged yet.
  */
 export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
   query PullRequestNextAction($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
+      defaultBranchRef { name }
       pullRequest(number: $number) {
         autoMergeRequest { enabledAt }
+        baseRefName
+        baseRef { associatedPullRequests(states: [OPEN]) { totalCount } }
         commits(last: 1) { nodes { commit { committedDate } } }
         isDraft
         mergeStateStatus

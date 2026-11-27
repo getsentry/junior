@@ -270,8 +270,11 @@ describe("review request when a draft is ready", () => {
         HttpResponse.json({
           data: {
             repository: {
+              defaultBranchRef: { name: "main" },
               pullRequest: {
                 autoMergeRequest: null,
+                baseRef: null,
+                baseRefName: "main",
                 commits: { nodes: [] },
                 headRefOid: "head-1",
                 isDraft: false,
@@ -294,6 +297,11 @@ describe("review request when a draft is ready", () => {
             },
           },
         }),
+      ),
+      // The base branch requires no checks.
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/rules/branches/main",
+        () => HttpResponse.json([]),
       ),
       http.post(
         "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",

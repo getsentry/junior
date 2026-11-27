@@ -96,6 +96,8 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
     "auto_merge_enabled",
     "closed",
     "converted_to_draft",
+    // Only a base change, such as GitHub's retarget after the base merged.
+    "edited",
     "ready_for_review",
     "reopened",
     "review_request_removed",
@@ -121,6 +123,7 @@ const repositorySchema = z.object({ full_name: z.string().min(1) });
 
 const pullRequestWebhookSchema = z.object({
   action: z.string(),
+  changes: z.object({ base: z.unknown().optional() }).optional(),
   pull_request: z.object({ number: z.number().int().positive() }),
   repository: repositorySchema,
   // A team review request has no reviewer person.
@@ -168,7 +171,12 @@ export function pullRequestActionTargets(
   }
   const actions = ACTION_EVENTS[eventName];
   const parsed = pullRequestWebhookSchema.safeParse(body);
-  if (!actions || !parsed.success || !actions.has(parsed.data.action)) {
+  if (
+    !actions ||
+    !parsed.success ||
+    !actions.has(parsed.data.action) ||
+    (parsed.data.action === "edited" && !parsed.data.changes?.base)
+  ) {
     return [];
   }
   const reviewer =

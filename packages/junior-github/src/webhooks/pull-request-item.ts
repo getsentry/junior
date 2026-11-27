@@ -52,6 +52,12 @@ function closeReason(
         status: "dismissed",
       };
     }
+    if (state.baseOpen) {
+      return {
+        reason: "It merges after the pull request below it.",
+        status: "dismissed",
+      };
+    }
     return {
       reason: "The pull request is no longer ready to merge.",
       status: "dismissed",

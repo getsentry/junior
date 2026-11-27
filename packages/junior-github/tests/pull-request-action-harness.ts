@@ -161,10 +161,13 @@ export function pullRequestAction(
   merged = false,
   /** The reviewer of a `review_requested` event. */
   requestedReviewer?: string,
+  /** The `changes` of an `edited` event. */
+  changes?: Record<string, unknown>,
 ) {
   return signedRequest(
     {
       action,
+      ...(changes ? { changes } : undefined),
       ...(requestedReviewer
         ? { requested_reviewer: { login: requestedReviewer } }
         : undefined),
@@ -189,6 +192,10 @@ export function pullRequestAction(
 /** GitHub state that the mocked REST and GraphQL APIs return. */
 export interface GitHubState {
   autoMerge?: boolean | undefined;
+  /** The base branch of the pull request. Defaults to `main`. */
+  baseRefName?: string;
+  /** The head branches of the other open pull requests in the repo. */
+  openPullRequestHeads?: string[];
   /** Conversation comments on the pull request, oldest first. */
   comments?: Array<{ at: string; login: string }>;
   draft: boolean;
@@ -539,13 +546,23 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
       if (operationName === "PullRequestNextAction") {
         requests.push("pull");
         const mergeableState = await readPull(github);
+        const baseRefName = github.baseRefName ?? "main";
         return HttpResponse.json({
           data: {
             repository: {
+              defaultBranchRef: { name: "main" },
               pullRequest: {
                 autoMergeRequest: github.autoMerge
                   ? { enabledAt: "2026-07-02T00:00:00Z" }
                   : null,
+                baseRef: {
+                  associatedPullRequests: {
+                    totalCount: (github.openPullRequestHeads ?? []).filter(
+                      (head) => head === baseRefName,
+                    ).length,
+                  },
+                },
+                baseRefName,
                 commits: {
                   nodes: github.headCommittedAt
                     ? [{ commit: { committedDate: github.headCommittedAt } }]

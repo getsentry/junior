@@ -219,8 +219,11 @@ describe("the ask of a Junior pull request", () => {
           return HttpResponse.json({
             data: {
               repository: {
+                defaultBranchRef: { name: "main" },
                 pullRequest: {
                   autoMergeRequest: null,
+                  baseRef: null,
+                  baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,
@@ -364,8 +367,11 @@ describe("the ask of a Junior pull request", () => {
           return HttpResponse.json({
             data: {
               repository: {
+                defaultBranchRef: { name: "main" },
                 pullRequest: {
                   autoMergeRequest: null,
+                  baseRef: null,
+                  baseRefName: "main",
                   commits: { nodes: [] },
                   headRefOid: "head-1",
                   isDraft: false,

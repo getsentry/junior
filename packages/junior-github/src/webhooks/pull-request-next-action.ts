@@ -119,11 +119,13 @@ export function nextAction(
   if (state.state !== "open") return {};
   // With auto-merge on, GitHub merges it, so no person needs to. A pending
   // review request comes first, even where GitHub requires no review. So
-  // does the requester's feedback, because Junior acts next.
+  // does the requester's feedback, because Junior acts next. A pull request
+  // above an open base merges after that base.
   const canMerge =
     requester.mergeAccess &&
     !state.draft &&
     !state.autoMerge &&
+    !state.baseOpen &&
     !state.reviewPending &&
     !requester.feedback;
   if (
