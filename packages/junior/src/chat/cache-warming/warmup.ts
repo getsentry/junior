@@ -1,20 +1,9 @@
 /**
- * Prompt cache warming for idle Conversations.
- *
- * After a turn ends, the next human message often arrives after the short
- * prompt cache TTL. Then the full history is written to the cache again. A
- * warmup sends the same request again with a one-token output limit before
- * the cache expires. The provider reads the cached prefix and refreshes its
- * TTL. `model.ts` owns the cost model.
- *
- * Each idle period gets one recorded reply gap, so the model also sees the
- * people who do not reply. A reply records its gap. A delayed `horizon`
- * message records `NO_REPLY_GAP_MS` when no reply came in the idle horizon.
- *
- * Only a Turn writes the Conversation state. Warmups and the horizon run
- * while the next Turn can start, so they write only keys of their own idle
- * period (`generation`): the snapshot, the warmup count, and the gap claim.
- * Work for an old idle period then cannot change a newer one.
+ * Prompt cache warming for idle Conversations: before the cache expires, a
+ * warmup resends the request that ended a Turn with a one-token output limit.
+ * Each idle period records one reply gap, or `NO_REPLY_GAP_MS` at its horizon.
+ * Only a Turn writes Conversation state. Warmups write only keys of their
+ * idle period (`generation`), so an old idle period cannot change a newer one.
  */
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
@@ -237,13 +226,11 @@ async function scheduleWarmup(
   await sendCacheWarmup({ ...message, cacheExpiresAtMs }, delayMs);
 }
 
-// The reply and the horizon can run at the same time. Only the first one to
-// claim the idle period records its gap.
-//
-// Each list records a gap past its own idle horizon as no reply. Only the
-// waiting child segment of a child agent wait has a longer horizon, so the
-// segment's own list stays comparable with its other idle periods and with
-// the backfill.
+// The reply and the horizon can run at the same time; only the first to
+// claim the idle period records its gap. Each list records a gap past its
+// own horizon as no reply. Only a child agent wait's waiting child segment
+// has the longer horizon, so the segment's own list stays comparable with
+// its other idle periods and the backfill.
 async function recordGap(
   state: ConnectedState,
   conversationId: string,
@@ -549,57 +536,8 @@ export interface CacheWarmingTurn {
 
 /**
  * Run one scheduled cache warming message. A message for an idle period that
- * already ended does nothing and makes no span.
- *
- * Each warmup decision has one `cache_warming.warmup` span, with the warmup
- * call as a child `gen_ai.chat` span (`junior.cache_warmup`). A tool wait
- * warmup (`tool-wait.ts`) has the same span in the trace of its Turn.
- * `app.cache_warming.outcome`:
- * - `missed`: the warmup call did not read the cached prefix. It logs
- *   `cache_warming.warmup.failed` and reports to Sentry.
- * - `failed`: the warmup call threw.
- * - `skipped`: `skip_reason` is `compacted_on_idle` (a ready background
- *   summary replaced the history, so the idle period stops; see
- *   `idle-compaction.ts`), `idle_compaction_stopped` (with a ready summary,
- *   neither a warmup nor the swap pays), `cache_expired`, `breaker_open`,
- *   `prompt_changed` (a newer deployment published another definitions
- *   fingerprint, so the idle period stops), `stopped` (warming stopped or
- *   the tools returned first; no log),
- *   `image_missing` (an image key of the snapshot expired, so the idle period
- *   stops), `snapshot_too_large` or `images_too_large` (no snapshot was
- *   stored, so the slot could only compact on idle or stop), or a
- *   `decideWarmup` reason.
- *
- * Idle warmups carry the sizes of the idle period's snapshot:
- * `snapshot_bytes` (compressed, without images), `snapshot_image_count`
- * (distinct images stored under hash keys), and `snapshot_image_bytes`
- * (their base64 data). A snapshot over a limit stores nothing and warns
- * `cache_warming.snapshot.skipped` with `prefix_tokens`, the same sizes, and
- * `skip_reason` `snapshot_too_large` (still over the limit without its
- * images) or `images_too_large` (its images are over their limit). At or
- * above the background compaction mark, its idle period still gets its
- * first slot, for compaction on idle. Each
- * snapshot also records the unsampled distribution metrics
- * `cache_warming.snapshot.bytes` and `cache_warming.snapshot.image_bytes`,
- * with `app.cache_warming.stored` false for a snapshot over a limit.
- *
- * `work_state` and `archived` are read when the idle period starts and pick
- * its `gapSegment`. `turn_ending` is how the Turn before the idle period
- * ended: `reply` (a final response or `reply`), `no_reply` (`noReply`), or
- * `blocked` (`reportBlocked`). `waiting_on` is `child` (a child agent still
- * ran), `review` (the Turn asked an Inbox item), or `watch` (an Automation
- * run had an active Watch and no child agent) when the idle period starts,
- * and picks the segment's `waitingGapSegment` child. `timer_due_ms`
- * is the idle time at which a timer is due, when it is due within
- * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
- * five. `idle_compaction` is the `IdleCompactionOutcome` of a warmup at or
- * above the background compaction mark. With a ready summary,
- * `compact_cost_micro_usd`, `stop_cost_micro_usd`, and
- * `warm_cost_micro_usd` are the expected costs that `chooseIdleCompaction`
- * compared. Decision attributes are absent
- * when the warmup skipped before the decision. Of them, `timer_floor` is
- * true for a warmup that only the timer floor sends (`decideWarmup` reason
- * `timer`). Cost and usage are absent when no call completed.
+ * already ended does nothing and makes no span. Its spans and attribute
+ * prefix are in `TELEMETRY.md`.
  */
 export async function runCacheWarmup(
   message: CacheWarmupMessage,
@@ -679,13 +617,10 @@ export async function runCacheWarmup(
       // before the cache expires. The cache is gone, so this is not a miss.
       const late = warmupTooLate(message.cacheExpiresAtMs);
       const breaker = !late && (await breakerOpen(state, warm.modelId));
-      // A deploy can change the system prompt or the tool definitions. The
-      // next Turn then writes a new prefix, so warming the old one buys
-      // nothing. The queue pins this warmup to the deployment that sent it,
-      // which builds the old definitions. So only the fingerprint that a
-      // newer deployment published can show the change (`definitions.ts`).
-      // Tool wait warming needs no check: it runs in the process of the run,
-      // which sends the next request with these definitions.
+      // A deploy can change the system prompt or tool definitions, and the
+      // queue pins this warmup to the old deployment, so only a fingerprint
+      // that a newer deployment published shows it (`definitions.ts`). Tool
+      // wait warming needs no check: it runs in the process of its run.
       const promptChanged =
         !late &&
         !breaker &&
