@@ -1,7 +1,7 @@
 // Compat: exists only so main's readers keep working; delete it once they
 // read `junior_turns`. Core writes only agent history, but the dashboard,
 // status, ACP and the eval fixture read the visible messages and Turn
-// lifecycle events. This writes them when a core Turn starts, with main's
+// lifecycle events. This writes them when a core Turn reads inputs, with main's
 // shapes and idempotency keys.
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { turnStartedKey } from "@/chat/conversations/turn-lifecycle";
@@ -16,7 +16,7 @@ import { compat__personMessageId } from "./compat__message-id";
  * step reads, and at the Turn's first step its `turn_started` event with
  * those inputs. Idempotency keys make a second run write nothing.
  */
-export async function compat__writeTurnStarted(
+export async function compat__writeInputsRead(
   { executor }: Pick<EngineContext, "executor">,
   turn: ClaimedTurn,
   inputs: UnreadInput[],

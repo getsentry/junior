@@ -11,7 +11,7 @@ import type { EngineContext } from "@/core/engine-context";
 import { modelClient, type ModelClient } from "@/core/model/client";
 import { advanceTurn, type AdvanceTurnOptions } from "@/core/turn/advance";
 import { createTurnStepConsumer } from "@/core/turn/queue";
-import { compat__writeTurnStarted } from "./compat__turn-started";
+import { compat__writeInputsRead } from "./compat__inputs-read";
 import {
   buildTurnPromptLayouts,
   turnModelSettings,
@@ -63,7 +63,7 @@ export async function turnStepConsumer(
       tools,
       maxAttempts: MAX_ATTEMPTS,
       compat__inputsRead: (turn, inputs) =>
-        compat__writeTurnStarted(engineCtx, turn, inputs),
+        compat__writeInputsRead(engineCtx, turn, inputs),
     }),
   );
 }

@@ -2,7 +2,7 @@ id: no-compat-rows-outside-compat-files
 valid:
   - 'await store.append(conversationId, [{ data: { type: "message", messageId } }]);'
   - 'const key = "turn_started_at";'
-  - "await compat__writeTurnStarted(engineCtx, turn, inputs);"
+  - "await compat__writeInputsRead(engineCtx, turn, inputs);"
 invalid:
   - 'const data = { type: "turn_started", turnId };'
   - "const data = { type: 'turn_completed', turnId, outcome };"
