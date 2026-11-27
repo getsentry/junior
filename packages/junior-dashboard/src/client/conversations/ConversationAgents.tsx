@@ -263,9 +263,9 @@ function childOpener(
 }
 
 /**
- * Archive a child after a confirm, or restore it at once, plus Cancel for
- * the child's Watches. A Task has no feed row with its last activity, so it
- * is archived from its own page.
+ * Archive a child after a confirm, plus Cancel for the child's Watches. A
+ * Task, or an archived Thread, has no feed row with its last activity, so
+ * it is archived or restored from its own page.
  */
 function ChildMenu(props: {
   children: ReactNode;
@@ -276,10 +276,6 @@ function ChildMenu(props: {
   const { child, lastSeenAt } = props;
   const archive = useArchiveConversation(child.conversationId);
   const [confirmArchive, setConfirmArchive] = useState(false);
-  const archived = Boolean(child.archivedAt);
-  const setArchived = (value: boolean) => {
-    if (lastSeenAt) archive.mutate({ archived: value, lastSeenAt });
-  };
   return (
     <>
       <DetailsRowMenu
@@ -288,12 +284,8 @@ function ChildMenu(props: {
       >
         {props.children}
         {lastSeenAt ? (
-          <DropdownMenuItem
-            onClick={() =>
-              archived ? setArchived(false) : setConfirmArchive(true)
-            }
-          >
-            {archived ? "Restore" : "Archive"}
+          <DropdownMenuItem onClick={() => setConfirmArchive(true)}>
+            Archive
           </DropdownMenuItem>
         ) : null}
       </DetailsRowMenu>
@@ -303,7 +295,7 @@ function ChildMenu(props: {
           onClose={() => setConfirmArchive(false)}
           onConfirm={() => {
             setConfirmArchive(false);
-            setArchived(true);
+            if (lastSeenAt) archive.mutate({ archived: true, lastSeenAt });
           }}
         />
       ) : null}
