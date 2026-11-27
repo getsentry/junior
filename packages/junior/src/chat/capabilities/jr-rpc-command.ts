@@ -1,4 +1,6 @@
-import { Bash, defineCommand } from "just-bash";
+// The `shell-quote` index types patch the global `Array#join` type; this
+// subpath has the parser without that.
+import parse from "shell-quote/parse.js";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import { getAppContext } from "@/app/context";
 import { readConversationSpaceConfiguration } from "@/chat/spaces/configuration";
@@ -186,25 +188,74 @@ async function handlePluginsCommand(
   });
 }
 
-function createJrRpcCommand(deps: JrRpcDeps) {
-  return defineCommand("jr-rpc", async (args) => {
-    const usage = [
-      "jr-rpc config get <key>",
-      "jr-rpc config list [--prefix <value>]",
-      "jr-rpc plugins list",
-    ].join("\n");
-    const verb = (args[0] ?? "").trim();
-    if (verb === "config") {
-      return handleConfigCommand(args.slice(1), deps);
-    }
-    if (verb === "plugins") {
-      return handlePluginsCommand(args.slice(1));
-    }
-    return commandResult({
-      stderr: `Unsupported jr-rpc command. Use:\n${usage}\n`,
-      exitCode: 2,
-    });
+async function runJrRpc(
+  args: string[],
+  deps: JrRpcDeps,
+): Promise<ReturnType<typeof commandResult>> {
+  const usage = [
+    "jr-rpc config get <key>",
+    "jr-rpc config list [--prefix <value>]",
+    "jr-rpc plugins list",
+  ].join("\n");
+  const verb = (args[0] ?? "").trim();
+  if (verb === "config") {
+    return handleConfigCommand(args.slice(1), deps);
+  }
+  if (verb === "plugins") {
+    return handlePluginsCommand(args.slice(1));
+  }
+  return commandResult({
+    stderr: `Unsupported jr-rpc command. Use:\n${usage}\n`,
+    exitCode: 2,
   });
+}
+
+type JrRpcToken = parse.ParseEntry | { op: "var"; key: string };
+
+/** Write a token back as command text, for the rejection message. */
+function tokenText(token: JrRpcToken): string {
+  if (typeof token === "string") return token;
+  if ("comment" in token) return `#${token.comment}`;
+  if (token.op === "glob") return token.pattern;
+  if (token.op === "var") return `$${token.key}`;
+  return token.op;
+}
+
+/**
+ * Find the first part of a jr-rpc command line that a shell would expand or
+ * run: `$VAR`, `$(...)`, a backtick, a glob, a comment, or an operator. An
+ * operator or comment takes the rest of the line with it, because that rest
+ * is the other command or the redirect target.
+ */
+function findShellPart(
+  command: string,
+  tokens: JrRpcToken[],
+): string | undefined {
+  // shell-quote keeps backticks as literal text.
+  const backtick = /`[^`]*`?/.exec(command);
+  if (backtick) return backtick[0];
+  const index = tokens.findIndex((token) => typeof token !== "string");
+  const token = tokens[index];
+  if (token === undefined || typeof token === "string") return undefined;
+  if ("op" in token && (token.op === "var" || token.op === "glob")) {
+    // shell-quote splits `$(id)` into an empty variable and `(`, `id`, `)`.
+    if (token.op === "var" && !token.key) {
+      return /\$\([^)]*\)?/.exec(command)?.[0] ?? "$(";
+    }
+    return tokenText(token);
+  }
+  // A file descriptor number before a redirect belongs to it, as in `2>&1`.
+  const previous = tokens[index - 1];
+  const start =
+    index > 1 && typeof previous === "string" && /^\d+$/.test(previous)
+      ? index - 1
+      : index;
+  return tokens
+    .slice(start)
+    .map(tokenText)
+    .join(" ")
+    .replace(/^(\d+) ([<>])/, "$1$2")
+    .replace(/([<>]&) (\d+)/, "$1$2");
 }
 
 function toolCommandResult(
@@ -269,12 +320,25 @@ export async function maybeExecuteJrRpcCustomCommand(
       }),
     };
   }
-  const shell = new Bash({
-    customCommands: [createJrRpcCommand(deps)],
-  });
-  const execResult = await shell.exec(normalized);
+  // The env function makes `$VAR` and `$(...)` tokens instead of text.
+  const tokens: JrRpcToken[] = parse(normalized, (key) => ({
+    op: "var",
+    key,
+  }));
+  const shellPart = findShellPart(normalized, tokens);
+  if (shellPart !== undefined) {
+    return {
+      handled: true,
+      result: toolCommandResult(normalized, {
+        exitCode: 2,
+        stdout: "",
+        stderr: `jr-rpc takes plain arguments only. Remove "${shellPart}" and run the jr-rpc command again.\n`,
+      }),
+    };
+  }
+  const args = tokens.filter((token) => typeof token === "string");
   return {
     handled: true,
-    result: toolCommandResult(normalized, execResult),
+    result: toolCommandResult(normalized, await runJrRpc(args.slice(1), deps)),
   };
 }

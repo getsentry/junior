@@ -52,7 +52,6 @@ export default defineConfig({
       "ai",
       "chat",
       "commander",
-      "just-bash",
       "node-html-markdown",
       "yaml",
       "zod",
