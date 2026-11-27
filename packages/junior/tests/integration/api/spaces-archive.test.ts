@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { spaceSchema } from "@/api/schema";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import { getConversationStore } from "@/chat/db";
+import { eq } from "drizzle-orm";
+import { getConversationStore, getDb } from "@/chat/db";
 import { getSpaceLead } from "@/chat/lead/conversation";
+import { juniorSpaces } from "@/db/schema";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import {
   apiFor,
@@ -14,6 +16,14 @@ import {
   startConversation,
   startThread,
 } from "../../fixtures/spaces-api";
+
+async function legacyArchivedAt(spaceId: string): Promise<Date | null> {
+  const [row] = await getDb()
+    .select({ archivedAt: juniorSpaces.archivedAt })
+    .from(juniorSpaces)
+    .where(eq(juniorSpaces.id, spaceId));
+  return row?.archivedAt ?? null;
+}
 
 describe("Space archive API", () => {
   afterEach(async () => {
@@ -98,18 +108,53 @@ describe("Space archive API", () => {
     ).toEqual([first, second].sort());
 
     // The Space's archive is its Lead's, so archiving the Lead as any root
-    // archives the Space.
+    // archives the Space. The Space row keeps the archive that 0.316.0 reads.
     expect((await archiveConversation(lead.conversationId)).status).toBe(200);
     expect(
       spaceSchema.parse(await (await send(ana, "GET", `/${space.id}`)).json())
         .archivedAt,
     ).not.toBeNull();
+    expect(await legacyArchivedAt(space.id)).not.toBeNull();
 
-    // A second archive stops the Space again, though its Lead was stopped.
+    // A retry after a failed stop stops the tree again, though the stop
+    // added activity after what the page saw.
     const firstStopMs = await getConversationStoppedAtMs(first);
-    await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
+    expect(
+      (
+        await request(
+          ana,
+          "PATCH",
+          `/conversations/${encodeURIComponent(lead.conversationId)}/archive`,
+          {
+            applyToChildren: true,
+            archived: true,
+            lastSeenAt: new Date(0).toISOString(),
+          },
+        )
+      ).status,
+    ).toBe(200);
     expect(await getConversationStoppedAtMs(first)).toBeGreaterThan(
       firstStopMs ?? 0,
     );
+
+    // A second Space archive stops the Space again too.
+    const retryStopMs = await getConversationStoppedAtMs(first);
+    await send(ana, "PATCH", `/${space.id}/archive`, { archived: true });
+    expect(await getConversationStoppedAtMs(first)).toBeGreaterThan(
+      retryStopMs ?? 0,
+    );
+
+    // A restore of the Lead as any root restores the Space row too.
+    expect(
+      (
+        await request(
+          ana,
+          "PATCH",
+          `/conversations/${encodeURIComponent(lead.conversationId)}/archive`,
+          { archived: false, lastSeenAt: new Date(0).toISOString() },
+        )
+      ).status,
+    ).toBe(200);
+    expect(await legacyArchivedAt(space.id)).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { testViewer } from "../../../fixtures/user";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
+import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -148,6 +149,55 @@ describe("conversation list authors", () => {
         limit: 10,
       });
       expect(feed.conversations).toEqual([]);
+
+      // A web Message that restores an archived root is an explicit act,
+      // like Unarchive, so it adds and subscribes its author.
+      await setArchivedAt(
+        fixture.sql.db(),
+        ["slack:C1:dashboard-author"],
+        new Date(5_700),
+      );
+      await eventStore.append("slack:C1:dashboard-author", [
+        {
+          createdAtMs: 5_800,
+          data: {
+            messageId: "dashboard-msg-2",
+            meta: {
+              author: {
+                isBot: false,
+                userId: legacyWebActorUserId(
+                  "dashboard-participant@example.com",
+                ),
+              },
+            },
+            role: "user",
+            text: "bring this back",
+            type: "message",
+          },
+          idempotencyKey: "message:dashboard-msg-2",
+        },
+        {
+          createdAtMs: 5_900,
+          data: {
+            inputMessageIds: ["dashboard-msg-2"],
+            surface: "api",
+            turnId: "turn-dashboard-msg-2",
+            type: "turn_started",
+          },
+          idempotencyKey: "turn:turn-dashboard-msg-2:started",
+        },
+      ]);
+      expect(await readParticipantUserIds()).toContain(participantUserId);
+      const restored = await readConversationFeedFromSql({
+        viewer: {
+          ...testViewer("dashboard-participant@example.com"),
+          id: participantUserId!,
+        },
+        limit: 10,
+      });
+      expect(restored.conversations.map((item) => item.conversationId)).toEqual(
+        ["slack:C1:dashboard-author"],
+      );
     } finally {
       await fixture.close();
     }

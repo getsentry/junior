@@ -32,8 +32,8 @@ type ArchiveResult =
 /**
  * Archive or restore one Conversation, root or child, for everyone. Archive
  * refuses while any descendant is unarchived, unless `applyToChildren`
- * archives them too, and when the Conversation has activity after
- * `lastSeenAt`. Without `lastSeenAt`, archive does not check activity.
+ * archives them too, and when the unarchived Conversation has activity
+ * after `lastSeenAt`. Without `lastSeenAt`, archive does not check activity.
  * Restore changes only this Conversation unless
  * `applyToChildren` also restores the descendants archived with it, and it
  * refuses while an ancestor is archived. A restore of a root by `userId`
@@ -64,7 +64,11 @@ export async function setConversationArchive(
     const tree = await readConversationTrees(db, [rootConversationId]);
     const descendants = conversationDescendants(tree, args.conversationId);
     if (args.archived) {
+      // An archived target has no newer activity to protect, and the stop
+      // of its work can add some. So a retry after a failed stop archives
+      // again and stops what is still running.
       if (
+        !target.archivedAt &&
         args.lastSeenAt !== undefined &&
         target.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)
       ) {
