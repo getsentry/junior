@@ -528,7 +528,7 @@ function seededLeadEvents(
  * Make the Lead of each mock Space that does not have one yet. The API makes
  * it with its Space, but a mock Lead's first Actor is the signed-in viewer.
  */
-function createMockLeads(viewer: User): void {
+export function createMockLeads(viewer: User): void {
   const actorIdentity = {
     email: viewer.email,
     fullName: viewer.displayName ?? viewer.email,

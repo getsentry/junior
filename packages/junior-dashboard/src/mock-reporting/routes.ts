@@ -134,6 +134,7 @@ import { addMockInboxItemRoutes } from "./inbox-item-routes";
 import { readMockConversationTodos, setMockTodoStatus } from "./todos";
 import {
   addMockConversationSpaceRoutes,
+  createMockLeads,
   createMockSpaceRoutes,
   mockSpaceForWork,
   startMockConversationInSpace,
@@ -302,6 +303,9 @@ export function createMockReportingApi(): Hono<{
     if (!query.success) {
       return errorResponse("Invalid query parameters.", 400);
     }
+    // A search finds Spaces by their Leads, which may not exist yet.
+    const viewer = c.get("viewer");
+    if (query.data.q && viewer) createMockLeads(viewer);
     const page = readMockConversationFeedPage(
       query.data,
       new URL(c.req.url).origin,
