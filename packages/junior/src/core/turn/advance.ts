@@ -12,7 +12,12 @@
 // change it makes to the Turn, and on a message whose claim misses, it runs
 // `reconcileTurn`, which sends the delivery message and the next step message
 // that the stored state calls for.
-import { logException, logWarn } from "@/chat/logging";
+import {
+  extractGenAiUsageSummary,
+  logException,
+  logWarn,
+} from "@/chat/logging";
+import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
 import type { EngineContext } from "@/core/engine-context";
 import { loadAgentHistory } from "@/core/history/read";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
@@ -204,6 +209,15 @@ async function runClaimedStep(
       return;
     }
     case "failed": {
+      // The failed reply is dropped, but the provider may have billed it,
+      // such as a stream that failed after its input tokens were counted.
+      // An error response has a usage of zeros, and it adds nothing.
+      const usage = extractGenAiUsageSummary(result.reply);
+      const discarded =
+        (agentTurnTotalTokens(usage) ?? 0) > 0 ||
+        (agentTurnCostUsd(usage) ?? 0) > 0
+          ? usage
+          : undefined;
       const delayMs = modelRetryDelayMs(
         result.failure,
         claim.attempts,
@@ -214,7 +228,7 @@ async function runClaimedStep(
         // with no message, and the sweep sends it again. A superseded Turn
         // ends at the release; its delayed message then misses the claim and
         // sends the next Turn's step.
-        if (await releaseTurn({ executor }, claim)) {
+        if (await releaseTurn({ executor }, claim, discarded)) {
           await publishTurnStep({ queue }, claim.turnId, { delayMs });
           logWarn("agent.turn.provider.retrying", {
             ...modelFailureAttributes(result.failure),
@@ -233,6 +247,7 @@ async function runClaimedStep(
           claim,
           result.failure.message,
           failure,
+          discarded,
         )
       ) {
         await reconcileTurn({ executor, queue }, claim.turnId);

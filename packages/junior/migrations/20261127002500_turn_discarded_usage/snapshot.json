@@ -1,0 +1,73 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "811305d1-7881-43e6-9f0c-280f35526253",
+  "prevIds": ["69888e8a-0d59-4095-b43a-c3e1ba2c6cc1"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_turns",
+        "discarded_cost_micro_usd"
+      ],
+      "writes": [
+        "s|col|public.junior_turns.discarded_cost_micro_usd",
+        "n|col|public.junior_turns.discarded_cost_micro_usd",
+        "e|col|public.junior_turns.discarded_cost_micro_usd"
+      ],
+      "reads": ["n|tbl|public.junior_turns", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_turns",
+        "discarded_tokens"
+      ],
+      "writes": [
+        "s|col|public.junior_turns.discarded_tokens",
+        "n|col|public.junior_turns.discarded_tokens",
+        "e|col|public.junior_turns.discarded_tokens"
+      ],
+      "reads": ["n|tbl|public.junior_turns", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_turns",
+        "name": "discarded_cost_micro_usd",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_turns",
+        "name": "discarded_tokens",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

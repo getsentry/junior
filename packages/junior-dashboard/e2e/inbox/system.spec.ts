@@ -136,8 +136,6 @@ test.describe("new UI", () => {
     await expect(
       page.getByText(/They do not show individual calls/),
     ).toBeVisible();
-    // The scroll would move a chart under the pointer and show its tooltip.
-    await page.mouse.move(-1, -1);
     await page.evaluate(() => window.scrollTo(0, 0));
     await screenshot(page, "system-cache-missing", { view: "desktop" });
     await page.getByRole("button", { name: "30d", exact: true }).click();

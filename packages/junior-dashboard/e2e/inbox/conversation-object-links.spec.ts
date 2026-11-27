@@ -119,6 +119,7 @@ test.describe("new UI", () => {
       page.getByRole("region", { name: /getsentry\/relay#44/ }),
     ).toBeVisible();
     await screenshot(page, "conversation-object-links", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -167,6 +168,7 @@ test.describe("new UI", () => {
       }),
     ).toBeVisible();
     await screenshot(page, "conversation-resolved-object-links", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -193,6 +195,7 @@ test.describe("new UI", () => {
     await expect(eventCard).toContainText("Mon, Feb 2, 15:00 – 15:30 PST");
     await expect(eventCard).toContainText("Decide go or no-go for 4.2.");
     await screenshot(page, "conversation-google-calendar-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -207,6 +210,7 @@ test.describe("new UI", () => {
     await expect(docCard).toContainText("Morgan Lee");
     await expect(docCard).toContainText("Run these steps in order");
     await screenshot(page, "conversation-google-document-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -248,6 +252,7 @@ test.describe("new UI", () => {
       )
       .toBeGreaterThan(0);
     await screenshot(page, "conversation-google-drive-file-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -261,6 +266,7 @@ test.describe("new UI", () => {
     await expect(folderCard).toContainText("Morgan Lee");
     await expect(folderCard.locator("img")).toHaveCount(0);
     await screenshot(page, "conversation-google-drive-folder-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -306,6 +312,7 @@ test.describe("new UI", () => {
       card.getByRole("figure", { name: "Events, last 24 hours" }),
     ).toBeVisible();
     await screenshot(page, "conversation-sentry-issue-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -351,6 +358,7 @@ test.describe("new UI", () => {
       card.nth(1).getByRole("figure", { name: "Last 24 hours" }),
     ).toBeVisible();
     await screenshot(page, "conversation-sentry-chart-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -402,6 +410,7 @@ test.describe("new UI", () => {
       card.nth(1).getByRole("figure", { name: "Top-level spans" }),
     ).toBeVisible();
     await screenshot(page, "conversation-sentry-trace-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -459,6 +468,7 @@ test.describe("new UI", () => {
       }),
     );
     await screenshot(page, "conversation-sentry-event-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -513,6 +523,7 @@ test.describe("new UI", () => {
       }),
     );
     await screenshot(page, "conversation-sentry-release-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -574,6 +585,7 @@ test.describe("new UI", () => {
     await expect(card).toHaveCount(2);
     await expect(card.nth(1)).toContainText("Checkout p95");
     await screenshot(page, "conversation-sentry-dashboard-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -626,6 +638,7 @@ test.describe("new UI", () => {
       await expect(preview).toContainText(text);
     }
     await screenshot(page, "conversation-sentry-monitor-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -675,6 +688,7 @@ test.describe("new UI", () => {
       await expect(preview).toContainText(text);
     }
     await screenshot(page, "conversation-sentry-alert-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -803,6 +817,7 @@ test.describe("new UI", () => {
     await expect(card).toHaveCount(2);
     await expect(card.last()).toContainText("Morgan Lee");
     await screenshot(page, "conversation-slack-message-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });
@@ -859,6 +874,7 @@ test.describe("new UI", () => {
       /^\/api\/images\//,
     );
     await screenshot(page, "conversation-web-page-link", {
+      hover: true,
       lightTheme: true,
       view: "desktop",
     });

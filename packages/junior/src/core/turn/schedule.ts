@@ -12,6 +12,7 @@
 // path in `advanceTurn` runs it, and a redelivered message runs it again.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
+import type { AgentTurnUsage } from "@/chat/usage";
 import { withConversationEventLock } from "@/conversation-events/lock";
 import { publishDelivery } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
@@ -209,6 +210,7 @@ async function moveLeftovers(
  * Ends a running Turn as failed and, in the same commit, moves its inputs
  * that arrived after its last claim to the next Turn. A crash after the
  * commit loses no input: the next Turn is queued, so the sweep finds it.
+ * `discarded` is the usage of a failed model reply that the Turn drops.
  * False when the lease is lost, and then nothing changes.
  */
 export async function endFailedTurn(
@@ -216,10 +218,13 @@ export async function endFailedTurn(
   lease: TurnLease & { conversationId: string },
   endReason: string,
   failure: TurnFailure,
+  discarded?: AgentTurnUsage,
 ): Promise<boolean> {
   return executor.transaction(() =>
     withConversationEventLock(executor, lease.conversationId, async () => {
-      if (!(await failTurn({ executor }, lease, endReason, failure))) {
+      if (
+        !(await failTurn({ executor }, lease, endReason, failure, discarded))
+      ) {
         return false;
       }
       await moveLeftovers({ executor }, lease);
