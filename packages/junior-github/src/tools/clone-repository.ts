@@ -151,7 +151,6 @@ export const gitHubCloneRepositoryTool = definePluginTool({
   description:
     "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or opt in to an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
   // The clone stays in the Sandbox.
-  guardian: { permission: "allow" },
   executionMode: "sequential",
   inputSchema,
   outputSchema,

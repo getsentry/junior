@@ -2,19 +2,19 @@
  * Build the Guardian request of one design case as core builds it, plus the
  * facts that the case adds (`facts-from-junior` in `design/guardian.md`).
  */
-import {
-  commandCall,
-  credentialPlaceholders,
-} from "@/chat/guardian/command-call";
+import { mapBounded } from "@/chat/fan-out";
 import type {
-  Call,
+  Action,
   Message,
   ReviewRequest,
   Target,
 } from "@/chat/guardian/guardian";
-import { mapBounded } from "@/chat/fan-out";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
-import { defaultCall, guardianMessages } from "@/chat/guardian/request";
+import { guardianMessages } from "@/chat/guardian/request";
+import {
+  credentialPlaceholders,
+  sandboxFacts,
+} from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
 import type {
   GuardianDesignCall,
@@ -46,36 +46,51 @@ function designMessages(
   ];
 }
 
-/**
- * The call of one action as core builds it, with the case's facts on top.
- * A shell command lists the checkouts of the case, and a repository that
- * the case types keeps its audience.
- */
-async function designCall(
+/** One action as core builds it, with the case's facts on top. */
+function designAction(
   proposal: ToolActionProposal,
   fact: GuardianDesignCall | undefined,
-): Promise<Call> {
-  if (proposal.tool.name === "bash") {
-    const command = await commandCall({
-      input: proposal.input,
-      repos: (fact?.repos ?? []).map(({ path, remote }) => ({ path, remote })),
-      placeholders: credentialPlaceholders(
-        getPlugins().map((plugin) => plugin.manifest),
-      ),
-    });
-    return {
-      ...command,
-      repos: command.repos.map((repo, index) => {
-        const typed = fact?.repos?.[index]?.target;
-        return typed ? { ...repo, target: target(typed) } : repo;
-      }),
-    };
-  }
-  const call = defaultCall(proposal.tool.annotations, proposal.tool.name);
+): Action {
+  const input = proposal.input as { command?: unknown };
   return {
-    ...call,
-    ...(fact?.effect ? { effect: fact.effect } : undefined),
+    tool: proposal.tool.name,
+    input: proposal.input,
+    effect: fact?.effect ?? "write",
     ...(fact?.target ? { target: target(fact.target) } : undefined),
+    summary:
+      proposal.tool.name === "bash" && typeof input.command === "string"
+        ? input.command
+        : (proposal.tool.proposalDescription ?? proposal.tool.name),
+  };
+}
+
+/**
+ * What the Sandbox can reach, for a batch with a shell command. It lists
+ * the checkouts of the case, and a repository that the case types keeps
+ * its audience.
+ */
+async function designSandbox(
+  proposals: readonly ToolActionProposal[],
+  facts: GuardianDesignFacts | undefined,
+  indexes: readonly number[],
+): Promise<ReviewRequest["sandbox"]> {
+  const position = proposals.findIndex(({ tool }) => tool.name === "bash");
+  if (position === -1) return undefined;
+  const repos = facts?.calls?.[indexes[position]!]?.repos ?? [];
+  const sandbox = await sandboxFacts({
+    repos: repos.map(({ path, remote }) => ({ path, remote })),
+    placeholders: credentialPlaceholders(
+      getPlugins().map((plugin) => plugin.manifest),
+    ),
+  });
+  return {
+    ...sandbox,
+    repos: sandbox.repos.map((repo, index) => {
+      const typed = repos[index]?.target;
+      return typed
+        ? { ...repo, target: { ref: typed.ref, audience: typed.audience } }
+        : repo;
+    }),
   };
 }
 
@@ -86,15 +101,12 @@ export async function designGuardianRequest(
   /** The index of each proposal in the case, for its call facts. */
   indexes: readonly number[],
 ): Promise<ReviewRequest> {
-  const script = proposals.find((proposal) => proposal.script)?.script;
+  const sandbox = await designSandbox(proposals, facts, indexes);
   return {
     messages: designMessages(proposals[0]!, facts),
-    actions: await mapBounded(proposals, async (proposal, position) => ({
-      tool: proposal.tool.name,
-      call: await designCall(proposal, facts?.calls?.[indexes[position]!]),
-      input: proposal.input,
-      permission: "review" as const,
-    })),
-    ...(script ? { script: script.source } : undefined),
+    actions: await mapBounded(proposals, async (proposal, position) =>
+      designAction(proposal, facts?.calls?.[indexes[position]!]),
+    ),
+    ...(sandbox ? { sandbox } : undefined),
   };
 }

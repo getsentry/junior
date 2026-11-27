@@ -34,16 +34,7 @@ import { ProviderError } from "@/chat/services/provider-error";
 // gives the reason.
 const assessmentFields = {
   rule: z.enum(AGENT_GUARDIAN_RULE_IDS),
-  answered: z
-    .boolean()
-    .describe(
-      "True only when one of the instruction person's own lines is a yes to a question that named this exact action.",
-    ),
   reason: z.string().trim().min(1).max(500),
-  missingFacts: z
-    .array(z.string().trim().min(1).max(200))
-    .max(5)
-    .describe("For an ask rule: what the person must give. Otherwise empty."),
 };
 
 const screenSchema = z.object(assessmentFields).strict();
@@ -64,9 +55,6 @@ const reviewStepSchema = z
       ),
   })
   .strict();
-
-/** The model's assessment of one action. */
-export type AgentGuardianAssessment = z.infer<typeof screenSchema>;
 
 const SCREEN_TIMEOUT_MS = 25_000;
 const REVIEW_STEP_TIMEOUT_MS = 30_000;
@@ -89,48 +77,28 @@ function isDenyRule(rule: Rule): boolean {
 }
 
 /**
- * Derive the review of one assessment (`rule-kinds`, `allow-default`).
- * A deny rule always denies. The person's yes to this exact action clears
- * every ask rule and the tool's `ask` permission (`answer-is-a-line`). An
- * edit of a target that this work created clears `unrequested` and no
- * other rule (`conventional-steps`). A shell command is never an `edit`,
- * so upkeep never applies to one.
+ * Turn the named rule into the outcome (`rule-kinds`, `allow-default`). A
+ * deny rule always denies. An `unrequested` edit of a target that this
+ * work created is upkeep: it runs and keeps the rule, so the record shows
+ * what code cleared (`conventional-steps`). Upkeep clears no other rule. A
+ * shell command is a `write`, so upkeep never applies to one. A person's
+ * yes clears an ask rule only through the model, which then names `none`.
  */
 export function decide(
-  assessment: AgentGuardianAssessment,
-  action: Pick<Action, "call" | "permission">,
-): Review {
-  const { rule, answered, reason, missingFacts } = assessment;
-  if (rule !== "none" && isDenyRule(rule)) {
-    return { decision: "deny", rule, reason };
+  rule: Rule | "none",
+  action: Pick<Action, "effect" | "target">,
+): Pick<Review, "decision" | "rule"> {
+  if (rule === "none") {
+    return { decision: "allow" };
   }
-  if (answered) {
-    return { decision: "allow", reason };
+  if (isDenyRule(rule)) {
+    return { decision: "deny", rule };
   }
-  const { call } = action;
   const upkeep =
     rule === "unrequested" &&
-    call.effect === "edit" &&
-    call.target?.createdByThisWork === true;
-  const missing =
-    missingFacts.length > 0 ? { missing: missingFacts } : undefined;
-  if (rule !== "none" && !upkeep) {
-    return { decision: "ask", rule, reason, ...missing };
-  }
-  if (action.permission === "ask") {
-    return {
-      decision: "ask",
-      reason: "The person must confirm this exact action before it runs.",
-      ...missing,
-    };
-  }
-  if (upkeep) {
-    return {
-      decision: "allow",
-      reason: `Upkeep: this work created ${call.target!.ref}, and the call keeps it current.`,
-    };
-  }
-  return { decision: "allow", reason };
+    action.effect === "edit" &&
+    action.target?.createdByThisWork === true;
+  return { decision: upkeep ? "allow" : "ask", rule };
 }
 
 /** Create the agent Guardian over one review model, for one batch. */
@@ -202,9 +170,10 @@ export function createAgentGuardian(
         const proposal = batch.proposals[index];
         // Built before any model call, so an action too large to review
         // fails before any cost.
-        const base = [messages, renderAction(action, request.script)].join(
-          "\n\n",
-        );
+        const base = [
+          messages,
+          renderAction(action, request.sandbox, proposal?.script !== undefined),
+        ].join("\n\n");
         const conversationId = proposal?.context.conversationId;
         const screen = await complete({
           conversationId,
@@ -216,8 +185,11 @@ export function createAgentGuardian(
         });
         let costUsd = screen.costUsd ?? 0;
         if (screen.object.rule === "none") {
-          batch.recordCost(index, costUsd);
-          return decide(screen.object, action);
+          return {
+            ...decide("none", action),
+            reason: screen.object.reason,
+            costUsd,
+          };
         }
 
         const steps = [
@@ -243,8 +215,11 @@ export function createAgentGuardian(
           costUsd += step.costUsd ?? 0;
           const { next, ref, ...assessment } = step.object;
           if (next === "verdict" || last) {
-            batch.recordCost(index, costUsd);
-            return decide(assessment, action);
+            return {
+              ...decide(assessment.rule, action),
+              reason: assessment.reason,
+              costUsd,
+            };
           }
           if (next === "readPluginFacts") {
             steps.push(`readPluginFacts():\n${pluginFacts}`);

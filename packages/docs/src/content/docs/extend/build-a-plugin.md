@@ -478,28 +478,13 @@ it in generic `ok`, `status`, or `data` fields. Throw `PluginToolInputError` for
 model-repairable failures; Junior projects successful values and thrown errors
 onto the agent runtime's separate result channels.
 
-`guardian.permission` sets whether Guardian reviews a call before the tool
-runs:
-
-- Without it, a tool with `readOnlyHint: true` and no `destructiveHint: true`
-  runs without review. Guardian reviews each call of every other tool. Set
-  `readOnlyHint: true` only when the tool never writes.
-- `review` makes Guardian review each call.
-- `ask` makes Guardian review each call and marks it as waiting for the
-  person's yes.
-- `allow` skips review. The tool runs without a Guardian decision, also in a
-  child agent.
-
-Use `allow` for a tool whose effects stay in the Sandbox, or when the tool
-code proves that each effect is safe and no model judgment is necessary. For
-example, the GitHub tools that mark feedback and resolve review threads read
-the pull request from GitHub first. They refuse unless the bot authored it.
-Their only effect is the bot's own reaction or the resolved state of a
-thread, and you can undo both. Do not use `allow` when the tool writes text
-that can make claims, or when the tool does not check its target itself.
+Guardian reviews each call of a plugin tool before it runs. Only a tool
+with `readOnlyHint: true` and no `destructiveHint: true` runs without review.
+Set `readOnlyHint: true` only when the tool never writes. A plugin cannot
+turn review off.
 
 Annotations describe side effects; they do not authorize an action. Add
-`guardian.describe(input, ctx)` to give Guardian the facts of one call:
+`guardian.describe(input)` to give Guardian the facts of one call:
 
 ```ts
 guardian: {
@@ -517,7 +502,7 @@ guardian: {
 },
 ```
 
-- `effect` is `read`, `edit`, or `write`. Use `edit` only for a change to
+- `effect` is `edit` or `write`. Use `edit` only for a change to
   the content of a target that exists, such as a comment on a pull request.
   A change to its state, such as close, merge, or draft, is a `write`.
 - `audience` is `internal` when only people in your organization can read

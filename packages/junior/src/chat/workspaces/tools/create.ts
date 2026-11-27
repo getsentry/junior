@@ -22,7 +22,7 @@ export function createWorkspaceToolDefinition(
     exposure: "deferred",
     source: WORKSPACES_TOOL_SOURCE,
     approvalMode: "review",
-    describeCall: (input) => ({
+    describe: (input) => ({
       effect: "write",
       summary: describeWorkspaceWrite("Create", input),
     }),

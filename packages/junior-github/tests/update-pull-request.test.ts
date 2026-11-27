@@ -710,10 +710,11 @@ describe("updatePullRequest call facts", () => {
   const tool = createGitHubUpdatePullRequestTool();
 
   async function describeUpdate(input: Record<string, unknown>) {
-    return await tool.guardian?.describe?.(
-      { repo: "getsentry/junior", pull_request: 691, ...input } as never,
-      { conversationIds: async () => [] },
-    );
+    return await tool.guardian?.describe?.({
+      repo: "getsentry/junior",
+      pull_request: 691,
+      ...input,
+    } as never);
   }
 
   it("calls a title or body update an edit of the pull request", async () => {

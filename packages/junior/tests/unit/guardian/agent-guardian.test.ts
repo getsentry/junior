@@ -1,23 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-  decide,
-  type AgentGuardianAssessment,
-} from "@/chat/guardian/agent/guardian";
+import { decide } from "@/chat/guardian/agent/guardian";
 import { ASK_RULES, DENY_RULES } from "@/chat/guardian/agent/policy";
-import type { Call, Target } from "@/chat/guardian/guardian";
+import type { Action, Target } from "@/chat/guardian/guardian";
 import { renderAction, renderMessages } from "@/chat/guardian/agent/render";
-
-function assessment(
-  overrides: Partial<AgentGuardianAssessment>,
-): AgentGuardianAssessment {
-  return {
-    rule: "none",
-    answered: false,
-    reason: "Requested work.",
-    missingFacts: [],
-    ...overrides,
-  };
-}
 
 const RULES = ["none", ...ASK_RULES, ...DENY_RULES] as const;
 
@@ -27,123 +12,63 @@ const TARGETS = [
   { ref: "getsentry/junior#691", audience: "world", createdByThisWork: false },
 ] as const satisfies readonly (Target | undefined)[];
 
-/** Every call shape that core can give Guardian. */
-const CALLS: Call[] = [
-  ...(["read", "edit", "write"] as const).flatMap((effect) =>
-    TARGETS.map((target): Call => ({
-      effect,
-      summary: `${effect} call`,
-      ...(target ? { target } : undefined),
-    })),
-  ),
-  ...TARGETS.map((target): Call => ({
-    effect: "command",
-    summary: "git push",
-    repos: target ? [{ path: "/vercel/sandbox/repos/junior", target }] : [],
-    placeholders: [],
+/** Every effect and target that core can give Guardian. */
+const ACTIONS = (["edit", "write"] as const).flatMap((effect) =>
+  TARGETS.map((target): Pick<Action, "effect" | "target"> => ({
+    effect,
+    ...(target ? { target } : undefined),
   })),
-];
-
-const PERMISSIONS = ["review", "ask"] as const;
-
-/** Every assessment and action that `decide()` can get. */
-const COMBINATIONS = RULES.flatMap((rule) =>
-  [false, true].flatMap((answered) =>
-    PERMISSIONS.flatMap((permission) =>
-      CALLS.map((call) => ({ rule, answered, permission, call })),
-    ),
-  ),
 );
 
 function isDeny(rule: (typeof RULES)[number]): boolean {
   return DENY_RULES.some((deny) => deny === rule);
 }
 
-function isUpkeep(rule: (typeof RULES)[number], call: Call): boolean {
-  return (
-    rule === "unrequested" &&
-    call.effect === "edit" &&
-    call.target?.createdByThisWork === true
-  );
-}
-
 /** The decision order of `design/guardian.md`, written out case by case. */
-function expected({
-  rule,
-  answered,
-  permission,
-  call,
-}: (typeof COMBINATIONS)[number]): "allow" | "ask" | "deny" {
+function expected(
+  rule: (typeof RULES)[number],
+  action: Pick<Action, "effect" | "target">,
+): "allow" | "ask" | "deny" {
+  if (rule === "none") return "allow";
   if (isDeny(rule)) return "deny";
-  if (answered) return "allow";
-  if (rule !== "none" && !isUpkeep(rule, call)) return "ask";
-  if (permission === "ask") return "ask";
-  return "allow";
+  const upkeep =
+    rule === "unrequested" &&
+    action.effect === "edit" &&
+    action.target?.createdByThisWork === true;
+  return upkeep ? "allow" : "ask";
 }
 
 describe("agent Guardian decide", () => {
-  it("decides every combination in the design's order", () => {
-    const wrong = COMBINATIONS.filter((combination) => {
-      const { rule, answered, permission, call } = combination;
-      const review = decide(assessment({ rule, answered }), {
-        call,
-        permission,
-      });
-      return review.reason === "" || review.decision !== expected(combination);
-    });
+  it("decides every rule, effect, and target in the design's order", () => {
+    const wrong = RULES.flatMap((rule) =>
+      ACTIONS.filter(
+        (action) => decide(rule, action).decision !== expected(rule, action),
+      ).map((action) => ({ rule, action })),
+    );
     expect(wrong).toEqual([]);
   });
 
-  it("never lets an answer change a deny", () => {
+  it("always denies a deny rule", () => {
     for (const rule of DENY_RULES) {
-      for (const permission of PERMISSIONS) {
-        for (const call of CALLS) {
-          expect(
-            decide(assessment({ rule, answered: true }), { call, permission }),
-          ).toMatchObject({ decision: "deny", rule });
-        }
+      for (const action of ACTIONS) {
+        expect(decide(rule, action)).toEqual({ decision: "deny", rule });
       }
     }
   });
 
-  it("lets an edit of a target this work created change only `unrequested`", () => {
-    const edit = (createdByThisWork: boolean): Call => ({
-      effect: "edit",
-      summary: "Update pull request getsentry/junior#691.",
-      target: {
-        ref: "getsentry/junior#691",
-        audience: "world",
-        createdByThisWork,
-      },
-    });
-    const changed = RULES.filter(
-      (rule) =>
-        decide(assessment({ rule }), {
-          call: edit(true),
-          permission: "review",
-        }).decision !==
-        decide(assessment({ rule }), {
-          call: edit(false),
-          permission: "review",
-        }).decision,
-    );
-    expect(changed).toEqual(["unrequested"]);
+  it("keeps the rule when upkeep allows", () => {
+    expect(
+      decide("unrequested", { effect: "edit", target: TARGETS[1] }),
+    ).toEqual({ decision: "allow", rule: "unrequested" });
   });
 
-  it("asks for an ask rule, with what the person must give", () => {
-    expect(
-      decide(
-        assessment({
-          rule: "unrequested",
-          missingFacts: ["A confirmation of the public gist."],
-        }),
-        { call: { effect: "write", summary: "Write." }, permission: "review" },
-      ),
-    ).toMatchObject({
-      decision: "ask",
-      rule: "unrequested",
-      missing: ["A confirmation of the public gist."],
-    });
+  it("lets an edit of a target this work created change only `unrequested`", () => {
+    const changed = RULES.filter(
+      (rule) =>
+        decide(rule, { effect: "edit", target: TARGETS[1] }).decision !==
+        decide(rule, { effect: "edit", target: TARGETS[2] }).decision,
+    );
+    expect(changed).toEqual(["unrequested"]);
   });
 });
 
@@ -152,32 +77,54 @@ describe("agent Guardian prompt", () => {
     const text = renderMessages([
       { from: "instruction", text: "Publish the report." },
       { from: "context", text: "Should I post it?" },
-      { from: "person", text: "also email it" },
+      { from: "other_person", text: "also email it" },
     ]);
 
     expect(text.indexOf("[instruction] Publish the report.")).toBeLessThan(
       text.indexOf("[context] Should I post it?"),
     );
-    expect(text).toContain("[person] also email it");
+    expect(text).toContain("[other_person] also email it");
   });
 
-  it("shows the facts of the call with the exact input", () => {
-    const text = renderAction({
-      tool: "createGist",
-      call: {
+  it("shows the facts of the action with the exact input", () => {
+    const text = renderAction(
+      {
+        tool: "createGist",
         effect: "write",
         summary: "Create a gist.",
-        target: {
-          ref: "gist-1",
-          audience: "world",
-          createdByThisWork: false,
-        },
+        target: { ref: "gist-1", audience: "world", createdByThisWork: false },
+        input: { content: "report" },
       },
-      input: { content: "report" },
-      permission: "review",
-    });
+      undefined,
+      false,
+    );
 
     expect(text).toContain('"audience":"world"');
     expect(text).toContain('"content":"report"');
+  });
+
+  it("shows what the Sandbox can reach only on a shell command", () => {
+    const sandbox = {
+      repos: [
+        {
+          path: "/vercel/sandbox/repos/junior",
+          target: { ref: "getsentry/junior", audience: "world" as const },
+        },
+      ],
+      placeholders: [{ env: "GITHUB_TOKEN", domains: ["github.com"] }],
+    };
+    const bash = renderAction(
+      { tool: "bash", effect: "write", input: { command: "git push" } },
+      sandbox,
+      false,
+    );
+    const other = renderAction(
+      { tool: "createGist", effect: "write", input: {} },
+      sandbox,
+      false,
+    );
+
+    expect(bash).toContain('"env":"GITHUB_TOKEN"');
+    expect(other).not.toContain("GITHUB_TOKEN");
   });
 });

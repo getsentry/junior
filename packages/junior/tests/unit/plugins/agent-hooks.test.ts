@@ -701,10 +701,10 @@ describe("agent plugin hooks", () => {
         id: "agent-demo",
         description: "Agent demo",
       });
-      expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("review");
-      expect(
-        (await tools["agentDemo_demoTool"]?.describeCall?.({}))?.summary,
-      ).toBe("Demo tool proposal");
+      expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("auto");
+      expect((await tools["agentDemo_demoTool"]?.describe?.({}))?.summary).toBe(
+        "Demo tool proposal",
+      );
       expect(tools["agentDemo_demoTool"]?.disabledReason).toBeUndefined();
       expect(tools["agentDemo_writeTool"]?.disabledReason).toBe(
         "Read-only Turn.",

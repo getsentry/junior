@@ -10,7 +10,7 @@ export const deleteWorkspaceToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: WORKSPACES_TOOL_SOURCE,
   approvalMode: "review",
-  describeCall: ({ id }) => ({
+  describe: ({ id }) => ({
     effect: "write",
     summary: `Delete Workspace ${id}.`,
   }),

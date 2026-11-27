@@ -1,3 +1,5 @@
+import type { Audience } from "./tools";
+
 export interface PluginOAuthConfig {
   authorizeEndpoint: string;
   authorizeParams?: Record<string, string>;
@@ -136,7 +138,7 @@ export interface PluginMcpConfig {
    * Who can read what this plugin's MCP tools write, for Guardian. Without
    * it, the audience counts as `world`.
    */
-  audience?: "internal" | "world";
+  audience?: Audience;
   /** Bot auth: sign short-lived JWT assertions instead of per-actor OAuth. */
   auth?: PluginMcpAuthConfig;
   /** Request headers. Values may use `${NAME}` refs to declared env vars; Junior resolves them at connect time. */

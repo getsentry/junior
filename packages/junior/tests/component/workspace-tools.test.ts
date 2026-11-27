@@ -142,17 +142,17 @@ describe("Workspace tools", () => {
       });
 
       expect(createTool.approvalMode).toBe("review");
-      expect((await createTool.describeCall?.(createInput))?.summary).toBe(
+      expect((await createTool.describe?.(createInput))?.summary).toBe(
         "Create Workspace relay (1 repository; includes a setup script; 8 vCPUs).",
       );
       expect(updateTool.approvalMode).toBe("review");
-      expect((await updateTool.describeCall?.(updateInput))?.summary).toBe(
+      expect((await updateTool.describe?.(updateInput))?.summary).toBe(
         "Replace Workspace sentry-web (1 repository; includes a setup script).",
       );
       expect(deleteTool.approvalMode).toBe("review");
-      expect(
-        (await deleteTool.describeCall?.({ id: workspace.id }))?.summary,
-      ).toBe(`Delete Workspace ${workspace.id}.`);
+      expect((await deleteTool.describe?.({ id: workspace.id }))?.summary).toBe(
+        `Delete Workspace ${workspace.id}.`,
+      );
       expect(
         createTool.prepareArguments!({
           name: "relay",
@@ -176,7 +176,7 @@ describe("Workspace tools", () => {
       });
       expect(
         (
-          await createTool.describeCall?.(
+          await createTool.describe?.(
             createTool.prepareArguments!({
               name: "relay",
               setup_script: null,

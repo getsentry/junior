@@ -877,7 +877,6 @@ describe("sandbox egress proxy integration", () => {
       tools() {
         return {
           managedEgressRead: definePluginTool({
-            guardian: { permission: "allow" },
             annotations: {
               destructiveHint: false,
               idempotentHint: true,

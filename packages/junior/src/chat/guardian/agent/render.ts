@@ -7,7 +7,7 @@
  * `readProvenance` says only where a value came from.
  */
 import { escapeTagText, renderTag, tagJson } from "@sentry/junior-plugin-api";
-import type { Action, Message } from "@/chat/guardian/guardian";
+import type { Action, Message, ReviewRequest } from "@/chat/guardian/guardian";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 
 /** Largest action, as JSON, that the agent Guardian reviews. */
@@ -44,14 +44,20 @@ export function renderMessages(messages: readonly Message[]): string {
  * Render the exact action. The action is never cut. An action that does
  * not fit throws `AgentGuardianActionTooLargeError`.
  */
-export function renderAction(action: Action, script?: string): string {
+export function renderAction(
+  action: Action,
+  sandbox: ReviewRequest["sandbox"],
+  madeByScript: boolean,
+): string {
   const text = tagJson({
     tool: action.tool,
-    call: action.call,
+    effect: action.effect,
+    ...(action.target ? { target: action.target } : undefined),
+    ...(action.summary ? { summary: action.summary } : undefined),
     input: action.input,
-    // The tool waits for the person's yes to this exact action.
-    ...(action.permission === "ask" ? { permission: "ask" } : undefined),
-    ...(script ? { madeBy: "a Code Mode script" } : undefined),
+    // What a shell command can reach (`sandbox-boundary`).
+    ...(sandbox && action.tool === "bash" ? { sandbox } : undefined),
+    ...(madeByScript ? { madeBy: "a Code Mode script" } : undefined),
   });
   if (text.length > MAX_ACTION_CHARS) {
     throw new AgentGuardianActionTooLargeError(text.length);

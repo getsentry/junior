@@ -32,9 +32,9 @@ import type {
 } from "./operations";
 import type {
   AfterMcpToolHookContext,
+  Audience,
   AfterToolExecuteHookContext,
   BeforeToolExecuteHookContext,
-  CallAudience,
   PluginEgress,
   PluginToolDefinition,
   SandboxPrepareHookContext,
@@ -198,7 +198,7 @@ export interface PluginHooks {
    */
   describeUrl?(
     url: URL,
-  ): Promise<{ ref: string; audience: CallAudience } | undefined>;
+  ): Promise<{ ref: string; audience: Audience } | undefined>;
   /**
    * Select the grant for one sandbox egress request.
    *

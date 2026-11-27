@@ -23,9 +23,8 @@ describe("definePluginTool", () => {
         readOnlyHint: true,
       },
       guardian: {
-        permission: "review",
         describe: async ({ query }) => ({
-          effect: "read",
+          effect: "write",
           summary: `Search for ${query}.`,
         }),
       },
@@ -35,7 +34,6 @@ describe("definePluginTool", () => {
       execute: async () => ({ count: 1 }),
     });
 
-    expect(tool.guardian?.permission).toBe("review");
     expect(tool.annotations).toEqual({
       destructiveHint: false,
       idempotentHint: true,
@@ -43,9 +41,7 @@ describe("definePluginTool", () => {
       readOnlyHint: true,
     });
     const input = tool.prepareArguments?.({ query: "errors" });
-    const call = await tool.guardian?.describe?.(input!, {
-      conversationIds: async () => [],
-    });
+    const call = await tool.guardian?.describe?.(input!);
     expect(call?.summary).toBe("Search for errors.");
     expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
   });

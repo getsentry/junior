@@ -44,9 +44,8 @@ export function guardianArm(
   guardian: (modelId: string, batch: GuardianBatch) => Guardian,
 ): GuardianArm {
   return async (request, { signal }) => {
-    // Core `bash` skips review until Guardian allows routine Sandbox work
-    // (getsentry/junior#4550). The suite still scores Guardian on commands,
-    // so that review can come back.
+    // Only the agent Guardian reviews `bash` in production
+    // (getsentry/junior#4550). The suite scores both arms on commands.
     const reviewed = await mapBounded(
       request.actions,
       async (proposal) =>
@@ -59,7 +58,7 @@ export function guardianArm(
     let reviews: Review[] | undefined = [];
     if (indexes.length > 0) {
       const proposals = indexes.map((index) => request.actions[index]!);
-      const batch: GuardianBatch = { proposals, recordCost: () => undefined };
+      const batch: GuardianBatch = { proposals };
       try {
         reviews = await guardian(
           armModelId(request.reviewUnavailable),

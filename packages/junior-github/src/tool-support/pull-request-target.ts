@@ -1,6 +1,6 @@
 import {
   PluginToolInputError,
-  type CallTarget,
+  type ActionTarget,
 } from "@sentry/junior-plugin-api";
 import { parseRepo } from "./github-api.js";
 
@@ -13,7 +13,7 @@ import { parseRepo } from "./github-api.js";
 export function pullRequestTarget(
   repoInput: string,
   number: number,
-): CallTarget | undefined {
+): ActionTarget | undefined {
   let repo: string;
   try {
     repo = parseRepo(repoInput).ref;

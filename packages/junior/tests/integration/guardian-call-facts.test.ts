@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { CallFacts, CodeChangeInput } from "@sentry/junior-plugin-api";
+import type { ActionFacts, CodeChangeInput } from "@sentry/junior-plugin-api";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { callFromFacts } from "@/chat/guardian/call-facts";
+import { actionFromFacts } from "@/chat/guardian/call-facts";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 
 const ROOT = "slack:C123:123.456";
@@ -18,7 +18,7 @@ const ownPullRequest = {
   updatedAt: new Date("2026-01-01T00:00:00Z"),
 } satisfies CodeChangeInput;
 
-const edit: CallFacts = {
+const edit: ActionFacts = {
   effect: "edit",
   summary: "Update pull request getsentry/junior#691.",
   target: {
@@ -42,17 +42,15 @@ describe("Guardian call facts", () => {
   });
 
   async function created(
-    facts: CallFacts,
+    facts: ActionFacts,
     conversationIds: string[],
     provider = "github",
   ) {
-    const call = await callFromFacts(facts, {
+    const action = await actionFromFacts(facts, {
       provider,
       conversationIds: async () => conversationIds,
     });
-    return call.effect === "command"
-      ? undefined
-      : call.target?.createdByThisWork;
+    return action.target?.createdByThisWork;
   }
 
   it("counts a pull request that this work's code records hold", async () => {

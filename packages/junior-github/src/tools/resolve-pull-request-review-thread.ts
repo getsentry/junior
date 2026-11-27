@@ -67,10 +67,6 @@ export function createGitHubResolvePullRequestReviewThreadTool(
   botEmail: string | undefined,
 ) {
   return definePluginTool({
-    // No action review: the tool checks in code that the bot authored the pull
-    // request, and it changes only the thread's resolved state, which is
-    // reversible.
-    guardian: { permission: "allow" },
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -80,6 +76,14 @@ export function createGitHubResolvePullRequestReviewThreadTool(
     description:
       "Resolve a GitHub pull request review thread after acting on its feedback. Only works on pull requests the bot authored.",
     exposure: "direct",
+    guardian: {
+      // Resolving a thread edits the pull request's review content. The
+      // input names no pull request, so the call has no target.
+      describe: async (input) => ({
+        effect: "edit",
+        summary: `Resolve review thread ${input.thread_id} in ${input.repo}.`,
+      }),
+    },
     inputSchema,
     outputSchema,
     async execute(

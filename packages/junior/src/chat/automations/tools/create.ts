@@ -225,7 +225,7 @@ export function createAutomationTool(
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
-    describeCall: (input) => ({
+    describe: (input) => ({
       effect: "write",
       summary: describeDelivery(input),
     }),

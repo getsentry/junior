@@ -20,6 +20,7 @@ import {
   closeConversationFixture,
   createConversationWebHarness,
 } from "../fixtures/conversation";
+import { mockGuardianAllows } from "../fixtures/guardian-model";
 import { createModelStream } from "../fixtures/model-stream";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { patchConfig } from "../fixtures/config";
@@ -58,6 +59,8 @@ const readResult = () => ({
 afterEach(closeConversationFixture);
 
 it("saves plugin object results once per reply, rejects them from reads, leaves background updates silent, and stores only Message card references", async () => {
+  // `save` writes, so Guardian reviews it.
+  mockGuardianAllows();
   const saveInputs: unknown[] = [];
   const previous = setPlugins([
     defineJuniorPlugin({
@@ -69,7 +72,6 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       hooks: {
         tools: () => ({
           save: definePluginTool({
-            guardian: { permission: "allow" },
             exposure: "direct",
             annotations: {
               destructiveHint: false,
@@ -97,7 +99,6 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
             },
           }),
           read: definePluginTool({
-            guardian: { permission: "allow" },
             exposure: "direct",
             annotations: {
               destructiveHint: false,

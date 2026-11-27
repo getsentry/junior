@@ -386,19 +386,12 @@ export type PluginToolExecute<
 /**
  * Tool-declared approval mode.
  *
- * `auto` delegates to core policy, `review` enters Guardian review, `ask`
- * enters review and marks the action as waiting for the person's yes, and
- * `approve` permits execution without review. Core maps a plugin tool's
- * `guardian.permission` onto it, and its omission to `auto`.
+ * `auto` delegates to core policy, `review` enters Guardian review, and
+ * `approve` permits execution without review. Every plugin tool is `auto`.
  *
  * Core resolves the effective mode immediately before execution.
  */
-export const toolApprovalModeSchema = z.enum([
-  "auto",
-  "review",
-  "ask",
-  "approve",
-]);
+export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
 
 export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 
@@ -446,23 +439,14 @@ export interface ToolApprovalMetadata {
   annotations?: ToolAnnotations;
 }
 
-/** Stored facts that core gives a tool's `guardian.describe`. */
-export interface ToolContext {
-  /**
-   * This Conversation, its ancestors up to its root, and its descendants:
-   * the work that this call serves. Core reads them only when called.
-   */
-  conversationIds(): Promise<string[]>;
-}
-
 /** Who can read a target. Core counts an unknown audience as `world`. */
-export type CallAudience = "internal" | "world";
+export type Audience = "internal" | "world";
 
 /** The resource that one call changes. */
-export interface CallTarget {
+export interface ActionTarget {
   /** Such as `getsentry/junior#12`. */
   ref: string;
-  audience: CallAudience;
+  audience: Audience;
   /**
    * The code change that the target is. Core matches it against its own
    * code-change records to tell whether this work created the target.
@@ -471,33 +455,27 @@ export interface CallTarget {
 }
 
 /** Facts about one call, from parsed input and stored records. Never a verdict. */
-export interface CallFacts {
+export interface ActionFacts {
   /** One plain sentence about the call, such as its target and side effects. */
   summary: string;
   /**
-   * `read` reads. `edit` changes the content of an existing target, such as
-   * a reply on a pull request, but not its lifecycle. `write` does anything
-   * else, such as a create, a send, a delete, or a state change.
+   * `edit` keeps an existing target current, such as its title, body,
+   * replies, or CI reruns, but never changes its state. `write` is
+   * anything else, such as a create, a send, a delete, or a state change.
    */
-  effect: "read" | "edit" | "write";
-  target?: CallTarget;
+  effect: "edit" | "write";
+  target?: ActionTarget;
 }
 
 /** What one tool gives Guardian. */
 export interface ToolGuardian<TInput = unknown> {
   /**
-   * `allow` skips review, such as for a tool whose effects stay in the
-   * Sandbox. `ask` waits for the person's yes to the exact call. Default:
-   * review, except for a read-only tool.
-   */
-  permission?: "allow" | "review" | "ask";
-  /**
    * Facts about one call, from parsed input and stored records, never from
    * what tool input or a tool result claims. It runs before review, so it
-   * must not write anything. Without it, a call is a `read` when the tool is
-   * marked read-only, and a `write` otherwise.
+   * must not write anything. Without it, a call is a `write` with no
+   * target.
    */
-  describe?(input: TInput, ctx: ToolContext): Promise<CallFacts>;
+  describe?(input: TInput): Promise<ActionFacts>;
 }
 
 /**

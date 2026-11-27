@@ -31,8 +31,6 @@ describe("cloneRepository", () => {
       openWorldHint: true,
       readOnlyHint: true,
     });
-    // The clone stays in the Sandbox, so it skips review.
-    expect(tool.guardian?.permission).toBe("allow");
   });
 
   it("clones into a new sandbox directory", async () => {

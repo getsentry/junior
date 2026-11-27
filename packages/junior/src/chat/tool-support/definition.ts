@@ -5,7 +5,7 @@ import type {
   ToolApprovalMetadata,
   ToolExposure,
 } from "@sentry/junior-plugin-api";
-import type { Call } from "@/chat/guardian/guardian";
+import type { Action } from "@/chat/guardian/guardian";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 /**
@@ -29,6 +29,9 @@ export interface ToolApprovalResolution {
   };
 }
 
+/** What a tool's `describe` tells Guardian about one call. */
+export type ActionDescription = Pick<Action, "effect" | "target" | "summary">;
+
 export interface ToolExecuteOptions {
   experimental_context?: unknown;
   signal?: AbortSignal;
@@ -44,7 +47,7 @@ interface BaseToolDefinition<
    * Describe one call for Guardian from stored records
    * (`facts-from-junior` in `design/guardian.md`).
    */
-  describeCall?(input: TInput): Call | Promise<Call>;
+  describe?(input: TInput): ActionDescription | Promise<ActionDescription>;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;
@@ -108,7 +111,7 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
    * Describe one call for Guardian. Core binds a plugin tool's hook to the
    * Turn's stored facts (`facts-from-junior` in `design/guardian.md`).
    */
-  describeCall?(input: unknown): Call | Promise<Call>;
+  describe?(input: unknown): ActionDescription | Promise<ActionDescription>;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;

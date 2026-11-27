@@ -95,7 +95,7 @@ import { createCurrentGuardian } from "@/chat/guardian/current";
 import type { GuardianBatch } from "@/chat/guardian/gate";
 import type { Guardian } from "@/chat/guardian/guardian";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { readSandboxRepos } from "@/chat/guardian/command-call";
+import { readSandboxRepos } from "@/chat/guardian/sandbox-facts";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
@@ -571,14 +571,19 @@ export async function wireAgentTools(
               }),
           }
         : undefined),
-      // Only a running Sandbox has checkouts, so review never starts one.
-      sandboxRepos: async () =>
-        agentSandbox.sandboxRef()
-          ? await readSandboxRepos(
-              agentSandbox.workspace,
-              SANDBOX_WORKSPACE_ROOT,
-            )
-          : [],
+      // Only the agent Guardian reviews shell commands. Only a running
+      // Sandbox has checkouts, so review never starts one.
+      ...(isExperimentalFeatureEnabled("guardian-agent")
+        ? {
+            sandboxRepos: async () =>
+              agentSandbox.sandboxRef()
+                ? await readSandboxRepos(
+                    agentSandbox.workspace,
+                    SANDBOX_WORKSPACE_ROOT,
+                  )
+                : [],
+          }
+        : undefined),
     },
     onDecision: ({ toolCallId, toolName, decision }) =>
       recordGuardianActionReviewed({

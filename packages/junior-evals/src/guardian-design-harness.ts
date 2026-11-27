@@ -43,8 +43,8 @@ export interface GuardianDesignTarget {
 
 /** Facts that the tool of one call gives (`facts-from-junior`). */
 export interface GuardianDesignCall {
-  /** Default: what core gives the call, from its tool or the tool's marks. `bash` is always `command`. */
-  effect?: "read" | "edit" | "write";
+  /** Default: `write`, as core gives a call whose tool does not describe it. */
+  effect?: "edit" | "write";
   target?: GuardianDesignTarget;
   /** `bash` only: repositories checked out in the Sandbox. */
   repos?: Array<{

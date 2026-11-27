@@ -5,11 +5,9 @@ import {
   type PluginRegistration,
   type PluginToolDefinition,
   type SlackToolRegistrationHookContext,
-  type ToolContext,
-  type ToolGuardian,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { callFromFacts } from "@/chat/guardian/call-facts";
+import { actionFromFacts } from "@/chat/guardian/call-facts";
 import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
@@ -62,22 +60,6 @@ function pluginToolNamespace(pluginName: string): string {
     .join("")}`;
 }
 
-/** The gate's approval mode for a plugin tool's Guardian permission. */
-function approvalMode(
-  guardian: ToolGuardian | undefined,
-): AnyToolDefinition["approvalMode"] {
-  switch (guardian?.permission) {
-    case "allow":
-      return "approve";
-    case "review":
-      return "review";
-    case "ask":
-      return "ask";
-    case undefined:
-      return "auto";
-  }
-}
-
 /**
  * Model-facing definitions of one plugin's tools, by host tool name. They
  * come from the plugin's `tools()` with no Turn.
@@ -92,9 +74,8 @@ function pluginToolDefinitions(
   const definitions: Record<string, AnyToolDefinition> = {};
   for (const [localName, definition] of Object.entries(pluginTools)) {
     const execute = definition.execute;
-    // The plugin's `guardian.describe` takes Turn facts, so only
-    // `getPluginTools` binds it.
-    const { guardian, ...rest } = definition;
+    // Only `getPluginTools` binds the plugin's `guardian.describe`.
+    const { guardian: _guardian, ...rest } = definition;
     // Naming conventions belong in lint, not on the turn's critical path.
     definitions[`${namespace}_${localName}`] = {
       ...(rest as AnyToolDefinition),
@@ -105,7 +86,8 @@ function pluginToolDefinitions(
             execute: execute.bind(definition) as AnyToolDefinition["execute"],
           }
         : undefined),
-      approvalMode: approvalMode(guardian),
+      // A plugin cannot skip review (`review-by-default`).
+      approvalMode: "auto",
       identity: {
         id: `${pluginName}.${localName}`,
         name: localName,
@@ -252,10 +234,8 @@ export function getPluginTools(
         },
       },
     };
-    const callContext: ToolContext = {
-      conversationIds: async () =>
-        await readAncestorAndDescendantIds(getDb(), context.conversationId),
-    };
+    const conversationIds = async () =>
+      await readAncestorAndDescendantIds(getDb(), context.conversationId);
     let pluginContext: ToolRegistrationHookContext;
     switch (context.source.kind) {
       case "slack":
@@ -347,10 +327,10 @@ export function getPluginTools(
         ...(disabledReason ? { disabledReason } : undefined),
         ...(describe
           ? {
-              describeCall: async (input: unknown) =>
-                await callFromFacts(await describe(input, callContext), {
+              describe: async (input: unknown) =>
+                await actionFromFacts(await describe(input), {
                   provider: pluginName,
-                  conversationIds: callContext.conversationIds,
+                  conversationIds,
                 }),
             }
           : undefined),

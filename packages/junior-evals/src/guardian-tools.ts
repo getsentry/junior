@@ -161,7 +161,7 @@ export async function agentToolSpec(
   }
   let summary: string | undefined;
   try {
-    summary = (await tool.describeCall?.(input))?.summary;
+    summary = (await tool.describe?.(input))?.summary;
   } catch {
     // A GitHub pull request tool reads Junior's code records for its call
     // facts, and the evals have no database. Its proposal has no summary.

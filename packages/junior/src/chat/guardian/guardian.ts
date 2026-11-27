@@ -52,6 +52,12 @@ export interface ReviewRequest {
   actions: Action[];
   /** Oldest first. Every instruction line is kept. */
   messages: Message[];
+  /** What the Sandbox can reach, set when the batch has a shell command. */
+  sandbox?: {
+    repos: { path: string; target: Pick<Target, "ref" | "audience"> }[];
+    /** Credential placeholders and the domains each one is sent to. */
+    placeholders: { env: string; domains: string[] }[];
+  };
 }
 
 /** A rule that blocks an action. The first three ask, the others deny. */

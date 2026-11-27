@@ -24,19 +24,20 @@ function remoteUrl(remote: string): URL | undefined {
 /**
  * Ask each plugin with a `describeUrl` hook for the target behind one Git
  * remote. The first plugin that knows it answers. A remote that no plugin
- * knows is its own target, which the world can read (`audience`). Upkeep
- * never applies to a command, so no remote counts as created by this work.
+ * knows is its own target, which the world can read (`audience`).
  */
-export async function describeRemote(remote: string): Promise<Target> {
+export async function describeRemote(
+  remote: string,
+): Promise<Pick<Target, "ref" | "audience">> {
   const url = remoteUrl(remote);
   if (url) {
     for (const plugin of getPlugins()) {
       // oxlint-disable-next-line no-await-in-loop -- The first plugin that knows the URL answers.
       const target = await plugin.hooks?.describeUrl?.(url);
       if (target) {
-        return { ...targetSchema.parse(target), createdByThisWork: false };
+        return targetSchema.parse(target);
       }
     }
   }
-  return { ref: remote, audience: "world", createdByThisWork: false };
+  return { ref: remote, audience: "world" };
 }

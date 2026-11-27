@@ -1,4 +1,4 @@
-import type { CallAudience } from "@sentry/junior-plugin-api";
+import type { Audience } from "@sentry/junior-plugin-api";
 
 /** Read `owner/repo` from a GitHub URL, such as `https://github.com/o/r.git`. */
 function urlRepo(url: URL): string | undefined {
@@ -15,7 +15,7 @@ function urlRepo(url: URL): string | undefined {
  */
 export async function describeGitHubUrl(
   url: URL,
-): Promise<{ ref: string; audience: CallAudience } | undefined> {
+): Promise<{ ref: string; audience: Audience } | undefined> {
   const repo = urlRepo(url);
   return repo ? { ref: repo, audience: "world" } : undefined;
 }

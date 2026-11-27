@@ -1,5 +1,5 @@
 /**
- * The call of one shell command, which Guardian reviews before it runs
+ * What a shell command can reach, which Guardian reads when it reviews one
  * (`sandbox-boundary` in `design/guardian.md`).
  *
  * Code only reads facts here. The Git remotes come from the Sandbox, a
@@ -8,15 +8,11 @@
  */
 import type { PluginManifest } from "@sentry/junior-plugin-api";
 import { mapBounded } from "@/chat/fan-out";
-import type { Call } from "@/chat/guardian/guardian";
+import type { ReviewRequest } from "@/chat/guardian/guardian";
 import { describeRemote } from "@/chat/plugins/describe-url";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
-/** The call of one shell command. */
-type CommandCall = Extract<Call, { effect: "command" }>;
-
-/** Longest command text that the call summary keeps. */
-const MAX_SUMMARY_CHARS = 2_000;
+type SandboxFacts = NonNullable<ReviewRequest["sandbox"]>;
 
 /** One Git checkout in the Sandbox and the URL of its `origin` remote. */
 export interface SandboxRepo {
@@ -52,7 +48,7 @@ export async function readSandboxRepos(
 /** Credential placeholders that the installed plugins put in the Sandbox. */
 export function credentialPlaceholders(
   manifests: readonly PluginManifest[],
-): CommandCall["placeholders"] {
+): SandboxFacts["placeholders"] {
   return manifests.flatMap((manifest) => {
     const credentials = manifest.credentials;
     return credentials?.type === "oauth-bearer" && credentials.authTokenEnv
@@ -61,20 +57,12 @@ export function credentialPlaceholders(
   });
 }
 
-/** Build the call of one `bash` call. */
-export async function commandCall(args: {
-  input: Record<string, unknown>;
+/** What the Sandbox can reach: its typed Git checkouts and placeholders. */
+export async function sandboxFacts(args: {
   repos: readonly SandboxRepo[];
-  placeholders: CommandCall["placeholders"];
-}): Promise<CommandCall> {
-  const command =
-    typeof args.input["command"] === "string" ? args.input["command"] : "";
+  placeholders: SandboxFacts["placeholders"];
+}): Promise<SandboxFacts> {
   return {
-    effect: "command",
-    summary:
-      command.length <= MAX_SUMMARY_CHARS
-        ? command
-        : `${command.slice(0, MAX_SUMMARY_CHARS)} [truncated]`,
     repos: await mapBounded(args.repos, async (repo) => ({
       path: repo.path,
       target: await describeRemote(repo.remote),

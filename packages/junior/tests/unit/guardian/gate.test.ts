@@ -133,7 +133,7 @@ describe("tool action review", () => {
         openWorldHint: true,
         readOnlyHint: false,
       },
-      describeCall: ({ reportId }) => ({
+      describe: ({ reportId }) => ({
         effect: "write",
         summary: `Generate report ${reportId}.`,
       }),
@@ -429,7 +429,7 @@ describe("tool action review", () => {
     [
       "proposal description",
       (tool: AnyToolDefinition, failure: Error) => {
-        tool.describeCall = () => {
+        tool.describe = () => {
           throw failure;
         };
         return {};
@@ -638,7 +638,7 @@ describe("tool action review", () => {
       actionReview,
     );
 
-    expect(requests[0]!.actions[0]!.call).toMatchObject({
+    expect(requests[0]!.actions[0]!).toMatchObject({
       effect: "write",
       target: {
         ref: "notes",
@@ -685,18 +685,16 @@ describe("tool action review", () => {
       actionReview,
     );
 
-    expect(requests[0]!.actions[0]!.call).toEqual({
-      effect: "command",
-      summary: "git push",
+    expect(requests[0]!.actions[0]!).toMatchObject({
+      tool: "bash",
+      effect: "write",
+    });
+    expect(requests[0]!.sandbox).toEqual({
       // No plugin knows the remote, so the world can read it.
       repos: [
         {
           path: "/vercel/sandbox/repos/demo",
-          target: {
-            ref: "https://example.com/demo.git",
-            audience: "world",
-            createdByThisWork: false,
-          },
+          target: { ref: "https://example.com/demo.git", audience: "world" },
         },
       ],
       placeholders: [],

@@ -8,6 +8,7 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type {
+  ActionDescription,
   AnyToolDefinition,
   ToolApprovalResolution,
 } from "@/chat/tool-support/definition";
@@ -22,9 +23,9 @@ import {
 import type {
   Action,
   Audience,
-  Call,
   Guardian,
   Review,
+  ReviewRequest,
 } from "@/chat/guardian/guardian";
 import type {
   RootConversation,
@@ -34,12 +35,12 @@ import type {
   ToolActionProposal,
   ToolActionScript,
 } from "@/chat/guardian/proposal";
-import { defaultCall, guardianMessages } from "@/chat/guardian/request";
+import { guardianMessages } from "@/chat/guardian/request";
 import {
-  commandCall,
   credentialPlaceholders,
+  sandboxFacts,
   type SandboxRepo,
-} from "@/chat/guardian/command-call";
+} from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { mapBounded } from "@/chat/fan-out";
@@ -59,7 +60,10 @@ export interface ToolActionReviewContext {
   evidence?: () => ToolActionEvidence;
   /** Read the Run's own Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
-  /** Read the Git checkouts of the Sandbox when a command needs review. */
+  /**
+   * Read the Git checkouts of the Sandbox. Set only when Guardian reviews
+   * shell commands, which only the agent Guardian does.
+   */
   sandboxRepos?: () => Promise<SandboxRepo[]>;
 }
 
@@ -315,7 +319,7 @@ function buildProposal(
   priorRejections: ToolActionPriorRejection[],
   rootConversation: RootConversation | undefined,
   script: ToolAction["script"],
-  described: Call | undefined,
+  described: ActionDescription | undefined,
 ): ToolActionProposal {
   const credential = actionCredential(context.credentialContext);
   return {
@@ -388,7 +392,7 @@ export function proposalTool(
   toolName: string,
   tool: AnyToolDefinition,
   resolved: ToolApprovalResolution | undefined,
-  /** The summary of the tool's own `describeCall`, when it has one. */
+  /** The summary of the tool's own `describe`, when it has one. */
   proposalDescription: string | undefined,
 ): ToolActionProposal["tool"] {
   const name = resolved?.name ?? toolName;
@@ -446,9 +450,20 @@ function projectedRejection(
   };
 }
 
-/** A core tool stays outside review unless it opts in. Plugin tools default to `auto`. */
+/**
+ * A core tool stays outside review unless it opts in. Plugin tools are
+ * `auto`, so only a read-only one whose marks cannot change at call time
+ * stays outside review.
+ */
 function mayNeedReview(tool: AnyToolDefinition): boolean {
-  return tool.approvalMode !== undefined && tool.approvalMode !== "approve";
+  if (tool.approvalMode === undefined || tool.approvalMode === "approve") {
+    return false;
+  }
+  return (
+    tool.approvalMode !== "auto" ||
+    tool.resolveApprovalMetadata !== undefined ||
+    autoActionNeedsReview(tool, undefined)
+  );
 }
 
 /** Whether the gate sends a call of `tool` to Guardian, given its resolved metadata. */
@@ -464,23 +479,44 @@ export function toolActionNeedsReview(
 }
 
 /**
- * The MCP provider of a call, when its plugin declares who can read what
- * its MCP tools write. Without that, the call has no target, and its
- * audience counts as `world`.
+ * The action of a tool that does not describe its own: a `write` with no
+ * target. An MCP call is the exception when its plugin declares who can
+ * read what its MCP tools write: the provider is then the target, with that
+ * audience. Without a target, the audience counts as `world`.
  */
-function mcpProvider(
-  provider: string | undefined,
-): { ref: string; audience: Audience } | undefined {
-  if (!provider) return undefined;
-  const audience =
-    pluginCatalogRuntime.getDefinition(provider)?.manifest.mcp?.audience;
-  return audience ? { ref: provider, audience } : undefined;
+function defaultDescription(
+  toolName: string,
+  resolved: ToolApprovalResolution | undefined,
+): ActionDescription {
+  const provider =
+    toolName === "callMcpTool" ? resolved?.source?.id : undefined;
+  const audience: Audience | undefined = provider
+    ? pluginCatalogRuntime.getDefinition(provider)?.manifest.mcp?.audience
+    : undefined;
+  return provider && audience
+    ? {
+        effect: "write",
+        target: { ref: provider, audience, createdByThisWork: false },
+      }
+    : { effect: "write" };
 }
 
 /** One action that Guardian must review, with the gate's proposal for it. */
 interface PreparedReview {
   action: Action;
   proposal: ToolActionProposal;
+}
+
+/** Whether the gate reviews this call, before its metadata resolves. */
+function mayReviewCall(
+  action: ToolAction,
+  context: ToolActionReviewContext,
+): boolean {
+  // Bash has no approval mode, so the current Guardian skips it
+  // (getsentry/junior#4550). The agent Guardian reviews each command.
+  return action.toolName === "bash"
+    ? context.sandboxRepos !== undefined
+    : mayNeedReview(action.tool);
 }
 
 /** Prepare the exact action that Guardian must review, when review is required. */
@@ -490,15 +526,15 @@ async function prepareToolActionReview(
   priorRejections: ToolActionPriorRejection[],
 ): Promise<PreparedReview | undefined> {
   const { tool, input } = action;
-  if (!mayNeedReview(tool)) {
+  if (!mayReviewCall(action, context)) {
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  if (!toolActionNeedsReview(tool, resolved)) {
+  if (action.toolName !== "bash" && !toolActionNeedsReview(tool, resolved)) {
     return;
   }
   assertAuthoritativeContext(context);
-  const described = await tool.describeCall?.(input);
+  const described = await tool.describe?.(input);
   const proposal = buildProposal(
     action.toolName,
     tool,
@@ -514,26 +550,12 @@ async function prepareToolActionReview(
   return {
     action: {
       tool: proposal.tool.name,
-      // Guardian reviews a shell command by what it can reach.
-      call:
-        action.toolName === "bash"
-          ? await commandCall({
-              input,
-              repos: (await context.sandboxRepos?.()) ?? [],
-              placeholders: credentialPlaceholders(
-                getPlugins().map((plugin) => plugin.manifest),
-              ),
-            })
-          : (described ??
-            defaultCall(
-              resolved?.annotations ?? tool.annotations,
-              proposal.tool.name,
-              action.toolName === "callMcpTool"
-                ? mcpProvider(resolved?.source?.id)
-                : undefined,
-            )),
       input,
-      permission: tool.approvalMode === "ask" ? "ask" : "review",
+      ...(described ?? defaultDescription(action.toolName, resolved)),
+      summary:
+        described?.summary ??
+        proposal.tool.proposalDescription ??
+        proposal.tool.name,
     },
     proposal,
   };
@@ -636,17 +658,25 @@ export function createToolActionReview(options: {
     let failure: unknown;
     if (reviews.length > 0) {
       try {
+        const request: ReviewRequest = {
+          actions: reviews.map((review) => review.action),
+          messages: guardianMessages(reviews[0]!.proposal),
+        };
+        const sandboxRepos = options.context.sandboxRepos;
+        // A shell command is reviewed by what the Sandbox can reach.
+        if (sandboxRepos && request.actions.some((a) => a.tool === "bash")) {
+          request.sandbox = await sandboxFacts({
+            repos: await sandboxRepos(),
+            placeholders: credentialPlaceholders(
+              getPlugins().map((plugin) => plugin.manifest),
+            ),
+          });
+        }
         decisions = await options
           .guardian({
             proposals: reviews.map((review) => review.proposal),
           })
-          .review(
-            {
-              actions: reviews.map((review) => review.action),
-              messages: guardianMessages(reviews[0]!.proposal),
-            },
-            signal ?? new AbortController().signal,
-          );
+          .review(request, signal ?? new AbortController().signal);
         if (decisions.length !== reviews.length) {
           throw new Error("Guardian must return one Review per action.");
         }
