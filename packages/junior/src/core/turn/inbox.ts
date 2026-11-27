@@ -107,10 +107,7 @@ export async function findTurnActor(
 }
 
 /** An input of a Turn, whether the history has read it or not. */
-export type TurnInputRecord = Pick<
-  TurnInput,
-  "actorIdentityId" | "payload" | "sentAt"
-> & {
+export type TurnInputRecord = Pick<TurnInput, "payload"> & {
   inputId: string;
 };
 
@@ -123,9 +120,7 @@ export async function findTurnInputs(
     .db()
     .select({
       inputId: juniorTurnInbox.id,
-      actorIdentityId: juniorTurnInbox.actorIdentityId,
       payload: juniorTurnInbox.payload,
-      sentAt: juniorTurnInbox.sentAt,
     })
     .from(juniorTurnInbox)
     .where(eq(juniorTurnInbox.turnId, turnId))
@@ -135,7 +130,10 @@ export async function findTurnInputs(
 const INPUT_EVENT_KEY_PREFIX = "inbox:";
 
 /** An input of a Turn that no history event has read yet. */
-export type UnreadInput = Pick<TurnInput, "groupKey" | "payload" | "sentAt"> & {
+export type UnreadInput = Pick<
+  TurnInput,
+  "actorIdentityId" | "groupKey" | "payload" | "sentAt"
+> & {
   inputId: string;
   traceContext: TurnInputTraceContext | null;
   /** When an attempt of the Turn first claimed it with the input unread. */
@@ -171,6 +169,7 @@ export async function findUnreadInputs(
   return db
     .select({
       inputId: juniorTurnInbox.id,
+      actorIdentityId: juniorTurnInbox.actorIdentityId,
       groupKey: juniorTurnInbox.groupKey,
       payload: juniorTurnInbox.payload,
       sentAt: juniorTurnInbox.sentAt,

@@ -10,3 +10,5 @@ invalid:
   - 'const data = { type: "message_handled", messageId };'
   - "await appendConversationMessages(store, { conversation, conversationId });"
   - "await commitAcceptedReply({ conversation, conversationId });"
+  - "await claimProviderConversation(executor, { conversationId, provider });"
+  - "await startLocationThread(executor, { conversationId, threadTs });"

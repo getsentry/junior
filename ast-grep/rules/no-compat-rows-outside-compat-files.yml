@@ -18,3 +18,5 @@ rule:
         - regex: ^["'](turn_started|turn_completed|turn_failed|message_handled)["']$
     - pattern: appendConversationMessages($$$)
     - pattern: commitAcceptedReply($$$)
+    - pattern: claimProviderConversation($$$)
+    - pattern: startLocationThread($$$)

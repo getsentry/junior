@@ -541,6 +541,36 @@ describe("advanceTurn with tools", () => {
       findUnreadInputs(harness.engineCtx, toolTurnId),
     ).resolves.toEqual([expect.objectContaining({ inputId })]);
   });
+
+  it("writes main's visible message for an input that arrives in a running Turn", async () => {
+    await startHarness([sendTool([])]);
+    await setModelReplies([
+      sendCallReply(),
+      createAssistantMessage({ type: "text", text: "Sent." }),
+    ]);
+    const { turnId: toolTurnId } = await harness.send({
+      text: "How many Turns?",
+    });
+    await harness.runStep();
+    const { inputId } = await harness.send({ text: "Also send it to Sam." });
+
+    await harness.runStep();
+    await harness.runStep();
+
+    await expect(harness.turn(toolTurnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    const events = await harness.events();
+    const keys = events.map((event) => event.idempotencyKey);
+    // Compat: the person's message comes before the step reads the input.
+    expect(keys.indexOf(`message:inbox:${inputId}`)).toBeGreaterThan(-1);
+    expect(keys.indexOf(`message:inbox:${inputId}`)).toBeLessThan(
+      keys.indexOf(`inbox:${inputId}`),
+    );
+    expect(
+      events.filter((event) => event.data.type === "turn_started"),
+    ).toHaveLength(1);
+  });
 });
 
 // These cases need a fault, a timing or a layout that no edge can give, so

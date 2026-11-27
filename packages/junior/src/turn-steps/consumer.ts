@@ -62,7 +62,7 @@ export async function turnStepConsumer(
       modelSettings,
       tools,
       maxAttempts: MAX_ATTEMPTS,
-      compat__turnStarted: (turn, inputs) =>
+      compat__inputsRead: (turn, inputs) =>
         compat__writeTurnStarted(engineCtx, turn, inputs),
     }),
   );

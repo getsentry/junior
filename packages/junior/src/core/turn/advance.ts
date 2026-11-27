@@ -80,13 +80,13 @@ export type AdvanceTurnOptions = {
   maxAttempts: number;
   /**
    * Compat: exists only so main's readers keep working; delete it once they
-   * read `junior_turns`. Writes the rows they need when a Turn starts. Core
-   * calls it after each claim while the Turn has no committed step, before
-   * the step runs, so it must be safe to run again.
+   * read `junior_turns`. Core calls it before each step with the inputs that
+   * were unread at its claim, before the commit that reads them, so the host
+   * can write their rows first. It must be safe to run again.
    */
-  compat__turnStarted?: (
+  compat__inputsRead?: (
     turn: ClaimedTurn,
-    inputs: TurnInputRecord[],
+    inputs: UnreadInput[],
   ) => Promise<void>;
 };
 
@@ -159,13 +159,11 @@ async function runClaimedStep(
     modelSettings,
     tools,
     maxAttempts,
-    compat__turnStarted,
+    compat__inputsRead,
   }: AdvanceTurnOptions,
 ): Promise<void> {
-  const inputs = await findTurnInputs({ executor }, claim.turnId);
-  // Each commit moves step_seq, so a claim at 0 has no committed step.
-  if (claim.stepSeq === 0) {
-    await compat__turnStarted?.(claim, inputs);
+  if (unread.length > 0) {
+    await compat__inputsRead?.(claim, unread);
   }
   const history = await loadAgentHistory({ executor }, claim.conversationId);
   setActiveSpanAttributes({
@@ -176,7 +174,10 @@ async function runClaimedStep(
     { executor, queue },
     claim,
     async () => {
-      const stepTools = await tools(claim, inputs);
+      const stepTools = await tools(
+        claim,
+        await findTurnInputs({ executor }, claim.turnId),
+      );
       return whileLeased({ executor }, claim, (signal) =>
         runStep({
           history,
