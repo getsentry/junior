@@ -2,7 +2,6 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "../components/ui/button";
-import { cn } from "../styles";
 import {
   Tooltip,
   TooltipContent,
@@ -13,7 +12,8 @@ import {
  * Dismiss an Inbox row. It is quiet like the other actions of its bar, and
  * has no check mark, so it does not read as an answer or an approval. A
  * note says what else the dismiss changes, such as on GitHub, in its
- * tooltip, so the change is no surprise.
+ * tooltip, so the change is no surprise. Where tooltips are off, such as
+ * on a phone, the note does not show, so it is not text on every card.
  */
 export function RowDismissButton(props: {
   disabled?: boolean;
@@ -49,24 +49,6 @@ export function RowDismissButton(props: {
         {props.look === "icon" ? `${label}. ${props.note}` : props.note}
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-/**
- * A Dismiss note as text, for where tooltips are off
- * (`TOOLTIP_MEDIA_QUERY`), such as on a phone. It hides where the tooltip
- * shows it.
- */
-export function DismissNote(props: { className?: string; note: string }) {
-  return (
-    <p
-      className={cn(
-        "m-0 text-xs text-dashboard-text-muted [@media(min-width:48rem)_and_(hover:hover)_and_(pointer:fine)]:hidden",
-        props.className,
-      )}
-    >
-      {props.note}
-    </p>
   );
 }
 
