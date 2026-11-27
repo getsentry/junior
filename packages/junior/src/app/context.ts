@@ -20,6 +20,8 @@ export interface AppContext {
   slackTeamDomains: SlackTeamDomainCache;
   /** The Slack team id of each bot token, looked up once per token. */
   slackBotTeamIds: Map<string, Promise<string>>;
+  /** Title generation in flight, by Conversation id. */
+  conversationTitles: Map<string, Promise<string | undefined>>;
 }
 
 /** Build the long-lived app state from resolved plugin wiring. */
@@ -42,6 +44,7 @@ export function createAppContext(
     queueProvider: {},
     slackTeamDomains: { entries: new Map(), inflight: new Map() },
     slackBotTeamIds: new Map(),
+    conversationTitles: new Map(),
   };
 }
 
