@@ -88,8 +88,7 @@ Only these sit on top of the tree:
 
 **Rendering**
 
-- The dashboard calls each child of a Lead a Thread. Top-level lists show
-  each Thread as its own row, not nested under the Lead.
+- The dashboard calls each child of a Lead a Thread.
 - Members see the Space in their sidebar. A person who is not a member can
   open a public Space and join it.
 - The sidebar's In flight lists only roots that are not a Lead. A Space's

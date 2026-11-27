@@ -23,9 +23,8 @@ rule, and it does not add a surface or tenant check to public access.
 - **Target**: the Conversation whose data is read, found, or acted on.
 - **Visibility**: `public` or `private`, stored on every Conversation row.
   A root takes the first known visibility of its Destination or Space, and
-  each child copies its root's. Only an explicit change, such as a move into
-  a private Space, changes it for the whole tree (`setConversationVisibility`);
-  a Slack channel that becomes private does not. Queries check it with
+  each child copies its root's. It does not change after the root is
+  created, even when its Slack channel becomes private. Queries check it with
   `isPublicConversation`. Missing visibility and direct messages are
   private. A missing root fails rows 2 and 3, and row 4 denies.
 
