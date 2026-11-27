@@ -74,7 +74,11 @@ const timelineItemSchema = z.union([
     createdAt: z.string(),
   }),
   z.object({
-    __typename: z.literal("HeadRefForcePushedEvent"),
+    __typename: z.enum([
+      "AutomaticBaseChangeSucceededEvent",
+      "BaseRefChangedEvent",
+      "HeadRefForcePushedEvent",
+    ]),
     actor: actorSchema,
     createdAt: z.string(),
   }),
@@ -84,6 +88,9 @@ const historyResponseSchema = z.object({
   data: z.object({
     repository: z.object({
       pullRequest: z.object({
+        baseChanges: z.object({
+          nodes: z.array(timelineItemSchema.nullable()),
+        }),
         createdAt: z.string(),
         discussion: z.object({
           nodes: z.array(timelineItemSchema.nullable()),
@@ -99,15 +106,17 @@ const historyResponseSchema = z.object({
 
 /** What GitHub says about the people on one pull request. */
 interface GitHubConflictHistory {
-  /** The latest push, review, or comment by a person, or the opening. */
+  /** The latest activity by a person, or the opening. */
   activeAtMs: number;
   approved: boolean;
 }
 
 /**
- * Read the history from GitHub's answer. A deleted account has no author,
- * and counts as a person. Activity by a bot is not activity. Opening the PR
- * counts as activity, because a person asked for it.
+ * Read the history from GitHub's answer. A deleted account counts as a
+ * person, and a bot's activity is not activity. The opening counts, since a
+ * person asked for it. So does a person's base change, such as the merge of
+ * the PR below in a stack: its conflicts come from that merge, not from a
+ * loop of fixes.
  */
 function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   const pullRequest =
@@ -119,6 +128,7 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   for (const item of [
     ...pullRequest.pushes.nodes,
     ...pullRequest.discussion.nodes,
+    ...pullRequest.baseChanges.nodes,
   ]) {
     if (!item) continue;
     switch (item.__typename) {
@@ -128,6 +138,8 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
           item.commit.committedDate,
         );
         break;
+      case "AutomaticBaseChangeSucceededEvent":
+      case "BaseRefChangedEvent":
       case "HeadRefForcePushedEvent":
         record(item.actor?.__typename === "Bot", item.createdAt);
         break;
