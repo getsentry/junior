@@ -111,10 +111,10 @@ export const inboxItemSchema = z
       .union([inboxItemRequestSchema, inboxItemNoticeRequestSchema])
       .optional(),
     /**
-     * The top of the owner Conversation's tree that the viewer can see, at
-     * any depth: the owner when it is a root, or when the viewer cannot see
-     * its root. The Inbox stacks items by it. Unset when the owner is not a
-     * Conversation; then the Inbox stacks items by their owner.
+     * The top of the owner Conversation's tree that the viewer can see. The
+     * Inbox stacks items by it. Unset when the owner is not a Conversation,
+     * or when the viewer cannot see it, such as a person on the item by a
+     * role on the subject; then the payload names no Conversation or Turn.
      */
     rootConversationId: z.string().min(1).optional(),
     status: z.enum(["open", "done", "dismissed"]),
@@ -127,6 +127,12 @@ export const inboxItemSchema = z
       .object({
         id: z.string().min(1),
         kind: z.string().min(1),
+        /**
+         * What else the viewer's Dismiss changes on the provider, such as
+         * `Also removes you from the reviewers on GitHub.` Unset when it
+         * changes nothing there.
+         */
+        dismissNote: z.string().min(1).optional(),
         /** The name of a plugin kind's ask, such as `Review requested`. */
         label: z.string().min(1).optional(),
         /**

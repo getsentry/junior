@@ -78,6 +78,16 @@ export type AdvanceTurnOptions = {
    * not limit the steps of a Turn.
    */
   maxAttempts: number;
+  /**
+   * Compat: exists only so main's readers keep working; delete it once they
+   * read `junior_turns`. Core calls it before each step with the inputs that
+   * were unread at its claim, before the commit that reads them, so the host
+   * can write their rows first. It must be safe to run again.
+   */
+  compat__inputsRead?: (
+    turn: ClaimedTurn,
+    inputs: UnreadInput[],
+  ) => Promise<void>;
 };
 
 /**
@@ -149,11 +159,12 @@ async function runClaimedStep(
     modelSettings,
     tools,
     maxAttempts,
-  }: Pick<
-    AdvanceTurnOptions,
-    "client" | "prompt" | "modelSettings" | "tools" | "maxAttempts"
-  >,
+    compat__inputsRead,
+  }: AdvanceTurnOptions,
 ): Promise<void> {
+  if (unread.length > 0) {
+    await compat__inputsRead?.(claim, unread);
+  }
   const history = await loadAgentHistory({ executor }, claim.conversationId);
   setActiveSpanAttributes({
     "app.turn.step_seq": claim.stepSeq,

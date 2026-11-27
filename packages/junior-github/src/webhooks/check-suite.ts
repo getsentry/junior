@@ -6,13 +6,13 @@ import type {
   EventInput,
   EventPublisher,
   PluginLogger,
-  PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import type { GitHubResponses } from "../installation-http-cache.js";
 import type { GitHubStatusIncident } from "../github-status.js";
 import type { InstallationTokens } from "../installation-tokens.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
@@ -818,8 +818,8 @@ export async function loadCheckSuiteFacts(args: {
   loadPullRequestFacts?: boolean;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   privateKeyEnv: string;
-  /** Saved GET responses, as in `sendConditionalRequest`. */
-  responses?: PluginState | undefined;
+  /** Saved GET responses, as in `installationResponses`. */
+  responses?: GitHubResponses | undefined;
   /** Tokens to reuse, as in `reuseInstallationToken`. */
   tokens?: InstallationTokens | undefined;
 }): Promise<GitHubCheckSuiteFacts | undefined> {

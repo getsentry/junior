@@ -145,6 +145,7 @@ export interface PluginManifestConfig {
     allowedTools?: string[] | null;
     wrappedTools?: string[] | null;
     guardian?: PluginMcpConfig["guardian"] | null;
+    viewerTools?: string[] | null;
   } | null;
   oauth?: PluginOAuthConfigPatch | null;
   accounts?: {

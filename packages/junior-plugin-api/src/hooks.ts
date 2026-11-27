@@ -1,6 +1,6 @@
 import type * as z from "zod";
 import type { PluginContext } from "./context";
-import type { ObjectAnnotation } from "./object-annotations";
+import type { AnnotatedObject } from "./object-annotations";
 import type {
   ConversationSidebarHookContext,
   ConversationSidebarResult,
@@ -43,7 +43,10 @@ import type {
   WorkspacePrepareHookContext,
   WorkspaceFinalize,
 } from "./tools";
-import type { InboxItemAnsweredHookContext } from "./inbox-items";
+import type {
+  InboxItemAnsweredHookContext,
+  InboxItemDismissedHookContext,
+} from "./inbox-items";
 import type {
   PromptMessage,
   SystemPromptBuildContext,
@@ -230,8 +233,8 @@ export interface PluginHooks {
   afterMcpTool?(
     ctx: AfterMcpToolHookContext,
   ):
-    | Promise<{ objectAnnotations: ObjectAnnotation[] } | void>
-    | { objectAnnotations: ObjectAnnotation[] }
+    | Promise<{ objectAnnotations: AnnotatedObject[] } | void>
+    | { objectAnnotations: AnnotatedObject[] }
     | void;
   /**
    * Guardian facts and remote MCP tool decisions. A remote tool without an
@@ -254,6 +257,13 @@ export interface PluginHooks {
    * failure, so it must be safe to repeat.
    */
   inboxItemAnswered?(ctx: InboxItemAnsweredHookContext): Promise<void> | void;
+  /**
+   * Remove the person who dismissed an item of an `assigneeRoles` subject
+   * kind from the object on the provider. Throw when the provider refuses:
+   * the dismiss then fails, and the person stays on the item. Junior calls
+   * it again when the person retries, so it must be safe to repeat.
+   */
+  inboxItemDismissed?(ctx: InboxItemDismissedHookContext): Promise<void> | void;
   /**
    * Return state that the model must keep when a compaction replaces the
    * history, such as open work. Junior adds it to the compaction summary.

@@ -6,6 +6,8 @@ import type {
   EventPublisher,
   GuardianContext,
   HeartbeatHookContext,
+  ObjectSubject,
+  PluginHttpCache,
   PluginReviewNotice,
   PluginStartedTaskContext,
   PluginState,
@@ -102,6 +104,14 @@ export function guardianContext(
   };
 }
 
+/**
+ * Core owns the HTTP cache, so these reads go to GitHub as they are. Core
+ * integration tests cover the saved ETags.
+ */
+export const passThroughHttpCache: PluginHttpCache = {
+  fetch: async ({ send }) => await send({}),
+};
+
 /** Plugin state in memory, with expiry. */
 export function memoryState(): PluginState {
   const stored = new Map<string, { expiresAtMs: number; value: unknown }>();
@@ -161,6 +171,8 @@ export function createPluginHarness(
     }>,
     /** Batches of annotation and Inbox item changes, in order. */
     batches: [] as ConversationChangeBatch[],
+    /** Objects that a heartbeat said changed, so open pages read them again. */
+    changedObjects: [] as ObjectSubject[],
     closedNotices: [] as string[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
     /** Tasks that the plugin started and that have not run yet. */
@@ -255,6 +267,12 @@ export function createPluginHarness(
       throw new Error("GitHub webhooks do not dispatch agents");
     };
     const annotations: HeartbeatHookContext["annotations"] = {
+      async listObjects() {
+        return [];
+      },
+      async nameObject() {},
+      async objectsMoved() {},
+      async objectChanged() {},
       forConversation() {
         return {
           async upsert() {},
@@ -270,8 +288,8 @@ export function createPluginHarness(
       annotations,
       cache,
       codeChanges,
+      httpCache: passThroughHttpCache,
       conversationChanges: conversationChangesThrough({
-        annotations,
         batches: recorded.batches,
         inboxItems,
       }),
@@ -298,6 +316,14 @@ export function createPluginHarness(
       throw new Error("The GitHub heartbeat does not use this");
     };
     const annotations: HeartbeatHookContext["annotations"] = {
+      async listObjects() {
+        return [];
+      },
+      async nameObject() {},
+      async objectsMoved() {},
+      async objectChanged(subject) {
+        recorded.changedObjects.push(subject);
+      },
       forConversation(conversationId) {
         return {
           async upsert(annotation) {
@@ -316,7 +342,6 @@ export function createPluginHarness(
       cache,
       codeChanges,
       conversationChanges: conversationChangesThrough({
-        annotations,
         batches: recorded.batches,
         inboxItems,
       }),
@@ -350,7 +375,13 @@ export function createPluginHarness(
       const task = githubPlugin().tasks?.[started.name];
       if (!task?.payload) throw new Error(`No started task ${started.name}`);
       await task.run({
-        annotations: { forConversation: unused },
+        annotations: {
+          forConversation: unused,
+          listObjects: async () => [],
+          nameObject: unused,
+          objectChanged: unused,
+          objectsMoved: async () => {},
+        },
         cache,
         codeChanges,
         conversationChanges: { apply: unused },

@@ -60,9 +60,13 @@ groups and acts on its rows.
   the transcript, a waiting card spans the transcript width.
 - A click on a choice picks it. Send answers, with the note line. An
   action that takes no words, such as a plugin's Resume, is one click.
-- The first answer or dismiss closes the item for everyone, and the item
-  records who closed it and when. A dismiss is not a decision, so it does
-  not continue the work.
+- The first answer closes the item for everyone, and the item records who
+  closed it and when.
+- A dismiss closes the item for everyone, unless its subject gives each
+  assignee their own place, such as a GitHub assignee or reviewer. Then a
+  dismiss removes only the person who dismissed it, in the subject too. A
+  dismiss is not a decision, so it does not continue the work.
+- A plugin item's Dismiss says what else it changes on the provider.
 - A person who wants someone else to act snoozes it until it closes.
   Snooze is per person. The item then waits in their Snoozed view, where
   they can still answer it, dismiss it, or wake it.
@@ -94,6 +98,9 @@ groups and acts on its rows.
 - An item is visible to whoever can see its subject's owner. An item from
   a public Conversation is visible to the whole workspace. Everyone means
   the people who can see the item's owner.
+- A person whose role on a provider object puts them on its item sees the
+  item and the object, but not its owner Conversation unless they can see
+  it.
 - The owner of a plugin item is a Conversation that the plugin names. For
   each of its subject kinds, the plugin maps a subject id to that
   Conversation from its own records, and Junior reads the owner through

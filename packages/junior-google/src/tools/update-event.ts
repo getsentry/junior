@@ -188,6 +188,7 @@ export const updateCalendarEventTool = definePluginTool({
         ownEventSchema.parse(response.body),
         timeZone,
         ctx.accountEmail,
+        "changed",
       ),
     };
   },

@@ -13,6 +13,7 @@ import { getPlugins } from "@/chat/plugins/hooks/registry";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import {
+  pluginSubjectKind,
   subjectKindPlugin,
   subjectLink,
   type InboxItemLinkSource,
@@ -39,6 +40,22 @@ export function codeChangeSubjectProvider(
     .find((registration) => registration.manifest.name === plugin)
     ?.inboxSubjects?.find((subject) => subject.kind === own);
   return registered?.codeChange ? plugin : undefined;
+}
+
+/**
+ * Return the subject kinds whose ids are code change provider ids, such as
+ * `github:pull_request`.
+ */
+export function codeChangeSubjectKinds(
+  plugins: readonly PluginRegistration[] = getPlugins(),
+): string[] {
+  return plugins.flatMap((plugin) =>
+    (plugin.inboxSubjects ?? []).flatMap((subject) =>
+      subject.codeChange
+        ? [pluginSubjectKind(plugin.manifest.name, subject.kind)]
+        : [],
+    ),
+  );
 }
 
 /**

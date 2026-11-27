@@ -48,7 +48,6 @@ import {
   CodeChangeTitle,
 } from "./CodeChangeTitle";
 import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
-import { useLiveAnnotations } from "../conversations/liveAnnotations";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -97,6 +96,7 @@ import { SpaceChip } from "../spaces/SpaceTile";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
+  itemConversationHidden,
   itemOwnerPath,
 } from "./inboxItemFormat";
 
@@ -452,8 +452,7 @@ function InboxRowBody(
   const itemSize = useCodeChangeFacts(
     props.itemTitle ? bundle?.newest.subject : undefined,
   );
-  const annotations =
-    useLiveAnnotations(conversation?.sidebarAnnotations) ?? NO_ANNOTATIONS;
+  const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
   // An item row's title already names its ask, so it shows no pill.
   const asks = props.itemTitle ? [] : askPills(openItems, annotations);
   const subjects = new Set(
@@ -890,7 +889,12 @@ function rowActions(
         : undefined)}
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
-      open={owner ? rowOpenTarget(props) : undefined}
+      // A viewer who cannot see the Conversation gets no link to it.
+      open={
+        owner && !(props.bundle && itemConversationHidden(props.bundle.newest))
+          ? rowOpenTarget(props)
+          : undefined
+      }
       snoozeMenuOpen={props.snoozeMenuOpen}
     />
   );

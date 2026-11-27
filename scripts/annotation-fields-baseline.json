@@ -1,0 +1,18 @@
+{
+  "columns": [
+    "conversation_id",
+    "plugin",
+    "kind",
+    "key",
+    "subject_kind",
+    "subject_id",
+    "action",
+    "title",
+    "url",
+    "annotation_json",
+    "created_at",
+    "updated_at"
+  ],
+  "object": ["kind", "key", "subject", "objectType", "title", "url"],
+  "resourceLink": ["kind", "objectType", "key", "url"]
+}

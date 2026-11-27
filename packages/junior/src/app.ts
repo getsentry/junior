@@ -97,7 +97,10 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { turnTools } from "@/turn-steps/tools";
-import { deploymentDelivery, turnEndedConsumer } from "@/turn-steps/turn-ended";
+import {
+  createDeploymentDelivery,
+  turnEndedConsumer,
+} from "@/turn-steps/turn-ended";
 import { sweepTurns } from "@/core/turn/sweep";
 import { sweepDeliveries } from "@/delivery/sweep";
 import { createEngineContext } from "@/turn-steps/engine-context";
@@ -814,7 +817,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // timeout use this app's functionMaxDurationSeconds.
   const chatConfig = getChatConfig();
   const engineCtx = createEngineContext(chatConfig);
-  const turnEnds = turnEndedConsumer(engineCtx, deploymentDelivery);
+  const turnEnds = turnEndedConsumer(
+    engineCtx,
+    createDeploymentDelivery({ getSlackAdapter: getProductionSlackAdapter }),
+  );
   app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),

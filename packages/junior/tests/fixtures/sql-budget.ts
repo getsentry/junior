@@ -146,6 +146,7 @@ type PlanNode = {
   "Total Cost": number;
   "Plan Rows": number;
   "Relation Name"?: string;
+  Alias?: string;
   "Index Cond"?: string;
   "Recheck Cond"?: string;
   Plans?: PlanNode[];
@@ -215,6 +216,7 @@ const BIG_TABLES = [
   "junior_automations",
   "junior_code_changes",
   "junior_conversation_metrics",
+  "junior_conversations",
   "junior_inbox_items",
   "junior_memory_embeddings",
   "junior_memory_memories",
@@ -267,8 +269,9 @@ export async function expectNoFullScan<T>(
         used.add(allowance[0]);
         continue;
       }
+      const as = node.Alias && node.Alias !== table ? ` as ${node.Alias}` : "";
       failures.push(
-        `statement ${index} reads ${table} in full (${node["Node Type"]}): ${text}`,
+        `statement ${index} reads ${table}${as} in full (${node["Node Type"]}): ${text}`,
       );
     }
   }

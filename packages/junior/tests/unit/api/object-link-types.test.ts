@@ -100,6 +100,45 @@ describe("object link types", () => {
       ]),
     ).not.toThrow();
 
+    // A sign-in page that opens different pages claims different URLs.
+    const chooser = (host: string) => ({
+      host: "accounts.example.com",
+      path: "/choose",
+      target: { param: "continue", filters: [{ host }] },
+    });
+    expect(() =>
+      readObjectLinkTypes([
+        plugin("first", [chooser("calendar.example.com")]),
+        plugin("second", [chooser("docs.example.com")]),
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      readObjectLinkTypes([
+        plugin("first", [chooser("calendar.example.com")]),
+        plugin("second", [chooser("calendar.example.com")]),
+      ]),
+    ).toThrow(/claim the same URLs/);
+    // A broader target claims the URLs of a narrower one.
+    const chooserOf = (target: Omit<ObjectLinkFilter, "target">) => ({
+      host: "accounts.example.com",
+      path: "/choose",
+      target: { param: "continue", filters: [target] },
+    });
+    for (const broad of [
+      { host: "*.example.com" },
+      { host: "calendar.example.com" },
+      { host: "calendar.example.com", pathPrefix: "/r" },
+    ]) {
+      expect(() =>
+        readObjectLinkTypes([
+          plugin("first", [chooserOf(broad)]),
+          plugin("second", [
+            chooserOf({ host: "calendar.example.com", path: "/r/event" }),
+          ]),
+        ]),
+      ).toThrow(/claim the same URLs/);
+    }
+
     patchConfig({
       dashboard: {
         baseURL: "https://junior.example.com",

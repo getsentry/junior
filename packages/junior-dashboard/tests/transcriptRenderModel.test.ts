@@ -134,6 +134,32 @@ describe("canonical event transcript reduction", () => {
         warning: "Saved annotation is unavailable.",
       },
     ]);
+
+    // A viewer who cannot read the object sees its label and its link.
+    const unreadable = conversationTranscriptMessages({
+      ...current,
+      annotations: [
+        {
+          kind: "resource_link",
+          key: ref.key,
+          label: "repo#1",
+          objectType: "code_change",
+          plugin: ref.plugin,
+          url: annotation.url,
+          createdAt: current.generatedAt,
+          updatedAt: current.generatedAt,
+        },
+      ],
+    });
+    expect(unreadable[0]?.cards).toEqual([
+      {
+        ...ref,
+        objectType: "code_change",
+        title: "repo#1",
+        label: "repo#1",
+        url: annotation.url,
+      },
+    ]);
   });
 
   it("preserves ordered reasoning and tool activity", () => {

@@ -1,14 +1,7 @@
 import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
-import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
-import { readLastParentMessageAtMs } from "@/chat/child-agents/parent-message";
 import { AGENTS_TOOL_SOURCE } from "@/chat/child-agents/tool-source";
-import {
-  conversationDescendants,
-  readConversationTrees,
-} from "@/chat/conversations/sql/conversation-tree";
-import { getConversationStore, getDb } from "@/chat/db";
-import { mapBounded } from "@/chat/fan-out";
+import { getConversationStore } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -18,21 +11,11 @@ const archiveAgentOutputSchema = juniorToolOutputSchema.extend({
   archived_at: z.string().describe("When the child agent was archived"),
 });
 
-/** Read when a person last sent a Message to one Conversation. */
-async function readLastPersonMessageAtMs(
-  conversationId: string,
-): Promise<number | undefined> {
-  const at = (
-    await readLastUserMessageAtByConversation(getDb(), [conversationId])
-  ).get(conversationId);
-  return at === undefined ? undefined : Date.parse(at);
-}
-
 export const archiveAgentToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "Archive a child agent that this conversation started, a Thread or a Task, for everyone, when its work is done. A person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the child since you last gave it work: that person decides, and can archive it from its url.",
+    "Archive a child agent that this conversation started, a Thread or a Task, for everyone, when its work is done. A person's new message restores it.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -59,20 +42,6 @@ export const archiveAgentToolDefinition = zodToolDefinition({
     .strict(),
   outputSchema: archiveAgentOutputSchema,
 });
-
-// A person who messaged an agent since its parent last gave it work took it
-// over, so only people archive it from then on.
-async function requireNoPersonUse(conversationId: string): Promise<void> {
-  const [personMessageAt, lastWorkAt] = await Promise.all([
-    readLastPersonMessageAtMs(conversationId),
-    readLastParentMessageAtMs(conversationId),
-  ]);
-  if (personMessageAt !== undefined && personMessageAt > (lastWorkAt ?? 0)) {
-    throw new ToolInputError(
-      `A person messaged ${conversationId} since its parent last gave it work, so a person still uses it. Leave it. That person can archive it from its url.`,
-    );
-  }
-}
 
 /** Create the tool that archives one child agent of one conversation. */
 export function createArchiveAgentTool(conversationId: string) {
@@ -105,23 +74,6 @@ export function createArchiveAgentTool(conversationId: string) {
           `${childConversationId} is working. Leave it, or wait until it is idle.`,
         );
       }
-      // `apply_to_children` also archives the child agents below it, so
-      // none of them may be in a person's use either.
-      const descendants = input.apply_to_children
-        ? conversationDescendants(
-            await readConversationTrees(getDb(), [
-              child.rootConversationId ?? childConversationId,
-            ]),
-            childConversationId,
-          ).filter((node) => !node.archivedAt)
-        : [];
-      await mapBounded(
-        [
-          childConversationId,
-          ...descendants.map((node) => node.conversationId),
-        ],
-        requireNoPersonUse,
-      );
       const result = await setConversationArchive({
         applyToChildren: input.apply_to_children ?? false,
         archived: true,

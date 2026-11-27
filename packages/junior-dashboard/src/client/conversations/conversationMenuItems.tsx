@@ -189,8 +189,9 @@ export function useConversationMenuItems(
   const notifyItems: ConversationMenuItem[] = [];
   // Leave takes it out of your feed, and Join puts it back. A private
   // Participant always gets Leave, which ends access, so only a menu with
-  // its dialog offers it. With no subscription from the API, as outside a
-  // private Conversation, there is no Join. A child follows its root's.
+  // its dialog offers it. With no subscription from the API, as for a
+  // reader who is not a Participant of a private root, there is no Join. A
+  // child follows its root's.
   const subscribed = detail?.subscribed === true;
   const leaveEndsAccess = detail?.leaveEndsAccess === true;
   const joined = subscribed || leaveEndsAccess;

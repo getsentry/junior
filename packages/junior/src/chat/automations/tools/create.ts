@@ -369,7 +369,12 @@ export function createAutomationTool(
             "Automation operation identity is invalid. No change to the call can fix this in this Turn.",
           );
         }
-        return automationToolResult(context.conversationId, candidate, catalog);
+        return automationToolResult(
+          context.conversationId,
+          candidate,
+          catalog,
+          "created",
+        );
       };
       // Replaying a durable tool call returns its original Automation.
       const replayed = await readReplayedAutomation(kind, id);

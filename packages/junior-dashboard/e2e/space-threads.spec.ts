@@ -66,7 +66,7 @@ async function seedThreads(page: Page) {
   );
 }
 
-test("a Space's Threads list what each one needs, in attention order", async ({
+test("a Space's Threads list in Agents by state, finished ones last", async ({
   dashboard,
   page,
 }) => {
@@ -74,25 +74,26 @@ test("a Space's Threads list what each one needs, in attention order", async ({
   await seedThreads(page);
   await page.setViewportSize(desktop);
   await page.goto(`${dashboard.baseURL}${BILLING}`);
-  const threads = page
+  const work = page
     .getByRole("complementary", { name: "Conversation details" })
-    .getByRole("region", { exact: true, name: "Threads" });
+    .getByRole("region", { exact: true, name: "Agents" });
 
-  // Needs you, then Working, then Waiting, then Done, with no group
-  // headings. Each group runs newest first, and a failed Thread needs the
-  // viewer.
-  await expect(threads.getByRole("heading", { level: 4 })).toHaveCount(0);
-  await expect(threads.getByRole("link")).toHaveText([
+  // A wait on the viewer and a failure first, then running, then waiting.
+  // Each state keeps the loaded order, newest first, and finished Threads
+  // wait behind "Show finished".
+  await expect(work.getByRole("link")).toHaveText([
     /Approve the cutover window/,
     /Reconcile Stripe balances/,
     /Check refund webhooks/,
+    /Migrate tax settings/,
+    /Backfill invoice IDs/,
   ]);
   await screenshot(page, "space-threads", {
     lightTheme: true,
     view: "desktop",
   });
-  await threads.getByRole("button", { name: "Show 4 more" }).click();
-  await expect(threads.getByRole("link")).toHaveText([
+  await work.getByRole("button", { name: "Show finished" }).click();
+  await expect(work.getByRole("link")).toHaveText([
     /Approve the cutover window/,
     /Reconcile Stripe balances/,
     /Check refund webhooks/,
@@ -103,7 +104,7 @@ test("a Space's Threads list what each one needs, in attention order", async ({
   ]);
 
   // One click opens a Thread.
-  await threads.getByRole("link", { name: /Check refund webhooks/ }).click();
+  await work.getByRole("link", { name: /Check refund webhooks/ }).click();
   await expect(page).toHaveURL(/\/conversations\/internal%3Aquestions-qa$/);
   await expect(
     page.getByRole("heading", { name: "Plan the billing migration" }),
@@ -120,10 +121,10 @@ test("a phone shows a Space's Threads in its details sheet", async ({
   await page.goto(`${dashboard.baseURL}${BILLING}`);
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await conversationMenuRow(page, "Conversation details").click();
-  const threads = page
+  const work = page
     .getByRole("dialog", { name: "Conversation details" })
-    .getByRole("region", { exact: true, name: "Threads" });
-  await expect(threads.getByRole("link").first()).toHaveText(
+    .getByRole("region", { exact: true, name: "Agents" });
+  await expect(work.getByRole("link").first()).toHaveText(
     /Approve the cutover window/,
   );
   await screenshot(page, "space-threads", { lightTheme: true, view: "mobile" });

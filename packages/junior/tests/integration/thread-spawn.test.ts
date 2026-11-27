@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   MAX_ACTIVE_CHILD_AGENTS,
   messageChildAgent,
@@ -6,7 +6,6 @@ import {
 import { ChildAgentLimitError } from "@/chat/child-agents/errors";
 import { bindSpawnAgent } from "@/chat/child-agents/spawn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
@@ -14,10 +13,7 @@ import {
   slackSpawnInput,
   slackParentConversationId,
 } from "../fixtures/child-agents";
-import {
-  sendParentMessage,
-  startChildAgent,
-} from "../fixtures/child-agent-start";
+import { startChildAgent } from "../fixtures/child-agent-start";
 import {
   createHarness,
   finishRun,
@@ -26,7 +22,6 @@ import {
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
-import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import { mockTitleModel } from "../fixtures/title-model";
 
 const parentRun = slackParentRun();
@@ -113,14 +108,6 @@ async function archiveAgent(
     }),
     {},
   );
-}
-
-/** Run a Thread's queued Turn until its last try fails, as the runner throws. */
-async function failQueuedTurn(harness: Harness, conversationId: string) {
-  for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
-    await harness.drain(conversationId);
-    await runHeartbeatAfterLeasesExpire(harness.queue);
-  }
 }
 
 async function archivedAtMs(harness: Harness, conversationId: string) {
@@ -310,50 +297,13 @@ describe("Thread spawn and archive", () => {
           expect.objectContaining({ conversation_id: task, kind: "task" }),
         ]),
       );
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("gives a Thread that a person messaged back to its parent with new parent work", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const spawn = {
-        actor: slackSpawnInput.actor,
-        idempotencyKey: "thread-person-then-parent",
-        parentConversationId: slackParentConversationId,
-        queue: harness.queue,
-        state: harness.state,
-      };
-      const thread = await startChildAgent({
-        ...spawn,
-        conversationStore: harness.conversationStore,
-        kind: "thread",
-      });
-      await failQueuedTurn(harness, thread);
-      vi.setSystemTime(Date.now() + 1_000);
-      await sendPersonMessage(harness, thread, "person-1");
-      await failQueuedTurn(harness, thread);
+      // Once idle, the parent archives it, also after a person's message.
       await expect(
-        archiveAgent(slackParentConversationId, thread),
-      ).rejects.toMatchObject({
-        message: expect.stringContaining("a person still uses it"),
-      });
-
-      // New work from the parent gives the Thread back to the parent.
-      vi.setSystemTime(Date.now() + 1_000);
-      await sendParentMessage({
-        ...spawn,
-        childConversationId: thread,
-        idempotencyKey: "thread-person-then-parent:again",
-      });
-      await failQueuedTurn(harness, thread);
-      await expect(
-        archiveAgent(slackParentConversationId, thread),
+        archiveAgent(slackParentConversationId, thread, {
+          apply_to_children: true,
+        }),
       ).resolves.toMatchObject({ conversation_id: thread });
     } finally {
-      vi.useRealTimers();
       await harness.close();
     }
   });
@@ -393,42 +343,6 @@ describe("Thread spawn and archive", () => {
         archiveAgent(slackParentConversationId, thread),
       ).resolves.toEqual(archived);
     } finally {
-      await harness.close();
-    }
-  });
-
-  it("does not archive a nested Thread that a person uses with its Task", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      let nested = "";
-      const task = await createIdleChild(harness, "task-parent", "task", {
-        withOpenWork: async (parentConversationId) => {
-          nested = await createIdleChild(harness, "task-nested", "thread", {
-            parentConversationId,
-          });
-        },
-      });
-      vi.setSystemTime(Date.now() + 1_000);
-      await sendPersonMessage(harness, nested, "person-nested");
-      await failQueuedTurn(harness, nested);
-      // New work from the parent keeps the Task itself free to archive.
-      vi.setSystemTime(Date.now() + 1_000);
-      await messageChild(harness, task, "task-parent:again");
-      await finishTask(harness, task);
-
-      await expect(
-        archiveAgent(slackParentConversationId, task, {
-          apply_to_children: true,
-        }),
-      ).rejects.toMatchObject({
-        name: "ToolInputError",
-        message: expect.stringContaining(`A person messaged ${nested}`),
-      });
-      await expect(archivedAtMs(harness, task)).resolves.toBeUndefined();
-      await expect(archivedAtMs(harness, nested)).resolves.toBeUndefined();
-    } finally {
-      vi.useRealTimers();
       await harness.close();
     }
   });

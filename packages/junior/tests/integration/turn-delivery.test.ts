@@ -3,20 +3,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeliveryRetryableError } from "@/delivery/deliver";
 import { publishTurnEnded } from "@/core/turn/ended";
 import type { EngineContext } from "@/core/engine-context";
+import {
+  createTurn,
+  findDiscardedUsage,
+  TURN_PRIORITY,
+} from "@/core/turn/state";
 import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
-import { juniorTurnOutbox } from "@/db/schema";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { juniorConversationBindings, juniorTurnOutbox } from "@/db/schema";
+import { compat__personMessageId } from "@/turn-steps/compat__message-id";
 import { turnEndedConsumer } from "@/turn-steps/turn-ended";
-import { modelRejected, setModelReplies } from "../fixtures/ai-emulator";
+import {
+  modelCalls,
+  modelRejected,
+  setModelReplies,
+} from "../fixtures/ai-emulator";
 import type { InProcessQueue } from "../fixtures/in-process-queue";
 import { createAssistantMessage } from "../fixtures/model-stream";
 import { createRecordingDelivery } from "../fixtures/recording-delivery";
-import type { LocalJuniorSqlFixture } from "../fixtures/sql";
 import {
   CONVERSATION_ID,
   messageTurnId,
   stepWith,
   startTurnEngine,
+  storedReply,
   type TurnEngine,
+  userText,
 } from "../fixtures/turn-engine";
 import { createTurnHarness, type TurnHarness } from "../fixtures/turn-harness";
 
@@ -88,6 +100,23 @@ async function holdDeliveryLock(
   };
 }
 
+/**
+ * Compat: the reply messages and Turn end events that the host writes
+ * for main's readers, in event order. The person's messages are left out.
+ */
+async function compatReplyEvents(harness: TurnHarness) {
+  return (await harness.events())
+    .map((event) => event.data)
+    .filter(
+      (data) =>
+        (data.type === "message" && data.role === "assistant") ||
+        (data.type === "message_handled" &&
+          data.messageId.includes(":assistant:")) ||
+        data.type === "turn_completed" ||
+        data.type === "turn_failed",
+    );
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -141,9 +170,70 @@ describe("Turn delivery", () => {
     const { engineCtx, conversationId, destination } = harness;
     harness.failNextSend(new DeliveryRetryableError("Slack is unavailable"));
 
-    await sendForReply("Three.");
+    const { turnId, inputId } = await sendForReply("Three.");
+    // The person's visible message, as main's readers need it before the
+    // reply marks it handled. Nothing on this path writes it yet.
+    const inputMessageId = compat__personMessageId(inputId);
+    await createSqlConversationEventStore(engineCtx.executor).append(
+      conversationId,
+      [
+        {
+          idempotencyKey: `message:${inputMessageId}`,
+          createdAtMs: Date.now(),
+          data: {
+            type: "message",
+            messageId: inputMessageId,
+            role: "user",
+            text: "How many Turns?",
+          },
+        },
+      ],
+    );
     await harness.runUntilIdle();
+    // Compat: the Turn has a pending reply, so it has no end yet.
+    await expect(compatReplyEvents(harness)).resolves.toEqual([]);
     await runAfterBackoff();
+
+    // Compat: one reply message, its handled marks, then the end.
+    const assistantMessageId = expect.stringMatching(
+      new RegExp(`^${turnId}:assistant:`),
+    );
+    const ended = [
+      {
+        type: "message",
+        messageId: assistantMessageId,
+        role: "assistant",
+        text: "Three.",
+        meta: expect.objectContaining({
+          source: "slack",
+          slackTs: "message-2",
+        }),
+      },
+      { type: "message_handled", messageId: assistantMessageId },
+      { type: "turn_completed", turnId, outcome: "success" },
+    ];
+    await expect(compatReplyEvents(harness)).resolves.toEqual(ended);
+    // The reply marks the person's message handled before the Turn ends.
+    const order = (await harness.events()).flatMap(({ data }) =>
+      data.type === "message_handled" && data.messageId === inputMessageId
+        ? ["input handled"]
+        : data.type === "turn_completed"
+          ? ["ended"]
+          : [],
+    );
+    expect(order).toEqual(["input handled", "ended"]);
+    // A Turn-ended message that comes again writes none of them twice.
+    await publishTurnEnded(engineCtx, { conversationId, turnId });
+    await harness.runUntilIdle();
+    await expect(compatReplyEvents(harness)).resolves.toEqual(ended);
+    // A reply in an existing thread claims no thread.
+    await expect(
+      engineCtx.executor
+        .db()
+        .select()
+        .from(juniorConversationBindings)
+        .where(eq(juniorConversationBindings.conversationId, conversationId)),
+    ).resolves.toEqual([]);
 
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
       expect.objectContaining({ state: "sent", attempts: 1 }),
@@ -191,7 +281,7 @@ describe("Turn delivery", () => {
     ]);
   });
 
-  it("records nothing for an input whose answer is only the history", async () => {
+  it("records no outbox row for an input whose answer is only the history, and writes its reply message at the Turn end", async () => {
     const { engineCtx, conversationId, queue } = harness;
     await setModelReplies([reply("Three.")]);
 
@@ -208,6 +298,33 @@ describe("Turn delivery", () => {
 
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([]);
     expect(harness.sends()).toEqual([]);
+    // Compat: the reply message, with no delivery, before the end.
+    await expect(compatReplyEvents(harness)).resolves.toEqual([
+      expect.objectContaining({ role: "assistant", text: "Three." }),
+      expect.objectContaining({ type: "message_handled" }),
+      { type: "turn_completed", turnId, outcome: "success" },
+    ]);
+  });
+
+  it("writes main's failed Turn end for a Turn that fails", async () => {
+    // Injected fault: the model provider rejects the request.
+    await setModelReplies([modelRejected()]);
+
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+    await harness.runUntilIdle();
+
+    const turn = await harness.turn(turnId);
+    expect(turn.state).toBe("failed");
+    // Compat: the failure as the Turn stored it.
+    await expect(compatReplyEvents(harness)).resolves.toEqual([
+      {
+        type: "turn_failed",
+        turnId,
+        failureCode: "model_execution_failed",
+        failureReason: "invalid_request",
+        eventId: turn.failureEventId,
+      },
+    ]);
   });
 
   it("sends to the input's Destination, not the Conversation's Location", async () => {
@@ -239,6 +356,77 @@ describe("Turn delivery", () => {
     ]);
   });
 
+  it("claims the thread that a reply with no thread starts", async () => {
+    const { engineCtx, conversationId, location } = harness;
+    await setModelReplies([reply("Three.")]);
+
+    await harness.send({
+      text: "How many Turns?",
+      destination: {
+        platform: "slack",
+        teamId: location.teamId,
+        channelId: location.channelId,
+      },
+    });
+    await harness.runUntilIdle();
+
+    await expect(
+      engineCtx.executor
+        .db()
+        .select()
+        .from(juniorConversationBindings)
+        .where(eq(juniorConversationBindings.conversationId, conversationId)),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        provider: "slack",
+        providerDestinationId: location.channelId,
+        providerConversationId: "message-1",
+      }),
+    ]);
+  });
+
+  it("keeps a Destination it does not know, as the Source wrote it", async () => {
+    const { engineCtx, conversationId } = harness;
+    const destination = { platform: "carrier-pigeon", coop: 3 };
+    await setModelReplies([reply("Three.")]);
+
+    const { turnId } = await harness.send({
+      text: "How many Turns?",
+      destination,
+    });
+    await harness.runUntilIdle();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
+      expect.objectContaining({ destination }),
+    ]);
+  });
+
+  it("fails a reply whose Destination is not valid, without sending it", async () => {
+    const { engineCtx, conversationId, location } = harness;
+    await setModelReplies([reply("Three.")]);
+
+    const { turnId } = await harness.send({
+      text: "How many Turns?",
+      destination: { platform: "slack", teamId: location.teamId },
+    });
+    await harness.runUntilIdle();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
+      expect.objectContaining({
+        state: "failed",
+        attempts: 0,
+        error: "The Destination is not valid",
+      }),
+    ]);
+    expect(harness.sends()).toEqual([]);
+  });
+
   it("fails a reply whose send throws an error that is not retryable", async () => {
     const { engineCtx, conversationId } = harness;
     harness.failNextSend(new Error("channel_not_found"));
@@ -255,6 +443,10 @@ describe("Turn delivery", () => {
       }),
     ]);
     expect(harness.sends()).toHaveLength(1);
+    // Compat: the Turn still ends, with no reply message.
+    await expect(compatReplyEvents(harness)).resolves.toEqual([
+      expect.objectContaining({ type: "turn_completed", outcome: "success" }),
+    ]);
   });
 
   it("posts the reply on a redelivered step message after a crash before the Turn-ended message", async () => {
@@ -308,6 +500,106 @@ describe("Turn delivery", () => {
 
     expect(harness.sends()).toEqual([{ text: "Three.", destination }]);
   });
+  /**
+   * Runs `during` once, while the next model request is in flight, as an
+   * input that arrives mid-reply does.
+   */
+  function duringNextModelRequest(during: () => Promise<unknown>) {
+    const send = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (...args) => {
+      await during();
+      return send(...args);
+    });
+  }
+
+  it("answers an input that arrives during the final reply with one new reply, and drops the first", async () => {
+    const { engineCtx, destination } = harness;
+    const answer = reply("Three, and none failed.");
+    await setModelReplies([reply("Three."), answer]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+    duringNextModelRequest(() =>
+      harness.send({ text: "And how many failed?" }),
+    );
+
+    await harness.runUntilIdle();
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    expect(harness.sends()).toEqual([
+      { text: "Three, and none failed.", destination },
+    ]);
+    await expect(harness.history()).resolves.toEqual([
+      userText("How many Turns?"),
+      userText("And how many failed?"),
+      storedReply(answer),
+    ]);
+    // The second request reads both inputs and not the dropped reply.
+    const [, redo] = await modelCalls();
+    const texts = redo!.messages.flatMap((message) =>
+      message.parts.map((part) => part.text),
+    );
+    expect(texts).toContain("And how many failed?");
+    expect(texts).not.toContain("Three.");
+    const discarded = await findDiscardedUsage(engineCtx, turnId);
+    expect(discarded?.tokens?.outputTokens).toBeGreaterThan(0);
+  });
+
+  it("posts the final reply of a Turn that another Turn supersedes while it waits on a newer input", async () => {
+    const { engineCtx, conversationId, destination, queue } = harness;
+    await setModelReplies([reply("Three.")]);
+    const { turnId } = await harness.send({ text: "How many Turns?" });
+    duringNextModelRequest(async () => {
+      await harness.send({ text: "And how many failed?" });
+      await createTurn(engineCtx, {
+        conversationId,
+        priority: TURN_PRIORITY.supersede,
+      });
+    });
+
+    await harness.runStep();
+    await queue.runUntilIdle(TURN_ENDED_TOPIC);
+
+    await expect(harness.turn(turnId)).resolves.toMatchObject({
+      state: "cancelled",
+      endReason: "superseded",
+    });
+    expect(harness.sends()).toEqual([{ text: "Three.", destination }]);
+  });
+
+  it("fails a reply after its fifth retryable failure, then posts the next Turn's reply", async () => {
+    const { engineCtx, conversationId, destination } = harness;
+    const release = await holdDeliveryLock(engineCtx, conversationId);
+    await sendForReply("Three.");
+    await harness.runUntilIdle();
+    await sendForReply("None.");
+    await harness.runUntilIdle();
+    const [head] = await readOutbox(engineCtx, conversationId);
+    // Four retryable failures so far, so the next one is the fifth.
+    await engineCtx.executor
+      .db()
+      .update(juniorTurnOutbox)
+      .set({ attempts: 4 })
+      .where(eq(juniorTurnOutbox.id, head!.id));
+    harness.failNextSend(new DeliveryRetryableError("Slack is unavailable"));
+
+    await release();
+    await runAfterBackoff();
+
+    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
+      expect.objectContaining({
+        state: "failed",
+        attempts: 5,
+        error: expect.any(String),
+        sentAt: null,
+      }),
+      expect.objectContaining({ state: "sent", attempts: 0 }),
+    ]);
+    expect(harness.sends()).toEqual([
+      { text: "Three.", destination },
+      { text: "None.", destination },
+    ]);
+  });
 });
 
 // These cases need a fault or a timing that no edge can give: an input that
@@ -322,13 +614,12 @@ describe("Turn delivery with a test step", () => {
   } as const;
 
   let engine: TurnEngine;
-  let fixture: LocalJuniorSqlFixture;
   let turnId: string;
   let recording: ReturnType<typeof createRecordingDelivery>;
 
   beforeEach(async () => {
     engine = await startTurnEngine();
-    ({ fixture, turnId } = engine);
+    ({ turnId } = engine);
     recording = createRecordingDelivery();
     engine.queue.mount(
       TURN_ENDED_TOPIC,
@@ -345,16 +636,10 @@ describe("Turn delivery with a test step", () => {
     return engine.queue.runUntilIdle(TURN_ENDED_TOPIC);
   }
 
-  /** Delivers the delivery messages that wait out a backoff, too. */
-  function deliverAfterBackoff() {
-    engine.queue.advanceTime(AFTER_EVERY_BACKOFF_SECONDS);
-    return deliver();
-  }
-
-  /** Runs a step that replies `text` and commits "continue". */
-  function advanceContinuingStep(text: string) {
+  /** Runs a step whose reply `text` misses an input that arrives during it. */
+  function advanceStaleStep(text: string) {
     const step = stepWith([reply(text)]);
-    // An input during the step continues the Turn, so it gets a next step.
+    // The reply is dropped, and the Turn runs the step again.
     return engine.advance({
       ...step,
       client: {
@@ -366,16 +651,9 @@ describe("Turn delivery with a test step", () => {
     });
   }
 
-  /** Runs a Turn whose two steps reply `first`, then `second`. */
-  async function advanceTwoReplies(first: string, second: string) {
+  it("sends nothing while the Turn runs, then its one reply once it ends", async () => {
     await engine.addTestInput("How many Turns?", DESTINATION);
-    await advanceContinuingStep(first);
-    await engine.advance(stepWith([reply(second)]));
-  }
-
-  it("sends the replies of one Turn to its Destination in order, once it ends", async () => {
-    await engine.addTestInput("How many Turns?", DESTINATION);
-    await advanceContinuingStep("Three.");
+    await advanceStaleStep("Three.");
     // A Turn-ended message that arrives while the Turn runs sends nothing.
     await publishTurnEnded(engine.engineCtx, {
       conversationId: CONVERSATION_ID,
@@ -384,17 +662,13 @@ describe("Turn delivery with a test step", () => {
     await deliver();
     expect(recording.sends()).toEqual([]);
 
-    await engine.advance(stepWith([reply("None.")]));
+    await engine.advance(stepWith([reply("Three, and none failed.")]));
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "completed",
     });
     await deliver();
-    await expect(allSent(engine.engineCtx, CONVERSATION_ID)).resolves.toBe(
-      true,
-    );
     expect(recording.sends()).toEqual([
-      { text: "Three.", destination: DESTINATION },
-      { text: "None.", destination: DESTINATION },
+      { text: "Three, and none failed.", destination: DESTINATION },
     ]);
     await expect(
       readOutbox(engine.engineCtx, CONVERSATION_ID),
@@ -406,64 +680,6 @@ describe("Turn delivery with a test step", () => {
         attempts: 0,
         providerMessageId: expect.any(String),
       }),
-      expect.objectContaining({ turnId, state: "sent" }),
-    ]);
-  });
-
-  it("fails a reply after its fifth retryable failure, then posts the next reply", async () => {
-    const release = await holdDeliveryLock(engine.engineCtx, CONVERSATION_ID);
-    await advanceTwoReplies("Three.", "None.");
-    await deliver();
-    expect(handledDeliveries(engine.queue, turnId)).toBe(1);
-    const [head] = await readOutbox(engine.engineCtx, CONVERSATION_ID);
-    // Four retryable failures so far, so the next one is the fifth.
-    await fixture.sql
-      .db()
-      .update(juniorTurnOutbox)
-      .set({ attempts: 4 })
-      .where(eq(juniorTurnOutbox.id, head!.id));
-    recording.failNext(new DeliveryRetryableError("Slack is unavailable"));
-
-    await release();
-    await deliverAfterBackoff();
-
-    await expect(
-      readOutbox(engine.engineCtx, CONVERSATION_ID),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        state: "failed",
-        attempts: 5,
-        error: expect.any(String),
-        sentAt: null,
-      }),
-      expect.objectContaining({ state: "sent", attempts: 0 }),
-    ]);
-    expect(recording.sends()).toEqual([
-      { text: "Three.", destination: DESTINATION },
-      { text: "None.", destination: DESTINATION },
-    ]);
-  });
-
-  it("posts a Turn's earlier reply when a later step fails", async () => {
-    const failure = new Error("The queue is unreachable");
-    // Stands in for the process dying after a "continue" commit, before the
-    // next step message is sent.
-    vi.spyOn(engine.queue, "send").mockRejectedValueOnce(failure);
-    await engine.addTestInput("How many Turns?", DESTINATION);
-    await expect(advanceContinuingStep("Three.")).rejects.toBe(failure);
-
-    // The queue delivers the same step message again. It claims the queued
-    // Turn, and the next step fails.
-    // Injected fault: the model provider rejects the request.
-    await engine.advance(stepWith([modelRejected()]));
-    await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
-    await deliver();
-    await expect(allSent(engine.engineCtx, CONVERSATION_ID)).resolves.toBe(
-      true,
-    );
-
-    expect(recording.sends()).toEqual([
-      { text: "Three.", destination: DESTINATION },
     ]);
   });
 });

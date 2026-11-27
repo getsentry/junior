@@ -17,6 +17,7 @@ import type {
 } from "./conversation-events";
 import type { PluginCodeChanges } from "./code";
 import type { PluginConversationChanges } from "./conversation-changes";
+import type { PluginHttpCache } from "./http-cache";
 import type { PluginConversationInboxItems } from "./inbox-items";
 import type { PluginTaskStarter } from "./tasks";
 
@@ -236,6 +237,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
   conversationChanges: PluginConversationChanges;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
+  /** Junior's HTTP cache, for reads with a token that the plugin minted. */
+  httpCache: PluginHttpCache;
   /** Inbox items that the plugin adds and closes from its events. */
   inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */

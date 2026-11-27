@@ -101,28 +101,37 @@ export function ChildConversationStatusPill(props: { status: ChildStatus }) {
 }
 
 /**
- * Show the status of a Thread or Task page. Once its work is done, its
- * parent's report of its last result says when it blocked or failed.
+ * Read the status of a Thread or Task. Once its work is done, its parent's
+ * report of its last result says when it blocked or failed. While that
+ * report loads, a done child has no status yet, so a page and a card never
+ * show Done first. A failed read or a child the report leaves out is done.
  */
+export function useChildStatus(
+  conversation:
+    | Pick<Conversation, "id" | "parentConversationId" | "status">
+    | undefined,
+): ChildStatus | undefined {
+  const parentId = conversation?.parentConversationId;
+  const done = conversation?.status === "done";
+  const agents = useConversationChildAgents(
+    parentId ?? "",
+    parentId !== undefined && done,
+  );
+  if (!conversation || !done || parentId === undefined) {
+    return conversation?.status;
+  }
+  if (agents.isPending) return undefined;
+  const agent = agents.data?.agents.find(
+    (candidate) => candidate.conversationId === conversation.id,
+  );
+  const result = agent ? childAgentStatusLabel(agent) : undefined;
+  return result === "blocked" || result === "failed" ? result : "done";
+}
+
+/** Show the status of a Thread or Task page. */
 export function ChildPageStatusPill(props: {
   conversation: Pick<Conversation, "id" | "parentConversationId" | "status">;
 }) {
-  const { id, parentConversationId, status } = props.conversation;
-  const agents = useConversationChildAgents(
-    parentConversationId ?? "",
-    parentConversationId !== undefined && status === "done",
-  );
-  const agent = agents.data?.agents.find(
-    (candidate) => candidate.conversationId === id,
-  );
-  const result = agent ? childAgentStatusLabel(agent) : undefined;
-  return (
-    <ChildConversationStatusPill
-      status={
-        status === "done" && (result === "blocked" || result === "failed")
-          ? result
-          : status
-      }
-    />
-  );
+  const status = useChildStatus(props.conversation);
+  return status ? <ChildConversationStatusPill status={status} /> : null;
 }

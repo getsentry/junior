@@ -15,8 +15,8 @@ import { agentTypeSchema } from "@/chat/child-agents/agent-types";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
-  conversationAnnotationInputSchema,
   conversationSidebarAnnotationSchema,
+  liveAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
 import { objectPreviewImageSchema } from "./object-preview-image";
@@ -194,15 +194,13 @@ export const conversationSourceTaskSchema = z
     }
   });
 
-const conversationAnnotationReportSchema =
-  conversationAnnotationInputSchema.and(
-    z.object({
-      plugin: z.string().min(1),
-      createdAt: z.string().datetime(),
-      updatedAt: z.string().datetime(),
-      previewImages: z.array(objectPreviewImageSchema).optional(),
-    }),
-  );
+// An Annotation as the viewer sees it: the live card of its object, else
+// only its label and its link.
+const conversationAnnotationReportSchema = liveAnnotationSchema.and(
+  z.object({
+    previewImages: z.array(objectPreviewImageSchema).optional(),
+  }),
+);
 
 export const conversationActivityPreviewSchema = z
   .object({

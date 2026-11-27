@@ -1,5 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import {
+  conversationOwnedSubjectKinds,
   inboxItemOwnerConversationId,
   todoItemOwnerConversationId,
   inboxItemTenantId,
@@ -10,6 +11,7 @@ import {
   and,
   eq,
   exists,
+  inArray,
   isNotNull,
   isNull,
   ne,
@@ -119,6 +121,29 @@ export function inboxItemOwnedByConversation(
   return eq(inboxItemOwnerConversationId(), conversationId);
 }
 
+/**
+ * SQL: the Conversation owns an Inbox item that matches `condition`, which
+ * must not read the outer row. No index holds an item's owner, so a check
+ * on each row would read every matching item again. The set has no outer
+ * reference, so Postgres reads the items once for the statement, through
+ * the subject kind index.
+ */
+export function conversationOwnsInboxItem(
+  conversationId: SQL | AnyColumn,
+  condition: SQL,
+): SQL<boolean> {
+  const owned = getDb()
+    .select({ ownerId: inboxItemOwnerConversationId() })
+    .from(juniorInboxItems)
+    .where(
+      and(
+        inArray(juniorInboxItems.subjectKind, conversationOwnedSubjectKinds()),
+        condition,
+      ),
+    );
+  return sql<boolean>`coalesce(${conversationId} in (${owned}), false)`;
+}
+
 const todoOwner = alias(juniorConversations, "todo_owner");
 const todoRoot = alias(juniorConversations, "todo_root");
 
@@ -190,16 +215,28 @@ function ownerConversationOpenTo(
 /**
  * SQL: the Inbox item has this assigned User. A To-do's item counts only
  * while the User can see its Conversation's private content, so a person
- * who loses access to the Conversation no longer sees or acts on it.
+ * who loses access to the Conversation no longer sees or acts on it. The
+ * set has no outer reference, so Postgres reads it once and checks the
+ * owner of only the User's To-dos.
  */
 export function inboxItemAssignedTo(userId: string): SQL {
-  return and(
-    sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
-    or(
-      ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
-      ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
-    ),
-  )!;
+  const assigned = getDb()
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItemAssignees)
+    .innerJoin(
+      juniorInboxItems,
+      eq(juniorInboxItems.id, juniorInboxItemAssignees.itemId),
+    )
+    .where(
+      and(
+        eq(juniorInboxItemAssignees.userId, userId),
+        or(
+          ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
+          ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
+        ),
+      ),
+    );
+  return sql`${juniorInboxItems.id} = any(array(${assigned}))`;
 }
 
 /**

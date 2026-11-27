@@ -18,7 +18,7 @@ import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
-import { RowDismissButton } from "./RowDismissButton";
+import { DismissNote, RowDismissButton } from "./RowDismissButton";
 
 // Only an open card snoozes from here, so its snooze code stays out of the
 // first load.
@@ -80,8 +80,8 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
  * Show the actions that the viewer can take on one Inbox item, or how it
  * closed. The Inbox, the transcript, and the side panel use it, so a
  * question reads the same on each. A caller that shows
- * its own Dismiss turns this one off. A To-do for the viewer adds Done,
- * its main action, last. `onAction` takes the actions in its
+ * its own Dismiss turns this one off. A To-do for the viewer adds Mark
+ * done, its main action, last. `onAction` takes the actions in its
  * place and reports their failures itself. An answer that failed shows
  * again in the form.
  */
@@ -113,8 +113,8 @@ export function InboxItemActions(props: {
   if (!item.canAct && !item.canAnswer) {
     return (
       <div className="grid gap-3">
-        {/* Anyone who sees a notice sees what it is about. */}
-        {item.kind === "notice" ? <InboxItemRelated item={item} /> : null}
+        {/* Anyone who sees an item sees what it is about. */}
+        <InboxItemRelated item={item} />
         <div className="flex flex-wrap items-center gap-2">
           <p className="m-0 text-sm text-dashboard-text-muted">
             Only an assignee can act on this item.
@@ -147,7 +147,7 @@ export function InboxItemActions(props: {
     }
   }
 
-  // A To-do for the viewer closes with Done, its main action.
+  // A To-do for the viewer closes with Mark done, its main action.
   const todo = item.todoId !== undefined;
   // A person who may only answer, such as a reader of a public question,
   // gets no Dismiss or Snooze.
@@ -173,6 +173,7 @@ export function InboxItemActions(props: {
       {dismiss ? (
         <RowDismissButton
           disabled={action.isPending || sending}
+          note={item.subject.dismissNote}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
         />
       ) : null}
@@ -187,7 +188,7 @@ export function InboxItemActions(props: {
           disabled={action.isPending || sending}
           onClick={() => void run({ action: "done" }).catch(() => {})}
         >
-          Done
+          Mark done
         </Button>
       ) : null}
     </>
@@ -196,9 +197,11 @@ export function InboxItemActions(props: {
   const question = inboxItemQuestion(item.request);
   return (
     <div className="grid gap-3">
-      {/* A notice asks nothing, but its related links say what it is
-          about. */}
-      {item.kind === "notice" ? <InboxItemRelated item={item} /> : null}
+      {/* The related links say what the item is about. A question shows
+          them under the question instead. */}
+      {item.kind === "action" && question ? null : (
+        <InboxItemRelated item={item} />
+      )}
       {item.kind === "action" && question ? (
         <div className="grid gap-3 text-sm">
           {/* The question comes first and in full, then what Junior said
@@ -232,6 +235,10 @@ export function InboxItemActions(props: {
         </div>
       ) : take || snooze || dismiss || todo || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
+          {/* Where tooltips are off, Dismiss's note shows next to it. */}
+          {item.canAct && item.subject.dismissNote ? (
+            <DismissNote note={item.subject.dismissNote} />
+          ) : null}
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
             {secondaryActions}

@@ -219,11 +219,11 @@ export function RowDoneButton(props: { look: ButtonLook; onClick(): void }) {
     <Button
       className={LOOK_CLASSES[props.look]}
       onClick={props.onClick}
-      title={props.look === "icon" ? "Done" : undefined}
+      title={props.look === "icon" ? "Mark done" : undefined}
       variant="ghost"
     >
       <Check aria-hidden="true" size={15} />
-      <ButtonLabel look={props.look}>Done</ButtonLabel>
+      <ButtonLabel look={props.look}>Mark done</ButtonLabel>
     </Button>
   );
 }
