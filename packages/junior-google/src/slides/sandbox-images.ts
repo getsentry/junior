@@ -38,9 +38,7 @@ function sandboxImage(request: Record<string, unknown>) {
 }
 
 /** Return each sandbox path that the requests use as an image url, once. */
-export function sandboxImagePaths(
-  requests: Array<Record<string, unknown>>,
-): string[] {
+function sandboxImagePaths(requests: Array<Record<string, unknown>>): string[] {
   return [
     ...new Set(
       requests.flatMap((request) => sandboxImage(request)?.path ?? []),

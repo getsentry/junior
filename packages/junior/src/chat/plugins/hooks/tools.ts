@@ -7,7 +7,10 @@ import {
   type SlackToolRegistrationHookContext,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { actionFromFacts } from "@/chat/guardian/call-facts";
+import {
+  actionFromDescription,
+  describeContext,
+} from "@/chat/guardian/call-facts";
 import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
@@ -74,8 +77,8 @@ function pluginToolDefinitions(
   const definitions: Record<string, AnyToolDefinition> = {};
   for (const [localName, definition] of Object.entries(pluginTools)) {
     const execute = definition.execute;
-    // Only `getPluginTools` binds the plugin's `guardian.describe`.
-    const { guardian: _guardian, ...rest } = definition;
+    // Only `getPluginTools` binds the plugin's `describe`.
+    const { describe: _describe, ...rest } = definition;
     // Naming conventions belong in lint, not on the turn's critical path.
     definitions[`${namespace}_${localName}`] = {
       ...(rest as AnyToolDefinition),
@@ -320,7 +323,7 @@ export function getPluginTools(
         | undefined;
       const source = pluginTools[localName];
       // Keep the receiver of the plugin's object, like `execute`.
-      const describe = source?.guardian?.describe?.bind(source.guardian);
+      const describe = source?.describe?.bind(source);
       const disabledReason = disabled[localName];
       tools[name] = {
         ...definition,
@@ -328,10 +331,12 @@ export function getPluginTools(
         ...(describe
           ? {
               describe: async (input: unknown) =>
-                await actionFromFacts(await describe(input), {
-                  provider: pluginName,
-                  conversationIds,
-                }),
+                actionFromDescription(
+                  await describe(
+                    input,
+                    describeContext({ provider: pluginName, conversationIds }),
+                  ),
+                ),
             }
           : undefined),
         ...(execute

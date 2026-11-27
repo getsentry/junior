@@ -1,10 +1,7 @@
 import { Kind, type Static, type TSchema } from "@sinclair/typebox";
 import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
-import type {
-  ToolAnnotations,
-  ToolApprovalMetadata,
-  ToolExposure,
-} from "@sentry/junior-plugin-api";
+import type { ToolAnnotations, ToolExposure } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import type { Action } from "@/chat/guardian/guardian";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
@@ -29,8 +26,30 @@ export interface ToolApprovalResolution {
   };
 }
 
-/** What a tool's `describe` tells Guardian about one call. */
-export type ActionDescription = Pick<Action, "effect" | "target" | "summary">;
+/**
+ * Tool-declared approval mode.
+ *
+ * `auto` delegates to core policy, `review` enters Guardian review, and
+ * `approve` permits execution without review. Every plugin tool is `auto`.
+ *
+ * Core resolves the effective mode immediately before execution.
+ */
+export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
+
+export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
+
+/** Approval metadata that core and plugin tools declare. */
+export interface ToolApprovalMetadata {
+  /** Optional declared approval mode; the owning tool boundary selects defaults. */
+  approvalMode?: ToolApprovalMode | undefined;
+  annotations?: ToolAnnotations;
+}
+
+/**
+ * What a tool's `describe` tells Guardian about one call. Only core tools
+ * write a `summary`.
+ */
+export type ActionDescription = Pick<Action, "target" | "advice" | "summary">;
 
 export interface ToolExecuteOptions {
   experimental_context?: unknown;

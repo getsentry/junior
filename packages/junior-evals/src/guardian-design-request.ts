@@ -23,7 +23,7 @@ import type {
 } from "./guardian-design-harness";
 
 function target(fact: GuardianDesignTarget): Target {
-  return { ...fact, createdByThisWork: fact.createdByThisWork ?? false };
+  return { ref: fact.ref, audience: fact.audience };
 }
 
 /**
@@ -46,17 +46,30 @@ function designMessages(
   ];
 }
 
-/** One action as core builds it, with the case's facts on top. */
+/**
+ * One action as core builds it, with the case's facts on top. A case's
+ * text edit of a target that this work created is what a tool advises
+ * `allow` for, as GitHub does for the text of Junior's own pull request.
+ */
 function designAction(
   proposal: ToolActionProposal,
   fact: GuardianDesignCall | undefined,
 ): Action {
   const input = proposal.input as { command?: unknown };
+  const upkeep =
+    fact?.effect === "edit" && fact.target?.createdByThisWork === true;
   return {
     tool: proposal.tool.name,
     input: proposal.input,
-    effect: fact?.effect ?? "write",
     ...(fact?.target ? { target: target(fact.target) } : undefined),
+    ...(upkeep
+      ? {
+          advice: {
+            decision: "allow" as const,
+            reason: `Only the text of ${fact.target!.ref}, which this work created, changes.`,
+          },
+        }
+      : undefined),
     summary:
       proposal.tool.name === "bash" && typeof input.command === "string"
         ? input.command

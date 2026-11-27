@@ -30,10 +30,7 @@ export const messageAgentToolDefinition = zodToolDefinition({
   // (getsentry/junior#4539) lands. Messages to one agent keep their order.
   executionMode: "sequential",
   // Every agent that it can reach is part of this organization's work.
-  describe: ({ to }) => ({
-    effect: "write",
-    target: { ref: to, audience: "internal", createdByThisWork: false },
-  }),
+  describe: ({ to }) => ({ target: { ref: to, audience: "internal" } }),
   annotations: {
     destructiveHint: false,
     idempotentHint: true,

@@ -1,34 +1,41 @@
-import type { ActionFacts } from "@sentry/junior-plugin-api";
+import type {
+  CallDescription,
+  DescribeContext,
+} from "@sentry/junior-plugin-api";
 import { listCodeChanges } from "@/chat/code/store";
 import { getDb } from "@/chat/db";
 import type { ActionDescription } from "@/chat/tool-support/definition";
 
 /**
- * The action that Guardian reviews, from one plugin tool's facts. Core, not
- * the plugin, decides whether this work created the target: it matches the
- * target's code change against its own code-change records for the work.
+ * What core answers for one plugin's `describe`. Core, not the plugin,
+ * says whether this work created a pull request: it reads its own
+ * code-change records for the work's Conversations.
  */
-export async function actionFromFacts(
-  facts: ActionFacts,
-  args: {
-    /** The plugin whose code-change records the target is in. */
-    provider: string;
-    conversationIds(): Promise<string[]>;
-  },
-): Promise<ActionDescription> {
-  const { target, ...rest } = facts;
-  if (!target) return rest;
-  const { codeChange, ...fields } = target;
-  const createdByThisWork =
-    codeChange !== undefined &&
-    (
-      await listCodeChanges(getDb(), args.provider, {
+export function describeContext(args: {
+  /** The plugin whose code-change records hold the pull request. */
+  provider: string;
+  conversationIds(): Promise<string[]>;
+}): DescribeContext {
+  return {
+    async isOwnPullRequest(repo, number) {
+      const changes = await listCodeChanges(getDb(), args.provider, {
         conversationIds: await args.conversationIds(),
-        repository: {
-          name: codeChange.repository,
-          numbers: [codeChange.number],
-        },
-      })
-    ).length > 0;
-  return { ...rest, target: { ...fields, createdByThisWork } };
+        repository: { name: repo, numbers: [number] },
+      });
+      return changes.length > 0;
+    },
+  };
+}
+
+/** The action that Guardian reviews, from one plugin call's description. */
+export function actionFromDescription(
+  description: CallDescription,
+): ActionDescription {
+  const { ref, audience, advice, reason } = description;
+  return {
+    target: { ref, audience },
+    ...(advice === "allow"
+      ? { advice: { decision: "allow", ...(reason ? { reason } : undefined) } }
+      : undefined),
+  };
 }

@@ -11,7 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubDbSchema } from "../db/database.js";
-import { pullRequestTarget } from "../tool-support/pull-request-target.js";
+import { describePullRequestCall } from "../tool-support/describe-pull-request-call.js";
 import {
   ADD_REVIEW_REACTION,
   type GitHubGraphqlOperation,
@@ -519,17 +519,10 @@ export function createGitHubUpdatePullRequestFeedbackTool(
     description:
       "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after you act on or reply to the feedback. Replaces only your prior status reaction on that comment. When every comment of the author's latest change request, or of the requester's latest comment-only reviews, is marked and the required checks pass, asks the author to review again. Only works on pull requests the bot authored.",
     exposure: "direct",
-    guardian: {
-      async describe(input) {
-        // A status reaction edits the pull request's review content.
-        const target = pullRequestTarget(input.repo, input.pull_request);
-        return {
-          effect: "edit",
-          ...(target ? { target } : undefined),
-          summary: `Mark feedback ${input.comment_id} on ${target?.ref ?? input.repo} as ${input.status}.`,
-        };
-      },
-    },
+    // A status reaction can ask the author to review again, so it is not
+    // just text.
+    describe: (input, ctx) =>
+      describePullRequestCall(input.repo, input.pull_request, ctx, false),
     inputSchema,
     outputSchema,
     async execute(input, _options, ctx: FeedbackContext): Promise<Result> {

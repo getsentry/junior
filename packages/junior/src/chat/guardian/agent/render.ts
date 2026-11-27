@@ -51,7 +51,6 @@ export function renderAction(
 ): string {
   const text = tagJson({
     tool: action.tool,
-    effect: action.effect,
     ...(action.target ? { target: action.target } : undefined),
     ...(action.summary ? { summary: action.summary } : undefined),
     input: action.input,

@@ -147,8 +147,6 @@ const createPullRequestStateSchema = Type.Union([
       number: Type.Number(),
       /** GitHub's id of the pull request, for its opener's row. */
       pullRequestId: Type.Optional(Type.String()),
-      /** The fields of the code change, so a retry can record it again. */
-      createdPullRequest: Type.Optional(Type.Unknown()),
       facts: Type.Optional(Type.Unknown()),
       sourceUpdatedAt: Type.Optional(Type.String()),
       description: Type.Optional(Type.String({ maxLength: 4000 })),
@@ -309,13 +307,6 @@ const createdCodeChangeSchema = z.object({
   // authored becomes a code change.
   user: z.object({ type: z.literal("Bot") }),
 });
-
-/** The code change of a pull request that GitHub created, or nothing. */
-function createdCodeChange(response: unknown): CodeChangeInput | undefined {
-  const parsed = createdCodeChangeSchema.safeParse(response);
-  if (!parsed.success) return undefined;
-  return codeChangeInput(parsed.data);
-}
 
 function codeChangeInput(
   pullRequest: z.infer<typeof createdCodeChangeSchema>,
@@ -754,13 +745,8 @@ export function createGitHubPullRequestTool(
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
             const completedInput = state.input ?? parsedInput;
-            // The call can stop after it saves this state but before it
-            // records the code change and the opener, so a retry saves them
-            // again.
-            const codeChange = createdCodeChange(state.createdPullRequest);
-            if (codeChange) {
-              await recordCreatedCodeChange(ctx, codeChange, conversationId);
-            }
+            // The call can stop after it saves this state but before it saves
+            // the opener, so a retry saves the opener again.
             const requester = await resolveGitHubRequester(ctx);
             await recordOpener(ctx, completedInput, state, {
               conversationId,
@@ -841,9 +827,6 @@ export function createGitHubPullRequestTool(
             status: "completed",
             number: result.number,
             ...(pullRequestId === undefined ? undefined : { pullRequestId }),
-            ...(createdPullRequest === undefined
-              ? undefined
-              : { createdPullRequest }),
             url: result.url,
             facts: result.facts,
             ...(result.sourceUpdatedAt === undefined

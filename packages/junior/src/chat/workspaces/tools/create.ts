@@ -23,7 +23,6 @@ export function createWorkspaceToolDefinition(
     source: WORKSPACES_TOOL_SOURCE,
     approvalMode: "review",
     describe: (input) => ({
-      effect: "write",
       summary: describeWorkspaceWrite("Create", input),
     }),
     executionMode: "sequential",

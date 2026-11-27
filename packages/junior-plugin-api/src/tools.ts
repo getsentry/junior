@@ -384,18 +384,6 @@ export type PluginToolExecute<
 }["bivarianceHack"];
 
 /**
- * Tool-declared approval mode.
- *
- * `auto` delegates to core policy, `review` enters Guardian review, and
- * `approve` permits execution without review. Every plugin tool is `auto`.
- *
- * Core resolves the effective mode immediately before execution.
- */
-export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
-
-export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
-
-/**
  * Reviewer signals describing a tool's side-effect behavior.
  *
  * These hints follow the MCP tool annotation contract. Guardian may use
@@ -430,52 +418,29 @@ export function missingToolAnnotationKeys(
   );
 }
 
-/**
- * Canonical approval metadata declared by core and plugin tools.
- */
-export interface ToolApprovalMetadata {
-  /** Optional declared approval mode; the owning tool boundary selects defaults. */
-  approvalMode?: ToolApprovalMode | undefined;
-  annotations?: ToolAnnotations;
-}
-
 /** Who can read a target. Core counts an unknown audience as `world`. */
 export type Audience = "internal" | "world";
 
-/** The resource that one call changes. */
-export interface ActionTarget {
-  /** Such as `getsentry/junior#12`. */
+/** What core answers for a tool's `describe`, from its own records. */
+export interface DescribeContext {
+  /** Whether this work created the pull request, from core's code-change records. */
+  isOwnPullRequest(repo: string, number: number): Promise<boolean>;
+}
+
+/** What one call touches, for Guardian. Never a verdict on the call. */
+export interface CallDescription {
+  /** What the call touches, such as `getsentry/junior#12`. */
   ref: string;
   audience: Audience;
   /**
-   * The code change that the target is. Core matches it against its own
-   * code-change records to tell whether this work created the target.
+   * `allow` when the call only keeps something that this work made current,
+   * such as the text of Junior's own pull request. It clears only
+   * Guardian's "nobody asked for this" check. Every other check still
+   * applies.
    */
-  codeChange?: { repository: string; number: number };
-}
-
-/** Facts about one call, from parsed input and stored records. Never a verdict. */
-export interface ActionFacts {
-  /** One plain sentence about the call, such as its target and side effects. */
-  summary: string;
-  /**
-   * `edit` keeps an existing target current, such as its title, body,
-   * replies, or CI reruns, but never changes its state. `write` is
-   * anything else, such as a create, a send, a delete, or a state change.
-   */
-  effect: "edit" | "write";
-  target?: ActionTarget;
-}
-
-/** What one tool gives Guardian. */
-export interface ToolGuardian<TInput = unknown> {
-  /**
-   * Facts about one call, from parsed input and stored records, never from
-   * what tool input or a tool result claims. It runs before review, so it
-   * must not write anything. Without it, a call is a `write` with no
-   * target.
-   */
-  describe?(input: TInput): Promise<ActionFacts>;
+  advice?: "allow";
+  /** Why the tool gives its advice. The decision record keeps it. */
+  reason?: string;
 }
 
 /**
@@ -510,8 +475,13 @@ export interface PluginToolDefinition<
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
   exposure?: ToolExposure | undefined;
-  /** What this tool gives Guardian. */
-  guardian?: ToolGuardian<TInput>;
+  /**
+   * What one call touches, from parsed input and stored records, never from
+   * what tool input or a tool result claims. It runs before review, so it
+   * must not write anything. Without it, Guardian judges the call with no
+   * target, and the audience counts as `world`.
+   */
+  describe?(input: TInput, ctx: DescribeContext): Promise<CallDescription>;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**

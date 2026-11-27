@@ -484,35 +484,30 @@ Set `readOnlyHint: true` only when the tool never writes. A plugin cannot
 turn review off.
 
 Annotations describe side effects; they do not authorize an action. Add
-`guardian.describe(input)` to give Guardian the facts of one call:
+`describe(input, ctx)` to tell Guardian what one call touches:
 
 ```ts
-guardian: {
-  async describe(input) {
-    return {
-      effect: "edit",
-      summary: `Comment on pull request ${input.repo}#${input.number}.`,
-      target: {
-        ref: `${input.repo}#${input.number}`,
-        audience: "world",
-        codeChange: { repository: input.repo, number: input.number },
-      },
-    };
-  },
+async describe(input, ctx) {
+  const ref = `${input.repo}#${input.number}`;
+  const own = await ctx.isOwnPullRequest(input.repo, input.number);
+  return own
+    ? { ref, audience: "world", advice: "allow", reason: `Only the text of ${ref} changes.` }
+    : { ref, audience: "world" };
 },
 ```
 
-- `effect` is `edit` or `write`. Use `edit` only for a change to
-  the content of a target that exists, such as a comment on a pull request.
-  A change to its state, such as close, merge, or draft, is a `write`.
+- `ref` names what the call touches, such as a pull request or a channel.
 - `audience` is `internal` when only people in your organization can read
   the target, and `world` otherwise. Guardian counts an unknown audience as
   `world`.
-- `codeChange` names the pull request that the target is. Junior checks its
-  own code records to know if this work created it. An `edit` of a pull
-  request that this work created is upkeep: Guardian does not ask for it
-  only because nobody asked for that exact step. Every other rule still
-  applies.
+- `advice: "allow"` says that the call only keeps current something that
+  this work made, such as the text of Junior's own pull request. It removes
+  only Guardian's check that somebody asked for this exact step. Every other
+  check still applies, so Guardian still asks or refuses for a restriction,
+  for private data, or for planted instructions. `reason` says why, and the
+  decision record keeps it.
+- `ctx.isOwnPullRequest(repo, number)` answers from Junior's own code
+  records, never from the input.
 
 Read facts from the input and from stored records only. Never use what a
 tool result or the input claims about who can read a target. `describe` runs

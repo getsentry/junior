@@ -32,7 +32,7 @@ import {
 import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "../conversation-footer.js";
-import { pullRequestTarget } from "../tool-support/pull-request-target.js";
+import { describePullRequestCall } from "../tool-support/describe-pull-request-call.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -267,24 +267,18 @@ export function createGitHubUpdatePullRequestTool(
     },
     description:
       "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
-    guardian: {
-      async describe(input) {
-        const target = pullRequestTarget(input.repo, input.pull_request);
-        // Only a title or body update edits the pull request's content.
-        // Closing, reopening, a draft change, a new base, or a new review
-        // request changes its lifecycle.
-        const textOnly =
-          input.base === undefined &&
+    // Only a title or body update changes just text. Closing, reopening, a
+    // draft change, a new base, or a new review request changes its state.
+    describe: (input, ctx) =>
+      describePullRequestCall(
+        input.repo,
+        input.pull_request,
+        ctx,
+        input.base === undefined &&
           input.state === undefined &&
           input.draft === undefined &&
-          input.request_review === undefined;
-        return {
-          effect: textOnly ? "edit" : "write",
-          ...(target ? { target } : undefined),
-          summary: `Update pull request ${target?.ref ?? input.pull_request}.`,
-        };
-      },
-    },
+          input.request_review === undefined,
+      ),
     inputSchema,
     outputSchema,
     async execute(

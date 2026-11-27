@@ -100,30 +100,6 @@ export const updateCalendarEventTool = definePluginTool({
     openWorldHint: true,
     readOnlyHint: false,
   },
-  guardian: {
-    async describe(input) {
-      const changes = [
-        input.title && `rename it to "${input.title}"`,
-        input.start && `move it to ${input.start} – ${input.end}`,
-        input.description !== undefined && "replace the description",
-        input.location !== undefined &&
-          (input.location
-            ? `set the location to ${input.location}`
-            : "clear the location"),
-        input.add_video_call && "add a Google Meet link",
-        input.add_attendees.length > 0 &&
-          `invite ${input.add_attendees.join(", ")}`,
-        input.add_optional_attendees.length > 0 &&
-          `invite ${input.add_optional_attendees.join(", ")} as optional`,
-        input.remove_attendees.length > 0 &&
-          `remove ${input.remove_attendees.join(", ")}`,
-      ].filter(Boolean);
-      return {
-        effect: "write",
-        summary: `Update Google Calendar event ${input.event_id}: ${changes.join("; ")}. Attendees get an email about the change.`,
-      };
-    },
-  },
   description:
     "Change a Google Calendar event organized by your own Google account: title, description, time, location, video call, or attendees. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. You cannot change events other people organize. Confirm the change with the requester first unless they already stated it exactly.",
   inputSchema,

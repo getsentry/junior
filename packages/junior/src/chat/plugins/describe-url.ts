@@ -26,9 +26,7 @@ function remoteUrl(remote: string): URL | undefined {
  * remote. The first plugin that knows it answers. A remote that no plugin
  * knows is its own target, which the world can read (`audience`).
  */
-export async function describeRemote(
-  remote: string,
-): Promise<Pick<Target, "ref" | "audience">> {
+export async function describeRemote(remote: string): Promise<Target> {
   const url = remoteUrl(remote);
   if (url) {
     for (const plugin of getPlugins()) {

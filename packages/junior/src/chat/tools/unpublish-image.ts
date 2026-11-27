@@ -32,7 +32,6 @@ export function createUnpublishImageTool(args: {
     description:
       "Unpublish one public image previously published in this conversation so its public URL stops serving. Pass the public artifact URL or `<id>.<ext>` filename. Only images owned by this conversation can be unpublished. Republishing the same image bytes later in this conversation restores a live URL for this conversation. Does not remove copies already fetched by browsers or GitHub.",
     describe: ({ ref }) => ({
-      effect: "write",
       summary: `Unpublish public image ${ref}.`,
     }),
     executionMode: "sequential",

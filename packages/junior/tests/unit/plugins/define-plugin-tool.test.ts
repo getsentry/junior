@@ -4,7 +4,6 @@ import {
   missingToolAnnotationKeys,
   PluginToolInputError,
   pluginToolOutputSchema,
-  toolApprovalModeSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -22,12 +21,10 @@ describe("definePluginTool", () => {
         openWorldHint: true,
         readOnlyHint: true,
       },
-      guardian: {
-        describe: async ({ query }) => ({
-          effect: "write",
-          summary: `Search for ${query}.`,
-        }),
-      },
+      describe: async ({ query }) => ({
+        ref: `search:${query}`,
+        audience: "internal",
+      }),
       description: "Schedule a meeting.",
       inputSchema: z.object({ query: z.string() }),
       outputSchema: countResultSchema,
@@ -41,9 +38,10 @@ describe("definePluginTool", () => {
       readOnlyHint: true,
     });
     const input = tool.prepareArguments?.({ query: "errors" });
-    const call = await tool.guardian?.describe?.(input!);
-    expect(call?.summary).toBe("Search for errors.");
-    expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
+    const call = await tool.describe?.(input!, {
+      isOwnPullRequest: async () => false,
+    });
+    expect(call?.ref).toBe("search:errors");
   });
 
   it("reports missing behavioral annotations", () => {
@@ -68,7 +66,7 @@ describe("definePluginTool", () => {
       execute,
     });
 
-    expect(tool.guardian).toBeUndefined();
+    expect(tool.describe).toBeUndefined();
     expect(tool.inputSchema).toMatchObject({
       properties: {
         count: { type: "integer" },

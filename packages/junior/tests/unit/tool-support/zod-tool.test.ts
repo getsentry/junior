@@ -10,7 +10,6 @@ describe("zodTool", () => {
       approvalMode: "approve",
       annotations: { destructiveHint: true, readOnlyHint: false },
       describe: ({ recordId }) => ({
-        effect: "write",
         summary: `Delete record ${recordId}.`,
       }),
       description: "Delete a record.",

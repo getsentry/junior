@@ -226,7 +226,6 @@ export function createAutomationTool(
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
     describe: (input) => ({
-      effect: "write",
       summary: describeDelivery(input),
     }),
     annotations: {

@@ -26,8 +26,6 @@ export interface Target {
   /** Such as `getsentry/junior#12`. */
   ref: string;
   audience: Audience;
-  /** Core sets it from its own records. Upkeep applies only to it. */
-  createdByThisWork: boolean;
 }
 
 /** One exact action for Guardian. */
@@ -36,14 +34,14 @@ export interface Action {
   tool: string;
   /** Evidence for the model only. */
   input: unknown;
-  /**
-   * `edit` keeps an existing target current, such as its title, body,
-   * replies, or CI reruns, but never changes its state. `write` is
-   * anything else.
-   */
-  effect: "edit" | "write";
   target?: Target;
+  /** What the call does, written by the tool's code. */
   summary?: string;
+  /**
+   * The tool's code advises allow, such as for a text update of a pull
+   * request that this work created. It clears only `unrequested`.
+   */
+  advice?: { decision: "allow"; reason?: string };
 }
 
 /** One batch of actions and the messages of the work. */
@@ -54,7 +52,7 @@ export interface ReviewRequest {
   messages: Message[];
   /** What the Sandbox can reach, set when the batch has a shell command. */
   sandbox?: {
-    repos: { path: string; target: Pick<Target, "ref" | "audience"> }[];
+    repos: { path: string; target: Target }[];
     /** Credential placeholders and the domains each one is sent to. */
     placeholders: { env: string; domains: string[] }[];
   };
@@ -75,7 +73,10 @@ export interface Review {
   decision: "allow" | "ask" | "deny";
   /** The rule that matched, also when code cleared it and allowed. */
   rule?: Rule;
-  /** An ask names what the person must give. */
+  /**
+   * An ask names what the person must give. When the tool's advice cleared
+   * the rule, it starts with the advice reason.
+   */
   reason: string;
   /** Model cost of this review. */
   costUsd?: number;

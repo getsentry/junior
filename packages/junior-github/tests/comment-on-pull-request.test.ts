@@ -353,3 +353,23 @@ describe("commentOnPullRequest", () => {
     );
   });
 });
+
+describe("commentOnPullRequest call facts", () => {
+  const own = { isOwnPullRequest: async () => true };
+  const input = { repo: "getsentry/junior", pull_request: 691, body: "Done." };
+
+  it("advises allow for a comment on this work's pull request", async () => {
+    await expect(
+      gitHubCommentOnPullRequestTool.describe?.(input as never, own),
+    ).resolves.toMatchObject({ advice: "allow" });
+  });
+
+  it("gives no advice for a comment that asks the requester", async () => {
+    await expect(
+      gitHubCommentOnPullRequestTool.describe?.(
+        { ...input, asks_requester: true } as never,
+        own,
+      ),
+    ).resolves.toEqual({ ref: "getsentry/junior#691", audience: "world" });
+  });
+});

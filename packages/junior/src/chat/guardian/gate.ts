@@ -481,10 +481,10 @@ export function toolActionNeedsReview(
 }
 
 /**
- * The action of a tool that does not describe its own: a `write` with no
- * target. An MCP call is the exception when its plugin declares who can
- * read what its MCP tools write: the provider is then the target, with that
- * audience. Without a target, the audience counts as `world`.
+ * The action of a tool that does not describe its own: no target. An MCP
+ * call is the exception when its plugin declares who can read what its MCP
+ * tools write: the provider is then the target, with that audience.
+ * Without a target, the audience counts as `world`.
  */
 function defaultDescription(
   toolName: string,
@@ -495,12 +495,7 @@ function defaultDescription(
   const audience: Audience | undefined = provider
     ? pluginCatalogRuntime.getDefinition(provider)?.manifest.mcp?.audience
     : undefined;
-  return provider && audience
-    ? {
-        effect: "write",
-        target: { ref: provider, audience, createdByThisWork: false },
-      }
-    : { effect: "write" };
+  return provider && audience ? { target: { ref: provider, audience } } : {};
 }
 
 /** One action that Guardian must review, with the gate's proposal for it. */

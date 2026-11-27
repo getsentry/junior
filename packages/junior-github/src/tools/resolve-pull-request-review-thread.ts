@@ -76,14 +76,8 @@ export function createGitHubResolvePullRequestReviewThreadTool(
     description:
       "Resolve a GitHub pull request review thread after acting on its feedback. Only works on pull requests the bot authored.",
     exposure: "direct",
-    guardian: {
-      // Resolving a thread edits the pull request's review content. The
-      // input names no pull request, so the call has no target.
-      describe: async (input) => ({
-        effect: "edit",
-        summary: `Resolve review thread ${input.thread_id} in ${input.repo}.`,
-      }),
-    },
+    // The input names no pull request, so the call touches the repository.
+    describe: async (input) => ({ ref: input.repo, audience: "world" }),
     inputSchema,
     outputSchema,
     async execute(

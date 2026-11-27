@@ -101,11 +101,9 @@ export const startAgentToolDefinition = zodToolDefinition({
   approvalMode: "auto",
   // A child agent is part of this organization's work.
   describe: (input) => ({
-    effect: "write",
     target: {
       ref: input.name ? `new child agent ${input.name}` : "new child agent",
       audience: "internal",
-      createdByThisWork: false,
     },
   }),
   annotations: {

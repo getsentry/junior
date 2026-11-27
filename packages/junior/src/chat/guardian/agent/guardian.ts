@@ -30,11 +30,11 @@ import type { GuardianDestinationFact } from "@/chat/guardian/policy";
 import { logWarn } from "@/chat/logging";
 import { ProviderError } from "@/chat/services/provider-error";
 
-// Field order is generation order: the model names the rule before it
-// gives the reason.
+// Field order is generation order: the model gives the reason before it
+// names the rule.
 const assessmentFields = {
-  rule: z.enum(AGENT_GUARDIAN_RULE_IDS),
   reason: z.string().trim().min(1).max(500),
+  rule: z.enum(AGENT_GUARDIAN_RULE_IDS),
 };
 
 const screenSchema = z.object(assessmentFields).strict();
@@ -77,28 +77,28 @@ function isDenyRule(rule: Rule): boolean {
 }
 
 /**
- * Turn the named rule into the outcome (`rule-kinds`, `allow-default`). A
- * deny rule always denies. An `unrequested` edit of a target that this
- * work created is upkeep: it runs and keeps the rule, so the record shows
- * what code cleared (`conventional-steps`). Upkeep clears no other rule. A
- * shell command is a `write`, so upkeep never applies to one. A person's
- * yes clears an ask rule only through the model, which then names `none`.
+ * Turn the model's assessment into the review (`rule-kinds`,
+ * `allow-default`). A deny rule always denies. The tool's `allow` advice
+ * clears only `unrequested`: the action runs and the review keeps the rule
+ * and both reasons, so the record shows what code cleared. A person's yes
+ * clears an ask rule only through the model, which then names `none`.
  */
 export function decide(
-  rule: Rule | "none",
-  action: Pick<Action, "effect" | "target">,
-): Pick<Review, "decision" | "rule"> {
+  assessment: { rule: Rule | "none"; reason: string },
+  action: Pick<Action, "advice">,
+): Pick<Review, "decision" | "rule" | "reason"> {
+  const { rule, reason } = assessment;
   if (rule === "none") {
-    return { decision: "allow" };
+    return { decision: "allow", reason };
   }
   if (isDenyRule(rule)) {
-    return { decision: "deny", rule };
+    return { decision: "deny", rule, reason };
   }
-  const upkeep =
-    rule === "unrequested" &&
-    action.effect === "edit" &&
-    action.target?.createdByThisWork === true;
-  return { decision: upkeep ? "allow" : "ask", rule };
+  if (rule === "unrequested" && action.advice) {
+    const advice = action.advice.reason ?? "The tool advises allow.";
+    return { decision: "allow", rule, reason: `${advice} ${reason}` };
+  }
+  return { decision: "ask", rule, reason };
 }
 
 /** Create the agent Guardian over one review model, for one batch. */
@@ -185,11 +185,7 @@ export function createAgentGuardian(
         });
         let costUsd = screen.costUsd ?? 0;
         if (screen.object.rule === "none") {
-          return {
-            ...decide("none", action),
-            reason: screen.object.reason,
-            costUsd,
-          };
+          return { ...decide(screen.object, action), costUsd };
         }
 
         const steps = [
@@ -215,11 +211,7 @@ export function createAgentGuardian(
           costUsd += step.costUsd ?? 0;
           const { next, ref, ...assessment } = step.object;
           if (next === "verdict" || last) {
-            return {
-              ...decide(assessment.rule, action),
-              reason: assessment.reason,
-              costUsd,
-            };
+            return { ...decide(assessment, action), costUsd };
           }
           if (next === "readPluginFacts") {
             steps.push(`readPluginFacts():\n${pluginFacts}`);

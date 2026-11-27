@@ -26,7 +26,6 @@ export function updateWorkspaceToolDefinition(
     source: WORKSPACES_TOOL_SOURCE,
     approvalMode: "review",
     describe: ({ id: _id, ...input }) => ({
-      effect: "write",
       summary: describeWorkspaceWrite("Replace", input),
     }),
     executionMode: "sequential",

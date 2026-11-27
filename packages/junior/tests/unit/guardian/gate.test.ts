@@ -134,7 +134,6 @@ describe("tool action review", () => {
         readOnlyHint: false,
       },
       describe: ({ reportId }) => ({
-        effect: "write",
         summary: `Generate report ${reportId}.`,
       }),
       identity: {
@@ -578,7 +577,6 @@ describe("tool action review", () => {
       {
         tool: "generateReport",
         input: { reportId: "weekly" },
-        effect: "write",
         summary: "generateReport",
       },
     ]);
@@ -639,11 +637,9 @@ describe("tool action review", () => {
     );
 
     expect(requests[0]!.actions[0]!).toMatchObject({
-      effect: "write",
       target: {
         ref: "notes",
         audience: "internal",
-        createdByThisWork: false,
       },
     });
   });
@@ -688,7 +684,6 @@ describe("tool action review", () => {
 
     expect(requests[0]!.actions[0]!).toMatchObject({
       tool: "bash",
-      effect: "write",
     });
     expect(requests[0]!.sandbox).toEqual({
       // No plugin knows the remote, so the world can read it.

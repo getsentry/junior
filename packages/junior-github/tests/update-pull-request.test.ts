@@ -709,25 +709,29 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
 describe("updatePullRequest call facts", () => {
   const tool = createGitHubUpdatePullRequestTool();
 
-  async function describeUpdate(input: Record<string, unknown>) {
-    return await tool.guardian?.describe?.({
-      repo: "getsentry/junior",
-      pull_request: 691,
-      ...input,
-    } as never);
+  async function describeUpdate(input: Record<string, unknown>, own = true) {
+    return await tool.describe?.(
+      { repo: "getsentry/junior", pull_request: 691, ...input } as never,
+      { isOwnPullRequest: async () => own },
+    );
   }
 
-  it("calls a title or body update an edit of the pull request", async () => {
+  it("advises allow for a text update of this work's pull request", async () => {
     await expect(
       describeUpdate({ title: "New title", body: "New body" }),
     ).resolves.toEqual({
-      effect: "edit",
-      summary: "Update pull request getsentry/junior#691.",
-      target: {
-        ref: "getsentry/junior#691",
-        audience: "world",
-        codeChange: { repository: "getsentry/junior", number: 691 },
-      },
+      ref: "getsentry/junior#691",
+      audience: "world",
+      advice: "allow",
+      reason:
+        "Only the text of getsentry/junior#691, which this work created, changes.",
+    });
+  });
+
+  it("gives no advice for another pull request", async () => {
+    await expect(describeUpdate({ body: "New body" }, false)).resolves.toEqual({
+      ref: "getsentry/junior#691",
+      audience: "world",
     });
   });
 
@@ -736,9 +740,9 @@ describe("updatePullRequest call facts", () => {
     { draft: false },
     { base: "release" },
     { request_review: true },
-  ])("calls an update that also sets %o a write", async (change) => {
+  ])("gives no advice for an update that also sets %o", async (change) => {
     await expect(
       describeUpdate({ body: "New body", ...change }),
-    ).resolves.toMatchObject({ effect: "write" });
+    ).resolves.toEqual({ ref: "getsentry/junior#691", audience: "world" });
   });
 });
