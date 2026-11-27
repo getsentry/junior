@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetTestEnv } from "../fixtures/stub-env";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV["DATABASE_URL"];
@@ -9,11 +10,10 @@ if (!TEST_DATABASE_URL) {
 
 describe("reporting support", () => {
   beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       DATABASE_URL: TEST_DATABASE_URL,
       JUNIOR_STATE_ADAPTER: "memory",
-    };
+    });
     vi.resetModules();
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
@@ -25,7 +25,7 @@ describe("reporting support", () => {
     await closeDb();
     await disconnectStateAdapter();
     vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
   });
 
   it("lists recent conversations through the conversation reporting API", async () => {

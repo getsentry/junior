@@ -138,6 +138,11 @@ export interface PluginMcpGuardianConfig {
    * audience counts as `world`.
    */
   audience?: Audience;
+  /**
+   * Exact remote tool names whose calls skip review because they have no
+   * effect. Every other tool is reviewed, also one the server renames.
+   */
+  skipReview?: string[];
 }
 
 export interface PluginMcpConfig {

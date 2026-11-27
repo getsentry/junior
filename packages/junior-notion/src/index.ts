@@ -26,8 +26,12 @@ export function notionPlugin(): PluginRegistration {
       mcp: {
         transport: "http",
         url: "https://mcp.notion.com/mcp",
-        // Only people in the workspace can read Notion pages.
-        guardian: { audience: "internal" },
+        // Only people in the workspace can read Notion pages. Search and
+        // fetch have no effect, so they skip review.
+        guardian: {
+          audience: "internal",
+          skipReview: ["notion-search", "notion-fetch"],
+        },
         allowedTools: [
           "notion-search",
           "notion-fetch",

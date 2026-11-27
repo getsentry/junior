@@ -287,7 +287,10 @@ const mcpSourceSchema = z
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
     guardian: z
-      .object({ audience: z.enum(["internal", "world"]).optional() })
+      .object({
+        audience: z.enum(["internal", "world"]).optional(),
+        skipReview: nonEmptyStringArraySchema("skipReview").optional(),
+      })
       .strict()
       .optional(),
     "viewer-tools": nonEmptyStringArraySchema("viewer-tools").optional(),
@@ -1150,6 +1153,21 @@ function normalizeMcp(
   if (unloadedViewerTools.length > 0) {
     throw new Error(
       `Plugin ${name} mcp.viewer-tools must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unloadedViewerTools.join(", ")}`,
+    );
+  }
+  const skipReview = result.data.guardian?.["skipReview"];
+  const unloadedSkipReview = skipReview
+    ? unloadedMcpTools(
+        {
+          allowedTools: result.data["allowed-tools"],
+          wrappedTools: result.data["wrapped-tools"],
+        },
+        skipReview,
+      )
+    : [];
+  if (unloadedSkipReview.length > 0) {
+    throw new Error(
+      `Plugin ${name} mcp.guardian.skipReview must be listed in mcp.allowed-tools or mcp.wrapped-tools: ${unloadedSkipReview.join(", ")}`,
     );
   }
 

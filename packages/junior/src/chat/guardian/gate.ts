@@ -217,13 +217,19 @@ export class ToolActionReviewLimitError extends Error {
 }
 
 /**
- * True when an `auto` action must enter review. Only our own code's marks
- * count: an action that its tool marks read-only and not destructive skips
- * review. A remote MCP server's marks are hints, never a reason to skip
- * (`review-by-default`). Missing marks are unknown risk.
+ * True when an `auto` action must enter review. Only our own code can skip
+ * it: annotations that it declares on the tool, read-only and not
+ * destructive, or a remote MCP tool that the plugin lists by exact name in
+ * `mcp.guardian.skipReview`. A remote MCP server's marks are hints, never a
+ * reason to skip (`review-by-default`). Missing marks are unknown risk.
  */
-function autoActionNeedsReview(tool: AnyToolDefinition): boolean {
-  const annotations = tool.annotations;
+function autoActionNeedsReview(
+  { annotations }: AnyToolDefinition,
+  resolved: ToolApprovalResolution | undefined,
+): boolean {
+  if (resolved?.skipReview) {
+    return false;
+  }
   return !(
     annotations?.readOnlyHint === true && annotations.destructiveHint !== true
   );
@@ -437,17 +443,20 @@ function mayNeedReview(tool: AnyToolDefinition): boolean {
   return (
     tool.approvalMode !== "auto" ||
     tool.resolveApprovalMetadata !== undefined ||
-    autoActionNeedsReview(tool)
+    autoActionNeedsReview(tool, undefined)
   );
 }
 
 /** Whether the gate sends a call of `tool` to Guardian, given its metadata. */
-export function toolActionNeedsReview(tool: AnyToolDefinition): boolean {
+export function toolActionNeedsReview(
+  tool: AnyToolDefinition,
+  resolved?: ToolApprovalResolution,
+): boolean {
   if (!mayNeedReview(tool)) {
     return false;
   }
   // Each mode other than `auto`, also one that is not known, needs review.
-  return tool.approvalMode !== "auto" || autoActionNeedsReview(tool);
+  return tool.approvalMode !== "auto" || autoActionNeedsReview(tool, resolved);
 }
 
 /**
@@ -543,7 +552,7 @@ async function prepareToolActionReview(
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  if (action.toolName !== "bash" && !toolActionNeedsReview(tool)) {
+  if (action.toolName !== "bash" && !toolActionNeedsReview(tool, resolved)) {
     return;
   }
   assertAuthoritativeContext(context);

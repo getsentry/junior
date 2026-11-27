@@ -60,6 +60,8 @@ convert brand/slack/junior-done-source.png -filter Lanczos -resize 128x128 \
 
 ## Colors
 
+[styles.md](styles.md) says how the Product and Marketing styles use these colors.
+
 `packages/docs/src/styles/custom.css` defines these as CSS variables.
 
 | Name   | Hex       | CSS variable  | Use                                     |

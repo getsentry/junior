@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeDb, getConversationStore } from "@/chat/db";
 import { createAndEnqueueConversation } from "@/chat/conversations/web-input";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
@@ -26,8 +26,7 @@ import {
 } from "../../msw/handlers/slack-api";
 import { chatPostMessageOk } from "../../fixtures/slack/factories/api";
 import { patchConfig } from "../../fixtures/config";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../../fixtures/stub-env";
 const DASHBOARD = "https://junior.example.com";
 // The message that shares the link. Its thread takes the Conversation.
 const SHARED_TS = "1712345.0001";
@@ -164,7 +163,7 @@ function continueHereValue(url: string): string | undefined {
 
 describe("Slack webhook: dashboard conversation links", () => {
   beforeEach(() => {
-    process.env = { ...ORIGINAL_ENV, SLACK_BOT_TOKEN: "xoxb-test-token" };
+    resetTestEnv({ SLACK_BOT_TOKEN: "xoxb-test-token" });
     resetSlackApiMockState();
     patchConfig({
       dashboard: {
@@ -174,7 +173,7 @@ describe("Slack webhook: dashboard conversation links", () => {
   });
 
   afterEach(async () => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     resetSlackApiMockState();
     await disconnectStateAdapter();
     await closeDb();

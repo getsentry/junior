@@ -1,5 +1,6 @@
 import { installTestClock } from "@sentry/junior-testing/clock";
 import { afterAll, afterEach, beforeEach, expect, vi } from "vitest";
+import { resetAiEmulator } from "./ai-emulator-server";
 
 const clock = installTestClock();
 
@@ -21,6 +22,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+afterEach(resetAiEmulator);
+
 function isIntegrationTest(): boolean {
   return expect.getState().testPath?.includes("/tests/integration/") ?? false;
 }
@@ -33,8 +36,13 @@ async function importStateAdapter() {
 
 // Each integration test starts with an empty database. State caches rows of
 // it, such as the identity cache, so each test also gets an empty state.
+// Title work runs in the background and writes its Conversation, so it ends
+// in the test that started it, not after the next test empties the database.
 afterEach(async () => {
   if (!isIntegrationTest()) return;
+  const { getAppContext } =
+    await vi.importActual<typeof import("@/app/context")>("@/app/context");
+  await Promise.allSettled(getAppContext().conversationTitles.values());
   await (await importStateAdapter()).disconnectStateAdapter();
 });
 

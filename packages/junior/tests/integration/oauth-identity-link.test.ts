@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConversationId,
   recordWebConversationActivity,
@@ -21,22 +21,20 @@ import {
   queueSlackApiResponse,
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../fixtures/stub-env";
 
 describe("oauth identity link", () => {
   beforeEach(() => {
     resetSlackApiMockState();
-    process.env = {
-      ...ORIGINAL_ENV,
+    resetTestEnv({
       EVAL_OAUTH_CLIENT_ID: "eval-oauth-client",
       EVAL_OAUTH_CLIENT_SECRET: "eval-oauth-secret",
       JUNIOR_BASE_URL: "https://junior.example.com",
-    };
+    });
   });
 
   afterEach(async () => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     await closeDb();
   });
 

@@ -22,6 +22,8 @@ export interface ToolApprovalResolution {
    * Guardian: they never skip review (`review-by-default`).
    */
   serverHints?: ToolAnnotations;
+  /** Set by core from the plugin manifest, never from the MCP server. */
+  skipReview?: true;
   description?: string;
   name?: string;
   source?: {

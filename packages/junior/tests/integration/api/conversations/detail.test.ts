@@ -2,6 +2,7 @@ import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
+import { useAppContext } from "../../../fixtures/app-context";
 import { avatarPath } from "../../../fixtures/avatar";
 import { signedInViewer } from "../../../fixtures/user";
 import { githubPlugin } from "@sentry/junior-github";
@@ -496,6 +497,8 @@ describe("conversation detail API", () => {
   });
 
   it("links GitHub references and accounts in the text it shows", async () => {
+    // createApp installs its plugins; the next test starts without them.
+    useAppContext();
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const conversationId = "slack:C123:github-links-detail";
     await getConversationStore().recordActivity({
