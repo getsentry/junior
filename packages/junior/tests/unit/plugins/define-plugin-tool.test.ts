@@ -16,24 +16,26 @@ const countResultSchema = pluginToolOutputSchema.extend({
 describe("definePluginTool", () => {
   it("preserves approval metadata", async () => {
     const tool = definePluginTool({
-      approvalMode: "review",
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: true,
         readOnlyHint: true,
       },
-      describeCall: ({ query }) => ({
-        effect: "read",
-        summary: `Search for ${query}.`,
-      }),
+      guardian: {
+        permission: "review",
+        describe: async ({ query }) => ({
+          effect: "read",
+          summary: `Search for ${query}.`,
+        }),
+      },
       description: "Schedule a meeting.",
       inputSchema: z.object({ query: z.string() }),
       outputSchema: countResultSchema,
       execute: async () => ({ count: 1 }),
     });
 
-    expect(tool.approvalMode).toBe("review");
+    expect(tool.guardian?.permission).toBe("review");
     expect(tool.annotations).toEqual({
       destructiveHint: false,
       idempotentHint: true,
@@ -41,8 +43,7 @@ describe("definePluginTool", () => {
       readOnlyHint: true,
     });
     const input = tool.prepareArguments?.({ query: "errors" });
-    const call = await tool.describeCall?.(input!, {
-      codeChanges: { list: async () => [] },
+    const call = await tool.guardian?.describe?.(input!, {
       conversationIds: async () => [],
     });
     expect(call?.summary).toBe("Search for errors.");
@@ -71,7 +72,7 @@ describe("definePluginTool", () => {
       execute,
     });
 
-    expect(tool.approvalMode).toBe("auto");
+    expect(tool.guardian).toBeUndefined();
     expect(tool.inputSchema).toMatchObject({
       properties: {
         count: { type: "integer" },

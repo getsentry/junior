@@ -69,7 +69,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
       hooks: {
         tools: () => ({
           save: definePluginTool({
-            approvalMode: "approve",
+            guardian: { permission: "allow" },
             exposure: "direct",
             annotations: {
               destructiveHint: false,
@@ -97,7 +97,7 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
             },
           }),
           read: definePluginTool({
-            approvalMode: "approve",
+            guardian: { permission: "allow" },
             exposure: "direct",
             annotations: {
               destructiveHint: false,

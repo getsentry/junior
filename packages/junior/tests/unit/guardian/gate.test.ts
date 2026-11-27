@@ -13,6 +13,8 @@ import {
 } from "@/chat/guardian/gate";
 import type { Guardian, ReviewRequest } from "@/chat/guardian/guardian";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 
 const LOCAL_SOURCE = {
   kind: "local",
@@ -581,6 +583,70 @@ describe("tool action review", () => {
         permission: "review",
       },
     ]);
+  });
+
+  it("gives an MCP call its plugin's audience", async () => {
+    const requests: ReviewRequest[] = [];
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "notes",
+            displayName: "Notes",
+            description: "Notes",
+            mcp: {
+              transport: "http",
+              url: "https://mcp.notes.example.test/mcp",
+              audience: "internal",
+            },
+          },
+        }),
+      ]),
+    });
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Put the numbers on the page.",
+      },
+      guardian: () => ({
+        review: async (request) => {
+          requests.push(request);
+          return request.actions.map(() => ({
+            decision: "allow" as const,
+            reason: "The person asked for the update.",
+          }));
+        },
+      }),
+      onFatal: () => undefined,
+      onDecision: vi.fn(async () => undefined),
+    });
+
+    await reviewToolAction(
+      "tool-call",
+      "callMcpTool",
+      definition({
+        approvalMode: "review",
+        resolveApprovalMetadata: async () => ({
+          annotations: { readOnlyHint: false },
+          name: "mcp__notes__update_page",
+          source: { description: "Notes", id: "notes" },
+        }),
+      }),
+      { tool_name: "mcp__notes__update_page", arguments: {} },
+      actionReview,
+    );
+
+    expect(requests[0]!.actions[0]!.call).toMatchObject({
+      effect: "write",
+      target: {
+        ref: "notes",
+        audience: "internal",
+        createdByThisWork: false,
+      },
+    });
   });
 
   it("reviews a shell command by the checkouts that it can reach", async () => {

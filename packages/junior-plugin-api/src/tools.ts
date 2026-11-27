@@ -386,13 +386,19 @@ export type PluginToolExecute<
 /**
  * Tool-declared approval mode.
  *
- * `auto` delegates to core policy, `review` enters Guardian review, and
- * `approve` permits execution without review. Plugin tool helpers normalize
- * omission to `auto`.
+ * `auto` delegates to core policy, `review` enters Guardian review, `ask`
+ * enters review and marks the action as waiting for the person's yes, and
+ * `approve` permits execution without review. Core maps a plugin tool's
+ * `guardian.permission` onto it, and its omission to `auto`.
  *
  * Core resolves the effective mode immediately before execution.
  */
-export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
+export const toolApprovalModeSchema = z.enum([
+  "auto",
+  "review",
+  "ask",
+  "approve",
+]);
 
 export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 
@@ -440,13 +446,8 @@ export interface ToolApprovalMetadata {
   annotations?: ToolAnnotations;
 }
 
-/**
- * Stored facts that core gives `describeCall`. Each one comes from core or
- * the plugin's own records, never from the agent.
- */
-export interface ToolCallContext {
-  /** The plugin's code changes in Junior's code records. */
-  codeChanges: Pick<PluginCodeChanges, "list">;
+/** Stored facts that core gives a tool's `guardian.describe`. */
+export interface ToolContext {
   /**
    * This Conversation, its ancestors up to its root, and its descendants:
    * the work that this call serves. Core reads them only when called.
@@ -455,27 +456,48 @@ export interface ToolCallContext {
 }
 
 /** Who can read a target. Core counts an unknown audience as `world`. */
-export type ToolCallAudience = "internal" | "world";
+export type CallAudience = "internal" | "world";
 
 /** The resource that one call changes. */
-export interface ToolCallTarget {
+export interface CallTarget {
   /** Such as `getsentry/junior#12`. */
   ref: string;
-  audience: ToolCallAudience;
-  /** Upkeep applies only to what this work made. */
-  createdByThisWork: boolean;
+  audience: CallAudience;
+  /**
+   * The code change that the target is. Core matches it against its own
+   * code-change records to tell whether this work created the target.
+   */
+  codeChange?: { repository: string; number: number };
 }
 
-/**
- * What one call does. `sandbox` stays in the Sandbox, `read` reads,
- * `upkeep` keeps a resource of the work consistent, `write` changes or
- * sends something, and `delete` removes something.
- */
-export interface ToolCallDescription {
-  effect: "sandbox" | "read" | "upkeep" | "write" | "delete";
-  target?: ToolCallTarget;
+/** Facts about one call, from parsed input and stored records. Never a verdict. */
+export interface CallFacts {
   /** One plain sentence about the call, such as its target and side effects. */
   summary: string;
+  /**
+   * `read` reads. `edit` changes the content of an existing target, such as
+   * a reply on a pull request, but not its lifecycle. `write` does anything
+   * else, such as a create, a send, a delete, or a state change.
+   */
+  effect: "read" | "edit" | "write";
+  target?: CallTarget;
+}
+
+/** What one tool gives Guardian. */
+export interface ToolGuardian<TInput = unknown> {
+  /**
+   * `allow` skips review, such as for a tool whose effects stay in the
+   * Sandbox. `ask` waits for the person's yes to the exact call. Default:
+   * review, except for a read-only tool.
+   */
+  permission?: "allow" | "review" | "ask";
+  /**
+   * Facts about one call, from parsed input and stored records, never from
+   * what tool input or a tool result claims. It runs before review, so it
+   * must not write anything. Without it, a call is a `read` when the tool is
+   * marked read-only, and a `write` otherwise.
+   */
+  describe?(input: TInput, ctx: ToolContext): Promise<CallFacts>;
 }
 
 /**
@@ -504,23 +526,14 @@ export interface PluginToolDefinition<
   TOutput = unknown,
   TExecuteOutput = TOutput,
   TContext = ToolRegistrationHookContext,
-> extends ToolApprovalMetadata {
-  /**
-   * Describe what one call does, for Guardian (`facts-from-junior` in
-   * `design/guardian.md`). Read the target from stored records only, never
-   * from what tool input or a tool result claims. A tool without this hook
-   * is a `read` when it is marked read-only and not destructive, and a
-   * `write` otherwise. It runs before review, so it must not write
-   * anything.
-   */
-  describeCall?(
-    input: TInput,
-    ctx: ToolCallContext,
-  ): ToolCallDescription | Promise<ToolCallDescription>;
+> {
+  annotations?: ToolAnnotations;
   description: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
   exposure?: ToolExposure | undefined;
+  /** What this tool gives Guardian. */
+  guardian?: ToolGuardian<TInput>;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**
@@ -649,7 +662,6 @@ function createZodTool<
   }
   return {
     ...tool,
-    approvalMode: tool.approvalMode ?? "auto",
     inputSchema: modelInputSchema,
     outputSchema: modelOutputSchema,
     prepareArguments(args) {

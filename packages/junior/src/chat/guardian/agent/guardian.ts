@@ -85,11 +85,11 @@ function isDenyRule(rule: Rule): boolean {
 
 /**
  * Derive the review of one assessment (`rule-kinds`, `allow-default`).
- * Keeping current a target that this work created clears `unrequested`
- * and no other rule (`conventional-steps`). A shell command never has the
- * `upkeep` effect, so it never applies to one.
+ * An edit of a target that this work created clears `unrequested` and no
+ * other rule (`conventional-steps`). A shell command is never an `edit`,
+ * so upkeep never applies to one.
  */
-export function agentGuardianDecision(
+export function decide(
   assessment: AgentGuardianAssessment,
   action: Pick<Action, "call">,
 ): Review {
@@ -103,7 +103,7 @@ export function agentGuardianDecision(
   const { call } = action;
   if (
     rule === "unrequested" &&
-    call.effect === "upkeep" &&
+    call.effect === "edit" &&
     call.target?.createdByThisWork
   ) {
     return {
@@ -203,7 +203,7 @@ export function createAgentGuardian(
         let costUsd = screen.costUsd ?? 0;
         if (screen.object.rule === "none") {
           batch.recordCost(index, costUsd);
-          return agentGuardianDecision(screen.object, action);
+          return decide(screen.object, action);
         }
 
         const steps = [
@@ -230,7 +230,7 @@ export function createAgentGuardian(
           const { next, ref, ...assessment } = step.object;
           if (next === "verdict" || last) {
             batch.recordCost(index, costUsd);
-            return agentGuardianDecision(assessment, action);
+            return decide(assessment, action);
           }
           if (next === "readPluginFacts") {
             steps.push(`readPluginFacts():\n${pluginFacts}`);

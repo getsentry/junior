@@ -1,23 +1,19 @@
 import {
   PluginToolInputError,
-  type ToolCallContext,
-  type ToolCallTarget,
+  type CallTarget,
 } from "@sentry/junior-plugin-api";
 import { parseRepo } from "./github-api.js";
 
 /**
- * The pull request that a call changes, for Guardian. This work created it
- * when Junior's code records link it to this Conversation, an ancestor, or
- * a descendant. Only the GitHub plugin records a code change, and only for
- * a pull request that the bot authored, so a pull request that a person
- * opened, or that only an annotation names, never counts. Junior stores no
- * visibility for a repository, so the audience is `world`.
+ * The pull request that a call changes, for Guardian. Core tells whether
+ * this work created it from its code-change records, which hold only pull
+ * requests that the bot authored. Junior stores no visibility for a
+ * repository, so the audience is `world`.
  */
-export async function pullRequestTarget(
+export function pullRequestTarget(
   repoInput: string,
   number: number,
-  ctx: ToolCallContext,
-): Promise<ToolCallTarget | undefined> {
+): CallTarget | undefined {
   let repo: string;
   try {
     repo = parseRepo(repoInput).ref;
@@ -26,13 +22,9 @@ export async function pullRequestTarget(
     if (error instanceof PluginToolInputError) return undefined;
     throw error;
   }
-  const [change] = await ctx.codeChanges.list({
-    conversationIds: await ctx.conversationIds(),
-    repository: { name: repo, numbers: [number] },
-  });
   return {
     ref: `${repo}#${number}`,
     audience: "world",
-    createdByThisWork: change !== undefined,
+    codeChange: { repository: repo, number },
   };
 }

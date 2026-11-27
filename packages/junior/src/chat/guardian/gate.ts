@@ -19,7 +19,13 @@ import {
   addPriorRejection,
   projectToolActionRejection,
 } from "@/chat/guardian/history";
-import type { Action, Call, Guardian, Review } from "@/chat/guardian/guardian";
+import type {
+  Action,
+  Audience,
+  Call,
+  Guardian,
+  Review,
+} from "@/chat/guardian/guardian";
 import type {
   RootConversation,
   ScriptCallStatus,
@@ -35,6 +41,7 @@ import {
   type SandboxRepo,
 } from "@/chat/guardian/command-call";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -466,6 +473,20 @@ export function toolActionNeedsReview(
   return tool.approvalMode !== "auto" || autoActionNeedsReview(tool, resolved);
 }
 
+/**
+ * The MCP provider of a call, when its plugin declares who can read what
+ * its MCP tools write. Without that, the call has no target, and its
+ * audience counts as `world`.
+ */
+function mcpProvider(
+  provider: string | undefined,
+): { ref: string; audience: Audience } | undefined {
+  if (!provider) return undefined;
+  const audience =
+    pluginCatalogRuntime.getDefinition(provider)?.manifest.mcp?.audience;
+  return audience ? { ref: provider, audience } : undefined;
+}
+
 /** One action that Guardian must review, with the gate's proposal for it. */
 interface PreparedReview {
   action: Action;
@@ -517,9 +538,12 @@ async function prepareToolActionReview(
             defaultCall(
               resolved?.annotations ?? tool.annotations,
               proposal.tool.name,
+              action.toolName === "callMcpTool"
+                ? mcpProvider(resolved?.source?.id)
+                : undefined,
             )),
       input,
-      permission: "review",
+      permission: tool.approvalMode === "ask" ? "ask" : "review",
     },
     proposal,
   };

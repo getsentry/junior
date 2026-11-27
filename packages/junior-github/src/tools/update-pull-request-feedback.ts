@@ -9,7 +9,6 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { pullRequestTarget } from "../tool-support/pull-request-target.js";
 import * as z from "zod";
 import { gitHubDbSchema } from "../db/database.js";
 import {
@@ -512,7 +511,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
   return definePluginTool({
     // No action review: the tool checks in code that the bot authored the pull
     // request, and it changes only the bot's own reaction, which is reversible.
-    approvalMode: "approve",
+    guardian: { permission: "allow" },
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -521,19 +520,6 @@ export function createGitHubUpdatePullRequestFeedbackTool(
     },
     description:
       "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after you act on or reply to the feedback. Replaces only your prior status reaction on that comment. When every comment of the author's latest change request, or of the requester's latest comment-only reviews, is marked and the required checks pass, asks the author to review again. Only works on pull requests the bot authored.",
-    async describeCall(input, ctx) {
-      const target = await pullRequestTarget(
-        input.repo,
-        input.pull_request,
-        ctx,
-      );
-      // A status reaction on feedback keeps the pull request current.
-      return {
-        effect: "upkeep",
-        ...(target ? { target } : undefined),
-        summary: `Mark feedback on pull request ${target?.ref ?? input.pull_request} as ${input.status}.`,
-      };
-    },
     exposure: "direct",
     inputSchema,
     outputSchema,

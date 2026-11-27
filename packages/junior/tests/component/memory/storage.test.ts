@@ -3992,7 +3992,7 @@ WHERE memory_id = '${react.memory.id}' AND model = 'new-model'
         searchMemories: bindPluginTool(memorySearchTool, context),
       };
 
-      expect(tools.createMemory.approvalMode).toBe("approve");
+      expect(tools.createMemory.guardian?.permission).toBe("allow");
       await expect(
         tools.createMemory.execute(
           {

@@ -29,10 +29,12 @@ export function vimeoUploadTool(settings: VimeoSettings) {
     description:
       "Upload a video file from the sandbox into a Vimeo folder as a private video: hidden from vimeo.com or unlisted, embeddable only on allowed domains, not downloadable. Returns the video ID, the privacy hash for unlisted videos, and the embed URL once the bytes are sent; Vimeo finishes processing later. Each call creates a new video. To change the file of an existing video, use vimeo_replaceFile.",
     // Review may see the raw input, before defaults apply.
-    describeCall: (input) => ({
-      effect: "write",
-      summary: `Upload ${input.path} to Vimeo folder ${input.folder} as "${input.title}" (${input.view ?? "disable"}, embeds on ${(input.embed_domains ?? settings.embedDomains).join(", ") || "no domain"})`,
-    }),
+    guardian: {
+      describe: async (input) => ({
+        effect: "write",
+        summary: `Upload ${input.path} to Vimeo folder ${input.folder} as "${input.title}" (${input.view ?? "disable"}, embeds on ${(input.embed_domains ?? settings.embedDomains).join(", ") || "no domain"})`,
+      }),
+    },
     inputSchema: z
       .object({
         path: sandboxPathSchema("MP4, MOV, or WebM file to upload"),

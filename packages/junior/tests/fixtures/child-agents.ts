@@ -401,7 +401,7 @@ export function upkeepPlugins(
           markDone: definePluginTool({
             // The tool checks in code that its effect is safe, so action
             // review does not run, also in a child agent.
-            approvalMode: "approve",
+            guardian: { permission: "allow" },
             exposure: "direct",
             annotations: {
               destructiveHint: true,

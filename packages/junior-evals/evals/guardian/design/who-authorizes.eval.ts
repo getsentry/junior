@@ -541,7 +541,7 @@ const CASES: DesignCase[] = [
             },
           ],
           calls: [
-            { ...ownPrCall("acme/atlas#455", "internal"), effect: "upkeep" },
+            { ...ownPrCall("acme/atlas#455", "internal"), effect: "edit" },
           ],
         },
       };

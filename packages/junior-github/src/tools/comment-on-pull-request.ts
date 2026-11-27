@@ -221,14 +221,16 @@ export const gitHubCommentOnPullRequestTool = definePluginTool({
   },
   description:
     "Post a conversation comment on a GitHub pull request, or reply in an inline review thread. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL, and whether the requester was asked.",
-  async describeCall(input, ctx) {
-    const target = await pullRequestTarget(input.repo, input.pull_request, ctx);
-    // A comment or a reply on the pull request keeps it current.
-    return {
-      effect: "upkeep",
-      ...(target ? { target } : undefined),
-      summary: `Comment on pull request ${target?.ref ?? input.pull_request}.`,
-    };
+  guardian: {
+    async describe(input) {
+      const target = pullRequestTarget(input.repo, input.pull_request);
+      // A comment or a reply on the pull request edits its content.
+      return {
+        effect: "edit",
+        ...(target ? { target } : undefined),
+        summary: `Comment on pull request ${target?.ref ?? input.pull_request}.`,
+      };
+    },
   },
   inputSchema,
   outputSchema,

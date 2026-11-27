@@ -26,16 +26,18 @@ export interface Target {
   /** Such as `getsentry/junior#12`. */
   ref: string;
   audience: Audience;
-  /** Upkeep applies only to what this work made. */
+  /**
+   * Core sets it from its own code-change records. Upkeep applies only to
+   * what this work made.
+   */
   createdByThisWork: boolean;
 }
 
 /** What one call does, as its tool or core describes it. */
 export type Call =
   | {
-      /** `sandbox` and `read` skip the model. */
-      effect: "sandbox" | "read" | "upkeep" | "write" | "delete";
-      /** Set for every effect except `sandbox`, when code knows it. */
+      /** `read` skips the model. `edit` changes content of an existing target. */
+      effect: "read" | "edit" | "write";
       target?: Target;
       summary: string;
     }
@@ -97,21 +99,5 @@ export interface Guardian {
   review(request: ReviewRequest, signal: AbortSignal): Promise<Review[]>;
 }
 
-/** What a tool adds for Guardian. */
-export interface ToolDefinition<TInput> {
-  permission?: "allow" | "review" | "ask";
-  /**
-   * From input that already passed `inputSchema`. Reads stored records
-   * only. Without it: `readOnlyHint ? "read" : "write"`, no target.
-   */
-  describeCall?(
-    input: TInput,
-    ctx: { conversationIds(): Promise<string[]> },
-  ): Promise<Call>;
-}
-
-/** What a plugin adds for Guardian. */
-export interface PluginHooks {
-  /** Types a git remote or URL in the Sandbox. */
-  describeUrl?(url: URL): Promise<Target | undefined>;
-}
+// Tools and plugins describe calls with `ToolGuardian` and `describeUrl`
+// in `@sentry/junior-plugin-api`. Core turns their facts into a `Call`.

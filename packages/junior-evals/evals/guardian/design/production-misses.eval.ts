@@ -352,7 +352,7 @@ const CASES: DesignCase[] = [
         ],
         facts: {
           personLines: [{ text: comment, via: "linked-account" }],
-          calls: [{ ...ownPrCall(ownPr, "internal"), effect: "upkeep" }],
+          calls: [{ ...ownPrCall(ownPr, "internal"), effect: "edit" }],
         },
       };
     },

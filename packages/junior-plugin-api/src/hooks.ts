@@ -34,10 +34,10 @@ import type {
   AfterMcpToolHookContext,
   AfterToolExecuteHookContext,
   BeforeToolExecuteHookContext,
+  CallAudience,
   PluginEgress,
   PluginToolDefinition,
   SandboxPrepareHookContext,
-  ToolCallTarget,
   ToolRegistrationHookContext,
   WorkspacePrepareHookContext,
   WorkspaceFinalize,
@@ -196,7 +196,9 @@ export interface PluginHooks {
    * reviews a shell command with it. Read who can see the target from stored
    * records only, and return `world` when they do not say.
    */
-  describeUrl?(url: URL): Promise<ToolCallTarget | undefined>;
+  describeUrl?(
+    url: URL,
+  ): Promise<{ ref: string; audience: CallAudience } | undefined>;
   /**
    * Select the grant for one sandbox egress request.
    *

@@ -31,22 +31,8 @@ describe("cloneRepository", () => {
       openWorldHint: true,
       readOnlyHint: true,
     });
-    expect(
-      tool.describeCall?.({
-        directory: "repos/junior",
-        repo: "getsentry/junior",
-      })?.summary,
-    ).toBe(
-      "Shallow-clone getsentry/junior into the local sandbox at repos/junior for inspection (no GitHub mutation).",
-    );
-    expect(
-      tool.describeCall?.({
-        allow_ad_hoc: true,
-        repo: "getsentry/junior",
-      })?.summary,
-    ).toBe(
-      "Shallow-clone getsentry/junior into the local sandbox as an intentional ad-hoc checkout for inspection (no GitHub mutation).",
-    );
+    // The clone stays in the Sandbox, so it skips review.
+    expect(tool.guardian?.permission).toBe("allow");
   });
 
   it("clones into a new sandbox directory", async () => {

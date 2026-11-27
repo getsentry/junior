@@ -3,9 +3,9 @@ import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
 import type {
   ToolAnnotations,
   ToolApprovalMetadata,
-  ToolCallDescription,
   ToolExposure,
 } from "@sentry/junior-plugin-api";
+import type { Call } from "@/chat/guardian/guardian";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 /**
@@ -44,9 +44,7 @@ interface BaseToolDefinition<
    * Describe one call for Guardian from stored records
    * (`facts-from-junior` in `design/guardian.md`).
    */
-  describeCall?(
-    input: TInput,
-  ): ToolCallDescription | Promise<ToolCallDescription>;
+  describeCall?(input: TInput): Call | Promise<Call>;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;
@@ -110,9 +108,7 @@ export interface AnyToolDefinition extends ToolApprovalMetadata {
    * Describe one call for Guardian. Core binds a plugin tool's hook to the
    * Turn's stored facts (`facts-from-junior` in `design/guardian.md`).
    */
-  describeCall?(
-    input: unknown,
-  ): ToolCallDescription | Promise<ToolCallDescription>;
+  describeCall?(input: unknown): Call | Promise<Call>;
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
     id: string;

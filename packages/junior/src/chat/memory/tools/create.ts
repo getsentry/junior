@@ -194,7 +194,7 @@ function targetForKind(kind: MemoryKind): "actor" | "conversation" {
 
 /** Submit an explicit memory candidate for storage. */
 export const memoryCreateTool = definePluginTool({
-  approvalMode: "approve",
+  guardian: { permission: "allow" },
   annotations: {
     destructiveHint: false,
     idempotentHint: true,

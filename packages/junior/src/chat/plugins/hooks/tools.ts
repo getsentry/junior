@@ -5,9 +5,11 @@ import {
   type PluginRegistration,
   type PluginToolDefinition,
   type SlackToolRegistrationHookContext,
-  type ToolCallContext,
+  type ToolContext,
+  type ToolGuardian,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
+import { callFromFacts } from "@/chat/guardian/call-facts";
 import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
@@ -60,6 +62,22 @@ function pluginToolNamespace(pluginName: string): string {
     .join("")}`;
 }
 
+/** The gate's approval mode for a plugin tool's Guardian permission. */
+function approvalMode(
+  guardian: ToolGuardian | undefined,
+): AnyToolDefinition["approvalMode"] {
+  switch (guardian?.permission) {
+    case "allow":
+      return "approve";
+    case "review":
+      return "review";
+    case "ask":
+      return "ask";
+    case undefined:
+      return "auto";
+  }
+}
+
 /**
  * Model-facing definitions of one plugin's tools, by host tool name. They
  * come from the plugin's `tools()` with no Turn.
@@ -74,9 +92,9 @@ function pluginToolDefinitions(
   const definitions: Record<string, AnyToolDefinition> = {};
   for (const [localName, definition] of Object.entries(pluginTools)) {
     const execute = definition.execute;
-    // The plugin's `describeCall` takes Turn facts, so only
+    // The plugin's `guardian.describe` takes Turn facts, so only
     // `getPluginTools` binds it.
-    const { describeCall: _describeCall, ...rest } = definition;
+    const { guardian, ...rest } = definition;
     // Naming conventions belong in lint, not on the turn's critical path.
     definitions[`${namespace}_${localName}`] = {
       ...(rest as AnyToolDefinition),
@@ -87,7 +105,7 @@ function pluginToolDefinitions(
             execute: execute.bind(definition) as AnyToolDefinition["execute"],
           }
         : undefined),
-      approvalMode: definition.approvalMode ?? "auto",
+      approvalMode: approvalMode(guardian),
       identity: {
         id: `${pluginName}.${localName}`,
         name: localName,
@@ -234,8 +252,7 @@ export function getPluginTools(
         },
       },
     };
-    const callContext: ToolCallContext = {
-      codeChanges: common.codeChanges,
+    const callContext: ToolContext = {
       conversationIds: async () =>
         await readAncestorAndDescendantIds(getDb(), context.conversationId),
     };
@@ -322,16 +339,19 @@ export function getPluginTools(
         | PluginToolDefinition["execute"]
         | undefined;
       const source = pluginTools[localName];
-      // Keep the receiver of a class-instance tool, like `execute`.
-      const describeCall = source?.describeCall?.bind(source);
+      // Keep the receiver of the plugin's object, like `execute`.
+      const describe = source?.guardian?.describe?.bind(source.guardian);
       const disabledReason = disabled[localName];
       tools[name] = {
         ...definition,
         ...(disabledReason ? { disabledReason } : undefined),
-        ...(describeCall
+        ...(describe
           ? {
               describeCall: async (input: unknown) =>
-                await describeCall(input, callContext),
+                await callFromFacts(await describe(input, callContext), {
+                  provider: pluginName,
+                  conversationIds: callContext.conversationIds,
+                }),
             }
           : undefined),
         ...(execute

@@ -10,7 +10,6 @@ describe("describeGitHubUrl", () => {
     await expect(describeGitHubUrl(new URL(url))).resolves.toEqual({
       ref: "getsentry/junior",
       audience: "world",
-      createdByThisWork: false,
     });
   });
 

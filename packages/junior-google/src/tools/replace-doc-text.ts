@@ -73,11 +73,13 @@ export const replaceGoogleDocTextTool = definePluginTool({
     openWorldHint: true,
     readOnlyHint: false,
   },
-  describeCall(input) {
-    return {
-      effect: "write",
-      summary: `In Google Doc ${input.document}, replace every "${input.find}" with "${input.replace}".`,
-    };
+  guardian: {
+    async describe(input) {
+      return {
+        effect: "edit",
+        summary: `In Google Doc ${input.document}, replace every "${input.find}" with "${input.replace}".`,
+      };
+    },
   },
   description:
     "Replace every match of a text in a Google Doc, as your own Google account. Matches keep their formatting. Only the first tab of a Doc with tabs is changed. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link.",

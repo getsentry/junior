@@ -73,21 +73,23 @@ const demoToolResultSchema = pluginToolOutputSchema.extend({
 
 function demoPluginTool(
   description = "Demo tool",
-  approvalMode?: "auto" | "review" | "approve",
+  permission?: "allow" | "review" | "ask",
   exposure?: ToolExposure,
 ) {
   return definePluginTool({
-    approvalMode,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
       readOnlyHint: true,
     },
-    describeCall: () => ({
-      effect: "write",
-      summary: `${description} proposal`,
-    }),
+    guardian: {
+      ...(permission ? { permission } : undefined),
+      describe: async () => ({
+        effect: "write",
+        summary: `${description} proposal`,
+      }),
+    },
     description,
     exposure,
     inputSchema: z.object({}),

@@ -11,7 +11,7 @@ export const deleteWorkspaceToolDefinition = zodToolDefinition({
   source: WORKSPACES_TOOL_SOURCE,
   approvalMode: "review",
   describeCall: ({ id }) => ({
-    effect: "delete",
+    effect: "write",
     summary: `Delete Workspace ${id}.`,
   }),
   executionMode: "sequential",

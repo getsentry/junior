@@ -144,6 +144,7 @@ export interface PluginManifestConfig {
     oauthClient?: PluginMcpConfig["oauthClient"];
     allowedTools?: string[] | null;
     wrappedTools?: string[] | null;
+    audience?: PluginMcpConfig["audience"] | null;
   } | null;
   oauth?: PluginOAuthConfigPatch | null;
   accounts?: {

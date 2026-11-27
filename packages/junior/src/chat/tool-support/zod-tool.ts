@@ -1,7 +1,7 @@
 import * as z from "zod";
 import type { ZodTypeAny } from "zod";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import type { ToolCallDescription } from "@sentry/junior-plugin-api";
+import type { Call } from "@/chat/guardian/guardian";
 import type {
   AnyToolDefinition,
   JsonSchemaObject,
@@ -21,7 +21,7 @@ type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   | "promptGuidelines"
   | "executionMode"
 > & {
-  describeCall?(input: z.output<TInputSchema>): ToolCallDescription;
+  describeCall?(input: z.output<TInputSchema>): Call;
   inputSchema: TInputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
   resolveApprovalMetadata?(

@@ -1873,18 +1873,13 @@ Conversation: \`local:test:old-conversation\`
       { toolCallId: "call-create-recorded-pull-request" },
     );
 
+    // Core matches a call's code change against these records.
     await expect(
-      tools?.["updatePullRequest"]?.describeCall?.(
-        { repo: "getsentry/junior", pull_request: 7701, body: "New body" },
-        {
-          codeChanges: dbFixture.codeIndex.codeChanges,
-          conversationIds: async () => [conversationId],
-        },
-      ),
-    ).resolves.toMatchObject({
-      effect: "upkeep",
-      target: { createdByThisWork: true },
-    });
+      dbFixture.codeIndex.codeChanges.list({
+        conversationIds: [conversationId],
+        repository: { name: "getsentry/junior", numbers: [7701] },
+      }),
+    ).resolves.toHaveLength(1);
   });
 
   it("subscribes configured events after creating a pull request", async () => {
