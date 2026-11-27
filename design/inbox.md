@@ -53,12 +53,14 @@ groups and acts on its rows.
   nothing takes the focus. A typed message still answers it.
 - While a waiting card is not in full view, a "N questions waiting" pill
   shows above the message box and goes to the oldest such card.
-- A question card shows each question with its own header, choices, and
-  answer. A card with one question shows it under its "Question" label. In
-  the Inbox, the last message of the Turn that asked it comes first (about
-  12 lines, then Show more). The transcript leaves that message out,
-  because it sits right above the card. The card has no subject preview: the row head and Related link the subject. In
-  the transcript, a waiting card spans the transcript width.
+- A question card shows each question with its own header, choices, and answer.
+  A card with one question shows it under its "Question" label. In the Inbox,
+  the last message of the Turn that asked it comes first (about 12 lines, then
+  Show more). A card in the transcript leaves that message out, because it sits
+  right above the card. On a phone, the sheet that a transcript card opens shows
+  the message, because the sheet covers the transcript. The card has no subject
+  preview: the row head and Related link the subject. In the transcript, a
+  waiting card spans the transcript width.
 - A click on a choice picks it. Each choice question also has Other, where
   the person writes their own answer, which replaces a pick. A card has one
   Additional notes box: Enter adds a line, and Send or Cmd/Ctrl+Enter sends
