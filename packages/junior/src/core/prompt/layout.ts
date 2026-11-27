@@ -1,5 +1,8 @@
-// The API that host code uses to declare how core builds the prompt of each
-// model request. `definePromptLayout` states the rules and shows an example.
+// How host code declares the prompt of each model request. Loaders do all
+// I/O, once per needed loader per step. Fragments are pure (no I/O, clock, or
+// random value), so the same inputs give the same prompt. Message fragments
+// only append, and only for a step that sends a model request. The system
+// prompt holds no Conversation data, so the provider can cache it.
 import type { Message, UserMessage } from "@earendil-works/pi-ai";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { UnreadInput } from "@/core/turn/inbox";
@@ -245,60 +248,11 @@ export type PromptLayout = {
 };
 
 /**
- * Checks a layout and returns the copy that core builds each prompt from. It
- * throws on an empty or repeated system prompt section name, on two
- * fragments with one name, on one fragment used twice, on two loaders with
- * one label, and unless the messages hold exactly one `inputs()` fragment.
- * It freezes the system prompt sections and the messages list.
- *
- * The rules:
- * - Loaders do all of the I/O. Core runs each needed loader once per step.
- * - Fragments are pure. `enabled` and `format` do no I/O, and read no clock
- *   and no random value, so the same inputs give the same prompt. Their
- *   messages have no timestamp: core gives each one the step's time, and
- *   each input its send time.
- * - Message fragments only append. Their messages go after the history, and
- *   a later step sees them in its history. Core builds them only for a step
- *   that sends a model request, not for a step that runs tool calls.
- * - The `inputs()` fragment sets where the Turn's unread inputs go.
- * - The system prompt holds no Conversation data. The host builds its
- *   sections once at startup, so the model provider can cache that part of
- *   the request.
- * - Tools and model settings are not in the layout. They belong to the Turn,
- *   and the step gets them separately.
- *
+ * Checks a layout (rules above) and returns the frozen copy core builds from.
+ * Throws on repeated or empty names, reused fragments, or not one `inputs()`.
  * @example
- * // At startup:
- * const soul = await readFile("SOUL.md", "utf8");
- * const memories = loader(
- *   "memories",
- *   (ctx, signal) => memoryStore.recall(ctx.turn.conversationId, signal),
- *   { timeoutMs: 2_000, optional: true },
- * );
- * const recalled = fragment("recalled-memories", {
- *   loader: memories,
- *   // Recall only for a step that has new inputs.
- *   enabled: (ctx) => ctx.inputs.length > 0,
- *   format: (notes): FragmentMessage | Skip =>
- *     notes && notes.length > 0
- *       ? { role: "user", content: notes.join("\n") }
- *       : skip("no memories"),
- * });
- * const layout = definePromptLayout({
- *   systemPrompt: [
- *     { name: "identity", text: "You are Junior, Sentry's Slack bot." },
- *     { name: "personality", text: soul },
- *   ],
- *   messages: [
- *     recalled,
- *     inputs({
- *       format: (input) => ({
- *         message: { role: "user", content: String(input.payload["text"]) },
- *         provenance: { authority: "instruction" },
- *       }),
- *     }),
- *   ],
- * });
+ * const layout = definePromptLayout({ systemPrompt: [identity],
+ *   messages: [recalledMemories, inputs({ format: formatInput })] });
  */
 export function definePromptLayout(layout: PromptLayout): PromptLayout {
   const sectionNames = new Set<string>();
