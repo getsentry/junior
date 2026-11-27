@@ -11,6 +11,7 @@ import { HeaderBar } from "../components/layout/HeaderBar";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
 import { Skeleton } from "../components/ui/skeleton";
 import { MessageObjectsProvider } from "../display-text/DisplayText";
+import { useMobileLayout } from "../layoutMedia";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import {
@@ -137,11 +138,17 @@ export function InboxList(props: {
     state.toggle(key);
   };
   const focus = useInboxFocus(state.scroller, state.expandedKey);
-  useCollapseOutside(state.expandedKey, () => toggle(state.expandedKey));
+  // On a phone, an open row is a sheet: only the sheet closes it, and a row
+  // that leaves takes the reader back to the list.
+  const mobile = useMobileLayout();
+  useCollapseOutside(mobile ? "" : state.expandedKey, () =>
+    toggle(state.expandedKey),
+  );
   const leave = useLeaveRow(
     state.scroller,
     state.expandedKey,
     state.setExpandedKey,
+    !mobile,
   );
   const leaveCard = useLeaveCard(state.scroller, leave);
   const act = useInboxRowActs({
@@ -193,6 +200,10 @@ export function InboxList(props: {
   // view. Only then does the link leave the URL.
   const navigate = useNavigate();
   const linkedId = params.get("item") ?? undefined;
+  // On a phone, a snooze link keeps `?snooze=` until the row is in view,
+  // also past a redirect to another entry, and the row opens no sheet over
+  // the snooze dialog.
+  const snoozeLink = mobile && Boolean(params.get("snooze"));
   // Done shows a linked closed item that is past its first page too. The
   // list state keeps it, so a tab switch or a remount keeps its row.
   const [linkedItems, setLinkedItems] = useLinkedInboxItems();
@@ -270,7 +281,7 @@ export function InboxList(props: {
         });
         return;
       }
-      if (expandedKey !== linkedRowKey) {
+      if (!snoozeLink && expandedKey !== linkedRowKey) {
         setExpandedKey(linkedRowKey);
         return;
       }
@@ -292,9 +303,12 @@ export function InboxList(props: {
     }
     if (snoozedKey || linkedSnoozed) {
       if (view !== "snoozed") {
-        void navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
-          replace: true,
-        });
+        void navigate(
+          inboxViewPath("snoozed", { itemId: linkedId, snooze: snoozeLink }),
+          {
+            replace: true,
+          },
+        );
       } else if (data.snoozedRead.settled) {
         // Snoozed read every page without the row, so the link is stale.
         void navigate(listPath, { replace: true });
@@ -322,9 +336,12 @@ export function InboxList(props: {
       const closedId = linked.data.id;
       setLinkedItems((current) => ({ ...current, closed: closedId }));
     } else {
-      void navigate(inboxViewPath("done", { itemId: linkedId }), {
-        replace: true,
-      });
+      void navigate(
+        inboxViewPath("done", { itemId: linkedId, snooze: snoozeLink }),
+        {
+          replace: true,
+        },
+      );
     }
   }, [
     collapsed,
@@ -349,6 +366,7 @@ export function InboxList(props: {
     setLinkedItems,
     setTodoCollapsed,
     showMore,
+    snoozeLink,
     snoozedKey,
     todoCollapsed,
     view,

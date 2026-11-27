@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { chooseTranscriptView } from "./conversationMenu";
 import { waitForHighlightedCode } from "../highlighted-code";
+import { openAsk } from "../askSheet";
 import { expect, test } from "../test";
 import { desktop, mobile, screenshot } from "../screenshot";
 import {
@@ -939,11 +940,6 @@ test.describe("new UI", () => {
       // the message box and the queued messages stay below the transcript.
       const record = page.getByRole("region", { name: `Asked ${item.title}` });
       await expect(record).toContainText("Waiting on you");
-      const question = record.getByRole("region", { name: "Question" });
-      await expect(question).toContainText(item.request.question);
-      await expect(
-        record.getByRole("radiogroup", { name: "Owner" }),
-      ).toBeAttached();
       await expect(
         page.getByRole("region", { name: `Question: ${item.title}` }),
       ).toHaveCount(0);
@@ -951,15 +947,21 @@ test.describe("new UI", () => {
       const queue = page.getByRole("button", { name: /queued messages/ });
       await expect(composer).toBeInViewport();
       await expect(queue).toBeVisible();
+      // A phone opens the question in a sheet over the transcript.
+      const ask = await openAsk(record, view === mobile);
+      const question = ask.getByRole("region", { name: "Question" });
+      await expect(question).toContainText(item.request.question);
+      await expect(
+        ask.getByRole("radiogroup", { name: "Owner" }),
+      ).toBeAttached();
       await screenshot(page, "conversation-question-form", {
         view: view.name,
       });
 
       // Dismiss closes the question, and its record says so.
-      await record
-        .getByRole("button", { name: "Dismiss", exact: true })
-        .click();
+      await ask.getByRole("button", { name: "Dismiss", exact: true }).click();
       await expect(question).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(record).toContainText("Dismissed");
       await screenshot(page, "conversation-question-dismissed", {
         view: view.name,

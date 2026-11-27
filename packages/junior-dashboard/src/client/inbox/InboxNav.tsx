@@ -177,10 +177,10 @@ export function InboxNav(props: {
             In flight
             <span className={dashboardCountClass}>{data.inFlight.length}</span>
           </h2>
-          {/* Every pin shows, in the stored order, so a drop can place
-              them all. */}
+          {/* Every pin here shows, in the stored order. The API places
+              the pins that a drop leaves out after the ones it lists. */}
           <PinnedConversationOrder
-            conversations={data.pinned}
+            conversations={data.inFlightPinned}
             onError={onReorderError}
             reorder={reorderPins}
           >

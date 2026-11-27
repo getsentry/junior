@@ -92,6 +92,8 @@ Only these sit on top of the tree:
   each Thread as its own row, not nested under the Lead.
 - Members see the Space in their sidebar. A person who is not a member can
   open a public Space and join it.
+- The sidebar's In flight lists only roots that are not a Lead. A Space's
+  Threads show in its Threads panel, not there.
 - Each Space in the sidebar shows what its Threads need from the member, the
   first that applies: a Thread needs them, one failed, or one works. A Space
   with none of these shows nothing.
@@ -101,10 +103,6 @@ Only these sit on top of the tree:
 
 ## Gaps
 
-- A Space's Conversations are roots that store their Space, not children of
-  the Lead. So the Lead cannot stop or archive them, and its Participants do
-  not give access to them. This breaks the "Tree" rules.
-  getsentry/junior#4413 tracks it.
 - The Threads panel lists Threads by their newest Message, not by what they
   need. getsentry/junior#4416 tracks it.
 - The public MCP server does not show a Conversation's Space, so the iOS app

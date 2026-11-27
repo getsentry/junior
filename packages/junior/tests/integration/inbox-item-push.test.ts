@@ -334,8 +334,11 @@ describe("inbox item push", () => {
       assignees: ["ana@example.com"],
       questions: ask(long.trim()),
     });
-    expect(pushes[2]).toMatchObject({ body: "", tag: longAsk.item.id });
-    expect(pushes[2]!.title).toMatch(/…$/);
+    expect(pushes[2]).toMatchObject({
+      body: "",
+      tag: longAsk.item.id,
+      title: expect.stringMatching(/…$/),
+    });
 
     // Web Push cannot close a notification by itself. The next push tells
     // the phone to close the push of the ask that closed.

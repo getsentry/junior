@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { openAsk } from "./askSheet";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 import { mockInboxItemList } from "./mock-reports";
@@ -35,18 +36,6 @@ for (const view of [desktop, mobile]) {
       name: "Asked Approve the payments-v42 rollout",
     });
     await expect(card).toContainText("Waiting on you");
-    const question = card.getByRole("region", { name: "Question" });
-    await expect(question).toContainText(
-      "Roll out payments-v42 to every region?",
-    );
-    // Junior's message of that Turn is right above the card, so the card
-    // does not show it again.
-    await expect(
-      page.getByText("I need your go-ahead before I roll out to every region."),
-    ).toBeVisible();
-    await expect(
-      card.getByRole("region", { name: "Junior's message" }),
-    ).toHaveCount(0);
     // Nothing docks over the message box, and nothing takes the focus.
     await expect(page.getByRole("region", { name: /^Question:/ })).toHaveCount(
       0,
@@ -65,13 +54,29 @@ for (const view of [desktop, mobile]) {
       page.getByRole("button", { name: /questions? waiting$/ }),
     ).toHaveCount(0);
 
+    // A phone shows the card as one line, and a tap opens the ask in a
+    // sheet.
+    const ask = await openAsk(card, view === mobile);
+    const question = ask.getByRole("region", { name: "Question" });
+    await expect(question).toContainText(
+      "Roll out payments-v42 to every region?",
+    );
+    // Junior's message of that Turn is right above the card in the
+    // transcript, so the ask does not show it again.
+    await expect(
+      page.getByText("I need your go-ahead before I roll out to every region."),
+    ).toHaveCount(1);
+    await expect(
+      ask.getByRole("region", { name: "Junior's message" }),
+    ).toHaveCount(0);
+
     // A click picks a choice. Only Send answers, with the note.
-    const rollOut = card.getByRole("button", { name: /Roll out/ });
-    const send = card.getByRole("button", { name: "Send", exact: true });
+    const rollOut = ask.getByRole("button", { name: /Roll out/ });
+    const send = ask.getByRole("button", { name: "Send", exact: true });
     await expect(send).toBeDisabled();
     await rollOut.click();
     await expect(rollOut).toHaveAttribute("aria-pressed", "true");
-    await card
+    await ask
       .getByRole("textbox", { name: "Anything else?" })
       .fill("Start with us-east-1.");
     expect(actions).toEqual([]);
@@ -91,7 +96,8 @@ for (const view of [desktop, mobile]) {
           },
         },
       ]);
-    // The card goes back to one line with the answer.
+    // The card goes back to one line with the answer, and a sheet closes.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(card.getByRole("region", { name: "Question" })).toHaveCount(0);
     await expect(card).toContainText("Answered");
     await expect(card).toContainText("Roll out");
@@ -130,40 +136,40 @@ test("a second click takes the pick back, and a note alone answers", async ({
   await expect(card).toContainText("Wait for the EU team on Monday.");
 });
 
-for (const view of [desktop, mobile]) {
-  test(`the questions pill goes to each waiting question (${view.name})`, async ({
-    dashboard,
-    page,
-  }) => {
-    await page.setViewportSize(view);
-    await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
-    const card = (title: string) =>
-      page.getByRole("region", { name: `Asked ${title}` });
-    const windowCard = card("Pick the billing migration window");
-    const pill = page.getByRole("button", { name: "3 questions waiting" });
-    await expect(pill).toBeVisible();
-    // The transcript opens at the latest message, not at a question.
-    await expect(windowCard).not.toBeInViewport();
-    await screenshot(page, "conversation-questions-pill", {
-      lightTheme: true,
-      view: view.name,
-    });
-
-    // The pill shows the oldest card not in full view.
-    await pill.click();
-    await expect(windowCard).toBeInViewport();
-    // Only the transcript scrolls, not the page.
-    expect(await page.evaluate(() => window.scrollY)).toBe(0);
-
-    // An answer leaves two, and the pill counts them.
-    await windowCard.getByRole("button", { name: /Tuesday 14:00 UTC/ }).click();
-    await windowCard.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(windowCard).toContainText("Answered");
-    await expect(
-      page.getByRole("button", { name: "2 questions waiting" }),
-    ).toBeVisible();
+// A phone shows each card as one line, so this short transcript fits on
+// the screen there and needs no pill.
+test("the questions pill goes to each waiting question", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
+  const card = (title: string) =>
+    page.getByRole("region", { name: `Asked ${title}` });
+  const windowCard = card("Pick the billing migration window");
+  const pill = page.getByRole("button", { name: "3 questions waiting" });
+  await expect(pill).toBeVisible();
+  // The transcript opens at the latest message, not at a question.
+  await expect(windowCard).not.toBeInViewport();
+  await screenshot(page, "conversation-questions-pill", {
+    lightTheme: true,
+    view: desktop.name,
   });
-}
+
+  // The pill shows the oldest card not in full view.
+  await pill.click();
+  await expect(windowCard).toBeInViewport();
+  // Only the transcript scrolls, not the page.
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  // An answer leaves two, and the pill counts them.
+  await windowCard.getByRole("button", { name: /Tuesday 14:00 UTC/ }).click();
+  await windowCard.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(windowCard).toContainText("Answered");
+  await expect(
+    page.getByRole("button", { name: "2 questions waiting" }),
+  ).toBeVisible();
+});
 
 test("the questions pill skips an Everyone question the viewer has not taken", async ({
   dashboard,
