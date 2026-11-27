@@ -1,25 +1,9 @@
 /**
- * Hourly GitHub GraphQL budgets for Sandbox requests.
- *
- * The App installation has one hourly GraphQL points budget for all of
- * Junior. Each Conversation's Sandbox gets a share of it, and Sandbox
- * requests stop while the installation has only the host reserve left, so
- * host calls such as the PR next-action syncs keep working.
- *
- * Spend comes from GitHub's own rate limit headers on each response, not
- * from a prediction. A response's cost is the rise in `x-ratelimit-used`
- * since the last response that Junior saw. Spend that Junior does not see,
- * such as a webhook call that does not go through egress, counts toward the
- * next Sandbox response, so a Conversation can be charged more than its own
- * queries cost, never less.
- *
- * Spend is known only when a response comes back, so each Conversation may
- * have only a few Sandbox GraphQL requests in flight. Without that limit,
- * parallel copies of a costly query all pass the check before any of them
- * is charged.
- *
- * Counts live in the plugin cache, which every instance shares. A lost
- * entry only resets a count, which lets more requests through, never fewer.
+ * Hourly GitHub GraphQL budgets for Sandbox requests: each Conversation gets a
+ * share of the installation's points, and a reserve stays for host calls.
+ * Spend is the rise in `x-ratelimit-used`, so unseen spend overcharges, never
+ * undercharges. Few requests fly at once, since spend is known only on
+ * response. Counts live in the shared cache; a lost entry only resets one.
  */
 import {
   EgressPolicyDenied,

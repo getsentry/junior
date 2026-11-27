@@ -1,11 +1,7 @@
 // The inputs of a Turn. Each input row carries its Turn from the time it is
 // written, and its idempotency key is unique in the Conversation. An input is
 // read once the Conversation history has its event, keyed `inbox:<row id>`.
-import {
-  destinationSchema,
-  type Destination,
-  type Source,
-} from "@sentry/junior-plugin-api";
+import type { Source } from "@sentry/junior-plugin-api";
 import { and, asc, eq, inArray, notExists, sql } from "drizzle-orm";
 import type { EngineContext } from "@/core/engine-context";
 import type { Turn } from "@/core/turn/state";
@@ -14,7 +10,10 @@ import {
   juniorTurnInbox,
   juniorTurns,
 } from "@/db/schema";
-import type { TurnInputTraceContext } from "@/db/schema/turn-inbox";
+import type {
+  TurnDestination,
+  TurnInputTraceContext,
+} from "@/db/schema/turn-inbox";
 
 /**
  * Something that arrived in a Conversation for Junior to act on. It waits in
@@ -34,9 +33,10 @@ export type TurnInput = {
   groupKey: string;
   /**
    * Where the answer to the input goes, or null when the Conversation history
-   * is the only answer. The code that sends the input decides it.
+   * is the only answer. The code that sends the input decides it. Core
+   * stores it and does not read it.
    */
-  destination: Destination | null;
+  destination: TurnDestination | null;
   payload: Record<string, unknown>;
   /**
    * The same key on every delivery of this input, so a redelivery writes
@@ -77,7 +77,7 @@ export async function findInputTurn(
 export async function findTurnDestination(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
-): Promise<Destination | null> {
+): Promise<TurnDestination | null> {
   const [input] = await executor
     .db()
     .select({ destination: juniorTurnInbox.destination })
@@ -85,7 +85,25 @@ export async function findTurnDestination(
     .where(eq(juniorTurnInbox.turnId, turnId))
     .orderBy(asc(juniorTurnInbox.createdAt), asc(juniorTurnInbox.id))
     .limit(1);
-  return input?.destination ? destinationSchema.parse(input.destination) : null;
+  return input?.destination ?? null;
+}
+
+/**
+ * Finds who a Turn acts for: the sender of its first input. Undefined when
+ * the Turn has no input.
+ */
+export async function findTurnActor(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<string | undefined> {
+  const [input] = await executor
+    .db()
+    .select({ actorIdentityId: juniorTurnInbox.actorIdentityId })
+    .from(juniorTurnInbox)
+    .where(eq(juniorTurnInbox.turnId, turnId))
+    .orderBy(asc(juniorTurnInbox.createdAt), asc(juniorTurnInbox.id))
+    .limit(1);
+  return input?.actorIdentityId;
 }
 
 /** An input of a Turn, whether the history has read it or not. */

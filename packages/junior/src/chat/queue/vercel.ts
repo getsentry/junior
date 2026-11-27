@@ -15,7 +15,7 @@ function defaultQueueClientOptions(): QueueClientOptions {
       token: "local",
     };
   }
-  if (process.env["VERCEL_DEPLOYMENT_ID"]?.trim()) {
+  if (getChatConfig().deployment.id) {
     return {};
   }
   return { deploymentId: null };

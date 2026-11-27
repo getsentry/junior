@@ -33,6 +33,7 @@ import {
   type ConversationData,
 } from "../../conversations/queries";
 import { prefetchConversationDetail } from "../../conversations/conversationPrefetch";
+import { useAttachLinkedWork } from "../../conversations/composerLinkedWork";
 import {
   newConversationDraftId,
   NewConversationPending,
@@ -91,6 +92,7 @@ export function ConversationWorkspace(props: {
     useInboxConversations();
   const returnPath = useInboxReturnPath();
   const createConversation = useCreateConversation();
+  const attachLinkedWork = useAttachLinkedWork();
   const offerPushNotifications = usePushNotificationsTip();
   const [pendingCreate, setPendingCreate] = useState<PendingNewConversation>();
   // A pending create shows only on home. Leaving home ends it, whether the
@@ -193,6 +195,7 @@ export function ConversationWorkspace(props: {
         // The page then opens with its transcript, not a skeleton. The
         // pending view stays until the route shows it.
         await prefetchConversationDetail(queryClient, accepted.conversationId);
+        attachLinkedWork(accepted.conversationId, message);
         const left = visit?.aborted;
         if (left && selectedIdRef.current !== accepted.conversationId) {
           // The reply typed meanwhile waits in the new Conversation.
@@ -264,10 +267,13 @@ export function ConversationWorkspace(props: {
   // Esc goes back to the list when nothing else takes it: open Details, a
   // menu or dialog, a docked question, or a text box. It runs first, in
   // the capture phase, because a focused tooltip stops Esc from bubbling.
+  // A held Esc repeats after its first press closed a layer, so a repeat
+  // never goes back.
   useEffect(() => {
     if (!selectedId) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.repeat)
+        return;
       const target = event.target instanceof Element ? event.target : null;
       if (
         target?.closest(

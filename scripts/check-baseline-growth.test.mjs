@@ -93,3 +93,21 @@ test("reads text and module baselines", async () => {
     1,
   );
 });
+
+test("fails when an ast-grep baseline rule ignores another file", async () => {
+  const rule = (ignores) =>
+    `id: core-import-baseline-history\nignores:\n${ignores.map((file) => `  - ${file}\n`).join("")}`;
+  const filePath = "ast-grep/rules/core-import-baseline.yml";
+  assert.deepEqual(await growth(filePath, rule([CHILD]), rule([STORE])), []);
+  assert.deepEqual(
+    await growth(filePath, rule([CHILD]), rule([CHILD, STORE])),
+    [
+      {
+        rule: "core-import-baseline-history",
+        allowed: 1,
+        count: 2,
+        entries: [STORE],
+      },
+    ],
+  );
+});

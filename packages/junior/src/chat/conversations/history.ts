@@ -13,7 +13,10 @@ import {
   historyReplacementDataSchema,
   type HistoryReplacement,
 } from "@/core/history/items";
-import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
+import {
+  decodeAgentHistoryPayload,
+  isAgentHistoryType,
+} from "@/core/history/rows";
 
 /**
  * Result of a history replacement. `historyVersion` is the new version when
@@ -97,8 +100,13 @@ const guardianActionReviewedEventDataSchema = z
     toolName: z.string().min(1),
     costUsd: z.number().finite().nonnegative().optional(),
     decision: z.enum(["allow", "ask", "deny"]),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]),
-    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+    /** Set on decisions recorded since Guardian names one rule. */
+    rule: z.string().min(1).optional(),
+    /** Set on decisions recorded since the record keeps why. */
+    reason: z.string().min(1).optional(),
+    // Older decisions also kept the reviewer's ratings.
+    riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
   })
   .strict();
 
@@ -488,7 +496,7 @@ export const conversationEventSchema = z.union([
     })
     .refine(
       (event) =>
-        event.schemaVersion === 1 || isEncodedHistoryType(event.data.type),
+        event.schemaVersion === 1 || isAgentHistoryType(event.data.type),
     ),
   conversationEventEnvelopeSchema.extend({
     data: unknownConversationEventDataSchema,
@@ -529,10 +537,10 @@ export function decodeStoredConversationEvent(
   const stored = storedConversationEventSchema.parse(value);
   const { type, payload, ...envelope } = stored;
   const knownType = knownConversationEventTypeSchema.safeParse(type).success;
-  if (stored.schemaVersion === 2 && isEncodedHistoryType(type)) {
+  if (stored.schemaVersion === 2 && isAgentHistoryType(type)) {
     return conversationEventSchema.parse({
       ...envelope,
-      data: { ...decodeHistoryPayload(type, payload), type },
+      data: { ...decodeAgentHistoryPayload(type, payload), type },
     });
   }
   if (stored.schemaVersion === 1 && knownType) {

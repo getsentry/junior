@@ -1,18 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createLocalOAuthState,
   relayLocalOAuthCallback,
 } from "@/chat/local/oauth-relay";
-
-const ORIGINAL_SECRET = process.env["JUNIOR_SECRET"];
-
-afterEach(() => {
-  if (ORIGINAL_SECRET === undefined) {
-    delete process.env["JUNIOR_SECRET"];
-  } else {
-    process.env["JUNIOR_SECRET"] = ORIGINAL_SECRET;
-  }
-});
+import { useConfig } from "../../fixtures/config";
 
 /** Flip a middle signature character so JWT verification must reject the state. */
 function corruptLocalOAuthState(state: string): string {
@@ -33,7 +24,7 @@ function corruptLocalOAuthState(state: string): string {
 
 describe("local OAuth relay", () => {
   it("redirects a signed provider callback to the owning loopback server", async () => {
-    process.env["JUNIOR_SECRET"] = "test-secret";
+    useConfig({ secrets: { juniorSecret: "test-secret" } });
     const state = await createLocalOAuthState(43123);
     const request = new Request(
       `https://junior.example.com/api/oauth/callback/github?code=oauth-code&state=${encodeURIComponent(state)}`,
@@ -48,7 +39,7 @@ describe("local OAuth relay", () => {
   });
 
   it("rejects tampered and already-relayed state", async () => {
-    process.env["JUNIOR_SECRET"] = "test-secret";
+    useConfig({ secrets: { juniorSecret: "test-secret" } });
     const state = await createLocalOAuthState(43123);
     const tampered = corruptLocalOAuthState(state);
 

@@ -1,4 +1,4 @@
-import { toOptionalTrimmed } from "@/chat/optional-string";
+import { getChatConfig } from "@/chat/config";
 
 interface VercelSandboxCredentials {
   teamId: string;
@@ -13,9 +13,7 @@ interface VercelSandboxCredentials {
 export function getVercelSandboxCredentials():
   | VercelSandboxCredentials
   | undefined {
-  const token = toOptionalTrimmed(process.env["VERCEL_TOKEN"]);
-  const teamId = toOptionalTrimmed(process.env["VERCEL_TEAM_ID"]);
-  const projectId = toOptionalTrimmed(process.env["VERCEL_PROJECT_ID"]);
+  const { token, teamId, projectId } = getChatConfig().sandbox.vercel;
 
   if (token && teamId && projectId) {
     return { token, teamId, projectId };

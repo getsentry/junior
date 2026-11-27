@@ -10,9 +10,9 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { Destination } from "@sentry/junior-plugin-api";
 import { juniorConversationEvents } from "./conversation-events";
 import { timestamptz } from "./timestamps";
+import type { TurnDestination } from "./turn-inbox";
 import { juniorTurns } from "./turns";
 
 /**
@@ -29,7 +29,7 @@ export const juniorTurnOutbox = pgTable(
       .references(() => juniorTurns.id),
     eventSeq: integer("event_seq").notNull(),
     // Where this message goes. A reply copies its Turn's Destination.
-    destination: jsonb("destination").$type<Destination>().notNull(),
+    destination: jsonb("destination").$type<TurnDestination>().notNull(),
     state: text("state").$type<"pending" | "sent" | "failed">().notNull(),
     attempts: integer("attempts").default(0).notNull(),
     providerMessageId: text("provider_message_id"),

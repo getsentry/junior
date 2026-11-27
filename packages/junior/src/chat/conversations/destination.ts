@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   localDestinationSchema,
   type Destination,
@@ -31,13 +32,18 @@ export function resolveConversationDestination(args: {
 
 /**
  * Create the local Destination of a Conversation that needs its own, such as
- * a Lead's child. A child agent's id is not a local id, so it gets one under
- * `local:`.
+ * one that leaves its Space. A local id is its own Destination. Another id,
+ * such as a child agent's or a Slack thread's, maps to a stable local one.
  */
 export function ownLocalDestination(conversationId: string): LocalDestination {
-  return requireLocalDestination(
-    conversationId.startsWith("local:")
-      ? conversationId
-      : `local:${conversationId}`,
-  );
+  const own = localDestinationSchema.safeParse({
+    platform: "local",
+    conversationId,
+  });
+  if (own.success) return own.data;
+  const hex = createHash("sha256")
+    .update(conversationId)
+    .digest("hex")
+    .slice(0, 32);
+  return requireLocalDestination(`local:conversation:${hex}`);
 }

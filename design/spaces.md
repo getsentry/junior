@@ -1,8 +1,9 @@
 # Spaces
 
 A Space is a named home for a body of related work, such as "Junior iOS" or
-"Billing migration". It is a small set of metadata on one Conversation, its
-Lead. The Lead is the root of the Space's tree, and every other Conversation
+"Billing migration". A Space is its Lead and nothing more: a root
+Conversation of kind `lead`, with a Space row that Junior creates with it.
+The Lead is the root of the Space's tree, and every other Conversation
 in the Space is a child of the Lead. People create a Space, share it, and
 talk to its Lead. Work that does not need a home stays a one-off
 Conversation. What the Lead does is in `./lead.md`.
@@ -30,7 +31,8 @@ Conversation. What the Lead does is in `./lead.md`.
   organization can find it, read it, and join it. Its members talk to the
   same Lead and see the same transcript.
 - Finished work leaves the lists. A person archives a Thread when its work
-  is done, and archives the Space when all of its work is done.
+  is done, and archives the Lead when all of its work is done. Archiving the
+  Lead archives the Space.
 
 ## Rules
 
@@ -46,23 +48,22 @@ Conversation. What the Lead does is in `./lead.md`.
   person.
 - When a Conversation leaves a Space, it becomes a root. Its own child
   agents move with it in every move.
-- A Conversation that moves into a Space keeps its Location, so a Slack
-  thread still gets its replies.
+- A Conversation that moves into a Space follows the Space's rules. It
+  drops its own Destination and Location and uses its Lead's, so a Slack
+  thread no longer gets its replies in Slack.
 - The Lead's Participants are the Space's members, and each child inherits
   them for access.
 - Archive and snooze act on one child: they change that Thread and its own
-  child agents, not the Lead or the other Threads. Archiving the Space
-  archives the Lead, which stops and archives every Conversation in it. Any
-  member can archive a Space.
+  child agents, not the Lead or the other Threads. Archiving the Lead stops
+  and archives every Conversation in its tree, and so archives the Space.
+  Any member can archive the Lead.
 
 **Space layers**
 
 Only these sit on top of the tree:
 
-- Metadata: a name, a description, and a visibility. The Space and its Lead
-  share one name and description. The Lead's Threads are its plan.
-- Membership: a person joins a public Space to talk to its Lead or start
-  work in it. Only members can read a private Space.
+- Metadata: the Space row's name and description, which the Lead shares.
+  The Lead's Threads are its plan.
 - Configuration: the keys that a Slack channel can set, such as a default
   repository or Sentry organization, can also be set on a Space. They apply
   to every Conversation in it. They resolve in this order: an explicit target
@@ -80,35 +81,34 @@ Only these sit on top of the tree:
 - A private Space is readable only by its members, like a private Slack
   channel. Its Conversations are private and share one audience: the
   members. No data goes from it to a Conversation outside the Space.
-- A Space's visibility is set when the Space is created and never changes.
-  To make public work private, a person moves it into a private Space.
-  Private work never becomes public, so a private Conversation never joins a
-  public Space.
+- A Space's visibility is its Lead's visibility. It is set when the Lead is
+  created and never changes.
+  Only public work moves, and only into a public Space. Private work never
+  becomes public.
 
 **Rendering**
 
-- The dashboard calls each child of a Lead a Thread. Top-level lists show
-  each Thread as its own row, not nested under the Lead.
+- The dashboard calls each child of a Lead a Thread.
 - Members see the Space in their sidebar. A person who is not a member can
   open a public Space and join it.
+- The sidebar's In flight lists only roots that are not a Lead. A Space's
+  Threads show in its Threads panel, not there.
 - Each Space in the sidebar shows what its Threads need from the member, the
   first that applies: a Thread needs them, one failed, or one works. A Space
   with none of these shows nothing.
-- The Threads panel beside the Lead groups the Space's Threads by what they
-  need from the viewer, in this order: needs you, working, waiting, done.
-  Done starts collapsed.
+- The Threads panel beside the Lead lists the Space's Threads in one list,
+  in order of what they need from the viewer: needs you, working, waiting,
+  done. It shows no group headings or counts.
 
 ## Gaps
 
-- A Space's Conversations are roots that store their Space, not children of
-  the Lead. So the Lead cannot stop or archive them, and its Participants do
-  not give access to them. This breaks the "Tree" rules.
-  getsentry/junior#4413 tracks it.
 - The Threads panel lists Threads by their newest Message, not by what they
   need. getsentry/junior#4416 tracks it.
 - The public MCP server does not show a Conversation's Space, so the iOS app
   cannot show it. This breaks "every Conversation knows its Space".
-- A Conversation in a private Space cannot move to another private Space,
-  and a private Conversation cannot join a private Space. So a person
-  cannot put private work in the Space they choose. This breaks "a
-  Conversation joins a Space only when a person puts it there".
+- No Conversation can move into a private Space, and private work cannot
+  move. So a person cannot put private work in the Space they choose. This
+  breaks "a Conversation joins a Space only when a person puts it there".
+- The Space row stores its own visibility and archive state, apart from its
+  Lead. So archiving a Space is its own action, not archiving the Lead.
+  This breaks "a Space is its Lead".

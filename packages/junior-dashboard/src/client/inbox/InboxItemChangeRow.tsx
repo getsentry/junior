@@ -6,11 +6,12 @@ import {
   Info,
   type LucideIcon,
 } from "lucide-react";
-import { use, type ReactElement, type ReactNode } from "react";
+import { use, useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "react-router";
-import type {
-  InboxItemChangeRecord,
-  InboxItemPayload,
+import {
+  inboxItemQuestion,
+  type InboxItemChangeRecord,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { HoverPreview } from "../components/ui/hover-preview";
@@ -21,9 +22,11 @@ import {
   useAnswerLinked,
 } from "../conversations/TranscriptAnswerLinks";
 import { DisplayText } from "../display-text/DisplayText";
+import { useMobileLayout } from "../layoutMedia";
 import { useConversationInboxItemData } from "./queries";
 import { AnswerSummary, InboxItemActions } from "./InboxItemActions";
 import { InboxItemObjects } from "./InboxItemObjects";
+import { InboxItemSheet } from "./InboxItemSheet";
 import {
   InboxItemAssignees,
   InboxItemCloser,
@@ -59,7 +62,8 @@ function InboxItemPreview(props: {
   item: InboxItemPayload;
   trigger: ReactElement;
 }) {
-  const { answer, request } = props.item;
+  const { answer } = props.item;
+  const request = inboxItemQuestion(props.item.request);
   return (
     <HoverPreview
       className="grid gap-3 p-4 font-sans text-sm text-dashboard-text"
@@ -101,9 +105,10 @@ function ChangeRow(props: {
   const showQuestion = use(TranscriptShowQuestion);
   const verb = CHANGE_VERBS[record.kind];
   // An answer is final, so the item's answer is this message's answer.
+  const question = inboxItemQuestion(item.request);
   const rows =
-    record.kind === "submitted" && item.request && item.answer
-      ? answerRows(item.request, item.answer)
+    record.kind === "submitted" && question && item.answer
+      ? answerRows(question, item.answer)
       : [];
   const askLinked = useAnswerLinked(item.id);
   // The page can show a question that has a row here, or load the history
@@ -279,10 +284,11 @@ function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
       label: <>Dismissed{by}</>,
     };
   }
+  const question = inboxItemQuestion(item.request);
   return {
     answer:
-      !answerShown && item.request && item.answer
-        ? answerLine(item.request, item.answer)
+      !answerShown && question && item.answer
+        ? answerLine(question, item.answer)
         : undefined,
     icon: CircleCheck,
     iconClassName: "text-emerald-500",
@@ -299,8 +305,9 @@ function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
  * Show the Inbox item that a tool call added as a card in the transcript:
  * the title, where it stands, and the answer. A question that waits on the
  * reader stands out and shows its question and form, as its Inbox card
- * does, so the reader answers in place. Shows `fallback` when the viewer
- * cannot read the item.
+ * does, so the reader answers in place. On a phone, the record keeps to its
+ * lines, and a tap opens the item in a sheet (`InboxItemSheet`). Shows
+ * `fallback` when the viewer cannot read the item.
  */
 export function InboxItemAskRow(props: {
   conversationId: string;
@@ -322,6 +329,13 @@ export function InboxItemAskRow(props: {
   );
   // The questions pill shows while a card is not in full view.
   const inViewRef = useQuestionInViewRef(props.itemId, waiting);
+  // A phone keeps the record to its lines. A tap opens the item in a sheet,
+  // where its form has the room it needs.
+  const mobile = useMobileLayout();
+  const [sheet, setSheet] = useState(false);
+  // A desktop shows the form in place, so a resize past a phone's width
+  // closes the sheet.
+  if (sheet && !mobile) setSheet(false);
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";
@@ -332,10 +346,10 @@ export function InboxItemAskRow(props: {
     <section
       aria-label={`${verb} ${inboxItemTitleText(item)}`}
       className={cn(
-        "grid w-full min-w-0 gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
+        "relative grid w-full min-w-0 gap-3 rounded-lg border px-3 py-2.5 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50",
         // A card with a form spans the transcript. A closed record is as
         // narrow as the other object rows.
-        !waiting && "max-w-[37.5rem]",
+        !(waiting && !mobile) && "max-w-[37.5rem]",
         status.waitingOnYou
           ? "border-violet-400/40 bg-violet-500/[0.07]"
           : "border-dashboard-border-subtle bg-dashboard-surface-panel",
@@ -358,22 +372,44 @@ export function InboxItemAskRow(props: {
           />
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <InboxItemPreview
-            item={item}
-            trigger={
-              <Link
-                className={cn(
-                  "min-w-0 truncate font-medium no-underline hover:underline focus-visible:outline-dashboard-focus",
-                  item.status === "dismissed"
-                    ? "text-dashboard-text-muted"
-                    : "text-dashboard-text",
-                )}
-                to={inboxItemPath(item.id)}
-              />
-            }
-          >
-            <InboxItemTitle item={item} />
-          </InboxItemPreview>
+          {mobile ? (
+            // The button covers the whole record, so a tap anywhere on it
+            // opens the sheet.
+            // The title truncates in its own span: a clipped button would
+            // clip its cover too.
+            <button
+              aria-haspopup="dialog"
+              className={cn(
+                "flex min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left font-medium underline decoration-dashboard-border-heavy underline-offset-2 after:absolute after:inset-0 after:rounded-[inherit] hover:decoration-current focus-visible:outline-dashboard-focus",
+                item.status === "dismissed"
+                  ? "text-dashboard-text-muted"
+                  : "text-dashboard-text",
+              )}
+              onClick={() => setSheet(true)}
+              type="button"
+            >
+              <span className="min-w-0 truncate">
+                <InboxItemTitle item={item} />
+              </span>
+            </button>
+          ) : (
+            <InboxItemPreview
+              item={item}
+              trigger={
+                <Link
+                  className={cn(
+                    "min-w-0 truncate font-medium no-underline hover:underline focus-visible:outline-dashboard-focus",
+                    item.status === "dismissed"
+                      ? "text-dashboard-text-muted"
+                      : "text-dashboard-text",
+                  )}
+                  to={inboxItemPath(item.id)}
+                />
+              }
+            >
+              <InboxItemTitle item={item} />
+            </InboxItemPreview>
+          )}
           <p className="m-0 flex min-w-0 gap-1 text-xs">
             <span
               className={
@@ -400,10 +436,17 @@ export function InboxItemAskRow(props: {
           </p>
         </div>
       </div>
-      {waiting ? (
+      {waiting && !mobile ? (
         <InboxItemActions
           context={<InboxItemTurnMessage item={item} />}
           item={item}
+        />
+      ) : null}
+      {sheet && mobile ? (
+        <InboxItemSheet
+          context={waiting ? <InboxItemTurnMessage item={item} /> : undefined}
+          item={item}
+          onClose={() => setSheet(false)}
         />
       ) : null}
     </section>

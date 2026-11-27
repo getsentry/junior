@@ -316,7 +316,7 @@ describe("runStep", () => {
     });
   });
 
-  it("does not run calls from a reply that hit the output token limit, but keeps its text", async () => {
+  it("does not run calls or keep text from a reply that hit the output token limit", async () => {
     const ran: string[] = [];
     const send = tool("send", {
       replay: "safe",
@@ -351,7 +351,15 @@ describe("runStep", () => {
       outcome: "continue",
       messages: [{ toolCallId: "call-send", isError: true }],
     });
-    expect(modelStep).toEqual({ outcome: "completed", messages: [cutOffText] });
+    expect(modelStep).toEqual({
+      outcome: "failed",
+      reply: cutOffText,
+      failure: {
+        kind: "cut_off_output",
+        retryable: false,
+        message: "The reply hit the output token limit",
+      },
+    });
   });
 
   it("fails the step with the failed reply when the model request fails", async () => {

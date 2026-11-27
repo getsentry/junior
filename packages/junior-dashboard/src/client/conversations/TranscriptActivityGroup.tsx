@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
+import { AGENT_UPDATE_EVENT_TYPE } from "@sentry/junior/api/schema";
 
 import { ShimmerText } from "../components/ShimmerText";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
@@ -15,7 +16,6 @@ import {
 import { cn } from "../styles";
 import { isReceivedAgentMessage, isSentAgentMessage } from "./agentMessage";
 import type { TranscriptViewMessage } from "../types";
-import { watchReport } from "../lead/watchReport";
 import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { useTranscriptRowOpen } from "./TranscriptRows";
@@ -27,9 +27,13 @@ function countLabel(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : `${count} ${plural}`;
 }
 
-/** True when an entry is non-message activity that can collapse between turns. */
+/**
+ * True when an entry is non-message activity that can collapse between
+ * turns. `cardChildIds` names the children whose card the entries hold.
+ */
 export function isCollapsibleActivityEntry(
   entry: RenderedTranscriptEntry,
+  cardChildIds: ReadonlySet<string>,
 ): boolean {
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
@@ -40,7 +44,7 @@ export function isCollapsibleActivityEntry(
   // activity of the Turn it started. Its Thread card or Task line shows the
   // outcome.
   if (entry.kind === "message") {
-    return isChildResultMessage(entry.message);
+    return isChildResultMessage(entry.message, cardChildIds);
   }
   // A message to another agent stays in view, like a message from one.
   return !(entry.kind === "tool" && isSentAgentMessage(entry.part));
@@ -93,6 +97,9 @@ function isWatchEventMessage(message: TranscriptViewMessage): boolean {
   );
 }
 
+// Agent update statuses that ask for a person.
+const ATTENTION_STATUSES = new Set(["blocked", "failed", "waiting"]);
+
 /**
  * Keys of routine Watch Event messages. Every Watch Event is routine except:
  * the latest status of a watched Conversation, when it needs a person or
@@ -136,8 +143,11 @@ export function routineEventEntryKeys(
   const keys = new Set<string>();
   for (const entry of messages) {
     if (!isWatchEventMessage(entry.message) || replied.has(entry.key)) continue;
-    const state = watchReport(entry.message)?.state;
-    const attention = state === "needs_you" || state === "failed";
+    const { eventStatus, eventType } = entry.message;
+    const attention =
+      eventType === AGENT_UPDATE_EVENT_TYPE &&
+      eventStatus !== undefined &&
+      ATTENTION_STATUSES.has(eventStatus);
     if (attention && latest.get(source(entry)) === entry.key) continue;
     keys.add(entry.key);
   }

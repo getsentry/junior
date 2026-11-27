@@ -1,11 +1,15 @@
 import { createECDH, randomBytes, randomUUID, type ECDH } from "node:crypto";
 import { createRequire } from "node:module";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import webPush from "web-push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWebSource } from "@sentry/junior-plugin-api";
+import {
+  createEventSource,
+  createWebSource,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import {
   createJuniorApi,
   resolveViewerUser,
@@ -18,7 +22,6 @@ import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { createSlackActor } from "@/chat/actor";
 import { CONVERSATION_METADATA_TASK } from "@/chat/conversations/metadata/task";
 import { webActorFromUser } from "@/chat/conversations/web-input";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
   getConversationEventStore,
@@ -35,8 +38,9 @@ import {
 } from "@/chat/plugins/task-runner";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
-import { getInboxItem } from "@/chat/inbox-items/store";
+import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { juniorInboxItems } from "@/db/schema";
+import { useConfig } from "../../fixtures/config";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { dndInfoOk } from "../../fixtures/slack/factories/api";
 import {
@@ -48,12 +52,6 @@ import { mswServer } from "../../msw/server";
 
 const EMAIL = "alice@example.com";
 const PUSH_ORIGIN = "https://fcm.googleapis.com/fcm/send";
-const ENV_NAMES = [
-  "JUNIOR_WEB_PUSH_PUBLIC_KEY",
-  "JUNIOR_WEB_PUSH_PRIVATE_KEY",
-  "JUNIOR_WEB_PUSH_SUBJECT",
-] as const;
-
 /** A browser subscription with real P-256 keys, so Web Push can encrypt. */
 function browserSubscription(device: string) {
   const ecdh = createECDH("prime256v1");
@@ -143,9 +141,66 @@ async function replyNotices(conversationId: string) {
   const rows = await getDb()
     .select({ id: juniorInboxItems.id })
     .from(juniorInboxItems)
-    .where(eq(juniorInboxItems.dedupeKey, `reply:${conversationId}`))
+    .where(
+      and(
+        eq(juniorInboxItems.subjectKind, "reply"),
+        eq(juniorInboxItems.subjectId, conversationId),
+      ),
+    )
     .orderBy(juniorInboxItems.createdAt);
   return await Promise.all(rows.map((row) => getInboxItem(getDb(), row.id)));
+}
+
+/** Add an open question for the starter, as the agent's card does. */
+async function addQuestion(conversationId: string, userId: string) {
+  const item = await insertInboxItem(getDb(), {
+    subject: { id: randomUUID(), kind: "question" },
+    assignedToEveryone: false,
+    assigneeUserIds: [userId],
+    body: "",
+    conversationIds: [conversationId],
+    kind: "action",
+    nowMs: Date.now(),
+    owner: { id: conversationId, kind: "conversation" },
+    request: {
+      question: "Roll back?",
+      fields: [
+        {
+          id: "decision",
+          kind: "choice",
+          label: "Decision",
+          options: [{ label: "Yes" }, { label: "No" }],
+        },
+      ],
+    },
+    title: "Roll back?",
+  });
+  return item!.id;
+}
+
+/** Act on one Inbox item as the viewer, as the Inbox does. */
+async function actOnItem(id: string, action: "dismiss") {
+  const viewer = await resolveViewerUser(EMAIL);
+  const app = new Hono<{ Variables: JuniorApiVariables }>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route(
+    "/",
+    createJuniorApi({
+      conversationWorkQueue: createConversationWorkQueueTestAdapter(),
+    }),
+  );
+  const response = await app.request(
+    `http://localhost/api/inbox-items/${id}/actions`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action }),
+      headers: { "content-type": "application/json" },
+    },
+  );
+  expect(response.status).toBe(200);
 }
 
 /** Call the notification API as the signed-in dashboard user. */
@@ -179,12 +234,15 @@ async function completeDashboardTurn(
     beforeTasks,
     conversationId = `local:web:${randomUUID()}`,
     earlierReplies = [],
+    turnSource,
     turnId = "turn-1",
   }: {
     /** Runs after the reply is stored, before its tasks run. */
     beforeTasks?: (conversationId: string) => Promise<void>;
     conversationId?: string;
     earlierReplies?: string[];
+    /** What started the Turn. Unset is the starter's dashboard message. */
+    turnSource?: Source;
     turnId?: string;
   } = {},
 ): Promise<string[]> {
@@ -224,7 +282,7 @@ async function completeDashboardTurn(
       },
     ]) as PiMessage[],
     sliceId: 1,
-    source,
+    source: turnSource ?? source,
     state: "completed",
     surface: "internal",
     turnId,
@@ -257,18 +315,18 @@ async function completeDashboardTurn(
 }
 
 describe("reply notification task", () => {
-  const savedEnv = new Map<string, string | undefined>();
-  let previousLinks: ReturnType<typeof setDashboardConversationLinkOptions>;
+  let keys: ReturnType<typeof webPush.generateVAPIDKeys>;
   let pushes: Request[];
 
   beforeEach(async () => {
-    for (const name of ENV_NAMES) savedEnv.set(name, process.env[name]);
-    const keys = webPush.generateVAPIDKeys();
-    process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"] = keys.publicKey;
-    process.env["JUNIOR_WEB_PUSH_PRIVATE_KEY"] = keys.privateKey;
-    process.env["JUNIOR_WEB_PUSH_SUBJECT"] = "mailto:junior@example.com";
-    previousLinks = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    keys = webPush.generateVAPIDKeys();
+    useConfig({
+      dashboard: { baseURL: "https://junior.example.com" },
+      webPush: {
+        privateKey: keys.privateKey,
+        publicKey: keys.publicKey,
+        subject: "mailto:junior@example.com",
+      },
     });
     await getStateAdapter().connect();
     pushes = [];
@@ -286,11 +344,6 @@ describe("reply notification task", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    for (const [name, value] of savedEnv) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    setDashboardConversationLinkOptions(previousLinks);
     await disconnectStateAdapter();
     await closeDb();
   });
@@ -405,7 +458,7 @@ describe("reply notification task", () => {
     ).request(`http://localhost/api/inbox-items/${notice!.id}`);
     expect(await read.json()).toMatchObject({
       addedByTurnId: expect.any(String),
-      replyNotice: true,
+      subject: { kind: "reply", id: conversationId },
     });
     expect(decrypted).toEqual([
       {
@@ -494,6 +547,136 @@ describe("reply notification task", () => {
       (await replyNotices(conversationId)).map((item) => item?.status),
     ).toEqual(["done", "done"]);
     expect(decrypted).toHaveLength(3);
+  });
+
+  it("adds no reply notice when an item waits on the starter or a provider Event started the Turn, and closes it when they act on an item", async () => {
+    const api = await viewerApi();
+    await api(
+      "POST",
+      "/api/notifications/subscriptions",
+      browserSubscription("phone"),
+    );
+    await api("PUT", "/api/notifications/schedule", {
+      workingHoursOnly: false,
+      days: [],
+      start: "09:00",
+      end: "18:00",
+    });
+    const user = await resolveViewerUser(EMAIL);
+    const conversationId = `local:web:${randomUUID()}`;
+    const replies: string[] = [];
+    const turn = async (reply: string, turnSource?: Source): Promise<void> => {
+      await completeDashboardTurn(reply, undefined, {
+        conversationId,
+        earlierReplies: [...replies],
+        turnId: `turn-${replies.length + 1}`,
+        ...(turnSource ? { turnSource } : undefined),
+      });
+      replies.push(reply);
+    };
+
+    await turn("The deploy started.");
+    const [notice] = await replyNotices(conversationId);
+    expect(notice?.status).toBe("open");
+    expect(pushes).toHaveLength(1);
+
+    // A provider Event's Turn, such as a review on the pull request, keeps
+    // the notice as it was and pushes nothing.
+    await turn(
+      "The review asks for a test.",
+      createEventSource({
+        eventKey: "review-1",
+        eventType: "pull_request.review.commented",
+        identifier: "getsentry/junior#1",
+        namespace: "github",
+      }),
+    );
+    expect(await replyNotices(conversationId)).toEqual([
+      expect.objectContaining({
+        body: "The deploy started.",
+        id: notice!.id,
+        status: "open",
+      }),
+    ]);
+    expect(pushes).toHaveLength(1);
+
+    // A child agent's update is a core Event. Its reply can be the result
+    // that the starter waits for, so it updates the notice and pushes.
+    await turn(
+      "The child agent finished the fix.",
+      createEventSource({
+        eventKey: "update-1",
+        eventType: "agent.update",
+        identifier: "local:web:child",
+        namespace: "junior",
+      }),
+    );
+    expect(await replyNotices(conversationId)).toEqual([
+      expect.objectContaining({
+        body: "The child agent finished the fix.",
+        id: notice!.id,
+        status: "open",
+      }),
+    ]);
+    expect(pushes).toHaveLength(2);
+
+    // The starter's dismiss of an item in the Conversation closes the notice.
+    await actOnItem(await addQuestion(conversationId, user!.id), "dismiss");
+    expect((await replyNotices(conversationId))[0]).toMatchObject({
+      closeReason: "Item handled",
+      status: "done",
+    });
+
+    await turn("The deploy finished.");
+    const [, second] = await replyNotices(conversationId);
+    expect(second?.status).toBe("open");
+    expect(pushes).toHaveLength(3);
+
+    // A reply while a question waits on the starter adds no notice and no
+    // push, and closes the open notice: the question has their attention.
+    await addQuestion(conversationId, user!.id);
+    await turn("Should I roll back?");
+    expect(
+      (await replyNotices(conversationId)).map((item) => [
+        item?.status,
+        item?.closeReason,
+      ]),
+    ).toEqual([
+      ["done", "Item handled"],
+      ["done", "Item waits on you"],
+    ]);
+    expect(pushes).toHaveLength(3);
+  });
+
+  it("signs pushes with the Vercel URL when no subject or base URL is set", async () => {
+    useConfig({
+      dashboard: { baseURL: "https://junior.example.com" },
+      deployment: { vercelProductionUrl: "junior.example.com" },
+      webPush: { privateKey: keys.privateKey, publicKey: keys.publicKey },
+    });
+    const api = await viewerApi();
+    await api(
+      "POST",
+      "/api/notifications/subscriptions",
+      browserSubscription("phone"),
+    );
+    await api("PUT", "/api/notifications/schedule", {
+      workingHoursOnly: false,
+      days: [],
+      start: "09:00",
+      end: "18:00",
+    });
+
+    await completeDashboardTurn("The deploy finished.");
+
+    expect(pushes).toHaveLength(1);
+    const token = /t=([^,]+)/.exec(
+      pushes[0]!.headers.get("authorization") ?? "",
+    )?.[1];
+    const claims = JSON.parse(
+      Buffer.from(token!.split(".")[1]!, "base64url").toString("utf8"),
+    );
+    expect(claims.sub).toBe("https://junior.example.com");
   });
 
   it("does not push outside the user's working hours", async () => {

@@ -10,6 +10,10 @@ const TOOL_CONSTRUCTORS = new Set([
   "zodTool",
   "zodToolDefinition",
 ]);
+// A file that never names a tool constructor cannot define a tool.
+const TOOL_CONSTRUCTOR_NAME = new RegExp(
+  `\\b(?:${[...TOOL_CONSTRUCTORS].join("|")})\\b`,
+);
 const OBJECT_SCHEMA_CALLS = new Set([
   "Object",
   "extend",
@@ -102,12 +106,18 @@ function parseModule(source, filePath) {
  * they name can be walked across files.
  */
 export function createToolSourceIndex(files, packageSrcRoots = {}) {
-  const modules = new Map(
-    Object.entries(files).map(([filePath, source]) => [
-      filePath,
-      parseModule(source, filePath),
-    ]),
-  );
+  // Parsing every package source file costs most of the check time, so a
+  // file is parsed only when a tool definition or a schema name reaches it.
+  const modules = new Map();
+  function moduleOf(filePath) {
+    if (!Object.hasOwn(files, filePath)) return undefined;
+    let module = modules.get(filePath);
+    if (!module) {
+      module = parseModule(files[filePath], filePath);
+      modules.set(filePath, module);
+    }
+    return module;
+  }
 
   function srcRootOf(filePath) {
     return (
@@ -118,7 +128,7 @@ export function createToolSourceIndex(files, packageSrcRoots = {}) {
   }
 
   function lookup(filePath, name) {
-    const module = modules.get(filePath);
+    const module = moduleOf(filePath);
     if (!module) return undefined;
     const nodes = module.declarations.get(name);
     if (nodes) return nodes.map((node) => ({ filePath, node }));
@@ -129,12 +139,14 @@ export function createToolSourceIndex(files, packageSrcRoots = {}) {
       imported.specifier,
       srcRootOf(filePath),
     );
-    const target = candidates?.find((candidate) => modules.has(candidate));
+    const target = candidates?.find((candidate) =>
+      Object.hasOwn(files, candidate),
+    );
     return target ? lookup(target, imported.name) : undefined;
   }
 
   function lineOf(filePath, node) {
-    const { sourceFile } = modules.get(filePath);
+    const { sourceFile } = moduleOf(filePath);
     return (
       sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line +
       1
@@ -149,7 +161,7 @@ export function createToolSourceIndex(files, packageSrcRoots = {}) {
     const seen = new Set();
 
     function checkObjectLiteral(filePath, literal) {
-      const { sourceFile } = modules.get(filePath);
+      const { sourceFile } = moduleOf(filePath);
       for (const property of literal.properties) {
         if (ts.isSpreadAssignment(property)) {
           visit(filePath, property.expression);
@@ -243,7 +255,9 @@ export function createToolSourceIndex(files, packageSrcRoots = {}) {
   /** List each tool definition with its top-level property values. */
   function toolDefinitions() {
     const definitions = [];
-    for (const [filePath, { sourceFile }] of modules) {
+    for (const [filePath, source] of Object.entries(files)) {
+      if (!TOOL_CONSTRUCTOR_NAME.test(source)) continue;
+      const { sourceFile } = moduleOf(filePath);
       const walk = (node) => {
         if (
           ts.isCallExpression(node) &&

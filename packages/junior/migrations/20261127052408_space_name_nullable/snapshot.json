@@ -1,0 +1,29 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "770bb17f-6db0-4c09-b900-5a19bce14b7e",
+  "prevIds": ["811305d1-7881-43e6-9f0c-280f35526253"],
+  "footprints": [
+    {
+      "statementType": "alter_column",
+      "statementTarget": ["column", "public", "junior_spaces", "name"],
+      "writes": ["s|colprop|public.junior_spaces.name.notNull"],
+      "reads": [
+        "n|tbl|public.junior_spaces",
+        "n|sch|public",
+        "n|col|public.junior_spaces.name"
+      ],
+      "sqlHash": "729e3a210f86c713"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"junior_spaces\",\"name\"]",
+      "set": {
+        "notNull": false
+      }
+    }
+  ]
+}

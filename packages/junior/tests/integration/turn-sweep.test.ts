@@ -1,10 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { QueueProvider } from "@/chat/queue/provider";
-import { DELIVERY_TOPIC } from "@/core/delivery/topic";
 import { claimTurn, createTurn, TURN_PRIORITY } from "@/core/turn/state";
 import { sweepTurns } from "@/core/turn/sweep";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import { sweepDeliveries } from "@/delivery/sweep";
+import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { juniorTurnOutbox, juniorTurns } from "@/db/schema";
 import { setModelReplies } from "../fixtures/ai-emulator";
 import { createAssistantMessage } from "../fixtures/model-stream";
@@ -54,20 +54,24 @@ describe("Turn sweep", () => {
       .where(eq(juniorTurns.id, turnId));
   }
 
-  /** Moves the times of this Conversation's outbox rows back. */
+  /** Moves the times of this Conversation's outbox rows and Turn ends back. */
   async function ageReplies(minutes: number) {
     const ago = sql`now() - make_interval(mins => ${minutes})`;
     await db()
       .update(juniorTurnOutbox)
       .set({ createdAt: ago, updatedAt: ago })
       .where(eq(juniorTurnOutbox.conversationId, harness.conversationId));
+    await db()
+      .update(juniorTurns)
+      .set({ endedAt: ago })
+      .where(eq(juniorTurns.conversationId, harness.conversationId));
   }
 
   /**
-   * Runs the sweep and returns the Turns it sent a step or delivery message
-   * for, of `turnIds`. The database is shared, so the sweep also finds other
-   * tests' stalled work. Only the messages of `turnIds` reach this test's
-   * queue.
+   * Runs the Turn and delivery sweeps and returns the Turns they sent a step
+   * or Turn-ended message for, of `turnIds`. The database is shared, so the
+   * sweeps also find other tests' stalled work. Only the messages of
+   * `turnIds` reach this test's queue.
    */
   async function sweep(turnIds: string[]): Promise<SweptMessages> {
     const sent: SweptMessages = { steps: [], deliveries: [] };
@@ -81,25 +85,27 @@ describe("Turn sweep", () => {
         }
         if (topic === TURN_STEP_TOPIC) {
           sent.steps.push(turnId);
-        } else if (topic === DELIVERY_TOPIC) {
+        } else if (topic === TURN_ENDED_TOPIC) {
           sent.deliveries.push(turnId);
         }
         return harness.queue.send(topic, payload, options);
       },
     };
-    await sweepTurns({ executor: harness.engineCtx.executor, queue });
+    const ctx = { executor: harness.engineCtx.executor, queue };
+    await sweepTurns(ctx);
+    await sweepDeliveries(ctx);
     return sent;
   }
 
-  /** Runs one Turn to its end while the queue loses its delivery messages. */
+  /** Runs one Turn to its end while the queue loses its Turn-ended messages. */
   async function replyWithoutDelivery(text: string) {
     await setModelReplies([createAssistantMessage({ type: "text", text })]);
     const send = harness.queue.send.bind(harness.queue);
-    // Injected fault: the queue takes the delivery message and loses it.
+    // Injected fault: the queue takes the Turn-ended message and loses it.
     const lose = vi
       .spyOn(harness.queue, "send")
       .mockImplementation((topic, payload, options) =>
-        topic === DELIVERY_TOPIC
+        topic === TURN_ENDED_TOPIC
           ? Promise.resolve({})
           : send(topic, payload, options),
       );
@@ -185,7 +191,7 @@ describe("Turn sweep", () => {
     });
   });
 
-  it("sends a reply whose delivery message was lost, once it stayed pending", async () => {
+  it("sends a reply whose Turn-ended message was lost, once it stayed pending", async () => {
     const turnId = await replyWithoutDelivery("Three.");
     expect(harness.sends()).toEqual([]);
 

@@ -534,14 +534,23 @@ const userLoginSchema = z
 const nextActionSchema = z.object({
   data: z.object({
     repository: z.object({
+      defaultBranchRef: z.object({ name: z.string() }).nullable(),
       pullRequest: z.object({
         autoMergeRequest: z.object({}).nullable(),
+        // A deleted base branch has no ref.
+        baseRef: z
+          .object({
+            associatedPullRequests: z.object({ totalCount: z.number() }),
+          })
+          .nullable(),
+        baseRefName: z.string(),
         commits: z.object({
           nodes: nodesSchema(
             z.object({ commit: z.object({ committedDate: timestampSchema }) }),
           ),
         }),
         isDraft: z.boolean(),
+        isInMergeQueue: z.boolean(),
         mergeStateStatus: z.string(),
         reviewRequests: z.object({
           nodes: nodesSchema(z.object({ requestedReviewer: userLoginSchema })),
@@ -612,9 +621,18 @@ export interface GitHubPullRequestMergeState {
   activity: GitHubPullRequestActivity[];
   /** A person turned on auto-merge, so GitHub merges it without them. */
   autoMerge: boolean;
+  /**
+   * The base branch is the head branch of another open pull request, so
+   * this one can merge only after that one. GitHub's merge state checks it
+   * only against the base branch. A pull request from the default branch,
+   * such as a sync into a long-lived branch, does not count.
+   */
+  baseOpen: boolean;
   draft: boolean;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: Date;
+  /** A person added it to the merge queue, so GitHub merges it. */
+  inMergeQueue: boolean;
   /**
    * The requester's latest review that approves or requests changes
    * approves it. Read for drafts too, from the last 100 reviews, because the
@@ -691,14 +709,15 @@ export async function loadPullRequestMergeState(
       body: { ...document, variables: { ...variables, ...extra } },
       token: token.token,
     });
-  const readPull = async () =>
+  const readRepository = async () =>
     nextActionSchema.parse(await query(PULL_REQUEST_NEXT_ACTION)).data
-      .repository.pullRequest;
-  let pull = await readPull();
+      .repository;
+  const repository = await readRepository();
+  let pull = repository.pullRequest;
   const open = pull.state === "OPEN" && !pull.isDraft;
   const unknown = (status: string) => status === "UNKNOWN";
   if (open && !pull.autoMergeRequest && unknown(pull.mergeStateStatus)) {
-    pull = await readPull();
+    pull = (await readRepository()).pullRequest;
   }
   const reviews: Review[] = [...pull.reviews.nodes];
   let page = pull.reviews.pageInfo;
@@ -761,10 +780,14 @@ export async function loadPullRequestMergeState(
   const state: GitHubPullRequestMergeState = {
     activity,
     autoMerge: Boolean(pull.autoMergeRequest),
+    baseOpen:
+      pull.baseRefName !== repository.defaultBranchRef?.name &&
+      (pull.baseRef?.associatedPullRequests.totalCount ?? 0) > 0,
     draft: pull.isDraft,
     ...(headCommittedAt
       ? { headCommittedAt: new Date(headCommittedAt) }
       : undefined),
+    inMergeQueue: pull.isInMergeQueue,
     ...(mergeableState ? { mergeableState } : undefined),
     requesterApproved: false,
     requestedReviewers: pull.reviewRequests.nodes.flatMap((request) =>

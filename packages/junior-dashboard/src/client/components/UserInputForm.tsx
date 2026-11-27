@@ -19,6 +19,7 @@ import {
 
 import { cn } from "../styles";
 import { readAnswerDraft, saveAnswerDraft } from "./answerDrafts";
+import { useInBottomSheet } from "./bottomSheetContext";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
@@ -33,6 +34,11 @@ import {
 import { Input } from "./ui/input";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
+
+// In a sheet, the actions stay on its bottom edge while the fields scroll
+// under them.
+const SHEET_ACTIONS_CLASS =
+  "sticky bottom-0 z-10 bg-dashboard-bg-elevated pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-0.75rem_0.75rem_-0.75rem_var(--color-dashboard-overlay-soft)]";
 
 // A described choice is one button row, so its description stays beside its
 // label. The picked row keeps the accent while the answer sends.
@@ -188,21 +194,11 @@ function TextField(props: {
 }
 
 /**
- * Render the answer controls of an action item request. A question with one
- * short choice field shows one button per choice: a click picks it, and Send
- * answers with the pick and the note line. A note alone answers in the
- * reader's own words. Choices with descriptions stack as rows, so each
- * description stays with its choice. A plugin action that reads no words,
- * or one choice, such as Resume, has no note: a click is the answer. Other
- * requests show a form with every field and the note.
- * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
- * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
- * the form has picks or text that the reader has not sent. `draft` fills the
- * form once, when it mounts. Without it, the form starts from the answers
- * saved by `requestId` (the Inbox item id) as the reader made them, so it
- * shows them again after it unmounts or the page reloads. Restored answers
- * are still unsent. They clear when the item closes, which a sent answer
- * does.
+ * Render the answer controls of an action item request: one button per
+ * choice for a single short choice field, otherwise a form with every field
+ * and a note. `draft` fills the form once, on mount. Without it, the form
+ * restores the unsent answers saved by `requestId` (the Inbox item id), which
+ * clear when the item closes. A failed `onSubmit` lets the reader try again.
  */
 export function UserInputForm(props: {
   /** An answer to start from, such as one that failed to send. */
@@ -290,6 +286,7 @@ export function UserInputForm(props: {
     if (!empty) void send(normalized);
   }
 
+  const inSheet = useInBottomSheet();
   const secondary = props.secondaryActions ? (
     <div className="flex flex-wrap gap-1">{props.secondaryActions}</div>
   ) : null;
@@ -303,7 +300,12 @@ export function UserInputForm(props: {
     return (
       <>
         {/* The options are the main actions, so they end the row. */}
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div
+          className={cn(
+            "flex flex-wrap items-center justify-end gap-2",
+            inSheet && SHEET_ACTIONS_CLASS,
+          )}
+        >
           {secondary}
           {actionField.options.map((option) => (
             <Button
@@ -429,7 +431,12 @@ export function UserInputForm(props: {
         />
       )}
       {/* Send is the main action, so it ends the row, on the right. */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-end gap-2",
+          inSheet && SHEET_ACTIONS_CLASS,
+        )}
+      >
         {choiceField ? (
           // One line, so the choices stay the answer and the note stays
           // short.

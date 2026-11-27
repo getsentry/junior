@@ -22,15 +22,19 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnInboxItem,
   canAnswerInboxItem,
-  inboxItemTodo,
   isInboxItemForEveryone,
   isOnlyAssignee,
   itemNeedsUser,
   inboxItemReaderForUser,
   inboxItemReaderForUserInConversation,
-  REPLY_NOTICE_KEY_PREFIX,
   type InboxItemReader,
 } from "@/chat/inbox-items/access";
+import {
+  questionLinks,
+  subjectKindLabel,
+  subjectTodo,
+} from "@/chat/inbox-items/subjects";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import {
   actOnInboxItem,
   readInboxItemForUser,
@@ -41,14 +45,16 @@ import {
   type RelatedReviewWork,
 } from "@/chat/inbox-items/related";
 import {
-  countInboxItemsNeedingUserBySubject,
   ownerConversationId,
   searchInboxItems,
   type InboxItem,
   type InboxItemFilters,
   type InboxItemPosition,
 } from "@/chat/inbox-items/store";
-import { listWaitingConversations } from "@/chat/inbox-items/waiting";
+import {
+  countInboxItemsNeedingUserBySubject,
+  listWaitingConversations,
+} from "@/chat/inbox-items/waiting";
 import type { InboxItemDelivery } from "@/chat/inbox-items/changes";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
@@ -63,6 +69,16 @@ import type { InboxSnoozeWake } from "@/api/schema/inbox-snooze";
 import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
 import { readItemRoots } from "./item-roots";
 import { readInboxItemMentions } from "./mentions";
+import {
+  codeChangeSubjectProvider,
+  readSubjectLinks,
+  subjectKey,
+} from "@/chat/inbox-items/subject-links";
+import {
+  resolveInboxItemSubjects,
+  type InboxSubjectView,
+} from "./resolve-subjects";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -166,15 +182,30 @@ const ERROR_STATUS = {
 } as const;
 
 // The plugin that owns a link type recognizes the subject, such as a pull
-// request from the GitHub plugin, so core keeps no provider URL rules.
+// request from the GitHub plugin, so core keeps no provider URL rules. The
+// title, state, and ask come from the subject's card, never from the item.
+// A question has no subject link or card. A snooze of it can still wait on
+// what its first related link names, such as a pull request.
 function subjectPayload(
-  subject: NonNullable<InboxItem["subject"]>,
-): NonNullable<InboxItemPayload["subject"]> {
-  const objectType = subject.url && readLinkObjectType(subject.url);
+  item: Pick<InboxItem, "request" | "subject">,
+  views: ReadonlyMap<string, InboxSubjectView>,
+  viewer: User,
+): InboxItemPayload["subject"] {
+  const { subject } = item;
+  const view = views.get(subjectKey(subject));
+  const url = view?.url;
+  const object = view?.object;
+  const label = subjectKindLabel(subject.kind, getPlugins(), object, viewer);
+  const objectType = url && readLinkObjectType(url);
+  const snoozeUrl = url ?? questionLinks(item)[0];
   const resource =
-    subject.url && snoozeSubjectResource(getEventCatalog(), subject.url);
+    snoozeUrl && snoozeSubjectResource(getEventCatalog(), snoozeUrl);
   return {
-    ...subject,
+    id: subject.id,
+    kind: subject.kind,
+    ...(label ? { label } : undefined),
+    ...(url ? { url } : undefined),
+    ...(object ? { object } : undefined),
     ...(objectType ? { objectType } : undefined),
     ...(resource
       ? {
@@ -211,10 +242,12 @@ function inboxItemPayload(
   mentions: readonly ActorIdentity[],
   related: RelatedReviewWork | undefined,
   wake: InboxSnoozeWakeReason | undefined,
+  views: ReadonlyMap<string, InboxSubjectView>,
 ): InboxItemPayload {
   const conversationId = ownerConversationId(item);
   const root = conversationId ? roots.get(conversationId) : undefined;
-  const todo = inboxItemTodo(item);
+  const todo = subjectTodo(item.subject);
+  const question = inboxItemQuestion(item.request);
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: isInboxItemForEveryone(item),
@@ -230,6 +263,7 @@ function inboxItemPayload(
     kind: item.kind,
     owner: item.owner,
     status: item.status,
+    subject: subjectPayload(item, views, viewer),
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
     visibility: item.visibility,
@@ -238,7 +272,9 @@ function inboxItemPayload(
       : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
     ...(item.addedByTurnId ? { addedByTurnId: item.addedByTurnId } : undefined),
-    ...(item.automationId ? { automationId: item.automationId } : undefined),
+    ...(item.addedByAutomationId
+      ? { automationId: item.addedByAutomationId }
+      : undefined),
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
@@ -247,12 +283,10 @@ function inboxItemPayload(
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
       : undefined),
-    // Derived from the reply notice's dedupe key, so nothing more is stored.
-    ...(item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)
-      ? { replyNotice: true as const }
+    // A notice's request holds only related links. Its card shows them.
+    ...(item.request && (question || item.request.related?.length)
+      ? { request: question ?? item.request }
       : undefined),
-    ...(item.request ? { request: item.request } : undefined),
-    ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
     ...(todo ? { todoId: todo.id } : undefined),
     ...(wake ? { wake: wakePayload(wake) } : undefined),
   };
@@ -260,8 +294,9 @@ function inboxItemPayload(
 
 /**
  * Build the payloads of a page of items, with the root of each one, the
- * people they mention, and the related work and wake reason of the open
- * ones. Each read covers the page, and the reads run at once.
+ * people they mention, the card of each subject, and the related work and
+ * wake reason of the open ones. Each read covers the page, and the reads
+ * run at once.
  */
 async function inboxItemPayloads(
   items: readonly InboxItem[],
@@ -269,7 +304,7 @@ async function inboxItemPayloads(
   reader: InboxItemReader,
 ): Promise<InboxItemPayload[]> {
   const db = getDb();
-  const [roots, mentions, related, snoozes] = await Promise.all([
+  const [roots, mentions, related, snoozes, views] = await Promise.all([
     readItemRoots(db, items, viewer),
     readInboxItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
@@ -279,6 +314,7 @@ async function inboxItemPayloads(
         .map((item) => item.id),
       userId: viewer.id,
     }),
+    resolveInboxItemSubjects(viewer, items),
   ]);
   return items.map((item, index) => {
     const payload = inboxItemPayload(
@@ -288,6 +324,7 @@ async function inboxItemPayloads(
       mentions[index]!,
       related.get(item.id),
       snoozes.wakeReasons.get(item.id),
+      views,
     );
     return snoozes.snoozed.has(item.id)
       ? { ...payload, snoozedByViewer: true }
@@ -440,6 +477,14 @@ export function createInboxItemRoutes(services: {
         countInboxItemsNeedingUserBySubject(db, viewer.id),
         query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
       ]);
+      // Pull requests count a code change's own asks. A question that cites
+      // one is a decision: its subject has no link.
+      const links = await readSubjectLinks(
+        db,
+        subjects.map((subject) => ({
+          subject: { id: subject.subjectId, kind: subject.subjectKind },
+        })),
+      );
       // The Automations badge counts the alerts that its To do lists.
       let automations = 0;
       const linkTypes = readObjectLinkTypes();
@@ -452,9 +497,14 @@ export function createInboxItemRoutes(services: {
         needsViewer += subject.total;
         decisions += subject.decisions;
         todos += subject.todos;
+        const key = {
+          id: subject.subjectId,
+          kind: subject.subjectKind,
+        };
+        const url = links.get(subjectKey(key));
         if (
-          subject.subjectUrl &&
-          readLinkObjectType(subject.subjectUrl, linkTypes) === "code_change"
+          codeChangeSubjectProvider(key.kind) ||
+          (url && readLinkObjectType(url, linkTypes) === "code_change")
         ) {
           codeChanges += subject.total;
         }

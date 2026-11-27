@@ -12,8 +12,8 @@ import type {
   PluginMcpContent,
   PluginViewerMcp,
 } from "@sentry/junior-plugin-api";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getChatConfig } from "@/chat/config";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { getMcpStoredOAuthCredentials } from "./auth-store";
 import { McpAuthorizationRequiredError, PluginMcpClient } from "./client";
@@ -29,7 +29,7 @@ function viewerAuthProvider(
   userId: string,
 ): OAuthClientProvider & { mcpLoginOwner(): Promise<McpLoginOwner> } {
   const provider = plugin.manifest.name;
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)",
@@ -101,7 +101,7 @@ export function createViewerMcp(
 ): PluginViewerMcp {
   return {
     async callTool(input) {
-      const plugin = pluginCatalogRuntime.getDefinition(provider);
+      const plugin = getAppContext().catalog.getDefinition(provider);
       if (!plugin?.manifest.mcp) {
         throw new Error(`Plugin "${provider}" does not support MCP`);
       }

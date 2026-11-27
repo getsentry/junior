@@ -25,8 +25,10 @@ const messageAgentOutputSchema = juniorToolOutputSchema.extend({
 export const messageAgentToolDefinition = zodToolDefinition({
   description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work. A child replies when it has something to report. Its reply arrives later as a new task in this conversation; do not wait or poll for it. Make sure people know what is going on, but post only updates that matter to them. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent. Both conversations must be public, or both must be private conversations in the same place, such as one private channel or DM. The target runs the message as its own task and sends no result. It does not start a new agent.`,
   exposure: "modelOnly",
-  // Action review judges the actions that the message names.
-  approvalMode: "auto",
+  // No approvalMode, so Guardian does not review messages between agents.
+  // Restore `approvalMode: "auto"` when the new Guardian
+  // (getsentry/junior#4539) lands. Messages to one agent keep their order.
+  executionMode: "sequential",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -40,7 +42,7 @@ export const messageAgentToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .describe(
-          `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from startAgent or listAgents, or the conversation_id of another top-level agent, such as one from listAgents, searchConversations, or slackThreadRead`,
+          `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from startAgent or listAgents, or the conversation_id of another top-level agent, such as one from listAgents or slackThreadRead`,
         ),
       text: z
         .string()

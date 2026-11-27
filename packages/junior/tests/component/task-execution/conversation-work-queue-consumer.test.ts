@@ -23,6 +23,7 @@ import {
   conversationQueueMessage,
   inboundMessage,
 } from "../../fixtures/conversation-work";
+import { useConfig } from "../../fixtures/config";
 
 // Chat config reads the queue API URL when it loads, so pick the port first.
 // Each test starts its own local queue server on this port.
@@ -49,7 +50,6 @@ afterAll(() => {
   }
 });
 
-const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 let server: LocalVercelQueueServer | undefined;
 
 /**
@@ -108,11 +108,7 @@ describe("conversation work queue consumer", () => {
     await server?.close();
     server = undefined;
     await closeConversationFixture();
-    if (originalJuniorSecret === undefined) {
-      delete process.env["JUNIOR_SECRET"];
-    } else {
-      process.env["JUNIOR_SECRET"] = originalJuniorSecret;
-    }
+    vi.unstubAllEnvs();
   });
 
   it("acks unsigned messages, runs signed ones, and retries when the secret is missing", async () => {
@@ -128,7 +124,7 @@ describe("conversation work queue consumer", () => {
     expect(consumer.pushes()).toBe(1);
     expect(consumer.run).not.toHaveBeenCalled();
 
-    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
+    useConfig({ secrets: { juniorSecret: "conversation-work-secret" } });
     await appendInboundMessage({
       conversationStore: consumer.fixture.conversationStore,
       message: inboundMessage("m1", { delivery: "defer" }),
@@ -146,7 +142,8 @@ describe("conversation work queue consumer", () => {
 
     // Without the secret, the message cannot be checked, so it is pushed
     // again and does not run.
-    delete process.env["JUNIOR_SECRET"];
+    vi.stubEnv("JUNIOR_SECRET", undefined);
+    useConfig();
     const pushesBefore = consumer.pushes();
     await consumer.send({
       ...conversationQueueMessage(),
@@ -170,7 +167,7 @@ describe("conversation work queue consumer", () => {
       return { status: "completed" as const };
     });
 
-    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
+    useConfig({ secrets: { juniorSecret: "conversation-work-secret" } });
     await appendInboundMessage({
       conversationStore: consumer.fixture.conversationStore,
       message: inboundMessage("m1", { delivery: "defer" }),

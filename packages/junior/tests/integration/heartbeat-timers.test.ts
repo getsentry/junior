@@ -245,7 +245,16 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   await expect(fixture.status(conversationId)).resolves.toBe("working");
   await drain();
   expect(agentRuns).toHaveLength(1);
-  const instruction = JSON.stringify(agentRuns[0]!.instruction);
+  // The held Events are Turn input, before the person's message.
+  const { context: threadContext, inputs } = agentRuns[0]!.instruction;
+  expect(threadContext).toBeUndefined();
+  expect(inputs?.map((input) => input.kind)).toEqual([
+    "runtime",
+    "runtime",
+    "runtime",
+    "person",
+  ]);
+  const instruction = JSON.stringify(inputs);
   expect(instruction).toContain("Check much later.");
   expect(instruction).toContain("Keep watching.");
   // The starter has not read the reply yet.

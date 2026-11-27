@@ -3,7 +3,6 @@ import pLimit from "p-limit";
 
 import { attachObjectLinkResponseSchema } from "@sentry/junior/api/schema";
 import { post } from "../http";
-import type { ComposerConversation } from "./ComposerMention";
 import { linkedWorkUrls } from "./composerReferences";
 import { conversationPath } from "./conversationRoutes";
 import {
@@ -20,19 +19,16 @@ function linkKey(url: string): string {
 }
 
 /**
- * Return a function that adds the Conversations, Tasks, and pull requests
- * that a sent Message references to the Conversation's linked work, with
- * one attach each. It skips links that the Conversation already has and
- * the Conversation itself. A composer with no Conversation yet attaches
- * nothing.
+ * Return a function that adds the links of a Message sent to a
+ * Conversation to its linked work, with one attach each. It skips links
+ * that the Conversation already has and the Conversation itself.
  */
-export function useAttachLinkedWork(
-  conversation: ComposerConversation | undefined,
-): (text: string) => void {
+export function useAttachLinkedWork(): (
+  conversationId: string,
+  text: string,
+) => void {
   const queryClient = useQueryClient();
-  return (text) => {
-    if (!conversation) return;
-    const { conversationId } = conversation;
+  return (conversationId, text) => {
     const key = conversationDetailQueryKey(conversationId);
     const detail = queryClient.getQueryData<ConversationSnapshot>(key);
     const skipped = new Set([
@@ -45,8 +41,8 @@ export function useAttachLinkedWork(
       (url) => !skipped.has(linkKey(url)),
     );
     if (!urls.length) return;
-    // A link that does not attach, such as one the viewer cannot see,
-    // stays in the Message, and its card there can still attach it.
+    // A link that does not attach, such as one that names no object or one
+    // that the viewer cannot see, stays only in the Message.
     void pLimit(ATTACH_REQUESTS)
       .map(urls, (url) =>
         post(

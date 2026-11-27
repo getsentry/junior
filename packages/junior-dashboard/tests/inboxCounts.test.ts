@@ -9,7 +9,7 @@ const [template] = readMockInboxItems(NOW_MS, {});
 
 function ask(
   id: string,
-  type: "decision" | "other" | "prQuestion" | "todo",
+  type: "decision" | "other" | "pr" | "prQuestion" | "todo",
 ): InboxItemPayload {
   return {
     ...template!,
@@ -19,19 +19,26 @@ function ask(
     id,
     kind: "action",
     request:
-      type === "other" || type === "todo"
+      type === "other" || type === "pr" || type === "todo"
         ? undefined
         : { fields: [], question: `Approve ${id}?` },
     status: "open",
     subject:
-      type === "prQuestion"
+      type === "pr"
         ? {
-            id: `https://github.com/getsentry/junior/pull/${id}`,
+            id,
+            kind: "github:pull_request",
             objectType: "code_change",
-            title: id,
             url: `https://github.com/getsentry/junior/pull/${id}`,
           }
-        : undefined,
+        : type === "prQuestion"
+          ? {
+              id: `https://github.com/getsentry/junior/pull/${id}`,
+              kind: "question",
+              objectType: "code_change",
+              url: `https://github.com/getsentry/junior/pull/${id}`,
+            }
+          : { id, kind: type === "todo" ? "todo" : "agent" },
     todoId: type === "todo" ? 1 : undefined,
   };
 }
@@ -78,7 +85,9 @@ describe("inboxCounts", () => {
   it("adds the types up to All", () => {
     const loaded = [
       ask("decision-1", "decision"),
-      ask("pr-1", "prQuestion"),
+      ask("pr-1", "pr"),
+      // A question that cites a pull request is a decision.
+      ask("pr-question-1", "prQuestion"),
       ask("resume-1", "other"),
       ask("todo-1", "todo"),
     ];
@@ -90,8 +99,8 @@ describe("inboxCounts", () => {
       todo: loaded,
     });
     expect(counts).toEqual({
-      all: 4,
-      decisions: 1,
+      all: 5,
+      decisions: 2,
       other: 1,
       prs: 1,
       todos: 1,

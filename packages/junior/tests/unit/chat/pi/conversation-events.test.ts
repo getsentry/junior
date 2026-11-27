@@ -1,4 +1,3 @@
-import { agentHistoryItemSchema } from "@/core/history/items";
 import { describe, expect, it } from "vitest";
 import {
   conversationEventSchema,
@@ -7,10 +6,11 @@ import {
   type ConversationEventData,
 } from "@/chat/conversations/history";
 import {
+  agentHistoryItemSchema,
   historyItemFromPiMessage,
   piMessageFromHistoryItem,
-  projectConversationEvents,
-} from "@/chat/pi/conversation-events";
+} from "@/core/history/items";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 
 function event(
   seq: number,

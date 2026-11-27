@@ -70,20 +70,8 @@ vi.mock("@vercel/sandbox", () => ({
   },
 }));
 
-vi.mock("@/chat/config", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/chat/config")>();
-  const memoryConfig = original.readChatConfig({
-    ...process.env,
-    JUNIOR_STATE_ADAPTER: "memory",
-  });
-  return {
-    ...original,
-    botConfig: memoryConfig.bot,
-    getChatConfig: () => memoryConfig,
-  };
-});
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getProviders: () => [
       {
         manifest: {
@@ -103,8 +91,9 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
         },
       },
     ],
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 const {
   resolveMock,
@@ -214,6 +203,19 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ConfigInput } from "@/config";
+import { useConfig } from "../../fixtures/config";
+
+// Install config for one test: memory state, a fixed base URL, and the given
+// sandbox settings.
+function useSandboxConfig(sandbox: ConfigInput["sandbox"] = {}): void {
+  useConfig({
+    deployment: { configuredBaseUrl: "https://junior.example.com" },
+    secrets: { juniorSecret: "test-secret" },
+    state: { adapter: "memory" },
+    sandbox,
+  });
+}
 interface SandboxFixtureOptions {
   sandboxId?: string;
   /** The stored ref of an earlier Run. Wins over `sandboxId`. */
@@ -608,16 +610,13 @@ describe("createTestSandbox", () => {
     delete process.env["VERCEL_OIDC_TOKEN"];
     delete process.env["VERCEL_SANDBOX_KEEPALIVE_MS"];
     delete process.env["SANDBOX_VCPUS"];
-    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
-    process.env["JUNIOR_SECRET"] = "test-secret";
+    useSandboxConfig();
   });
 
   afterEach(async () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     await disconnectStateAdapter();
-    delete process.env["JUNIOR_BASE_URL"];
-    delete process.env["JUNIOR_SECRET"];
   });
 
   it("preserves an unopened sandbox reference without rewriting its profile", () => {
@@ -1222,9 +1221,13 @@ describe("createTestSandbox", () => {
   });
 
   it("passes token-based Vercel Sandbox credentials to the sandbox SDK", async () => {
-    process.env["VERCEL_TOKEN"] = "sandbox-token";
-    process.env["VERCEL_TEAM_ID"] = "team_123";
-    process.env["VERCEL_PROJECT_ID"] = "prj_123";
+    useSandboxConfig({
+      vercel: {
+        token: "sandbox-token",
+        teamId: "team_123",
+        projectId: "prj_123",
+      },
+    });
 
     const freshSandbox = makeSandbox("sbx_created");
 
@@ -1550,7 +1553,7 @@ describe("createTestSandbox", () => {
   });
 
   it("loads a ready Workspace snapshot without starting a build", async () => {
-    process.env["SANDBOX_VCPUS"] = "4";
+    useSandboxConfig({ vcpus: 4 });
     const controller = new AbortController();
     getReadyWorkspaceMock.mockResolvedValueOnce({
       snapshotId: "snap_workspace_setup",
@@ -1837,8 +1840,7 @@ describe("createTestSandbox", () => {
 
   it("defers to SDK OIDC resolution when VERCEL_OIDC_TOKEN is set without explicit credentials", async () => {
     process.env["VERCEL_OIDC_TOKEN"] = "oidc-jwt-token";
-    process.env["VERCEL_TEAM_ID"] = "team_123";
-    process.env["VERCEL_PROJECT_ID"] = "prj_123";
+    useSandboxConfig({ vercel: { teamId: "team_123", projectId: "prj_123" } });
 
     const freshSandbox = makeSandbox("sbx_oidc");
     sandboxCreateMock.mockResolvedValue(freshSandbox);
@@ -1856,7 +1858,7 @@ describe("createTestSandbox", () => {
   });
 
   it("configures resources for fresh sandboxes", async () => {
-    process.env["SANDBOX_VCPUS"] = "4";
+    useSandboxConfig({ vcpus: 4 });
     const freshSandbox = makeSandbox("sbx_resources");
     sandboxCreateMock.mockResolvedValue(freshSandbox);
 
@@ -2992,7 +2994,7 @@ describe("createTestSandbox", () => {
 
   it("extends sandbox keepalive while the turn is active", async () => {
     vi.useFakeTimers();
-    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] = "5000";
+    useSandboxConfig({ keepAliveMs: 5000 });
     const sandbox = makeSandbox("sbx_active_keepalive");
     sandboxCreateMock.mockResolvedValue(sandbox);
 
@@ -3011,7 +3013,7 @@ describe("createTestSandbox", () => {
 
   it("does not reschedule keepalive when closed during an extension", async () => {
     vi.useFakeTimers();
-    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] = "5000";
+    useSandboxConfig({ keepAliveMs: 5000 });
     const sandbox = makeSandbox("sbx_close_during_keepalive");
     sandboxCreateMock.mockResolvedValue(sandbox);
 
@@ -3037,7 +3039,7 @@ describe("createTestSandbox", () => {
   });
 
   it("extends sandbox keepalive for each tool execution", async () => {
-    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] = "5000";
+    useSandboxConfig({ keepAliveMs: 5000 });
     const sandbox = makeSandbox("sbx_keepalive");
     sandboxCreateMock.mockResolvedValue(sandbox);
 
@@ -3063,7 +3065,7 @@ describe("createTestSandbox", () => {
   });
 
   it("fails the current tool when keepalive finds an unavailable session", async () => {
-    process.env["VERCEL_SANDBOX_KEEPALIVE_MS"] = "5000";
+    useSandboxConfig({ keepAliveMs: 5000 });
     const unavailable = createClosedStreamError();
     const firstSandbox = makeSandbox("sbx_keepalive_recovery");
     firstSandbox.extendTimeout.mockRejectedValueOnce(unavailable);
@@ -3613,7 +3615,7 @@ describe("createTestSandbox", () => {
   });
 
   it("creates fresh sandboxes from dependency snapshots when available", async () => {
-    process.env["SANDBOX_VCPUS"] = "4";
+    useSandboxConfig({ vcpus: 4 });
     const snapshotSandbox = makeSandbox("sbx_snapshot");
     resolveMock.mockResolvedValue({
       snapshotId: "snap_123",

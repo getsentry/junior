@@ -31,3 +31,24 @@ export async function postSlackDetachNotice(args: {
     threadTs: location.threadTs,
   });
 }
+
+/**
+ * Tell a Slack thread that its Conversation moved into a Space. The move
+ * drops the thread as its Location, so replies continue only on the web.
+ * Call it only when the move changed state. Run it inside the Slack
+ * installation of `location.teamId`.
+ */
+export async function postSlackMovedNotice(args: {
+  conversationId: string;
+  location: SlackLocation;
+}): Promise<void> {
+  const { location } = args;
+  const url = getDashboardConversationLink(args.conversationId);
+  if (!location.threadTs || !url) return;
+  // ast-grep-ignore: no-raw-slack-turn-post -- moved notice, not Turn output
+  await postSlackMessage({
+    channelId: location.channelId,
+    text: `This conversation moved to the web: ${formatSlackLink(url, url)}`,
+    threadTs: location.threadTs,
+  });
+}

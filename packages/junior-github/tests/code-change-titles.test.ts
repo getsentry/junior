@@ -1,14 +1,6 @@
-import { http, HttpResponse } from "msw";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseCodeChangeTitle } from "../src/code-change-titles/parse";
 import { parseReleaseCategories } from "../src/code-change-titles/release-config";
-import { loadGitHubTitleParts } from "../src/webhooks/title-parts";
-import { mswServer } from "./msw";
-import { memoryState } from "./plugin-harness";
-import { stubGitHubAppEnv } from "./pull-request-action-harness";
-
-const RELEASE_YML_URL =
-  "https://api.github.com/repos/getsentry/junior/contents/.github/release.yml";
 
 const CUSTOM_RELEASE_YML = `
 changelog:
@@ -131,101 +123,5 @@ changelog:
     expect(
       parseCodeChangeTitle("fix: Bug", parseReleaseCategories("changelog: [")),
     ).toEqual({ text: "Bug", type: "Fix" });
-  });
-});
-
-describe("repository changelog categories", () => {
-  beforeEach(() => {
-    stubGitHubAppEnv();
-    mswServer.use(
-      http.post(
-        "https://api.github.com/app/installations/456/access_tokens",
-        () =>
-          HttpResponse.json({
-            expires_at: "2027-01-01T00:00:00.000Z",
-            token: "installation-token",
-          }),
-      ),
-    );
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  const env = () => ({
-    appIdEnv: "GITHUB_APP_ID",
-    installationIdEnv: "GITHUB_INSTALLATION_ID",
-    privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-    responses: memoryState(),
-    tokens: new Map(),
-  });
-  const input = {
-    repositoryFullName: "getsentry/junior",
-    title: "deprecate: Old option",
-  };
-
-  it("remembers a missing file, and uses the defaults", async () => {
-    let reads = 0;
-    mswServer.use(
-      http.get(RELEASE_YML_URL, () => {
-        reads += 1;
-        return HttpResponse.json({ message: "Not Found" }, { status: 404 });
-      }),
-    );
-    const shared = env();
-    const feat = { ...input, title: "feat: Thing" };
-    expect(await loadGitHubTitleParts(shared, feat)).toEqual({
-      text: "Thing",
-      type: "Feature",
-    });
-    expect(await loadGitHubTitleParts(shared, feat)).toEqual({
-      text: "Thing",
-      type: "Feature",
-    });
-    expect(reads).toBe(1);
-  });
-
-  it("reads the repository's categories, again with its ETag", async () => {
-    const etag = 'W/"release-yml"';
-    const answers: number[] = [];
-    mswServer.use(
-      http.get(RELEASE_YML_URL, ({ request }) => {
-        if (request.headers.get("if-none-match") === etag) {
-          answers.push(304);
-          return new HttpResponse(null, { status: 304 });
-        }
-        answers.push(200);
-        return HttpResponse.json(
-          {
-            content: Buffer.from(CUSTOM_RELEASE_YML).toString("base64"),
-            encoding: "base64",
-          },
-          { headers: { etag } },
-        );
-      }),
-    );
-    const shared = env();
-    const parts = { text: "Old option", type: "Deprecations" };
-    expect(await loadGitHubTitleParts(shared, input)).toEqual(parts);
-    expect(await loadGitHubTitleParts(shared, input)).toEqual(parts);
-    expect(answers).toEqual([200, 304]);
-  });
-
-  it("logs a failed read, and uses the defaults", async () => {
-    mswServer.use(
-      http.get(RELEASE_YML_URL, () =>
-        HttpResponse.json({ message: "Server Error" }, { status: 502 }),
-      ),
-    );
-    const warnings: string[] = [];
-    const log = {
-      error() {},
-      warn: (message: string) => warnings.push(message),
-    };
-    expect(
-      await loadGitHubTitleParts(env(), { ...input, title: "fix: Bug" }, log),
-    ).toEqual({ text: "Bug", type: "Fix" });
-    expect(warnings).toEqual(["GitHub release config read failed"]);
   });
 });

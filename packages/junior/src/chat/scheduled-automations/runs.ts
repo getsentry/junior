@@ -101,9 +101,11 @@ async function writeRun(
     automationId: stored.taskId,
     claimedAtMs: stored.claimedAtMs,
     completedAtMs: stored.completedAtMs ?? null,
-    conversationId: dispatchConversationId
-      ? existingConversationId(dispatchConversationId)
-      : null,
+    // The dispatch links the run before it enqueues the run's work, so a
+    // run that fails after that keeps the link to the work it started.
+    ...(dispatchConversationId
+      ? { conversationId: existingConversationId(dispatchConversationId) }
+      : undefined),
     costMicroUsd: dispatchConversationId
       ? conversationCostOf(dispatchConversationId)
       : null,

@@ -45,30 +45,11 @@ function needsUserSql(userId: string) {
 }
 
 /**
- * Read the tree state of each Conversation for one viewer, over the
- * Conversation and every child Conversation at any depth. When more than
- * one applies:
- *
- * - `needs_you`: the tree's `needs_input` includes the viewer. A Review
- *   item or a sign-in wait anywhere in the tree counts. Only the
- *   Conversation's own wait on its starter counts, and only when the
- *   viewer is the starter. Input that waits on another person is not
- *   shown.
- * - `working`: a Turn is queued or running anywhere in the tree.
- * - `done`: anything else.
- *
- * `watching` is set when a Conversation in the tree that is not stopped has
- * an active Watch or a pending Timer. It is not part of the shared status.
- *
- * An archived child and its descendants count for nothing, since the feed
- * hides them. Archive takes a child's descendants with it. The
- * Conversation itself counts even when it is archived.
- *
- * Children use the visibility of their root, so a viewer who can see the
- * row may see its tree state. It shows no child's content.
- *
- * One SQL statement reads the trees, then two batched state reads check
- * Watches and Timers.
+ * Read the tree state of each Conversation for one viewer, over its whole
+ * tree. Input that waits on another person is not shown, and an archived
+ * child and its descendants count for nothing, since the feed hides them. A
+ * viewer who can see the row may see its tree state: it shows no child's
+ * content.
  */
 export async function readConversationTreeStates(
   db: JuniorDatabase,
@@ -78,10 +59,10 @@ export async function readConversationTreeStates(
   if (conversationIds.length === 0) return new Map();
   const scopeId = conversationSubtreeColumns.scopeConversationId;
   const needsViewer = viewerUserId
-    ? sql<boolean>`bool_or(${needsUserSql(viewerUserId)} or (${eq(
-        juniorConversations.conversationId,
-        scopeId,
-      )} and ${conversationWaitsOnUserSql(juniorConversations, viewerUserId)}))`
+    ? sql<boolean>`bool_or(${needsUserSql(viewerUserId)} or ${conversationWaitsOnUserSql(
+        juniorConversations,
+        viewerUserId,
+      )})`
     : sql<boolean>`false`;
   const rows = await db
     .select({

@@ -80,6 +80,8 @@ export const spaceSchema = z
     archivedAt: z.iso.datetime().nullable(),
     memberCount: z.number().int().nonnegative(),
     viewerIsMember: z.boolean(),
+    /** The Lead, the Space's root Conversation. */
+    leadConversationId: z.string().min(1),
     /**
      * The tree states of the Space's Conversations that are not archived,
      * rolled up for the viewer: the first that applies. List rows only.

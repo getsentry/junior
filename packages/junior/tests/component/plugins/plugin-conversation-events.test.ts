@@ -82,9 +82,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  const { setPlugins } = await import("@/chat/plugins/hooks/registry");
+  const { installAppContext } = await import("@/app/context");
   const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-  setPlugins([]);
+  installAppContext(undefined);
   await disconnectStateAdapter();
   vi.resetModules();
   process.env = { ...ORIGINAL_ENV };
@@ -150,9 +150,10 @@ describe("plugin conversation events", () => {
     });
     const { getPluginUserPromptContributions } =
       await import("@/chat/plugins/hooks/prompt");
-    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
+    const { createAppContext, installAppContext } =
+      await import("@/app/context");
     const { getConversationEventStore } = await import("@/chat/db");
-    setPlugins([plugin]);
+    installAppContext(createAppContext({ plugins: [plugin] }));
     await recordCompletedSession({ conversationId, sessionId });
     const eventStore = getConversationEventStore();
     await eventStore.append(conversationId, [
@@ -295,9 +296,10 @@ describe("plugin conversation events", () => {
     });
     const { getPluginOperationalReports } =
       await import("@/chat/plugins/hooks/reports");
-    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
+    const { createAppContext, installAppContext } =
+      await import("@/app/context");
     const { processPluginTask } = await import("@/chat/plugins/task-runner");
-    setPlugins([plugin]);
+    installAppContext(createAppContext({ plugins: [plugin] }));
     await recordCompletedSession({ conversationId, sessionId });
     await processPluginTask({
       name: "processSession",
@@ -393,10 +395,13 @@ describe("plugin conversation events", () => {
           },
         },
       });
-    const { setPlugins } = await import("@/chat/plugins/hooks/registry");
+    const { createAppContext, installAppContext } =
+      await import("@/app/context");
     const { getConversationEventStore, getDb } = await import("@/chat/db");
     const { processPluginTask } = await import("@/chat/plugins/task-runner");
-    setPlugins([plugin([completedEventV1])]);
+    installAppContext(
+      createAppContext({ plugins: [plugin([completedEventV1])] }),
+    );
     await recordCompletedSession({ conversationId, sessionId });
     const db = getDb();
     await db
@@ -427,7 +432,11 @@ describe("plugin conversation events", () => {
 
     await processPluginTask(message);
     emittedVersion = 2;
-    setPlugins([plugin([completedEventV1, completedEventV2])]);
+    installAppContext(
+      createAppContext({
+        plugins: [plugin([completedEventV1, completedEventV2])],
+      }),
+    );
     await processPluginTask(message);
 
     expect(await readConversationState()).toEqual(conversationState);

@@ -1,32 +1,18 @@
 /**
- * Detects idle periods whose definitions a newer deployment changed.
- *
- * The definitions of a request are its system prompt and tool definitions:
- * the start of the cached prefix that a deploy can change. The queue pins
- * each warmup to the deployment that sent it, so a warmup chain keeps running
- * on the old deployment after a deploy. That deployment builds the old
- * definitions, so the warmup cannot see a change by itself. So each
- * deployment publishes a fingerprint of its definitions when it starts an
- * idle period, and an old deployment's idle period with another fingerprint
- * stops.
- *
- * The fingerprint holds only what the deployment sets: the system prompt,
- * the static tool definitions (`staticToolDefinitions`), and the configured
- * MCP providers. It leaves out the connected and active MCP providers and
- * the MCP tool schemas that the providers return. They differ per
- * Conversation and person, a new deployment cannot publish them for
- * Conversations that have not come back, and the providers change them, not
- * our deploys. So a change to only these parts, or to the run-built tools,
- * does not stop an old idle period.
+ * Detects idle periods whose system prompt or tool definitions a newer
+ * deployment changed. The queue pins a warmup chain to its old deployment,
+ * so each deployment publishes a fingerprint at idle start. The fingerprint
+ * leaves out MCP providers that are connected or active and their tool
+ * schemas: they differ per person, and providers change them, not deploys.
  */
 import { createHash } from "node:crypto";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import {
   staticToolDefinitions,
   type ToolDefinitionsKey,
 } from "@/chat/tool-support/registry";
-import { getDeploymentId } from "@/deployment";
+import { getChatConfig } from "@/chat/config";
 import { MINUTE_MS } from "./model";
 import { KEY_PREFIX, type ConnectedState } from "./request";
 
@@ -53,8 +39,8 @@ const fingerprintKey = (key: ToolDefinitionsKey) =>
 
 // The configured MCP providers, as their plugin manifests declare them.
 function configuredMcpProviders() {
-  return pluginCatalogRuntime
-    .getMcpProviders()
+  return getAppContext()
+    .catalog.getMcpProviders()
     .map(({ manifest }) => ({
       provider: manifest.name,
       displayName: manifest.displayName,
@@ -94,25 +80,17 @@ export async function definitionsFingerprint(
 }
 
 /**
- * Publish this deployment's fingerprint for the key of a new idle period,
- * and return the fingerprint to store on it. Returns `undefined` outside
- * Vercel, where there is no deployment to compare.
- *
- * Neither the queue nor Vercel gives an order of deployments, so the order is
- * the time each deployment first published. A deployment only replaces a
- * record of a deployment that it was first seen after, so a late Turn of an
- * old deployment during a rollout cannot switch it back. Two new deployments
- * that start at the same time can race; the last write wins.
- *
- * Each publish refreshes the TTL of both records that this deployment owns.
- * Otherwise a deployment that keeps running past the TTL would get a new
- * first-seen time, and an old one could replace the newer fingerprint.
+ * Publish this deployment's fingerprint for a new idle period's key and
+ * return it, or `undefined` outside Vercel. Deployments are ordered by first
+ * publish; one replaces only an older record, so an old deployment's late
+ * Turn cannot switch it back. Two new ones can race. Each publish refreshes
+ * both TTLs, so a long-running deployment keeps its first-seen time.
  */
 export async function publishDefinitions(
   state: ConnectedState,
   key: ToolDefinitionsKey,
 ): Promise<IdleDefinitions | undefined> {
-  const deploymentId = getDeploymentId();
+  const deploymentId = getChatConfig().deployment.id;
   if (!deploymentId) return undefined;
   const fingerprint = await definitionsFingerprint(key);
   const nowMs = Date.now();

@@ -1,0 +1,35 @@
+# Core runs Turns and knows nothing of the host: its Sources, its Delivery,
+# its Turn steps, Slack, or main's Turn engine in `chat/`. Core may import npm
+# packages, @sentry/junior-plugin-api, its own modules, the database, the
+# history store, and the shared plumbing named below by exact path.
+# `core-import-baseline.yml` lists main's modules that core still imports.
+id: core-import-boundary
+language: TypeScript
+severity: error
+message: Core must not import host code. Take what core needs through EngineContext or a core interface that the host implements, or move shared plumbing out of the host. See the comment in ast-grep/rules/core-import-boundary.yml.
+files:
+  - packages/junior/src/core/**/*.ts
+rule:
+  any:
+    - kind: import_statement
+      has:
+        kind: string
+        matches: host-module
+    - kind: export_statement
+      has:
+        kind: string
+        matches: host-module
+    - pattern: import($MODULE)
+constraints:
+  MODULE:
+    matches: host-module
+utils:
+  host-module:
+    any:
+      # Any `..` segment, such as `../chat/x` or `@/core/../chat/x`, can leave
+      # core. Core imports its own modules as `@/core/...`.
+      - regex: (^["']|/)\.\.(/|["']$)
+      - all:
+          - regex: ^["']@/
+          - not:
+              regex: ^["']@/((core|db|conversation-events)(/[^"']+)?|usage-schema|chat/(logging|usage|fan-out|queue/provider|queue/sign|pi/messages|pi/request-prefix-attributes|pi/gateway-routing-attributes|conversations/provenance|conversations/history|conversation-privacy|reasoning-level))["']$

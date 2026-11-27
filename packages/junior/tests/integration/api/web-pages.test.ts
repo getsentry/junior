@@ -9,10 +9,10 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { MAX_WEB_PAGE_BYTES } from "@/api/objects/web-page/resolve";
 import { objectLinksReportSchema } from "@/api/schema";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { decodeImageId } from "@/chat/images/ids";
 import { testViewer } from "../../fixtures/user";
 import { mswServer } from "../../msw/server";
+import { patchConfig } from "../../fixtures/config";
 
 const COVER = await sharp({
   create: { width: 1200, height: 630, channels: 3, background: "#7553ff" },
@@ -315,9 +315,11 @@ describe("web page cards", () => {
   });
 
   test("previews other pages on the dashboard host but not dashboard pages", async () => {
-    const previous = setDashboardConversationLinkOptions({
-      baseURL: "https://company.example.com",
-      basePath: "/junior",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://company.example.com",
+        basePath: "/junior",
+      },
     });
     let dashboardFetches = 0;
     mswServer.use(
@@ -333,16 +335,12 @@ describe("web page cards", () => {
         ),
       ),
     );
-    try {
-      const { objects } = await resolveLinks([
-        "https://company.example.com/blog",
-        "https://company.example.com/junior/automations",
-      ]);
-      expect([...objects.keys()]).toEqual(["https://company.example.com/blog"]);
-      expect(dashboardFetches).toBe(0);
-    } finally {
-      setDashboardConversationLinkOptions(previous);
-    }
+    const { objects } = await resolveLinks([
+      "https://company.example.com/blog",
+      "https://company.example.com/junior/automations",
+    ]);
+    expect([...objects.keys()]).toEqual(["https://company.example.com/blog"]);
+    expect(dashboardFetches).toBe(0);
   });
 
   test("follows at most 2 redirects", async () => {

@@ -37,7 +37,6 @@ import {
 } from "./access";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { requireSpaceForWork } from "./space";
-import { inviteMentionedPeople } from "./subscription";
 
 /** Check uploads before accepting work. A bad upload is a request error. */
 async function verifyUploads(
@@ -92,13 +91,8 @@ export async function requireWebMessageConversation(
   if (!canAddConversationMessages(access.get(conversationId))) {
     throwApiError(
       403,
-      "Only participants can add messages to a private conversation.",
+      "Only participants can add messages. Join the conversation first.",
     );
-  }
-  // Only members post in a Space, as in a Slack channel that a person
-  // joins before they post.
-  if (conversation.spaceId) {
-    await requireSpaceForWork(viewer, conversation.spaceId);
   }
   return conversationId;
 }
@@ -131,9 +125,7 @@ export async function createConversationForViewer(
   }
   const visibility = space?.visibility ?? body.visibility;
   // Work in a Space starts as a child of its Lead.
-  const lead = space
-    ? await getSpaceLead({ member: viewer, space })
-    : undefined;
+  const lead = space ? await getSpaceLead(space.id) : undefined;
   const uploads = await verifyUploads(
     {
       conversationId: await requireWebMessageConversation(
@@ -168,7 +160,6 @@ export async function createConversationForViewer(
   } catch (error) {
     throwApiError(500, "Unable to create conversation.", error);
   }
-  await inviteMentionedPeople(viewer, accepted.conversationId, body.message);
   return accepted;
 }
 
@@ -211,10 +202,8 @@ export async function appendConversationMessageForViewer(
   // this Conversation, like a typed Slack reply. The viewer also saw the
   // transcript so far. The message can wait as pending with no event, so
   // move the read position here: it closes the reply notice, and a reply
-  // task that runs later sees the read and adds no notice. The people it
-  // mentions join now too, not when its Turn starts.
+  // task that runs later sees the read and adds no notice.
   const applyAccepted = async () => {
-    await inviteMentionedPeople(viewer, conversationId, body.message);
     await closeInboxItemsAnsweredByReply({
       conversationId,
       delivery: {

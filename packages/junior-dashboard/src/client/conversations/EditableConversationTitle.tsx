@@ -11,6 +11,8 @@ const titleTextRendering = "[text-rendering:inherit]";
 /** The title edit that a Conversation header shares with its page. */
 export type ConversationTitleEdit = {
   editing: boolean;
+  /** The longest title that saves, such as a Space name's limit. */
+  maxLength?: number | undefined;
   onEditingChange(editing: boolean): void;
   onSave(title: string): void;
 };
@@ -35,6 +37,7 @@ export function EditableConversationTitle(
   return (
     <TitleField
       className={props.className}
+      maxLength={props.maxLength ?? CONVERSATION_TITLE_MAX_LENGTH}
       onDone={(title) => {
         if (title !== undefined) props.onSave(title);
         props.onEditingChange(false);
@@ -46,6 +49,7 @@ export function EditableConversationTitle(
 
 function TitleField(props: {
   className: string;
+  maxLength: number;
   /** `title` is unset when nothing should save. */
   onDone(title: string | undefined): void;
   title: string;
@@ -80,7 +84,7 @@ function TitleField(props: {
           props.className,
         )}
         enterKeyHint="done"
-        maxLength={CONVERSATION_TITLE_MAX_LENGTH}
+        maxLength={props.maxLength}
         onBlur={() => finish(true)}
         onChange={(event) => setDraft(event.target.value)}
         onFocus={(event) => event.target.select()}

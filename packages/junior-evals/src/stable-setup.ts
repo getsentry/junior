@@ -1,28 +1,9 @@
 /**
- * Process-wide inputs that every eval suite keeps the same on each run.
- *
- * Every eval config loads this setup file first. Recordings replay only
- * equal requests, so a value that changes on each run makes a miss.
- *
- * - The time zone is UTC. Local times, such as `iso_local` and
- *   `timezone_offset_minutes` from the `systemTime` tool, then do not change
- *   with the machine that records.
- * - `Math.random` has a seed from the test file and the test name. The same
- *   test gets the same values on each run, and different tests get different
- *   values. Ids that the product and the AI SDK make with it, such as
- *   conversation memory ids, then do not change.
- * - `Date` starts each test at `EVAL_START_MS` and moves forward in real
- *   time (`src/eval-clock.ts`). The model then sees the same "now" in the
- *   recording run and in the replay, and tools compare the times that the
- *   model calculates with the same clock. The main process uses the same
- *   clock for sandbox egress: `src/setup.ts` sends it the time of the
- *   worker at the start of each test.
- *
- * `crypto.randomUUID` stays real on purpose. Sandbox names and workspace
- * snapshot names come from it, and Vercel Sandbox reuses a sandbox by name.
- * Repeated UUIDs would share sandboxes between runs and pull requests. The
- * `uuid` value of the model rule in `roach.json` replaces UUIDs in
- * requests instead.
+ * Process-wide inputs that every eval suite keeps the same, because
+ * recordings replay only equal requests: UTC time zone, `Math.random` seeded
+ * per test, and the eval clock. `crypto.randomUUID` stays real on purpose:
+ * Vercel Sandbox reuses a sandbox by name, so repeated UUIDs would share
+ * sandboxes between runs. `roach.json` replaces UUIDs in requests instead.
  */
 import { relative } from "node:path";
 import { beforeEach } from "vitest";

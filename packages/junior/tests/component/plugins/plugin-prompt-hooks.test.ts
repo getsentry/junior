@@ -125,6 +125,10 @@ vi.mock("@/chat/pi/client", () => ({
     },
   }),
   getGatewayApiKey: () => "test-gateway-key",
+}));
+
+vi.mock("@/chat/pi/gateway-models", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/gateway-models")>()),
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
@@ -135,12 +139,12 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { executeAgentRun } from "@/chat/agent";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import { recordTurnStart } from "../../fixtures/turn-start";
+import { useAppContext } from "../../fixtures/app-context";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -149,40 +153,39 @@ const LOCAL_DESTINATION = {
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
 describe("plugin prompt hook composition", () => {
-  let previousPlugins: ReturnType<typeof setPlugins>;
-
   beforeEach(() => {
     captured.promptContextMessages = [];
     captured.promptMessages = [];
     captured.steeredMessages = [];
     captured.systemPrompt = "";
     captured.userPromptTexts = [];
-    previousPlugins = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "notes",
-          displayName: "Memory",
-          description: "Memory test plugin",
-        },
-        hooks: {
-          systemPrompt() {
-            return [{ text: "System memory guidance." }];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "notes",
+            displayName: "Memory",
+            description: "Memory test plugin",
           },
-          async userPrompt(ctx) {
-            captured.userPromptTexts.push(ctx.text);
-            return [
-              {
-                text: `User memory guidance for ${ctx.text}.`,
-              },
-            ];
+          hooks: {
+            systemPrompt() {
+              return [{ text: "System memory guidance." }];
+            },
+            async userPrompt(ctx) {
+              captured.userPromptTexts.push(ctx.text);
+              return [
+                {
+                  text: `User memory guidance for ${ctx.text}.`,
+                },
+              ];
+            },
           },
-        },
-      }),
-    ]);
+        }),
+      ],
+    });
   });
 
   afterEach(async () => {
-    setPlugins(previousPlugins);
     await disconnectStateAdapter();
   });
 
@@ -236,25 +239,27 @@ describe("plugin prompt hook composition", () => {
         return String(this.context.content["note"]);
       },
     };
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "notes",
-          displayName: "Memory",
-          description: "Memory test plugin",
-        },
-        hooks: {
-          userPrompt() {
-            return [
-              recall({
-                memories: [{ id: "memory-1", content: "Use pnpm." }],
-              }),
-              note,
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "notes",
+            displayName: "Memory",
+            description: "Memory test plugin",
           },
-        },
-      }),
-    ]);
+          hooks: {
+            userPrompt() {
+              return [
+                recall({
+                  memories: [{ id: "memory-1", content: "Use pnpm." }],
+                }),
+                note,
+              ];
+            },
+          },
+        }),
+      ],
+    });
 
     const turnId = "turn-plugin-structured-context";
     await executeAgentRun({
@@ -310,30 +315,32 @@ describe("plugin prompt hook composition", () => {
       renderPrompt: ({ memories }) => memories[0]!.content,
     });
     let recallCount = 0;
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "notes",
-          displayName: "Memory",
-          description: "Memory test plugin",
-        },
-        hooks: {
-          userPrompt() {
-            recallCount += 1;
-            return [
-              recall({
-                memories: [
-                  {
-                    id: `memory-${recallCount}`,
-                    content: `Use pnpm snapshot ${recallCount}.`,
-                  },
-                ],
-              }),
-            ];
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "notes",
+            displayName: "Memory",
+            description: "Memory test plugin",
           },
-        },
-      }),
-    ]);
+          hooks: {
+            userPrompt() {
+              recallCount += 1;
+              return [
+                recall({
+                  memories: [
+                    {
+                      id: `memory-${recallCount}`,
+                      content: `Use pnpm snapshot ${recallCount}.`,
+                    },
+                  ],
+                }),
+              ];
+            },
+          },
+        }),
+      ],
+    });
 
     const turnId = "turn-plugin-context-input-redelivery";
     const request = {

@@ -1,27 +1,9 @@
 /**
- * Open a long Conversation away from its latest events: at the reader's read
- * position, or at a linked event, Turn, or memory.
- *
- * The detail holds the latest page of events. When the read position is
- * older than that page, the transcript starts with the events around the
- * read position instead: the last read events and the unread events after
- * them. The first detail fetch of a visit brings that page, so it needs no
- * second request. A link to a row that the transcript does not hold starts
- * it with the events around that row, which the server finds in one
- * request. Like earlier pages, newer pages load when the reader scrolls near
- * them, so the server reads only the pages that the reader reaches.
- *
- * Every read joins the runs of the Conversation (`transcriptEventRuns`), and
- * the transcript shows the run that holds the start. A start that a run
- * holds shows at once, and a read brings only the events that no run holds.
- *
- * The latest page joins the transcript only after the run reaches it, so the
- * transcript never has a gap. Until then the transcript ends with a row that
- * loads the next newer page. A reader who jumps to the latest skips the
- * newer pages: the transcript shows the latest page from the detail at once,
- * and earlier pages load above it as the reader scrolls up. When a poll
- * skips past the run after it joins the latest page, the transcript shows
- * the latest page in the same way, so it never drops the skipped events.
+ * Open a long Conversation at the reader's read position or at a linked
+ * event, Turn, or memory. Every read joins the Conversation's runs
+ * (`transcriptEventRuns`), so a held start shows at once. The latest page
+ * joins only after the run reaches it, so the transcript never has a gap; a
+ * jump to the latest, or a poll past the run, shows the latest page at once.
  */
 import { useEffect, useMemo, useRef } from "react";
 import {
@@ -116,7 +98,7 @@ export function useHistoryAround(input: {
 }):
   | (TranscriptHistory & {
       isPending: boolean;
-      /** The event seq the start shows: the nearest held one for a seq past every event. */
+      /** The seq the start shows: the nearest held one past the last event. */
       shownSeq: number | undefined;
     })
   | undefined {

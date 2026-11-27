@@ -45,8 +45,8 @@ const {
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getDisplayName: (provider: string) => {
       if (provider === "sentry") {
         return "Sentry";
@@ -80,13 +80,15 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
     createBroker: () => {
       throw new Error("not implemented in test");
     },
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/config", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/chat/config")>();
   const memoryConfig = original.readChatConfig({
     ...process.env,
+    JUNIOR_BASE_URL: BASE_URL,
     JUNIOR_STATE_ADAPTER: "memory",
   });
   return {
@@ -164,19 +166,16 @@ async function getStoredTokens(userId: string, provider: string) {
 function configureSentryOAuthEnv() {
   process.env["SENTRY_CLIENT_ID"] = "client-id";
   process.env["SENTRY_CLIENT_SECRET"] = "client-secret";
-  process.env["JUNIOR_BASE_URL"] = BASE_URL;
 }
 
 function configureExampleOAuthEnv() {
   process.env["EXAMPLE_CLIENT_ID"] = "example-client-id";
   process.env["EXAMPLE_CLIENT_SECRET"] = "example-client-secret";
-  process.env["JUNIOR_BASE_URL"] = BASE_URL;
 }
 
 function configureGitHubOAuthEnv() {
   process.env["GITHUB_APP_CLIENT_ID"] = "github-client-id";
   process.env["GITHUB_APP_CLIENT_SECRET"] = "github-client-secret";
-  process.env["JUNIOR_BASE_URL"] = BASE_URL;
 }
 
 type CapturedTokenRequest = {
