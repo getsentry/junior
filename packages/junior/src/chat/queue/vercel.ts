@@ -1,11 +1,14 @@
 import { PollingQueueClient, QueueClient } from "@vercel/queue";
+import { getAppContext } from "@/app/context";
 import { getChatConfig } from "@/chat/config";
 import type { QueueConsumer, QueueProvider } from "@/chat/queue/provider";
 
 type QueueClientOptions = ConstructorParameters<typeof QueueClient>[0];
 
-function defaultQueueClientOptions(): QueueClientOptions {
-  const { apiUrl } = getChatConfig().queue;
+function defaultQueueClientOptions(
+  apiUrl: string | undefined,
+  deploymentId: string | undefined,
+): QueueClientOptions {
   if (apiUrl) {
     // A local queue server does not check tokens. Any token skips the Vercel
     // OIDC lookup, which fails outside Vercel.
@@ -15,7 +18,7 @@ function defaultQueueClientOptions(): QueueClientOptions {
       token: "local",
     };
   }
-  if (getChatConfig().deployment.id) {
+  if (deploymentId) {
     return {};
   }
   return { deploymentId: null };
@@ -26,8 +29,20 @@ interface VercelQueueClients {
   send: QueueClient["send"];
 }
 
-function vercelQueueClients(): VercelQueueClients {
-  const options = defaultQueueClientOptions();
+/** The Vercel Queues clients of an app, and the config they were built from. */
+export interface VercelQueueClientCache {
+  current?: {
+    apiUrl: string | undefined;
+    deploymentId: string | undefined;
+    clients: VercelQueueClients;
+  };
+}
+
+function vercelQueueClients(
+  apiUrl: string | undefined,
+  deploymentId: string | undefined,
+): VercelQueueClients {
+  const options = defaultQueueClientOptions(apiUrl, deploymentId);
   const client = new QueueClient(options);
   if (!options?.resolveBaseUrl) {
     return { callbacks: client, send: client.send };
@@ -42,11 +57,22 @@ function vercelQueueClients(): VercelQueueClients {
   };
 }
 
-let clients: VercelQueueClients | undefined;
-
 // Build on first use, not at import, so env is read when the app runs.
+// Build again when the config they were built from changes.
 function getVercelQueueClients(): VercelQueueClients {
-  clients ??= vercelQueueClients();
+  const { apiUrl } = getChatConfig().queue;
+  const deploymentId = getChatConfig().deployment.id;
+  const cache = getAppContext().queueProvider;
+  const { current } = cache;
+  if (
+    current &&
+    current.apiUrl === apiUrl &&
+    current.deploymentId === deploymentId
+  ) {
+    return current.clients;
+  }
+  const clients = vercelQueueClients(apiUrl, deploymentId);
+  cache.current = { apiUrl, deploymentId, clients };
   return clients;
 }
 
