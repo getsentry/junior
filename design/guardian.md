@@ -175,6 +175,8 @@ untrusted text set up, does not run.
 
 ## Gaps
 
+- `handoff-check`: messageAgent is not reviewed, so a message can hand a
+  child agent wider work than the sender's thread backs.
 - `rule-kinds`: Guardian asks on high risk with weak authorization, also
   when no rule matches. A rule asks until the person
   names a required detail, even when their words name the exact action.
