@@ -80,14 +80,11 @@ Check the rows in this order. The first match decides.
 
 ## Rule for people
 
-A person who reads directly, through the dashboard, the API, MCP, or ACP,
-is not a Conversation. Anyone may read a public Conversation and Join it. A
-Slack Message adds its author. A web Message and a mention add nobody. Only
-its Participants may read and act on a private one
-(`canViewPrivateContent`, `isParticipant`). Any Participant may Invite a
-person, and each person may only Leave on their own. A Slack-backed one
-follows its channel instead. This rule never lets one Conversation read
-another.
+Anyone may read a public root Conversation and Join it, but only its
+Participants act on any Conversation: post, Invite, archive, and the rest
+(`isParticipant`). Only they may read a private one
+(`canViewPrivateContent`). A Slack Message adds its author. A web Message
+and a mention add nobody. Each person may only Leave on their own.
 
 A Space's members are the Participants of its Lead, and every Conversation
 in it inherits them, as in any tree. A person who is not a member of a

@@ -407,12 +407,13 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   // A Task takes input only from its parent agent, and it runs without
-  // interactive auth, so it has no approval to show. Anyone can join a public
-  // Conversation by posting in it (`canAddConversationMessages` in the API).
+  // interactive auth, so it has no approval to show. Only a Participant
+  // posts (`canAddConversationMessages` in the API). A reader of a public
+  // root Joins first.
   const canReply =
     view === "rich" &&
     detail.data !== undefined &&
-    (detail.data.isParticipant || detail.data.visibility === "public") &&
+    detail.data.isParticipant &&
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
@@ -902,6 +903,8 @@ export function ConversationPage(props: {
             <ConversationDock
               canReply={canReply}
               conversationId={conversationId}
+              joining={subscription.isPending}
+              onJoin={() => subscription.mutate(true)}
               detail={detail}
               focusRequest={replyFocusRequest}
               hasNewerPage={Boolean(history.newer)}
