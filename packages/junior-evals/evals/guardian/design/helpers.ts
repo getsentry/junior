@@ -63,9 +63,19 @@ export function ownPullRequests(...refs: string[]): GuardianDesignFacts {
 
 const EVENT_ACTOR = { platform: "system", name: "event" } as const;
 
-/** Context of a Turn that a Watch Event started, as core runs it today. */
+/** The intent of the GitHub plugin's PR Watch, word for word. */
+export const GITHUB_PR_WATCH_INTENT =
+  "Maintain pull requests that you create. For actionable review feedback, failed checks, or merge conflicts, inspect the evidence, make scoped fixes, verify them, and push, without asking first. Do not merge it: a person merges it, even when a review says to ship it. Reply on GitHub to review comments and questions, in the thread where they were asked. Post in the originating thread only when a person must decide or act, such as a blocker that you cannot fix. Do not post status updates: GitHub already shows reviews, approvals, fixes, and replies.";
+
+/**
+ * Context of a Turn that a Watch Event started. Core stores who set the
+ * Watch: by default the person whose Turn set it, or an agent whose brief
+ * did (`creator: "agent"`). `plugin` names a plugin that wrote the intent.
+ */
 export function watchTurnContext(args: {
   about: string;
+  creator?: "person" | "agent";
+  plugin?: string;
   authorText?: Parameters<typeof renderTaskInput>[0]["authorText"];
   doneBy?: { handle: string; mention: string };
   eventType: string;
@@ -84,9 +94,28 @@ export function watchTurnContext(args: {
     trustedSummary: args.trustedSummary,
     ...(args.externalText ? { externalText: args.externalText } : undefined),
   });
+  const person = slackContext("").actor;
   return slackContext(userIntent, {
     actor: EVENT_ACTOR,
     credential: { actor: EVENT_ACTOR },
+    watch: {
+      creator: {
+        ...(args.creator === "agent" ? undefined : { actor: person }),
+        ...(args.plugin ? { plugin: args.plugin } : undefined),
+      },
+      events: [
+        {
+          about: args.about,
+          instructions: args.intent,
+          trustedSummary: args.trustedSummary,
+          ...(args.authorText ? { authorText: args.authorText } : undefined),
+          ...(args.doneBy ? { doneBy: args.doneBy } : undefined),
+          ...(args.externalText
+            ? { externalText: args.externalText }
+            : undefined),
+        },
+      ],
+    },
     source: {
       kind: "event",
       eventKey: `${args.eventType}:1`,

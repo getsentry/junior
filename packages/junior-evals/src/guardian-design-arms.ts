@@ -9,7 +9,7 @@ import { completeObject } from "@/chat/core-model";
 import { createAgentGuardian } from "@/chat/guardian/agent/guardian";
 import { mapBounded } from "@/chat/fan-out";
 import { createCurrentGuardian } from "@/chat/guardian/current";
-import type { GuardianBatch } from "@/chat/guardian/gate";
+import { AGENT_REVIEWED_TOOLS, type GuardianBatch } from "@/chat/guardian/gate";
 import type { Guardian, Review } from "@/chat/guardian/guardian";
 import {
   guardianPluginFacts,
@@ -53,12 +53,13 @@ export function guardianArm(
   ) => Guardian,
 ): GuardianArm {
   return async (request, { signal }) => {
-    // Only the agent Guardian reviews `bash` in production
-    // (getsentry/junior#4550). The suite scores both arms on commands.
+    // Only the agent Guardian reviews `AGENT_REVIEWED_TOOLS` in production.
+    // The suite scores both arms on them.
     const reviewed = await mapBounded(
       request.actions,
       async (proposal) =>
-        proposal.tool.name === "bash" || (await gateReviews(proposal)),
+        AGENT_REVIEWED_TOOLS.has(proposal.tool.name) ||
+        (await gateReviews(proposal)),
     );
     const indexes = request.actions.flatMap((_, index) =>
       reviewed[index] ? [index] : [],

@@ -5,7 +5,7 @@
 import { completeObject } from "@/chat/core-model";
 import { createAgentGuardian } from "@/chat/guardian/agent/guardian";
 import { mapBounded } from "@/chat/fan-out";
-import type { GuardianBatch } from "@/chat/guardian/gate";
+import { AGENT_REVIEWED_TOOLS, type GuardianBatch } from "@/chat/guardian/gate";
 import type { Message, ReviewRequest } from "@/chat/guardian/guardian";
 import { instructionAuthor } from "@/chat/conversations/kind-behavior";
 import { guardianArm } from "./guardian-design-arms";
@@ -182,7 +182,8 @@ async function changesRequest(
   if (!ablation.request && !ablation.batch) return false;
   const reviewed = (
     await mapBounded(request.actions, async (proposal) =>
-      proposal.tool.name === "bash" || (await gateReviews(proposal))
+      AGENT_REVIEWED_TOOLS.has(proposal.tool.name) ||
+      (await gateReviews(proposal))
         ? proposal
         : undefined,
     )

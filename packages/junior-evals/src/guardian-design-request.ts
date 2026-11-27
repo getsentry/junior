@@ -18,9 +18,8 @@ import { agentActionFacts, agentHasTool } from "./guardian-tools";
 /**
  * The messages of the work, as core builds them. A line of the person from
  * the request that started the work is a message of the root Conversation,
- * which core reads only for a Run of a person: an event Turn gets none. A
- * line from the person's linked account is already in the Event's `<task>`
- * block, so it adds nothing here.
+ * which core reads for a Run of a person, and for a Watch Turn as the
+ * Watch's creator: another Event Turn gets none.
  */
 function designMessages(
   proposal: ToolActionProposal,
@@ -33,7 +32,8 @@ function designMessages(
       : [],
   );
   const root =
-    requested.length > 0 && proposal.context.actor.platform !== "system"
+    requested.length > 0 &&
+    (proposal.context.actor.platform !== "system" || proposal.context.watch)
       ? {
           messages: [
             ...requested,
