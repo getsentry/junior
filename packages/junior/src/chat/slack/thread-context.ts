@@ -96,11 +96,10 @@ interface ThreadContextBlock {
 /**
  * Render the thread Messages that this Turn needs as one evidence-only block.
  *
- * With agent history, earlier Turns already hold their thread context, Turn
- * input, and replies. So only untagged Messages saved after the cursor of the
- * previous Turn are new. Without history, show the latest Messages. Both keep
- * the newest Messages under one hard size cap, so the block cannot grow with
- * the thread.
+ * With agent history, earlier Turns already hold their thread context, input,
+ * and replies, so only untagged Messages after the previous Turn's cursor are
+ * new. Without history, show the latest. Either way, the newest Messages stay
+ * under one hard size cap, so the block cannot grow with the thread.
  */
 export function buildConversationContext(
   conversation: ThreadConversationState,
@@ -165,9 +164,7 @@ export function buildConversationContext(
 }
 
 /**
- * Build the thread context of one Turn prompt in a Slack thread. With agent
- * history, show only the thread Messages saved after the cursor of the
- * previous Turn.
+ * Build the thread context of one Turn prompt in a Slack thread.
  *
  * Sets `app.thread_context.*` on the active span: `chat.reply` in a Slack
  * Turn, `chat.turn` in a web or Event Turn. Cursor `missing` means that the

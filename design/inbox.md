@@ -169,11 +169,6 @@ groups and acts on its rows.
   who can see the Conversation only after that gets no item until the
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".
-- In a private Space, the Inbox lists and counts a "To do for you" item by
-  Participants and Destination, not by Space membership. A Participant who
-  is not a member sees it but cannot open it, and a member who is not a
-  Participant does not see it. This breaks "only while they can see the
-  Conversation's private content".
 - A typed message leaves a question for Everyone, or a question with no
   assignees, open. Only its card or the Inbox answers it. This breaks "a
   typed message still answers it".

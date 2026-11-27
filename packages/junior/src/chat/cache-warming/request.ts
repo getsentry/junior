@@ -22,13 +22,8 @@ import {
 export const KEY_PREFIX = "junior:cache_warming";
 // While warming is on, the recorder sets this retention on agent requests, so
 // Pi's PI_CACHE_RETENTION does not change them. The cost model and the warmup
-// timing use the TTL of this retention (`CACHE_TTL_MS`).
-//
-// The 1h retention costs more on Anthropic: Opus writes cost $8/MTok for 1h
-// and $5/MTok for 5 minutes. A 1h write on every call costs more than it
-// saves. A 1h write of the whole prefix when a Conversation goes idle costs
-// $8/MTok of prefix. An hour of 5-minute warmups costs about $2.6/MTok (12
-// warmups at $0.22), so that write never wins either.
+// timing use the TTL of this retention (`CACHE_TTL_MS`). Why not the 1h
+// retention: `design/cache-warming.md`.
 export const CACHE_RETENTION: CacheRetention = "short";
 // A refreshed prefix reads almost all of the stored prefix from the cache.
 const REFRESHED_READ_FRACTION = 0.9;
@@ -81,26 +76,11 @@ export async function connectedState() {
 /** Connected state adapter. */
 export type ConnectedState = Awaited<ReturnType<typeof connectedState>>;
 
-// How long the cache of each provider lives after a write or a read. The
-// warmup timing and the reply chance use it. Warming needs a fixed TTL that a
-// read refreshes. Providers without one are not listed and are not warmed.
-//
-// The TTLs come from models.dev (`cache.explicit.ttl` in
-// providers/<provider>/models/*.toml; its api.json does not publish them).
-// Check them again when a provider or model family is added:
-// - https://github.com/anomalyco/models.dev/tree/dev/providers/anthropic/models
-//   Every model lists ["5m", "1h"]. Junior uses the short retention.
-// - https://github.com/anomalyco/models.dev/tree/dev/providers/alibaba/models
-//   Every Qwen model with an explicit cache lists ["5m"].
-// - https://github.com/anomalyco/models.dev/tree/dev/providers/openai/models
-//   GPT-5.6 and later list ["30m"]. Earlier models list ["24h"] or nothing,
-//   and Pi gives them no cache write price, so the price check skips them.
-// The provider docs say that a cache hit resets the TTL:
-// - https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
-// - https://www.alibabacloud.com/help/en/model-studio/context-cache
-// - https://platform.openai.com/docs/guides/prompt-caching ("A 30-minute
-//   read refreshes coverage to at least 30 minutes after that read.")
-// Not listed: MiniMax (no TTL on models.dev).
+// How long the cache of each provider lives after a write or a read. Warming
+// needs a fixed TTL that a read refreshes, so providers without one, such as
+// MiniMax, are not warmed. The TTLs come from models.dev `cache.explicit.ttl`.
+// Check them when a provider or model family is added. OpenAI models before
+// GPT-5.6 have no cache write price in Pi, so the price check skips them.
 const CACHE_TTL_MS: Record<string, number> = {
   anthropic: 5 * MINUTE_MS,
   alibaba: 5 * MINUTE_MS,

@@ -25,14 +25,11 @@ function currentAuthor(
 }
 
 /**
- * The ordered messages of the work for one batch. Every proposal of a
- * batch has the same context and root Conversation, so the first one is
- * enough.
- *
- * Core labels only the requester's root messages `user`, so only they and
- * the current instruction are `instruction`. A gap note stays as context,
- * so a later reply does not read as an answer to a message that is not
- * shown.
+ * The ordered messages of the work for one batch. Every proposal of a batch
+ * has the same context and root Conversation, so the first one is enough.
+ * Only the requester's root messages, which core labels `user`, and the
+ * current instruction are `instruction`. A gap note stays as context, so a
+ * later reply does not read as an answer to a message that is not shown.
  */
 export function guardianMessages(proposal: ToolActionProposal): Message[] {
   const { context, rootConversation } = proposal;

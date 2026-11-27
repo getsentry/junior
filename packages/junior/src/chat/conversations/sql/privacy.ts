@@ -94,36 +94,6 @@ export function isPublicConversation(table: { visibility: AnyPgColumn }): SQL {
 }
 
 /**
- * Make a root Conversation and its whole tree public or private
- * (`policies/conversation-access.md`). Every row of the tree stores the
- * value, and one statement changes them all. A Slack channel that changes
- * does not call this. Returns false when no root has the id.
- */
-export async function setConversationVisibility(
-  executor: Pick<JuniorSqlDatabase, "db">,
-  rootConversationId: string,
-  visibility: ConversationPrivacy,
-): Promise<boolean> {
-  const db = executor.db();
-  const [root] = await db
-    .select({ destinationId: juniorConversations.destinationId })
-    .from(juniorConversations)
-    .where(
-      and(
-        eq(juniorConversations.conversationId, rootConversationId),
-        isNull(juniorConversations.parentConversationId),
-      ),
-    );
-  if (!root) return false;
-  await lockRootDestination(executor, root.destinationId, "update");
-  await db
-    .update(juniorConversations)
-    .set({ visibility, detailVersion: nextDetailVersion })
-    .where(eq(juniorConversations.rootConversationId, rootConversationId));
-  return true;
-}
-
-/**
  * Give the rows of a tree that have no visibility yet the root's value,
  * once the root first gets one. Rows that have a value keep it.
  */

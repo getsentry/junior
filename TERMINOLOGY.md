@@ -26,7 +26,7 @@ Canonical words for Junior code and docs. One concept, one word.
   Space's other Conversations are its child agents. It finds, starts, and
   steers them, and does no work itself.
 - **Top-level Conversation**: a Conversation with no parent, or a child of a
-  Lead. Top-level lists show these. It is not stored.
+  Lead. It is not stored.
 - **Space**: a named, shared home for a body of related work: metadata on
   its Lead. A **Member** of a Space is a Participant of its Lead.
 - **Thread**: a Conversation of kind `thread`, which people can message. It

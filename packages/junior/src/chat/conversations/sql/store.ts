@@ -752,7 +752,8 @@ export class SqlStore implements ConversationStore {
     );
     const destinationId = upsertedDestination?.id ?? args.destinationId;
     // A root takes the visibility of its Destination. A child copies its
-    // root's, under the lock that `setConversationVisibility` waits on.
+    // root's, under the root Destination lock that
+    // `fillMissingTreeVisibility` takes.
     const visibility = copiesRootVisibility(conversation)
       ? (
           await resolveRootVisibility(
@@ -872,7 +873,7 @@ export class SqlStore implements ConversationStore {
           // Only a new Lead sends a Space.
           spaceId: sql`coalesce(${juniorConversations.spaceId}, excluded.space_id)`,
           // A write fills a missing visibility and never changes a known
-          // one. Only `setConversationVisibility` does.
+          // one.
           visibility: sql`coalesce(${juniorConversations.visibility}, excluded.visibility)`,
           detailVersion: nextDetailVersion,
         },

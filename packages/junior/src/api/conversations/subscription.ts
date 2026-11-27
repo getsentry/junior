@@ -26,91 +26,17 @@ import {
 } from "./access";
 
 /*
- * Conversation subscription: the owner of this contract.
- *
- * Why: archive applies to everyone. When two people share a Conversation and
- * one hands it off, that person needs a way to drop it from their own feed
- * while the other person keeps working.
- *
- * Behavior. Each scenario has a test in
- * `tests/integration/api/conversations/subscription.test.ts`.
- *
- * - Given two participants, when one unsubscribes, then it leaves only that
- *   person's active feed. The other person's feed does not change.
- * - Given an unsubscribed person, then they keep access. They can open the
- *   Conversation and find it in search and in the archived list.
- * - Given an unsubscribed person, when they post a Message that does not
- *   address Junior (a passive reply in a Slack thread that Junior watches),
- *   or other people keep working, then it stays out of their feed.
- * - Given an unsubscribed person, when they address Junior (a Slack mention,
- *   a Slack DM, or a dashboard Message), then they are subscribed again.
- *   Pin and Subscribe also subscribe them again.
- * - Given the last subscriber, when they unsubscribe, then the root and its
- *   unarchived descendants are archived for everyone. No feed shows it
- *   anymore. The person who started the Conversation is a subscriber before
- *   they post in it, because starting it adds their Participant row.
- * - Given an archived root, when a Participant restores it (any Message that
- *   restores an archive, or Unarchive), then that person is subscribed
- *   again. A restored root never sits in no feed. A person who is not a
- *   Participant cannot restore it.
- * - Given a Turn, when the agent changes the subscription with its tool,
- *   then only the person who started the Turn changes, in the current
- *   Conversation. The dashboard conversation menu, the agent tool, and the
- *   MCP tool act only on the signed-in person or the Turn actor. No argument
- *   of theirs names a person.
- * - Given a public root, when a person who is not a Participant Joins it
- *   (Subscribe), then they become a subscribed Participant. A Slack Message
- *   adds its author too. On the web only a Participant posts or Invites, so
- *   a person joins explicitly first.
- * - Given a public Conversation, when a Participant Invites a person, then
- *   that person becomes a subscribed Participant. This is the only way to
- *   subscribe another person. A mention in a dashboard or Slack Message
- *   adds nobody. Invite gives no access: anyone can already read a public
- *   Conversation and join it.
- * - Invite names a User of this install, the one that user search finds,
- *   so it works the same in every Conversation, with or without Slack.
- * - Given a private Conversation, when a Participant Invites a person, then
- *   that person becomes a Participant and can read it. Only Invite does
- *   this: a mention in a Message adds nobody, so sharing private content
- *   is always an explicit act. A Slack-backed private Conversation follows
- *   its Slack channel, so it refuses Invite, with the same error as a
- *   missing Conversation.
- * - Given a Participant, when they Leave, then they unsubscribe. In a
- *   private Conversation with its own Participant list, their row is also
- *   deleted, so they lose access until someone Invites them again.
- *   Elsewhere they keep access and can subscribe again. Nobody removes
- *   another person. When they were the last subscriber, the root and its
- *   unarchived descendants are archived for everyone.
- * - Given any Invite, an archived root refuses it, because no
- *   feed shows it and a restore is for everyone. The mention names a Slack
- *   user of the Conversation's workspace. An existing Participant keeps their row, so Invite does not
- *   undo their unsubscribe. Nobody can unsubscribe another person.
- *
- * Rules that follow:
- * - A subscription belongs to the root, like a pin. Only a root can be
- *   joined, left, or unsubscribed: a child, such as a Space's Thread under
- *   its Lead, follows its root's subscription.
- * - Unsubscribe clears the person's pin. Subscribe does not restore an
- *   archive.
- * - A last-subscriber archive and a concurrent mention or pin are ordered by
- *   row locks, so the mention or pin either keeps the archive from happening
- *   or restores it.
- * - An unsubscribed person does not keep the root from auto-archive, and
- *   their own auto-archive run skips it.
- * - Code: the active feed filter (`conversationIsNotUnsubscribedRoot`), Turn
- *   input membership (`recordTurnInputParticipants`), auto-archive
- *   (`archivableRow`), and the entry points: this module's HTTP routes,
- *   `chat/tools/conversation-subscription.ts`, and
- *   `api/mcp/tools/set-conversation-subscription.ts`.
+ * Conversation subscription: archive applies to everyone, so a person drops
+ * a shared root from only their own feed by unsubscribing. Entry points act
+ * only on the signed-in person or the Turn actor, and only Invite adds
+ * another person. The last subscriber's leave archives the tree for
+ * everyone; root row locks order it against a concurrent mention or pin.
  */
 
 const NOT_ROOT_MESSAGE =
   "Only a root conversation has a subscription. Change it on the root.";
 
-/**
- * Subscribe a person to a Conversation, or unsubscribe them, for the HTTP
- * API. The contract is in the comment above.
- */
+/** Subscribe the viewer to a root Conversation, or unsubscribe them. */
 export async function setConversationSubscription(
   viewer: User,
   conversationId: string,
@@ -131,8 +57,7 @@ export async function setConversationSubscription(
 /**
  * Subscribe a person to a root Conversation, or unsubscribe them. Every
  * caller passes the person who asked, so nobody changes another person's
- * subscription. Refuses a person who is not a participant, and a child,
- * which follows its root's subscription.
+ * subscription.
  */
 export async function updateConversationSubscription(
   person: User,
@@ -200,9 +125,8 @@ export async function updateConversationSubscription(
 }
 
 /**
- * Remove the viewer from a private Conversation's Participants, for the HTTP
- * API. The contract is in the comment above. Only the viewer leaves, so
- * nobody removes another person.
+ * Remove the viewer from a private Conversation's Participants. Only the
+ * viewer leaves, so nobody removes another person.
  */
 export async function leaveConversation(
   viewer: User,
@@ -303,8 +227,9 @@ async function archiveWithoutSubscribers(
 }
 
 /**
- * Invite a User into a Conversation's feed, for the HTTP API. The contract is in the comment above. `added` is false when the
- * person was already a Participant.
+ * Invite a User into a Conversation's feed. An existing Participant keeps
+ * their row, so Invite does not undo their unsubscribe. An archived root
+ * refuses Invite, because a restore is for everyone.
  */
 export async function inviteToConversation(
   viewer: User,
@@ -363,10 +288,7 @@ async function readInvitableConversation(
   };
 }
 
-/**
- * Add each User as a subscribed Participant of the root. An existing
- * Participant keeps their row. Returns how many rows it added.
- */
+/** Add each User as a subscribed Participant of the root. */
 async function addInvitedParticipants(
   rootConversationId: string,
   userIds: readonly string[],
