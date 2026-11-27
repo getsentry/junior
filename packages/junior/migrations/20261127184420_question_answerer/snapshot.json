@@ -3,9 +3,7 @@
   "version": "10",
   "dialect": "postgres",
   "id": "6a6d04ff-4c5a-470c-9462-de5ab61259bd",
-  "prevIds": [
-    "5dddf30d-1fa5-4f06-a90e-acd6a2f366d3"
-  ],
+  "prevIds": ["5dddf30d-1fa5-4f06-a90e-acd6a2f366d3"],
   "footprints": [
     {
       "statementType": "add_column",
@@ -20,10 +18,7 @@
         "n|col|public.junior_questions.answered_by_user_id",
         "e|col|public.junior_questions.answered_by_user_id"
       ],
-      "reads": [
-        "n|tbl|public.junior_questions",
-        "n|sch|public"
-      ]
+      "reads": ["n|tbl|public.junior_questions", "n|sch|public"]
     },
     {
       "statementType": "add_column",
@@ -38,18 +33,11 @@
         "n|col|public.junior_questions.answered_at",
         "e|col|public.junior_questions.answered_at"
       ],
-      "reads": [
-        "n|tbl|public.junior_questions",
-        "n|sch|public"
-      ]
+      "reads": ["n|tbl|public.junior_questions", "n|sch|public"]
     },
     {
       "statementType": "create_fk",
-      "statementTarget": [
-        "table",
-        "public",
-        "junior_questions"
-      ],
+      "statementTarget": ["table", "public", "junior_questions"],
       "writes": [
         "s|fk|public.junior_questions.junior_questions_answered_by_user_id_junior_users_id_fkey",
         "n|fk|public.junior_questions.junior_questions_answered_by_user_id_junior_users_id_fkey",
@@ -107,14 +95,10 @@
         "table": "junior_questions",
         "name": "junior_questions_answered_by_user_id_junior_users_id_fkey",
         "nameExplicit": false,
-        "columns": [
-          "answered_by_user_id"
-        ],
+        "columns": ["answered_by_user_id"],
         "schemaTo": "public",
         "tableTo": "junior_users",
-        "columnsTo": [
-          "id"
-        ],
+        "columnsTo": ["id"],
         "onUpdate": "NO ACTION",
         "onDelete": "SET NULL",
         "entityType": "fks"
