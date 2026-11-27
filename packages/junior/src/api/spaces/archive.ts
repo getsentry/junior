@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { getSpaceLead } from "@/chat/lead/conversation";
-import { writeLegacySpaceArchive } from "@/chat/spaces/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   setConversationArchive,
@@ -40,7 +39,7 @@ export function createSpaceArchiveRoutes(options: {
       if (archived !== (space.archivedAt !== null)) {
         // A Space archive applies whatever the Lead did since the page read
         // it, so it does not check the Lead's activity.
-        const result = await setConversationArchive(
+        await setConversationArchive(
           archived
             ? {
                 applyToChildren: true,
@@ -53,10 +52,6 @@ export function createSpaceArchiveRoutes(options: {
                 conversationId: lead.conversationId,
                 userId: viewerUserId,
               },
-        );
-        await writeLegacySpaceArchive(
-          spaceId,
-          result.status === "archived" ? new Date(result.archivedAt) : null,
         );
       }
       // A retry after a failed stop finds the Space archived, so it stops

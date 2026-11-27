@@ -23,6 +23,9 @@
 // | stopTurns              | queued or running     | +1          |          |          | cleared  |
 // | supersedeTurn (queued) | queued                | +1          |          |          |          |
 //
+// failTurn and releaseTurn also add the usage of the model reply that the
+// step drops, if any, to the Turn's discarded usage.
+//
 // commitStep (completed) queues the Turn instead, like commitStep (continue),
 // while the Turn has an input that no step has read. The first claimTurn sets
 // `started_at`; later claims keep it.
@@ -67,6 +70,7 @@ import {
   notExists,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type {
@@ -74,6 +78,11 @@ import type {
   ConversationTurnFailureReason,
 } from "@/chat/conversations/history";
 import { contextProvenance } from "@/chat/conversations/provenance";
+import {
+  addAgentTurnUsage,
+  agentTurnCostUsd,
+  type AgentTurnUsage,
+} from "@/chat/usage";
 import { withConversationEventLock } from "@/conversation-events/lock";
 import { historyItemFromPiMessage } from "@/core/history/items";
 import { appendAgentHistory } from "@/core/history/write";
@@ -86,6 +95,8 @@ import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
+import { usdToMicroUsd } from "@/db/micro-usd";
+import { usageTokensSchema, type UsageTokens } from "@/usage-schema";
 
 /** A Turn's id and state. */
 export type Turn = { turnId: string; state: TurnState };
@@ -180,6 +191,62 @@ export async function findTurn(
     .from(juniorTurns)
     .where(eq(juniorTurns.id, turnId));
   return turn;
+}
+
+/** The usage of the model replies that a Turn paid for but did not keep. */
+export type DiscardedUsage = { costMicroUsd: number; tokens?: UsageTokens };
+
+/** Reads a Turn's discarded usage. Undefined when the Turn does not exist. */
+export async function findDiscardedUsage(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<DiscardedUsage | undefined> {
+  return selectDiscardedUsage({ executor }, eq(juniorTurns.id, turnId));
+}
+
+async function selectDiscardedUsage(
+  { executor }: Pick<EngineContext, "executor">,
+  where: SQL | undefined,
+): Promise<DiscardedUsage | undefined> {
+  const [turn] = await executor
+    .db()
+    .select({
+      costMicroUsd: juniorTurns.discardedCostMicroUsd,
+      tokens: juniorTurns.discardedTokens,
+    })
+    .from(juniorTurns)
+    .where(where);
+  if (!turn) {
+    return undefined;
+  }
+  return turn.tokens === null
+    ? { costMicroUsd: turn.costMicroUsd }
+    : {
+        costMicroUsd: turn.costMicroUsd,
+        tokens: usageTokensSchema.parse(turn.tokens),
+      };
+}
+
+// The columns that add `usage` to the Turn's discarded usage, for the fenced
+// update that releases or ends the Turn. Only the lease holder writes them,
+// so it can read and add here instead of in SQL.
+async function discardedUsageUpdate(
+  { executor }: Pick<EngineContext, "executor">,
+  lease: TurnLease,
+  usage: AgentTurnUsage | undefined,
+): Promise<{ discardedCostMicroUsd?: number; discardedTokens?: UsageTokens }> {
+  const current = usage
+    ? await selectDiscardedUsage({ executor }, leaseFence(lease))
+    : undefined;
+  if (!current) {
+    return {};
+  }
+  const { cost: _, ...tokens } = addAgentTurnUsage(current.tokens, usage) ?? {};
+  return {
+    discardedCostMicroUsd:
+      current.costMicroUsd + usdToMicroUsd(agentTurnCostUsd(usage) ?? 0),
+    discardedTokens: tokens,
+  };
 }
 
 // Run order of a Conversation's open Turns: the running Turn first, then
@@ -602,11 +669,13 @@ export async function failTurn(
   lease: TurnLease,
   endReason: string,
   failure: TurnFailure,
+  discarded?: AgentTurnUsage,
 ): Promise<boolean> {
   const rows = await executor
     .db()
     .update(juniorTurns)
     .set({
+      ...(await discardedUsageUpdate({ executor }, lease, discarded)),
       state: "failed",
       endReason,
       failureCode: failure.failureCode,
@@ -625,16 +694,19 @@ export async function failTurn(
 /**
  * Queues a running Turn again after its invocation failed, so the queue's
  * retry can claim the step at once. The failed attempt still counts. A Turn
- * that another Turn supersedes ends instead, like at a commit. False when the
+ * that another Turn supersedes ends instead, like at a commit. `discarded` is
+ * the usage of the failed model reply that the retry drops. False when the
  * lease is lost.
  */
 export async function releaseTurn(
   { executor }: Pick<EngineContext, "executor">,
   lease: TurnLease & { conversationId: string },
+  discarded?: AgentTurnUsage,
 ): Promise<boolean> {
   return executor.transaction(() =>
     withConversationEventLock(executor, lease.conversationId, async () => {
       const released = {
+        ...(await discardedUsageUpdate({ executor }, lease, discarded)),
         leaseOwner: null,
         leaseExpiresAt: null,
         updatedAt: sql`now()`,

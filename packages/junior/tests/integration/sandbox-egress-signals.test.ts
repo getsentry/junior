@@ -119,7 +119,11 @@ describe("sandbox egress signal route", () => {
         )
         .then((result) => result.status),
     ).resolves.toBe(404);
-    process.env["NODE_ENV"] = "production";
+    // Config is read once per module load, so install a production config.
+    const { installChatConfig, readChatConfig } = await import("@/chat/config");
+    installChatConfig(
+      readChatConfig({ ...process.env, NODE_ENV: "production" }),
+    );
     await expect(
       handler
         .GET(

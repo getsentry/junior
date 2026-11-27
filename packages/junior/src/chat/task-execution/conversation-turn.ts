@@ -4,6 +4,7 @@ import {
   isPersonInput,
   isTopLevel,
   ownsLocation,
+  parentResultActor,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -21,7 +22,6 @@ import {
   commitParentMessageFork,
   isParentMessageAuthor,
 } from "@/chat/child-agents/parent-message";
-import { parentResultActor } from "@/chat/child-agents/parent-result";
 import { readParentMessage } from "@/chat/child-agents/parent-message-input";
 import { isChildAgentEvent } from "@/chat/child-agents/child-input";
 import {
@@ -39,7 +39,8 @@ import {
   type TurnAnswerText,
 } from "@/chat/conversations/turn-lifecycle";
 import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
-import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
+import { buildTurnThreadContext } from "@/chat/slack/thread-context";
+import { withHeldInput } from "@/chat/conversations/held-input";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -51,6 +52,7 @@ import {
 } from "@/chat/task-execution/turn-telemetry";
 import type { AgentFeature } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
@@ -627,17 +629,28 @@ export function createConversationTurnWorker(
               turnId,
               runId: currentRunId,
               instruction: {
-                ...instructionInputs,
+                ...(await withHeldInput(
+                  {
+                    conversation,
+                    conversationId: context.conversationId,
+                    turnId,
+                  },
+                  instructionInputs,
+                )),
                 ...(instructionActor ? { actor: instructionActor } : undefined),
                 ...childTurn.instruction,
                 storedAttachments: attachments,
-                context: await buildTurnThreadContext({
-                  conversation,
-                  conversationId: context.conversationId,
-                  excludeMessageIds: inputMessageIds,
-                  hasHistory: history.messages.length > 0,
-                  turnId,
-                }),
+                // Only a Slack thread holds Messages that are not Turn input.
+                context:
+                  conversationLocation?.provider === "slack"
+                    ? await buildTurnThreadContext({
+                        conversation,
+                        conversationId: context.conversationId,
+                        excludeMessageIds: inputMessageIds,
+                        hasHistory: history.messages.length > 0,
+                        turnId,
+                      })
+                    : undefined,
               },
               history,
               ...childTurn.run,
@@ -654,6 +667,8 @@ export function createConversationTurnWorker(
                 ? { location: conversationLocation }
                 : undefined),
               surface,
+              // Pause before the host kills this request.
+              deadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               ...(stopSignal ? { signal: stopSignal } : undefined),
               ...(signInActor
                 ? {

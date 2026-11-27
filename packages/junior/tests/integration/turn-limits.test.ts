@@ -133,6 +133,24 @@ describe("core Turn limits", () => {
     );
   });
 
+  it("counts the cost of the failed replies that the Turn dropped against its budget", async () => {
+    useConfig({ limits: { maxTurnCostUsd: 1 } });
+    const harness = await startHarness();
+    await setModelReplies([timeCall("call-1")]);
+    const { turnId } = await harness.send({ text: "What time is it?" });
+    // Earlier tries of this Turn whose failed replies spent the budget.
+    await harness.engineCtx.executor
+      .db()
+      .update(juniorTurns)
+      .set({ discardedCostMicroUsd: 1_000_000 })
+      .where(eq(juniorTurns.id, turnId));
+
+    await harness.runStep();
+    await harness.runStep();
+
+    expect(await harness.history()).toContainEqual(wrapUpResult("call-1"));
+  });
+
   it("counts the cost of the Turn's model replies against its budget", async () => {
     useConfig({ limits: { maxTurnCostUsd: 1 } });
     const harness = await startHarness();

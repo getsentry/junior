@@ -1,21 +1,22 @@
 import { isPersonInput } from "@/chat/conversations/kind-behavior";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getSqlExecutor } from "@/chat/db";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import type { ConversationMessageMeta } from "@/chat/state/conversation";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
-import { readChildOfStoredParent } from "./parent-message";
-import { readParentMessage } from "./parent-message-input";
+import { hasParentMessageAuthor } from "./parent-message";
+import { readParentMessage, type ParentMessage } from "./parent-message-input";
 import {
-  AGENT_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
   isAgentUpdateEventType,
 } from "./result-event-type";
 import type { ChildAgentSender } from "./types";
+
+const parent = alias(juniorConversations, "parent");
 
 /**
  * One reply or message that a child agent sent to its parent. `senderId` is
@@ -31,7 +32,7 @@ function childAgentInputKind(
   eventType: string | undefined,
   watchId: string | undefined,
 ): ChildAgentInput["kind"] | undefined {
-  if (namespace !== AGENT_EVENT_NAMESPACE || !eventType) {
+  if (namespace !== CORE_EVENT_NAMESPACE || !eventType) {
     return undefined;
   }
   if (eventType === AGENT_MESSAGE_EVENT_TYPE) {
@@ -71,7 +72,7 @@ export function isStopResult(message: {
   const metadata = message.input.metadata;
   return (
     isEventMailboxMetadata(metadata) &&
-    metadata.event.namespace === AGENT_EVENT_NAMESPACE &&
+    metadata.event.namespace === CORE_EVENT_NAMESPACE &&
     isAgentUpdateEventType(metadata.event.eventType) &&
     metadata.event.status === "stopped"
   );
@@ -99,51 +100,155 @@ export function isChildAgentEvent(
 }
 
 /**
+ * The stored stops that decide which input a Conversation drops. Read them
+ * with `readChildInputDropFacts`.
+ */
+export type ChildInputDropFacts = {
+  /**
+   * The stop of each child that received a parent message, keyed by its
+   * stored parent edge. An edge that is missing is not the stored parent.
+   */
+  childStops: ReadonlyMap<string, Date | null>;
+  /** The stop of each sender of a child reply that is stopped. */
+  senderStops: ReadonlyMap<string, Date>;
+};
+
+/**
+ * Return the stored parent edge that a parent message claims, or undefined
+ * when its author id is not that parent's, so it is dropped with no read.
+ */
+function claimedParentEdge(
+  message: InboundMessage,
+  parentMessage: ParentMessage,
+): string | undefined {
+  return hasParentMessageAuthor(message, parentMessage)
+    ? parentEdgeKey(message.conversationId, parentMessage.parentConversationId)
+    : undefined;
+}
+
+function parentEdgeKey(
+  childConversationId: string,
+  parentConversationId: string,
+): string {
+  return JSON.stringify([childConversationId, parentConversationId]);
+}
+
+/**
+ * Return the child that sent a reply that a stop can skip. A message that a
+ * child sent is still delivered, and so is the `stopped` result that a
+ * person's stop sends.
+ */
+function skippableReplySender(message: InboundMessage): string | undefined {
+  if (childAgentInput(message)?.kind !== "reply" || isStopResult(message)) {
+    return undefined;
+  }
+  return readInboundMessageSender(message)?.conversationId;
+}
+
+/**
+ * Read the stops that `isDroppedChildInput` needs for many inputs, with one
+ * query for the receiving children and one for the reply senders.
+ */
+export async function readChildInputDropFacts(
+  messages: readonly InboundMessage[],
+): Promise<ChildInputDropFacts> {
+  const childIds = new Set<string>();
+  const parentIds = new Set<string>();
+  const senderIds = new Set<string>();
+  for (const message of messages) {
+    const parentMessage = readParentMessage(message);
+    if (parentMessage) {
+      if (claimedParentEdge(message, parentMessage)) {
+        childIds.add(message.conversationId);
+        parentIds.add(parentMessage.parentConversationId);
+      }
+      continue;
+    }
+    const sender = skippableReplySender(message);
+    if (sender) {
+      senderIds.add(sender);
+    }
+  }
+  const db = getSqlExecutor().db();
+  const [children, senders] = await Promise.all([
+    childIds.size > 0
+      ? db
+          .select({
+            conversationId: juniorConversations.conversationId,
+            parentConversationId: parent.conversationId,
+            stoppedAt: juniorConversations.stoppedAt,
+          })
+          .from(juniorConversations)
+          .innerJoin(
+            parent,
+            eq(parent.conversationId, juniorConversations.parentConversationId),
+          )
+          .where(
+            and(
+              inArray(juniorConversations.conversationId, [...childIds]),
+              inArray(parent.conversationId, [...parentIds]),
+            ),
+          )
+      : [],
+    senderIds.size > 0
+      ? db
+          .select({
+            conversationId: juniorConversations.conversationId,
+            stoppedAt: juniorConversations.stoppedAt,
+          })
+          .from(juniorConversations)
+          .where(inArray(juniorConversations.conversationId, [...senderIds]))
+      : [],
+  ]);
+  return {
+    childStops: new Map(
+      children.map((row) => [
+        parentEdgeKey(row.conversationId, row.parentConversationId),
+        row.stoppedAt,
+      ]),
+    ),
+    senderStops: new Map(
+      senders.flatMap((row) =>
+        row.stoppedAt ? [[row.conversationId, row.stoppedAt]] : [],
+      ),
+    ),
+  };
+}
+
+/**
  * Return whether a Conversation drops one input, so it starts no work.
- * Routing, the stop skips, and the child agent status all read this, so they
- * agree on which input starts work.
+ * Routing and the child agent status both read this, so they agree on which
+ * input starts work. `facts` must come from `readChildInputDropFacts` for
+ * this input.
  *
  * A parent message is dropped when it does not come from the stored parent,
- * or when it was sent before the child's stop. A child reply that a stop
- * skips is dropped too. A stopped Conversation never reads other automated
- * input: `enqueueAutomatedInput` and the stop hold it first.
+ * or when it was sent before the child's stop. A stop drops a child's unread
+ * replies from the parent's mailbox. One sent before the stop can reach the
+ * mailbox after that drop, so while the sending child is stopped, a reply
+ * that it sent after the stop is dropped too. A stopped Conversation never
+ * reads other automated input: `enqueueAutomatedInput` and the stop hold it
+ * first.
  */
-export async function isDroppedChildInput(
+export function isDroppedChildInput(
   message: InboundMessage,
-): Promise<boolean> {
+  facts: ChildInputDropFacts,
+): boolean {
   if (isPersonInput(message.source)) {
     return false;
   }
   const parentMessage = readParentMessage(message);
   if (parentMessage) {
-    // One read checks the sender and gives the stop.
-    const child = await readChildOfStoredParent(message, parentMessage);
-    if (!child) {
+    const edge = claimedParentEdge(message, parentMessage);
+    if (!edge || !facts.childStops.has(edge)) {
       return true;
     }
-    const stoppedAtMs = child.stoppedAt?.getTime();
+    const stoppedAtMs = facts.childStops.get(edge)?.getTime();
     return stoppedAtMs !== undefined && message.receivedAtMs <= stoppedAtMs;
   }
-  const input = childAgentInput(message);
-  return input?.kind === "reply" && (await isSkippedReply(message));
-}
-
-/**
- * Return whether a stop skipped this reply. A stop drops a child's unread
- * replies from the parent's mailbox. One sent before the stop can reach the
- * mailbox after that drop, so while the sending child is stopped, a reply
- * that it sent after the stop is dropped too, except the `stopped` result
- * that a person's stop sends. A message that a child sent is still
- * delivered.
- */
-async function isSkippedReply(message: InboundMessage): Promise<boolean> {
-  const sender = readInboundMessageSender(message);
-  if (!sender || isStopResult(message)) {
-    return false;
-  }
-  const senderStoppedAtMs = await getConversationStoppedAtMs(
-    sender.conversationId,
-  );
+  const sender = skippableReplySender(message);
+  const senderStoppedAtMs = sender
+    ? facts.senderStops.get(sender)?.getTime()
+    : undefined;
   return (
     senderStoppedAtMs !== undefined && message.createdAtMs >= senderStoppedAtMs
   );
@@ -156,7 +261,6 @@ async function isSkippedReply(message: InboundMessage): Promise<boolean> {
 export async function readChildConversationSender(
   childConversationId: string,
 ): Promise<ChildAgentSender | undefined> {
-  const parent = alias(juniorConversations, "parent");
   const [row] = await getSqlExecutor()
     .db()
     .select({
@@ -191,8 +295,9 @@ export async function readChildConversationSender(
 
 /**
  * Read the sender of one reply or message, when it is a child of the
- * Conversation that received it. Otherwise the input has no child sender,
- * such as one that an earlier release sent.
+ * Conversation that received it. Input that names no child of this
+ * Conversation has no sender, so `withSenderActors` runs it as the Event
+ * system Actor and it gets no child's authority.
  */
 export async function getChildAgentInputSender(
   message: InboundMessage,

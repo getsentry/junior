@@ -1,18 +1,20 @@
 import { describe, expect, test } from "vitest";
 import { createJuniorApi } from "@/api";
 import { conversationFeedSchema } from "@/api/schema";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+import { patchConfig } from "../../../fixtures/config";
 
 describe("conversation list API links", () => {
   test("lists the newest distinct links only where private content is visible", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
-    const previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+      },
     });
     try {
       await migrateSchema(fixture.sql);
@@ -113,7 +115,6 @@ describe("conversation list API links", () => {
         ),
       ).toEqual([]);
     } finally {
-      setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();
     }
   });

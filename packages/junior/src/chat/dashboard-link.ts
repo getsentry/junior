@@ -4,16 +4,16 @@ import {
   type ObjectIconName,
   type ObjectLinkFilter,
 } from "@sentry/junior-plugin-api";
-import { getChatConfig } from "@/chat/config";
-export interface DashboardConversationLinkOptions {
-  basePath?: string;
-  baseURL?: string;
-  disabled?: boolean;
-}
+import { getChatConfig, type ChatConfig } from "@/chat/config";
 
-let dashboardConversationLinkOptions:
-  | DashboardConversationLinkOptions
-  | undefined;
+type DashboardLinkOptions = NonNullable<ChatConfig["dashboard"]>;
+
+// The dashboard settings that createApp passed, or undefined when the
+// dashboard is off and links are not built.
+function dashboardLinkOptions(): DashboardLinkOptions | undefined {
+  const options = getChatConfig().dashboard;
+  return options?.disabled ? undefined : options;
+}
 
 function withHttps(host: string): string {
   return host.startsWith("https://") || host.startsWith("http://")
@@ -38,33 +38,20 @@ function normalizeDashboardPath(
   return stripTrailingSlashes(withSlash);
 }
 
-function resolveDashboardBaseURL(
-  config: DashboardConversationLinkOptions,
-): string {
+function resolveDashboardBaseURL(config: DashboardLinkOptions): string {
   const baseUrl = config.baseURL?.trim() || getChatConfig().deployment.baseUrl;
   return baseUrl
     ? stripTrailingSlashes(withHttps(baseUrl))
     : "http://localhost:3000";
 }
 
-/** Configure core dashboard links. */
-export function setDashboardConversationLinkOptions(
-  options: DashboardConversationLinkOptions | undefined,
-): DashboardConversationLinkOptions | undefined {
-  const previous = dashboardConversationLinkOptions;
-  dashboardConversationLinkOptions = options?.disabled ? undefined : options;
-  return previous;
-}
-
 function resolveDashboardPath(segmentPath: string): string | undefined {
-  if (!dashboardConversationLinkOptions) {
+  const options = dashboardLinkOptions();
+  if (!options) {
     return undefined;
   }
-  const baseURL = resolveDashboardBaseURL(dashboardConversationLinkOptions);
-  const basePath = normalizeDashboardPath(
-    dashboardConversationLinkOptions.basePath,
-    "/",
-  );
+  const baseURL = resolveDashboardBaseURL(options);
+  const basePath = normalizeDashboardPath(options.basePath, "/");
   const path = basePath === "/" ? segmentPath : `${basePath}${segmentPath}`;
   return `${baseURL}${path}`;
 }
@@ -189,11 +176,9 @@ export function getDashboardInboxItemSnoozeLink(
 export function getDashboardObjectIconLink(
   icon: ObjectIconName,
 ): string | undefined {
-  if (!dashboardConversationLinkOptions) return undefined;
-  const url = new URL(
-    objectIconPath(icon),
-    resolveDashboardBaseURL(dashboardConversationLinkOptions),
-  );
+  const options = dashboardLinkOptions();
+  if (!options) return undefined;
+  const url = new URL(objectIconPath(icon), resolveDashboardBaseURL(options));
   if (url.protocol !== "https:" || url.hostname === "localhost")
     return undefined;
   return url.href;

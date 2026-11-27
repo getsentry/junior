@@ -16,10 +16,6 @@ import {
 import { canReadConversation } from "@/api/conversations/access";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { resolveConversationConfiguration } from "@/chat/configuration/conversation";
-import {
-  getConfigDefaults,
-  setConfigDefaults,
-} from "@/chat/configuration/defaults";
 import { createLocationConfigurationService } from "@/chat/configuration/service";
 import type {
   ConfigEntry,
@@ -44,6 +40,7 @@ import {
   startThread,
 } from "../../fixtures/spaces-api";
 import { signedInViewer } from "../../fixtures/user";
+import { patchConfig } from "../../fixtures/config";
 
 async function detail(app: Hono<JuniorApiEnv>, conversationId: string) {
   const response = await request(
@@ -244,12 +241,39 @@ describe("Spaces API", () => {
       description: null,
     });
 
+    // A rename that fails keeps the old description too.
+    const sql = getSqlExecutor();
+    await sql.query(
+      `create function fail_lead_rename() returns trigger language plpgsql as $$ begin raise exception 'rename failed'; end $$`,
+    );
+    await sql.query(
+      `create trigger fail_lead_rename before update of title on junior_conversations for each row execute function fail_lead_rename()`,
+    );
+    try {
+      const failed = await send(ana, "PATCH", `/${space.id}`, {
+        name: "Junior on iPad",
+        description: "Not saved.",
+      });
+      expect(failed.status).toBe(500);
+    } finally {
+      await sql.query(`drop trigger fail_lead_rename on junior_conversations`);
+      await sql.query(`drop function fail_lead_rename()`);
+    }
+    expect(
+      spaceSchema.parse(await (await send(ana, "GET", `/${space.id}`)).json()),
+    ).toMatchObject({ name: "Junior for iOS", description: null });
+
     const archived = spaceSchema.parse(
       await (
         await send(ana, "PATCH", `/${space.id}/archive`, { archived: true })
       ).json(),
     );
     expect(archived.archivedAt).not.toBeNull();
+    // Only a Participant restores an archive, and a Message restores one.
+    expect(
+      (await postMessage(bo, await leadOf(bo, space.id), "spaces-api-visit"))
+        .status,
+    ).toBe(403);
     expect(await listNames(ana)).not.toContain("Junior for iOS");
     expect(await listNames(ana, "?archived=true")).toContain("Junior for iOS");
     const restored = spaceSchema.parse(
@@ -769,18 +793,14 @@ describe("Spaces API", () => {
     });
     expect(configuration).toEqual({ "sentry.org": "getsentry" });
     // Removing it brings back the install default for the rest of the Turn.
-    const previousDefaults = getConfigDefaults();
-    setConfigDefaults({ "sentry.org": "install-org" });
-    try {
-      await setting(
-        "spaces-config-ana@example.com",
-        inSpace,
-        { key: "sentry.org", value: null },
-        { configuration, locationConfiguration: channel },
-      );
-    } finally {
-      setConfigDefaults(previousDefaults);
-    }
+    patchConfig({ configDefaults: { "sentry.org": "install-org" } });
+    await setting(
+      "spaces-config-ana@example.com",
+      inSpace,
+      { key: "sentry.org", value: null },
+      { configuration, locationConfiguration: channel },
+    );
+    patchConfig({ configDefaults: {} });
     expect(configuration).toEqual({ "sentry.org": "install-org" });
     await setting(
       "spaces-config-ana@example.com",

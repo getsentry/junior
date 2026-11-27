@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { testViewer } from "../../../fixtures/user";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
+import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -148,6 +149,49 @@ describe("conversation list authors", () => {
         limit: 10,
       });
       expect(feed.conversations).toEqual([]);
+
+      // Only a Participant restores an archive, so a web Message from a
+      // person who is not one adds nobody and leaves it archived.
+      await setArchivedAt(
+        fixture.sql.db(),
+        ["slack:C1:dashboard-author"],
+        new Date(5_700),
+      );
+      await eventStore.append("slack:C1:dashboard-author", [
+        {
+          createdAtMs: 5_800,
+          data: {
+            messageId: "dashboard-msg-2",
+            meta: {
+              author: {
+                isBot: false,
+                userId: legacyWebActorUserId(
+                  "dashboard-participant@example.com",
+                ),
+              },
+            },
+            role: "user",
+            text: "bring this back",
+            type: "message",
+          },
+          idempotencyKey: "message:dashboard-msg-2",
+        },
+        {
+          createdAtMs: 5_900,
+          data: {
+            inputMessageIds: ["dashboard-msg-2"],
+            surface: "api",
+            turnId: "turn-dashboard-msg-2",
+            type: "turn_started",
+          },
+          idempotencyKey: "turn:turn-dashboard-msg-2:started",
+        },
+      ]);
+      expect(await readParticipantUserIds()).not.toContain(participantUserId);
+      expect(
+        (await store.get({ conversationId: "slack:C1:dashboard-author" }))
+          ?.archivedAtMs,
+      ).toBe(5_700);
     } finally {
       await fixture.close();
     }
