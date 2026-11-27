@@ -181,7 +181,7 @@ export interface GitHubConflictAsks {
    * after each Resume, so a Dismiss ends the asks.
    */
   holds: boolean;
-  /** The latest Resume that started a fix: its item, and when it closed. */
+  /** The latest Resume that started a fix: its item, and when it ran. */
   resume?: { atMs: number; itemId: string };
 }
 
@@ -196,13 +196,14 @@ export function gitHubConflictAsks(
 ): GitHubConflictAsks {
   const latest = items[0]?.status;
   const holds = latest === "open" || latest === "dismissed";
-  const itemId = [...fixes].reverse().find((fix) => fix.itemId)?.itemId;
-  const resume = items.find(
-    (item) => item.id === itemId && item.choice === GITHUB_CONFLICT_RESUME,
+  const fix = [...fixes].reverse().find(({ itemId }) => itemId);
+  const resumed = items.some(
+    (item) => item.id === fix?.itemId && item.choice === GITHUB_CONFLICT_RESUME,
   );
-  return resume?.closedAtMs === undefined
-    ? { holds }
-    : { holds, resume: { atMs: resume.closedAtMs, itemId: resume.id } };
+  // The fix starts when the Resume runs, also on a retry of the answer.
+  return fix?.itemId && resumed
+    ? { holds, resume: { atMs: fix.atMs, itemId: fix.itemId } }
+    : { holds };
 }
 
 /**

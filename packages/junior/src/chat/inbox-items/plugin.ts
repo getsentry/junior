@@ -287,7 +287,6 @@ export function createPluginInboxItems(args: {
           id: item.id,
           status: item.status,
         };
-        if (item.closedAt) record.closedAtMs = item.closedAt.getTime();
         const choice = item.answer?.values[PLUGIN_CHOICE_FIELD_ID]?.[0];
         if (choice) record.choice = choice;
         return record;

@@ -10,18 +10,12 @@ describe("merge conflict asks from the item history", () => {
       gitHubConflictAsks([{ id: "item-1", status: "open" }], [fix]),
     ).toEqual({ holds: true });
     expect(
-      gitHubConflictAsks(
-        [{ closedAtMs: 200, id: "item-1", status: "dismissed" }],
-        [fix],
-      ),
+      gitHubConflictAsks([{ id: "item-1", status: "dismissed" }], [fix]),
     ).toEqual({ holds: true });
     // Junior closed it when the conflict went, so a later fix that does not
     // land asks again.
     expect(
-      gitHubConflictAsks(
-        [{ closedAtMs: 200, id: "item-1", status: "done" }],
-        [fix],
-      ),
+      gitHubConflictAsks([{ id: "item-1", status: "done" }], [fix]),
     ).toEqual({ holds: false });
   });
 
@@ -30,13 +24,11 @@ describe("merge conflict asks from the item history", () => {
       { id: "item-3", status: "open" as const },
       {
         choice: "Resume",
-        closedAtMs: 300,
         id: "item-2",
         status: "done" as const,
       },
       {
         choice: "Resume",
-        closedAtMs: 200,
         id: "item-1",
         status: "done" as const,
       },
@@ -44,23 +36,22 @@ describe("merge conflict asks from the item history", () => {
     expect(
       gitHubConflictAsks(items, [
         { ...fix, atMs: 200, itemId: "item-1" },
-        { atMs: 300, headSha: "2".repeat(40), itemId: "item-2" },
+        // A retry of the answer ran the Resume after the item closed.
+        { atMs: 350, headSha: "2".repeat(40), itemId: "item-2" },
         { atMs: 400, headSha: "3".repeat(40) },
       ]),
-    ).toEqual({ holds: true, resume: { atMs: 300, itemId: "item-2" } });
+    ).toEqual({ holds: true, resume: { atMs: 350, itemId: "item-2" } });
   });
 
   it("does not count a Resume that started no fix", () => {
     const items = [
       {
         choice: "Resume",
-        closedAtMs: 300,
         id: "item-2",
         status: "done" as const,
       },
       {
         choice: "Resume",
-        closedAtMs: 200,
         id: "item-1",
         status: "done" as const,
       },

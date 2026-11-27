@@ -212,12 +212,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     .where(eq(juniorInboxItems.status, "open"));
   expect(await items.history(notice.subject)).toEqual([
     { id: asked!.id, status: "open" },
-    {
-      choice: "Resume",
-      closedAtMs: expect.any(Number),
-      id: row!.id,
-      status: "done",
-    },
+    { choice: "Resume", id: row!.id, status: "done" },
   ]);
   expect(await listWatches({ conversationId: CONVERSATION_ID })).toEqual([
     expect.objectContaining({
