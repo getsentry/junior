@@ -102,6 +102,8 @@ const guardianActionReviewedEventDataSchema = z
     decision: z.enum(["allow", "ask", "deny"]),
     /** Set on decisions recorded since Guardian names one rule. */
     rule: z.string().min(1).optional(),
+    /** Set on decisions recorded since the record keeps why. */
+    reason: z.string().min(1).optional(),
     // Older decisions also kept the reviewer's ratings.
     riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
     userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),

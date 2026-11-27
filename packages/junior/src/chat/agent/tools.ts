@@ -589,6 +589,7 @@ export async function wireAgentTools(
         costUsd: decision.costUsd,
         decision: decision.decision,
         rule: decision.rule,
+        reason: decision.reason,
       }),
     onFatal: args.onFatalToolError,
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),

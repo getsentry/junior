@@ -50,11 +50,8 @@ export function createCurrentGuardian(
       }
       return await mapBounded(
         batch.proposals,
-        async (proposal, index): Promise<Review> => {
+        async (proposal): Promise<Review> => {
           const review = await reviewer.review(proposal, { signal });
-          if (review.costUsd !== undefined) {
-            batch.recordCost(index, review.costUsd);
-          }
           const rule =
             review.rule && isBlockRule(review.rule)
               ? RULES[review.rule]
@@ -63,6 +60,9 @@ export function createCurrentGuardian(
             decision: review.decision,
             ...(rule ? { rule } : undefined),
             reason: review.reason,
+            ...(review.costUsd !== undefined
+              ? { costUsd: review.costUsd }
+              : undefined),
           };
         },
         MAX_CONCURRENT_REVIEWS,

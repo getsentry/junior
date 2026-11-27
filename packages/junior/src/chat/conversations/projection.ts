@@ -940,6 +940,7 @@ export async function recordGuardianActionReviewed(args: {
   costUsd?: number | undefined;
   decision: "allow" | "ask" | "deny";
   rule?: string | undefined;
+  reason?: string | undefined;
 }): Promise<void> {
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -951,6 +952,7 @@ export async function recordGuardianActionReviewed(args: {
         ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         decision: args.decision,
         ...(args.rule ? { rule: args.rule } : undefined),
+        ...(args.reason ? { reason: args.reason } : undefined),
       },
       createdAtMs: Date.now(),
     },

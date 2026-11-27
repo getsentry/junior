@@ -5,9 +5,8 @@
  * who wrote each message from the Run's Source and the author labels of the
  * root Conversation, never from what the text says.
  */
-import type { ToolAnnotations } from "@sentry/junior-plugin-api";
 import { instructionAuthor } from "@/chat/conversations/kind-behavior";
-import type { Audience, Call, Message } from "@/chat/guardian/guardian";
+import type { Message } from "@/chat/guardian/guardian";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 
 /**
@@ -43,10 +42,6 @@ export function guardianMessages(proposal: ToolActionProposal): Message[] {
   if (author === "automation") {
     messages.push({ from: "instruction", text: context.userIntent });
   }
-  // Lead policy needs to know the Run is a Space's Lead (`handoff-check`).
-  if (context.lead) {
-    messages.push({ from: "context", text: "[This Run is a Space's Lead.]" });
-  }
   if (rootConversation?.truncated) {
     messages.push({ from: "context", text: "[Older messages are not shown.]" });
   }
@@ -56,7 +51,7 @@ export function guardianMessages(proposal: ToolActionProposal): Message[] {
         message.author === "user"
           ? "instruction"
           : message.author === "other person"
-            ? "person"
+            ? "other_person"
             : "context",
       text: message.text,
     });
@@ -72,24 +67,4 @@ export function guardianMessages(proposal: ToolActionProposal): Message[] {
     });
   }
   return messages;
-}
-
-/**
- * The call of a tool that does not describe its own, from its marks: a
- * read-only tool reads, and any other writes. The marks name no target.
- * An MCP provider whose plugin declares who can read its writes is the
- * target, with that audience.
- */
-export function defaultCall(
-  annotations: ToolAnnotations | undefined,
-  summary: string,
-  provider?: { ref: string; audience: Audience },
-): Call {
-  return {
-    effect: annotations?.readOnlyHint ? "read" : "write",
-    summary,
-    ...(provider
-      ? { target: { ...provider, createdByThisWork: false } }
-      : undefined),
-  };
 }

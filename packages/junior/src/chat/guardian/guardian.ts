@@ -3,8 +3,8 @@
  *
  * Core builds one request for each batch of actions that need review: the
  * ordered messages of the work, and each action with what code knows about
- * its call (`facts-from-junior` in `design/guardian.md`). Each Guardian
- * implementation, and the Guardian evals, use only these types.
+ * it (`facts-from-junior` in `design/guardian.md`). An implementation can
+ * also read the gate's proposal for each action from `GuardianBatch`.
  */
 
 /** Who can read a target. An unknown audience counts as `world`. */
@@ -14,50 +14,36 @@ export type Audience = "internal" | "world";
 export interface Message {
   /**
    * `instruction`: the person the work serves, or the allowed brief.
-   * `person`: anyone else; can restrict, never authorize.
+   * `other_person`: any other person; can restrict, never authorize.
    * `context`: neither, such as agent text and Events.
    */
-  from: "instruction" | "person" | "context";
+  from: "instruction" | "other_person" | "context";
   text: string;
 }
 
-/** The resource that one call changes, read from stored records. */
+/** The resource that one action changes, read from stored records. */
 export interface Target {
   /** Such as `getsentry/junior#12`. */
   ref: string;
   audience: Audience;
-  /**
-   * Core sets it from its own code-change records. Upkeep applies only to
-   * what this work made.
-   */
+  /** Core sets it from its own records. Upkeep applies only to it. */
   createdByThisWork: boolean;
 }
-
-/** What one call does, as its tool or core describes it. */
-export type Call =
-  | {
-      /** `read` skips the model. `edit` changes content of an existing target. */
-      effect: "read" | "edit" | "write";
-      target?: Target;
-      summary: string;
-    }
-  | {
-      /** A shell command. The reviewer judges it. */
-      effect: "command";
-      summary: string;
-      repos: { path: string; target: Target }[];
-      placeholders: { env: string; domains: string[] }[];
-    };
 
 /** One exact action for Guardian. */
 export interface Action {
   /** The real tool, never `executeTool`. */
   tool: string;
-  call: Call;
   /** Evidence for the model only. */
   input: unknown;
-  /** `ask` waits for the person's yes to this exact action. */
-  permission: "review" | "ask";
+  /**
+   * `edit` keeps an existing target current, such as its title, body,
+   * replies, or CI reruns, but never changes its state. `write` is
+   * anything else.
+   */
+  effect: "edit" | "write";
+  target?: Target;
+  summary?: string;
 }
 
 /** One batch of actions and the messages of the work. */
@@ -66,8 +52,6 @@ export interface ReviewRequest {
   actions: Action[];
   /** Oldest first. Every instruction line is kept. */
   messages: Message[];
-  /** Code Mode source. Context only. */
-  script?: string;
 }
 
 /** A rule that blocks an action. The first three ask, the others deny. */
@@ -83,11 +67,12 @@ export type Rule =
 /** Guardian's decision for one action. */
 export interface Review {
   decision: "allow" | "ask" | "deny";
+  /** The rule that matched, also when code cleared it and allowed. */
   rule?: Rule;
   /** An ask names what the person must give. */
   reason: string;
-  /** Facts that the decision lacked. */
-  missing?: string[];
+  /** Model cost of this review. */
+  costUsd?: number;
 }
 
 /** One Guardian implementation. */
@@ -98,6 +83,3 @@ export interface Guardian {
    */
   review(request: ReviewRequest, signal: AbortSignal): Promise<Review[]>;
 }
-
-// Tools and plugins describe calls with `ToolGuardian` and `describeUrl`
-// in `@sentry/junior-plugin-api`. Core turns their facts into a `Call`.

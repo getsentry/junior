@@ -531,6 +531,7 @@ const conversationReportGuardianActionReviewedEventDataSchema = z
     toolName: z.string().min(1),
     decision: z.enum(["allow", "ask", "deny"]),
     rule: z.string().min(1).optional(),
+    reason: z.string().min(1).optional(),
     riskLevel: z.enum(["low", "medium", "high", "critical"]).optional(),
     userAuthorization: z.enum(["high", "medium", "low", "unknown"]).optional(),
   })

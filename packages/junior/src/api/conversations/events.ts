@@ -507,6 +507,7 @@ function reportEventData(args: {
         toolName: data.toolName,
         decision: data.decision,
         ...(data.rule ? { rule: data.rule } : undefined),
+        ...(data.reason ? { reason: data.reason } : undefined),
         ...(data.riskLevel ? { riskLevel: data.riskLevel } : undefined),
         ...(data.userAuthorization
           ? { userAuthorization: data.userAuthorization }

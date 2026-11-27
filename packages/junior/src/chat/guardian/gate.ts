@@ -86,15 +86,10 @@ export interface ToolAction {
   };
 }
 
-/** A Guardian decision for one action, with the model cost of its review. */
-export type ReviewedDecision = Review & { costUsd?: number };
-
 /** What the gate gives the Guardian of one batch, besides the request. */
 export interface GuardianBatch {
   /** The proposal that the gate built for each action, in order. */
   proposals: readonly ToolActionProposal[];
-  /** Keep the model cost of the review of one action, by its index. */
-  recordCost(index: number, costUsd: number): void;
 }
 
 /**
@@ -103,7 +98,7 @@ export interface GuardianBatch {
  * must fail with.
  */
 export type ToolActionReviewResult =
-  | { allowed: true; decision?: ReviewedDecision }
+  | { allowed: true; decision?: Review }
   | { allowed: false; error: Error };
 
 /**
@@ -169,8 +164,6 @@ export class ToolActionRejectedError extends Error {
     reason: string,
     assessment: {
       instructions?: string;
-      /** Facts that the decision lacked. */
-      missing?: string[];
       reviewedAction?: ToolActionPriorRejection;
       rule?: string;
     } = {},
@@ -180,10 +173,7 @@ export class ToolActionRejectedError extends Error {
       (decision === "ask"
         ? ACTION_CONFIRMATION_INSTRUCTIONS
         : ACTION_DENIAL_INSTRUCTIONS);
-    const missing = assessment.missing?.length
-      ? `\nMissing facts: ${assessment.missing.join("; ")}`
-      : "";
-    super(`${instructions}\nReason: ${reason}${missing}`);
+    super(`${instructions}\nReason: ${reason}`);
     this.name = "ToolActionRejectedError";
     this.decision = decision;
     this.reason = reason;
@@ -434,7 +424,7 @@ function canonicalJson(value: unknown): unknown {
 
 function projectedRejection(
   proposal: ToolActionProposal,
-  decision: ReviewedDecision,
+  decision: Review,
 ): ToolActionPriorRejection {
   const inputJson = JSON.stringify(canonicalJson(proposal.input));
   const input =
@@ -565,7 +555,7 @@ type ReviewStep =
   | { kind: "skipped" }
   | {
       kind: "reviewed";
-      decision: ReviewedDecision;
+      decision: Review;
       proposal: ToolActionProposal;
     }
   | { kind: "unavailable"; error: ToolActionReviewUnavailableError };
@@ -589,7 +579,7 @@ export function createToolActionReview(options: {
   onDecision(event: {
     toolCallId: string;
     toolName: string;
-    decision: ReviewedDecision;
+    decision: Review;
   }): Promise<void>;
   /** Escalate unavailable review to the owning agent-run boundary. */
   onFatal(error: ToolActionReviewUnavailableError): void;
@@ -642,22 +632,18 @@ export function createToolActionReview(options: {
     const reviews = prepared.filter(
       (entry): entry is PreparedReview => !("kind" in entry),
     );
-    const costs = new Map<number, number>();
     let decisions: Review[] = [];
     let failure: unknown;
     if (reviews.length > 0) {
-      const script = reviews[0]!.proposal.script?.source;
       try {
         decisions = await options
           .guardian({
             proposals: reviews.map((review) => review.proposal),
-            recordCost: (index, costUsd) => costs.set(index, costUsd),
           })
           .review(
             {
               actions: reviews.map((review) => review.action),
               messages: guardianMessages(reviews[0]!.proposal),
-              ...(script ? { script } : undefined),
             },
             signal ?? new AbortController().signal,
           );
@@ -688,12 +674,7 @@ export function createToolActionReview(options: {
         if (failure !== undefined) {
           return unavailableStep(failure);
         }
-        const position = indexes[index]!;
-        const costUsd = costs.get(position);
-        const decision: ReviewedDecision = {
-          ...decisions[position]!,
-          ...(costUsd !== undefined ? { costUsd } : undefined),
-        };
+        const decision = decisions[indexes[index]!]!;
         try {
           await options.onDecision({
             toolCallId: actions[index]!.toolCallId,
@@ -797,7 +778,6 @@ export function createToolActionReview(options: {
         instructions: rejectionInstructions(decision.decision, {
           exhausted,
         }),
-        ...(decision.missing ? { missing: decision.missing } : undefined),
         reviewedAction,
         rule: decision.rule,
       }),

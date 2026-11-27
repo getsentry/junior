@@ -6,12 +6,11 @@ import {
   MAX_TOOL_ACTION_BATCH,
   reviewToolActions,
   ToolActionReviewUnavailableError,
-  type ReviewedDecision,
   type ToolAction,
   type ToolActionReview,
   type ToolActionReviewContext,
 } from "@/chat/guardian/gate";
-import type { Guardian, ReviewRequest } from "@/chat/guardian/guardian";
+import type { Guardian, Review, ReviewRequest } from "@/chat/guardian/guardian";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -79,7 +78,7 @@ async function reviewToolAction(
   tool: AnyToolDefinition,
   input: Record<string, unknown>,
   review: ToolActionReview | undefined,
-): Promise<ReviewedDecision | undefined> {
+): Promise<Review | undefined> {
   const results = await reviewToolActions(
     [{ toolCallId, toolName, tool, input }],
     review,
@@ -572,15 +571,15 @@ describe("tool action review", () => {
       { from: "context", text: "[Older messages are not shown.]" },
       { from: "instruction", text: "Draft the weekly report." },
       { from: "context", text: "Generate report weekly now?" },
-      { from: "person", text: "Also send it to me." },
+      { from: "other_person", text: "Also send it to me." },
       { from: "instruction", text: "yes, go ahead" },
     ]);
     expect(requests[0]!.actions).toEqual([
       {
         tool: "generateReport",
-        call: { effect: "write", summary: "generateReport" },
         input: { reportId: "weekly" },
-        permission: "review",
+        effect: "write",
+        summary: "generateReport",
       },
     ]);
   });

@@ -997,6 +997,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       toolCallId: expect.any(String),
       toolName: "mcp__demo__ping",
       decision: "allow",
+      reason: "This test exercises MCP runtime behavior.",
     });
   });
 
@@ -1119,6 +1120,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         toolCallId: expect.any(String),
         toolName: "mcp__demo__ping",
         decision: "deny",
+        reason: "The test policy denied this action.",
       });
     },
   );
