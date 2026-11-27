@@ -53,10 +53,29 @@ export default defineConfig({
         path.resolve(__dirname, "tests/fixtures/pg-tracing-hook.ts"),
       ).href,
     ],
-    include: ["tests/**/*.test.ts"],
     exclude: [
       "tests/unit/workflow/**/*.test.ts",
       "tests/integration/workflow/**/*.test.ts",
+    ],
+    projects: [
+      {
+        extends: true,
+        test: { name: "unit", include: ["tests/unit/**/*.test.ts"] },
+      },
+      {
+        extends: true,
+        test: { name: "component", include: ["tests/component/**/*.test.ts"] },
+      },
+      {
+        extends: true,
+        test: {
+          name: "integration",
+          include: ["tests/integration/**/*.test.ts"],
+          // Files in a worker share module state, so each file restores
+          // what it changes.
+          isolate: false,
+        },
+      },
     ],
     globalSetup: ["tests/fixtures/postgres/global-setup.ts"],
     setupFiles: [
