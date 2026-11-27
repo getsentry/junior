@@ -167,12 +167,8 @@ export function transcriptMessagesFromEvents(
     Extract<TranscriptViewPart, { type: "tool_call" }>
   >();
   const standaloneToolMessages = new Map<string, TranscriptViewMessage>();
-  // One card per child. Each Parent message to the child is one piece of
-  // its work: the card runs while any is open, else shows the last outcome.
-  const cards = new Map<
-    string,
-    { open: Set<number>; part?: TranscriptViewSubagentPart }
-  >();
+  // One card per child, keyed by its id. Every marker updates its status.
+  const cards = new Map<string, TranscriptViewSubagentPart>();
   const messages: TranscriptViewMessage[] = [];
   const messagesById = new Map<string, TranscriptViewMessage>();
   const latestUserMessageByTurn = new Map<string, TranscriptViewMessage>();
@@ -382,43 +378,42 @@ export function transcriptMessagesFromEvents(
 
     if (data.type === "subagent") {
       const childId = data.childConversationId;
-      const card = cards.get(childId) ?? { open: new Set<number>() };
-      cards.set(childId, card);
-      if (data.status === "running") card.open.add(data.startedSeq);
-      else card.open.delete(data.startedSeq);
-      // The call that started the child places its card. A marker of any
-      // other call only updates it.
-      if (!card.part) {
-        if (
-          data.parentToolCallId &&
-          !replacedToolIds.has(data.parentToolCallId)
-        ) {
-          continue;
-        }
-        card.part = {
-          type: "subagent" as const,
-          id: childId,
-          childConversationId: childId,
-          childKind: data.childKind,
-          subagentKind: data.subagentKind,
-          status: data.status,
-          ...(data.agentName ? { agentName: data.agentName } : undefined),
-          ...(data.task ? { task: data.task } : undefined),
-          ...(data.title ? { title: data.title } : undefined),
-        };
-        messages.push({
-          ...eventMessage(event, "tool", [card.part]),
-          sourceSeq: data.startedSeq,
-          timestamp: Date.parse(data.startedAt),
-        });
+      const finishedTimestamp =
+        data.status === "running" ? undefined : eventTimestamp(event);
+      const existing = cards.get(childId);
+      if (existing) {
+        existing.status = data.status;
+        if (finishedTimestamp === undefined) delete existing.finishedTimestamp;
+        else existing.finishedTimestamp = finishedTimestamp;
+        continue;
       }
-      if (card.open.size > 0) {
-        card.part.status = "running";
-        delete card.part.finishedTimestamp;
-      } else if (data.status !== "running") {
-        card.part.status = data.status;
-        card.part.finishedTimestamp = eventTimestamp(event);
+      // Only the call that started the child places its card.
+      if (
+        data.parentToolCallId &&
+        !replacedToolIds.has(data.parentToolCallId)
+      ) {
+        continue;
       }
+      const part = {
+        type: "subagent" as const,
+        id: childId,
+        childConversationId: childId,
+        childKind: data.childKind,
+        subagentKind: data.subagentKind,
+        status: data.status,
+        ...(finishedTimestamp === undefined
+          ? undefined
+          : { finishedTimestamp }),
+        ...(data.agentName ? { agentName: data.agentName } : undefined),
+        ...(data.task ? { task: data.task } : undefined),
+        ...(data.title ? { title: data.title } : undefined),
+      };
+      cards.set(childId, part);
+      messages.push({
+        ...eventMessage(event, "tool", [part]),
+        sourceSeq: data.startedSeq,
+        timestamp: Date.parse(data.startedAt),
+      });
       continue;
     }
 

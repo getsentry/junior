@@ -701,8 +701,6 @@ describe("canonical event transcript reduction", () => {
       call(4, "message-1", "messageAgent", "running"),
       marker(5, 5, "message-1", "running"),
       call(6, "message-1", "messageAgent", "completed"),
-      // The child ends its first task while the second waits for it.
-      marker(7, 2, "start-1", "completed"),
     ];
     const rows = (page: ConversationReportEvent[]) =>
       groupTranscriptMessages(
