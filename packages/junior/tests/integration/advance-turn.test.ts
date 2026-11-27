@@ -293,14 +293,32 @@ describe("advanceTurn", () => {
       storedReply(reply),
     ]);
     const events = await harness.events();
+    // Compat: main's visible message and turn_started come first.
     expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `message:inbox:${inputId}`,
+      `turn:${turnId}:started`,
       `inbox:${inputId}`,
       `step:${turnId}:0:0`,
     ]);
-    expect(events[0]!.data).toMatchObject({
-      type: "user_message",
-      provenance: { authority: "instruction", actor: ACTOR },
-    });
+    expect(events.map((event) => event.data)).toMatchObject([
+      {
+        type: "message",
+        messageId: `inbox:${inputId}`,
+        role: "user",
+        text: "How many Turns?",
+      },
+      {
+        type: "turn_started",
+        turnId,
+        inputMessageIds: [`inbox:${inputId}`],
+        surface: "slack",
+      },
+      {
+        type: "user_message",
+        provenance: { authority: "instruction", actor: ACTOR },
+      },
+      { type: "assistant_message" },
+    ]);
     await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual(
       [],
     );
@@ -522,6 +540,36 @@ describe("advanceTurn with tools", () => {
     await expect(
       findUnreadInputs(harness.engineCtx, toolTurnId),
     ).resolves.toEqual([expect.objectContaining({ inputId })]);
+  });
+
+  it("writes main's visible message for an input that arrives in a running Turn", async () => {
+    await startHarness([sendTool([])]);
+    await setModelReplies([
+      sendCallReply(),
+      createAssistantMessage({ type: "text", text: "Sent." }),
+    ]);
+    const { turnId: toolTurnId } = await harness.send({
+      text: "How many Turns?",
+    });
+    await harness.runStep();
+    const { inputId } = await harness.send({ text: "Also send it to Sam." });
+
+    await harness.runStep();
+    await harness.runStep();
+
+    await expect(harness.turn(toolTurnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    const events = await harness.events();
+    const keys = events.map((event) => event.idempotencyKey);
+    // Compat: the person's message comes before the step reads the input.
+    expect(keys.indexOf(`message:inbox:${inputId}`)).toBeGreaterThan(-1);
+    expect(keys.indexOf(`message:inbox:${inputId}`)).toBeLessThan(
+      keys.indexOf(`inbox:${inputId}`),
+    );
+    expect(
+      events.filter((event) => event.data.type === "turn_started"),
+    ).toHaveLength(1);
   });
 });
 
