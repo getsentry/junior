@@ -11,7 +11,6 @@ import type {
   PluginConversationInboxItems,
   PluginInboxItemRecord,
   PluginLogger,
-  PluginState,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import pLimit from "p-limit";
@@ -32,7 +31,6 @@ import {
   pullRequestSubject,
 } from "../inbox-subjects.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
-import { isResumingGitHubConflictFixes } from "./resuming.js";
 import type {
   GitHubMergeConflict,
   GitHubPullRequestRef,
@@ -183,27 +181,41 @@ export interface GitHubConflictAsks {
   holds: boolean;
   /** The latest Resume that started a fix: its item, and when it ran. */
   resume?: { atMs: number; itemId: string };
+  /**
+   * The latest item closed with a Resume that has saved no fix yet. Core
+   * closes the item before the Resume reads the pull request.
+   */
+  resuming: boolean;
 }
+
+// Longer than a Resume takes: a GitHub read and a publish. After it, a
+// Resume with no fix started none, so the next conflict asks again.
+const RESUMING_MS = 5 * 60_000;
 
 /**
  * Read the asks from the item history of one pull request, newest first.
  * A Resume counts only when it started a fix, so one that started none,
- * such as on a draft, lets the next conflict ask again at once.
+ * such as on a draft, lets the next conflict ask again.
  */
 export function gitHubConflictAsks(
   items: PluginInboxItemRecord[],
   fixes: GitHubConflictFix[],
+  nowMs: number,
 ): GitHubConflictAsks {
-  const latest = items[0]?.status;
-  const holds = latest === "open" || latest === "dismissed";
+  const [latest] = items;
+  const holds = latest?.status === "open" || latest?.status === "dismissed";
+  const resuming =
+    latest?.choice === GITHUB_CONFLICT_RESUME &&
+    nowMs - (latest.closedAtMs ?? 0) < RESUMING_MS &&
+    !fixes.some(({ itemId }) => itemId === latest.id);
   const fix = [...fixes].reverse().find(({ itemId }) => itemId);
   const resumed = items.some(
     (item) => item.id === fix?.itemId && item.choice === GITHUB_CONFLICT_RESUME,
   );
   // The fix starts when the Resume runs, also on a retry of the answer.
   return fix?.itemId && resumed
-    ? { holds, resume: { atMs: fix.atMs, itemId: fix.itemId } }
-    : { holds };
+    ? { holds, resume: { atMs: fix.atMs, itemId: fix.itemId }, resuming }
+    : { holds, resuming };
 }
 
 /**
@@ -236,11 +248,9 @@ function gitHubConflictAction(input: {
     }
     // The policy's event key names the head commit, and core delivers each
     // key once, so its event publishes again: a publish that failed gets
-    // another try. A Resume's event has its own key.
-    return started.itemId !== undefined &&
-      started.itemId === asks.resume?.itemId
-      ? "skip"
-      : "retry";
+    // another try. A Resume saves its fix after the publish, and its event
+    // has its own key.
+    return started.itemId === undefined ? "retry" : "skip";
   }
   // The fix that Resume started counts as the first in a row. The next
   // activity by a person starts the count again.
@@ -304,7 +314,6 @@ export async function applyGitHubConflictPolicy(args: {
   now: Date;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
-  state: PluginState;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
   const change = await findGitHubPullRequest(args.codeChanges, args.ref);
@@ -318,10 +327,6 @@ export async function applyGitHubConflictPolicy(args: {
     .limit(1);
   // A pull request that Junior did not open goes to its Watch as before.
   if (!row) return args.events;
-  // A Resume that has not saved its fix yet is starting one.
-  if (await isResumingGitHubConflictFixes(args.state, change.providerId)) {
-    return [];
-  }
   const opener = (
     await listGitHubPullRequestOpeners(args.db, {
       numbers: [args.ref.number],
@@ -341,8 +346,10 @@ export async function applyGitHubConflictPolicy(args: {
         )
     : [];
   const nowMs = args.now.getTime();
+  const asks = gitHubConflictAsks(items, row.fixes, nowMs);
+  if (asks.resuming) return [];
   const action = gitHubConflictAction({
-    asks: gitHubConflictAsks(items, row.fixes),
+    asks,
     fixes: row.fixes,
     headSha: args.conflict.headSha,
     history: parseGitHubConflictHistory(await args.loadHistory(args.ref)),

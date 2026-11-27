@@ -289,6 +289,7 @@ export function createPluginInboxItems(args: {
         };
         const choice = item.answer?.values[PLUGIN_CHOICE_FIELD_ID]?.[0];
         if (choice) record.choice = choice;
+        if (item.closedAt) record.closedAtMs = item.closedAt.getTime();
         return record;
       });
     },

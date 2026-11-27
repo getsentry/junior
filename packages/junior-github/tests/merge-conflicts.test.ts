@@ -829,6 +829,11 @@ describe("merge conflict check on webhook events", () => {
         expect.objectContaining({ identifier: "getsentry/junior#946" }),
         expect.objectContaining({ identifier: "getsentry/junior" }),
       ]);
+      // The opener's old name hides the item history from the conflict
+      // check. The fix that Resume started still gets no second publish.
+      const published = conflicts().length;
+      await checkAt(pushedAt + day + hour + 10 * minute, "1");
+      expect(conflicts()).toHaveLength(published);
     });
 
     it("lets the next conflict ask again when Resume finds no pull request", async () => {

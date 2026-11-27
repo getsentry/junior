@@ -8,7 +8,6 @@
 import type {
   EventPublisher,
   PluginConversationWatches,
-  PluginState,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import type { GitHubDb } from "../db/database.js";
@@ -19,15 +18,18 @@ import {
   type GitHubPullRequestSubscriptionConfig,
 } from "../events/pull-request.js";
 import { withGitHubConflictFix } from "./policy.js";
-import { whileResumingGitHubConflictFixes } from "./resuming.js";
 import {
   gitHubMergeConflictEvents,
   gitHubPullRequestMergeSchema,
   type GitHubPullRequestRef,
 } from "../webhooks/merge-conflict.js";
 
-/** A Resume on the merge conflict item of one pull request. */
-interface GitHubConflictResume {
+/**
+ * Resume merge conflict fixes of one open Junior pull request, and start a
+ * fix when it is not a draft and GitHub does not say that it can merge.
+ * Safe to repeat for one item: the event key names the item, so a retry publishes no second fix.
+ */
+export async function resumeGitHubConflictFixes(args: {
   db: GitHubDb;
   events: EventPublisher;
   /** The answered item. */
@@ -37,31 +39,11 @@ interface GitHubConflictResume {
   /** GitHub's id of the pull request. */
   pullRequestId: string;
   ref: GitHubPullRequestRef;
-  state: PluginState;
   /** The Watch that Junior makes for its pull requests, if the app has one. */
   subscription: GitHubPullRequestSubscriptionConfig | undefined;
   /** Watches of the item's Conversation. */
   watches: PluginConversationWatches;
-}
-
-/**
- * Resume merge conflict fixes of one open Junior pull request, and start a
- * fix when it is not a draft and GitHub does not say that it can merge.
- * Safe to repeat for one item: the event key names the item, so a retry publishes no second fix.
- */
-export async function resumeGitHubConflictFixes(
-  args: GitHubConflictResume,
-): Promise<void> {
-  // Core closed the item already. Until the fix is saved, the mark keeps a
-  // conflict check from adding it again.
-  await whileResumingGitHubConflictFixes(
-    args.state,
-    args.pullRequestId,
-    async () => await startResumedFix(args),
-  );
-}
-
-async function startResumedFix(args: GitHubConflictResume): Promise<void> {
+}): Promise<void> {
   const t = juniorGitHubPullRequests;
   const pullRequest = eq(t.pullRequestId, args.pullRequestId);
   const [row] = await args.db
@@ -73,7 +55,7 @@ async function startResumedFix(args: GitHubConflictResume): Promise<void> {
     await args.loadPullRequest(args.ref),
   );
   // A draft gets no fix, as in the policy. A Resume that starts no fix
-  // saves nothing, so the next conflict asks again at once.
+  // saves nothing, so the next conflict asks again (`gitHubConflictAsks`).
   if (
     loaded.state !== "open" ||
     loaded.mergeable === true ||

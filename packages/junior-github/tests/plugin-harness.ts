@@ -161,11 +161,11 @@ export function createPluginHarness(
   /** Close the open item of a subject, and return whether one was open. */
   const closeItem = (
     key: string,
-    close: Pick<PluginInboxItemRecord, "choice" | "status">,
+    close: Pick<PluginInboxItemRecord, "choice" | "closedAtMs" | "status">,
   ): boolean => {
     const item = openItem(key);
     if (!item) return false;
-    Object.assign(item, close);
+    Object.assign(item, { closedAtMs: Date.now(), ...close });
     return true;
   };
   const events: EventPublisher = {
@@ -427,7 +427,11 @@ export function createPluginHarness(
   }): Promise<void> {
     const key = subjectKey(input.subject);
     expect(openItem(key)?.id).toBe(input.itemId);
-    closeItem(key, { choice: input.choice, status: "done" });
+    closeItem(key, {
+      choice: input.choice,
+      closedAtMs: input.nowMs,
+      status: "done",
+    });
     await githubPlugin().hooks!.inboxItemAnswered!({
       ...input,
       cache,

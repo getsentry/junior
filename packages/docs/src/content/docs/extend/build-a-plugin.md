@@ -558,9 +558,9 @@ before you add the item. Add a unique index, so that at most one row with a
 Conversation has each subject id.
 
 `history(subject)` returns the items of a subject, newest first. Each closed
-item says how it closed, and the choice that closed it. Read what people
-did, such as a dismiss or a choice, from it. Do not copy it into a table of
-your plugin.
+item says when and how it closed, and the choice that closed it. Read what
+people did, such as a dismiss or a choice, from it. Do not copy it into a
+table of your plugin.
 
 ```ts
 inboxSubjects: [

@@ -488,7 +488,6 @@ export function githubPlugin(
             number: change.number,
             repositoryFullName: change.repository.name,
           },
-          state: ctx.state,
           subscription: gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,
           ),

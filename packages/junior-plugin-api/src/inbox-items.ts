@@ -133,12 +133,14 @@ export interface PluginReviewNotice {
 }
 
 /**
- * One item of a subject as the Inbox records it. A closed item keeps how it
- * closed, so a subject's items say what people did on it.
+ * One item of a subject as the Inbox records it. A closed item keeps how
+ * and when it closed, so a subject's items say what people did on it.
  */
 export interface PluginInboxItemRecord {
   /** The label of the choice that a person picked to close it. */
   choice?: string;
+  /** Unset while the item is open. */
+  closedAtMs?: number;
   id: string;
   status: "open" | "done" | "dismissed";
 }
