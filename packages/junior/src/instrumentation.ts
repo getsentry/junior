@@ -15,6 +15,14 @@ export {
   routeNameMiddleware,
 } from "@/chat/sentry-route-name";
 
+const RATE_LIMIT_HEADERS = [
+  "x-ratelimit-limit",
+  "x-ratelimit-remaining",
+  "x-ratelimit-reset",
+  "x-ratelimit-resource",
+  "x-ratelimit-used",
+];
+
 // Junior records its own gen_ai spans with usage and cost. These SDK spans
 // would duplicate them, and the provider ones have no usage because Pi reads
 // provider streams itself. Remove this filter after
@@ -78,7 +86,7 @@ export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
     baggage: trace.baggage,
     dsn,
     environment: getEnvironment(),
-    release: getDeploymentServiceVersion(),
+    release: getDeploymentServiceVersion(process.env),
     sentryTrace: trace["sentry-trace"],
     tracesSampleRate: getTracesSampleRate(),
   };
@@ -97,8 +105,10 @@ export function initSentry(): void {
     process.env["SENTRY_ENABLE_LOGS"],
     Boolean(dsn || process.env["SENTRY_SPOTLIGHT"]?.trim()),
   );
-  const serviceVersion = getDeploymentServiceVersion();
-  const deploymentSpanAttributes = getDeploymentTelemetryAttributes();
+  const serviceVersion = getDeploymentServiceVersion(process.env);
+  const deploymentSpanAttributes = getDeploymentTelemetryAttributes(
+    process.env,
+  );
 
   Sentry.init({
     dsn,
@@ -143,16 +153,24 @@ export function initSentry(): void {
     beforeSend: scrubPrivateSentryEvent,
     beforeSendLog: enableLogs ? scrubPrivateSentryLog : () => null,
     beforeSendSpan: scrubPrivateSentrySpan,
-    integrations: (defaultIntegrations) =>
-      defaultIntegrations.filter(
+    integrations: (defaultIntegrations) => [
+      ...defaultIntegrations.filter(
         (integration) =>
           !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name) &&
           // Dedupe drops an error event that matches the previous one, after
           // `captureException` has returned its id. A failed Turn shows that
           // id to the person as its reference, so each capture must send its
           // event. Sentry still groups the events into one issue.
-          integration.name !== "Dedupe",
+          integration.name !== "Dedupe" &&
+          integration.name !== "NodeFetch",
       ),
+      // Providers report their remaining request budget in these headers.
+      // On each outgoing fetch span they show which caller spent a shared
+      // budget, such as the GitHub App installation's GraphQL points.
+      Sentry.nativeNodeFetchIntegration({
+        headersToSpanAttributes: { responseHeaders: RATE_LIMIT_HEADERS },
+      }),
+    ],
   });
 
   // Keep deployment identity centralized so every emitted span, log, and metric carries it.

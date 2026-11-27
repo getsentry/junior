@@ -14,7 +14,6 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorIdentities,
-  juniorConversations,
   juniorUsers,
 } from "@/db/schema";
 import { slackPersonPredicate } from "@/db/schema/identities";
@@ -23,18 +22,10 @@ import type { UserSearchResult } from "../schema/user-search";
 // More words only narrow the match further.
 const USER_SEARCH_TERMS = 4;
 
-/**
- * What the found Users would join. A Conversation with a Slack workspace
- * finds only Users with a Slack account there, because Invite names them
- * by that account. A Conversation without one needs any Slack account.
- */
-export type UserSearchTarget =
-  | { kind: "space"; spaceId: string }
-  | {
-      kind: "conversation";
-      rootConversationId: string;
-      slackTeamId: string | undefined;
-    };
+/** The root that the found Users would join, such as a Space's Lead. */
+export interface UserSearchTarget {
+  rootConversationId: string;
+}
 
 /**
  * Split typed text into lowercase search terms. A leading `@` of a Slack
@@ -70,9 +61,6 @@ export async function readUserSearchFromSql(args: {
   const slackJoin = and(
     eq(slack.userId, juniorUsers.id),
     slackPersonPredicate(slack),
-    target.kind === "conversation" && target.slackTeamId
-      ? eq(slack.providerTenantId, target.slackTeamId)
-      : undefined,
   );
 
   const name = sql<string>`lower(coalesce(${juniorUsers.displayName}, ${slack.displayName}, ''))`;
@@ -93,18 +81,14 @@ export async function readUserSearchFromSql(args: {
         "full_name",
       ),
       rank: rank.as("rank"),
-      slackUserId: slack.providerSubjectId,
       slackUserName: slack.handle,
       sortName: name.as("sort_name"),
       userId: juniorUsers.id,
     })
     .from(juniorUsers);
-  const joined =
-    target.kind === "conversation"
-      ? base.innerJoin(slack, slackJoin)
-      : base.leftJoin(slack, slackJoin);
-  // Each User keeps the Slack account that ranks best.
-  const matches = joined
+  // Each User keeps the Slack account that ranks best, if they have one.
+  const matches = base
+    .leftJoin(slack, slackJoin)
     .where(and(...terms.map((term) => sql`strpos(${document}, ${term}) > 0`)))
     .orderBy(juniorUsers.id, asc(rank), asc(slack.id))
     .as("user_search_matches");
@@ -114,7 +98,6 @@ export async function readUserSearchFromSql(args: {
       email: matches.email,
       fullName: matches.fullName,
       isMember: memberSql(db, target, matches.userId).as("is_member"),
-      slackUserId: matches.slackUserId,
       slackUserName: matches.slackUserName,
       userId: matches.userId,
     })
@@ -139,44 +122,18 @@ export async function readUserSearchFromSql(args: {
       userId: row.userId,
       ...(fullName ? { fullName } : undefined),
       ...(row.slackUserName ? { slackUserName: row.slackUserName } : undefined),
-      ...(target.kind === "conversation" && row.slackUserId
-        ? { slackUserId: row.slackUserId }
-        : undefined),
       ...(avatarUrl ? { avatarUrl } : undefined),
       ...(row.isMember ? { isMember: true as const } : undefined),
     };
   });
 }
 
-/** SQL: the User is already a Member of the Space or a Participant. */
+/** SQL: the User is already a Participant of the root. */
 function memberSql(
   db: JuniorDatabase,
   target: UserSearchTarget,
   userId: AnyColumn,
 ): SQL<boolean> {
-  if (target.kind === "space") {
-    // A Space's members are the Participants of its Lead.
-    const lead = alias(juniorConversations, "user_search_space_lead");
-    return sql<boolean>`${exists(
-      db
-        .select({ userId: juniorConversationParticipants.userId })
-        .from(juniorConversationParticipants)
-        .innerJoin(
-          lead,
-          eq(
-            lead.conversationId,
-            juniorConversationParticipants.rootConversationId,
-          ),
-        )
-        .where(
-          and(
-            eq(lead.kind, "lead"),
-            eq(lead.spaceId, target.spaceId),
-            eq(juniorConversationParticipants.userId, userId),
-          ),
-        ),
-    )}`;
-  }
   const participants = juniorConversationParticipants;
   return sql<boolean>`${exists(
     db

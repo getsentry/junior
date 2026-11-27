@@ -1,0 +1,8 @@
+-- This migration does not change the database. The three migrations before
+-- it change `junior_inbox_items` by hand, because the new unique index must
+-- build concurrently after the duplicate open items close. This snapshot
+-- records the schema that they leave, so `drizzle-kit generate` does not
+-- write their changes again. `owner_kind`, `owner_id`, `visibility`,
+-- `provider`, and `provider_tenant_id` stay in the database for one release,
+-- because old workers still write them. The next release drops them with
+-- DROP COLUMN IF EXISTS.

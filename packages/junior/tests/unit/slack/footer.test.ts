@@ -1,26 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { describe, expect, it } from "vitest";
 import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
 } from "@/chat/slack/footer";
-
-const originalJuniorBaseUrl = process.env["JUNIOR_BASE_URL"];
-const originalBetterAuthUrl = process.env["BETTER_AUTH_URL"];
-
-afterEach(() => {
-  setDashboardConversationLinkOptions(undefined);
-  if (originalJuniorBaseUrl === undefined) {
-    delete process.env["JUNIOR_BASE_URL"];
-  } else {
-    process.env["JUNIOR_BASE_URL"] = originalJuniorBaseUrl;
-  }
-  if (originalBetterAuthUrl === undefined) {
-    delete process.env["BETTER_AUTH_URL"];
-  } else {
-    process.env["BETTER_AUTH_URL"] = originalBetterAuthUrl;
-  }
-});
+import { patchConfig, useConfig } from "../../fixtures/config";
 
 describe("buildSlackReplyFooter", () => {
   it("returns a compact footer item for the conversation ID", () => {
@@ -58,9 +41,11 @@ describe("buildSlackReplyFooter", () => {
   });
 
   it("links the conversation ID to the core dashboard", () => {
-    setDashboardConversationLinkOptions({
-      basePath: "/ops",
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        basePath: "/ops",
+        baseURL: "https://junior.example.com",
+      },
     });
 
     expect(
@@ -97,11 +82,13 @@ describe("buildSlackReplyFooter", () => {
   });
 
   it("uses JUNIOR_BASE_URL for core dashboard footer links", () => {
-    process.env["BETTER_AUTH_URL"] = "https://legacy-auth.example.com";
-    process.env["JUNIOR_BASE_URL"] = "https://junior-env.example.com";
-    setDashboardConversationLinkOptions({
-      basePath: "/ops",
-    });
+    useConfig(
+      { dashboard: { basePath: "/ops" } },
+      {
+        BETTER_AUTH_URL: "https://legacy-auth.example.com",
+        JUNIOR_BASE_URL: "https://junior-env.example.com",
+      },
+    );
 
     expect(
       buildSlackReplyFooter({
@@ -119,9 +106,11 @@ describe("buildSlackReplyFooter", () => {
   });
 
   it("does not link the ID to the core dashboard when dashboard is disabled", () => {
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-      disabled: true,
+    patchConfig({
+      dashboard: {
+        baseURL: "https://junior.example.com",
+        disabled: true,
+      },
     });
 
     expect(
@@ -190,9 +179,11 @@ describe("buildSlackReplyBlocks", () => {
 describe("getDashboardTaskLink", () => {
   it("builds an automation detail URL when dashboard links are configured", async () => {
     const { getDashboardTaskLink } = await import("@/chat/dashboard-link");
-    setDashboardConversationLinkOptions({
-      basePath: "/ops",
-      baseURL: "https://junior.example.com",
+    patchConfig({
+      dashboard: {
+        basePath: "/ops",
+        baseURL: "https://junior.example.com",
+      },
     });
 
     expect(getDashboardTaskLink("sched_abc")).toBe(

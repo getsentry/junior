@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { readJuniorSecret } from "@/chat/secrets";
+import { getChatConfig } from "@/chat/config";
 
 const LOCAL_CREDENTIAL_SYNC_CONTEXT = "junior.local-credential-sync.v1";
 const LOCAL_CREDENTIAL_SYNC_MAX_AGE_MS = 60_000;
@@ -21,7 +21,7 @@ const localCredentialSyncSchema = z
 type LocalCredentialSyncPayload = z.infer<typeof localCredentialSyncSchema>;
 
 function syncSecret(): string {
-  const secret = readJuniorSecret();
+  const secret = getChatConfig().secrets.juniorSecret;
   if (!secret) {
     throw new Error("Local credential sync requires JUNIOR_SECRET");
   }
@@ -56,7 +56,7 @@ export async function syncLocalOAuthCredential(
     provider,
     tokens,
   } satisfies LocalCredentialSyncPayload);
-  const port = process.env["PORT"]?.trim() || "3000";
+  const { port } = getChatConfig().development;
   const response = await fetch(
     `http://127.0.0.1:${port}/api/internal/local-oauth-credentials`,
     {
@@ -81,7 +81,7 @@ export async function receiveLocalOAuthCredential(
 ): Promise<Response> {
   const hostname = new URL(request.url).hostname;
   if (
-    process.env["NODE_ENV"] !== "development" ||
+    !getChatConfig().development.enabled ||
     (hostname !== "127.0.0.1" && hostname !== "localhost")
   ) {
     return new Response(null, { status: 404 });

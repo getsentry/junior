@@ -27,12 +27,13 @@ vi.mock("@vercel/sandbox", () => ({
   },
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getRuntimeDependencies: getRuntimeDependenciesMock,
     getRuntimePostinstall: getRuntimePostinstallMock,
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],
   GLOBAL_RUNTIME_POSTINSTALL: [],

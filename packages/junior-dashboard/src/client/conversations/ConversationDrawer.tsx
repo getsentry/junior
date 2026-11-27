@@ -8,6 +8,7 @@ import { conversationPath } from "./conversationRoutes";
 import { conversationDetailTitle } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
+import { useParentSheet } from "../components/bottomSheetContext";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { StatusChip } from "../components/StatusChip";
@@ -105,6 +106,8 @@ function ConversationDrawerContent(
   };
 
   const titleId = useId();
+  // On a phone, a sheet can stack on the sheet that opened it.
+  const parentSheet = useParentSheet();
 
   return (
     <Drawer
@@ -194,16 +197,17 @@ function ConversationDrawerContent(
             ) : null}
             <Link
               className="inline-flex w-fit items-center gap-1 font-medium text-dashboard-accent-text no-underline hover:underline"
-              onClick={props.onClose}
+              onClick={() => {
+                // The page shows the Conversation, so no sheet stays over it.
+                parentSheet?.closeAll();
+                props.onClose();
+              }}
               to={conversationPath(props.target.conversationId)}
             >
               Open conversation
               <ExternalLink aria-hidden="true" size={12} strokeWidth={2} />
             </Link>
           </div>
-          <code className="mt-1 block min-w-0 break-all font-mono text-xs text-dashboard-text-faint">
-            {props.target.conversationId}
-          </code>
           {props.details}
         </>
       }

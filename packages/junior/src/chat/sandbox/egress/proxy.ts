@@ -6,7 +6,7 @@ import {
   executeCredentialedEgressRequest,
   type CredentialedEgressHttpInterceptor,
 } from "@/chat/egress/credentialed";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import {
   classifySandboxCredentialRequest,
   sandboxRequestGetsCredential,
@@ -175,7 +175,7 @@ function credentialRequestInput(
   provider: string,
   request: Request,
 ): { withoutCredential?: Exclude<SandboxCredentialRequest, "placeholder"> } {
-  const manifest = pluginCatalogRuntime.getDefinition(provider)?.manifest;
+  const manifest = getAppContext().catalog.getDefinition(provider)?.manifest;
   if (!manifest) {
     throw new Error(`Plugin "${provider}" has no manifest for sandbox egress`);
   }

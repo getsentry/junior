@@ -14,8 +14,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
+import { createAppContext, installAppContext } from "@/app/context";
 import { coreRegistrations } from "@/chat/plugins/core-registrations";
 import {
   validatePluginEgressCredentialHooks,
@@ -239,17 +238,16 @@ async function loadPluginRegistrations(args: {
   ];
   const runtimePlugins = pluginRuntimeRegistrationsFromPluginSet(pluginSet);
   const pluginConfig = pluginCatalogConfigFromPluginSet(pluginSet);
-  validatePlugins(runtimePlugins);
-  const previousPluginCatalogConfig =
-    pluginCatalogRuntime.setConfig(pluginConfig);
+  const previousAppContext = installAppContext(
+    createAppContext({ plugins: runtimePlugins, pluginConfig }),
+  );
   try {
     validatePluginRegistrations(pluginSet.registrations);
     validatePluginEgressCredentialHooks(pluginSet.registrations);
     args.validateConfiguredCommands?.(cliPlugins);
-    setPlugins(runtimePlugins);
     return { cliPlugins, runtimePlugins };
   } catch (error) {
-    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
+    installAppContext(previousAppContext);
     throw error;
   }
 }

@@ -6,7 +6,6 @@ import type {
   MessageAgentInput,
 } from "@/chat/agent/types";
 import { actorFromRun } from "@/chat/agent/types";
-import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { findChildAgentConversationId } from "./bindings";
 import { readChildConversationSender } from "./child-input";
@@ -69,7 +68,6 @@ export function bindMessageAgent(
     });
     if (!childConversationId) {
       await enqueueTopLevelAgentMessage({
-        askingActor: isPersonInput(run.source.kind) ? actor : undefined,
         messageKey: `${run.turnId}:${call.toolCallId}`,
         queue,
         senderConversationId: run.conversationId,

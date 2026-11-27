@@ -6,6 +6,7 @@ import {
 } from "@/chat/agent-dispatch/context";
 import { isTerminalDispatchStatus } from "@/chat/agent-dispatch/store";
 import { AGENT_DISPATCH_MAX_AGE_MS } from "@/chat/agent-dispatch/work";
+import { listOpenAutomationQuestions } from "@/chat/inbox-items/automation-questions";
 import { renderTaskInput } from "@/chat/task-input";
 import { automationTaskText } from "@/chat/automations/task";
 import {
@@ -46,12 +47,19 @@ function singleLineMetadataValue(value: string): string {
     .trim();
 }
 
-/** Render the due scheduled automation as plain agent input. */
-function buildDispatchInput(task: ScheduledAutomation): string {
+/**
+ * Render the due scheduled automation as plain agent input, with the open
+ * questions of its earlier runs.
+ */
+async function buildDispatchInput(
+  db: JuniorDatabase,
+  task: ScheduledAutomation,
+): Promise<string> {
   return renderTaskInput({
     creator: slackMention(task.createdBy.slackUserId),
     instructions: automationTaskText(task.task),
     ...(task.task.kind === "skill" ? { skill: task.task.skill } : undefined),
+    openQuestions: await listOpenAutomationQuestions(db, task.id),
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
   });
 }
@@ -401,7 +409,7 @@ export async function runScheduledAutomationHeartbeat(args: {
             : undefined),
           destination: task.destination,
           destinationVisibility: task.conversationAccess.visibility,
-          input: buildDispatchInput(task),
+          input: await buildDispatchInput(db, task),
           ...(skill ? { skill } : undefined),
           metadata: buildDispatchMetadata({ nowMs: args.nowMs, run, task }),
           replyAttribution: automationReplyAttribution(task.title),

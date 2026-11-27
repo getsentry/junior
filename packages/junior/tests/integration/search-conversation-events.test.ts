@@ -741,8 +741,24 @@ describe("searchConversationEvents", () => {
     try {
       // A Thread runs no session tasks, so the event search task skips it.
       const threadId = await startThread(harness, "index-thread");
-      harness.onRun(finishRun);
+      // A backfill run during the Turn skips the Thread: the Turn indexes
+      // its events when it ends.
+      let duringTurn: { lexemes: number; running: number } | undefined;
+      harness.onRun(async (run) => {
+        const backfill = await backfillEventSearchIndex({
+          db: getDb(),
+          deadlineMs: Date.now() + 10_000,
+          nowMs: Date.now(),
+          pass: { after: null, conversations: 0, events: 0, skipped: 0 },
+        });
+        duringTurn = {
+          lexemes: (await indexed(threadId)).lexemes,
+          running: backfill.run.running,
+        };
+        return await finishRun(run);
+      });
       await harness.drain(threadId);
+      expect(duringTurn).toEqual({ lexemes: 0, running: 1 });
       const thread = await indexed(threadId);
       expect(thread.events).toBeGreaterThan(0);
       expect(thread.lexemes).toBe(thread.events);

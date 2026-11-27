@@ -10,8 +10,11 @@ import {
   resetTestGitHubHttpFixtures,
 } from "@sentry/junior-testing/http";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
+import {
+  createAppContext,
+  installAppContext,
+  type AppContext,
+} from "@/app/context";
 import { warmSandboxSnapshot } from "./src/snapshot-warmup";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
@@ -43,10 +46,9 @@ export default async function setup(
   const teardownPostgres = await setupPostgres(project);
   process.stdout.write("[evals] Postgres template ready\n");
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
-  let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
   let mswListening = false;
-  let previousPlugins: ReturnType<typeof setPlugins> | undefined;
+  let previousAppContext: AppContext | undefined;
   const fixtureEnv = {
     ...evalGitHubEnv(),
     SENTRY_CLIENT_ID: "eval-sentry-client-id",
@@ -71,8 +73,7 @@ export default async function setup(
       },
       async () => await disconnectStateAdapter(),
       async () => {
-        pluginCatalogRuntime.setConfig(previousCatalogConfig);
-        if (previousPlugins) setPlugins(previousPlugins);
+        installAppContext(previousAppContext);
         for (const [key, value] of previousEnv) {
           if (value === undefined) delete process.env[key];
           else process.env[key] = value;
@@ -111,9 +112,10 @@ export default async function setup(
         ...authSuitePlugins,
       ]),
     );
-    previousPlugins = setPlugins(runtimePlugins);
+    previousAppContext = installAppContext(
+      createAppContext({ plugins: runtimePlugins, pluginConfig }),
+    );
     Object.assign(process.env, fixtureEnv);
-    previousCatalogConfig = pluginCatalogRuntime.setConfig(pluginConfig);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;
     // The Vercel Sandbox client gives `fetch` its own agent.

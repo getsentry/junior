@@ -1,32 +1,9 @@
 /**
  * When a merge conflict wakes Junior. A fix is a full agent turn, so only a
- * Junior pull request that people still work on gets one:
- *
- * - A draft gets nothing.
- * - In the first 2 days after the latest activity by a person, Junior fixes
- *   the conflict, at most once a day, and at most 3 times in a row with no
- *   activity by a person between them.
- * - After that, a conflict does nothing, and nobody is told. The next
- *   activity by a person starts the fixes again.
- * - An approved pull request would be ready to merge but for the conflict,
- *   so it gets a fix after the 2 days too, and without the daily wait. The
- *   ready to merge notice needs a clean merge state, so it waits for the
- *   fix. The limit of fixes in a row still holds.
- * - When a day after its fix the head commit is the same, the fix did not
- *   land, and Junior is stuck. Then it asks the person who asked for the
- *   pull request to resume, with an Inbox item, once after each Resume. So
- *   Dismiss ends the asks on the pull request. Resume counts as activity by
- *   a person, and starts a fix at once (`resume.ts`).
- *
- * Each conflict reads the pull request's history from GitHub for the latest
- * activity by a person. Opening the pull request counts as activity,
- * because a person asked for it. Only the fixes that this policy or Resume
- * started count as fixes, so a merge or force push for work that a person
- * asked for does not. The plugin stores them with the time of the latest
- * Resume and of the latest ask. The event key names the head commit, so a
- * check of the same commit, or a webhook and the heartbeat at once, publish
- * one fix. A conflict on a pull request that Junior did not open goes to its
- * Watch as before, except for a draft.
+ * non-draft Junior PR within `ACTIVE_MS` of activity by a person gets one;
+ * past that, a conflict tells nobody. An approved PR skips that wait, since
+ * ready to merge needs a clean merge. A fix that did not land in a day asks
+ * to resume, once per Resume. One head commit publishes one fix.
  */
 import type {
   EventInput,
@@ -37,14 +14,20 @@ import type {
 import { eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import * as z from "zod";
-import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubConflictFix,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
-import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import {
+  listGitHubPullRequestOpeners,
+  recordGitHubPullRequestOpenerId,
+} from "../pull-request-requesters/store.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  pullRequestSubject,
+} from "../inbox-subjects.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import type {
   GitHubMergeConflict,
@@ -91,7 +74,11 @@ const timelineItemSchema = z.union([
     createdAt: z.string(),
   }),
   z.object({
-    __typename: z.literal("HeadRefForcePushedEvent"),
+    __typename: z.enum([
+      "AutomaticBaseChangeSucceededEvent",
+      "BaseRefChangedEvent",
+      "HeadRefForcePushedEvent",
+    ]),
     actor: actorSchema,
     createdAt: z.string(),
   }),
@@ -101,6 +88,9 @@ const historyResponseSchema = z.object({
   data: z.object({
     repository: z.object({
       pullRequest: z.object({
+        baseChanges: z.object({
+          nodes: z.array(timelineItemSchema.nullable()),
+        }),
         createdAt: z.string(),
         discussion: z.object({
           nodes: z.array(timelineItemSchema.nullable()),
@@ -116,14 +106,17 @@ const historyResponseSchema = z.object({
 
 /** What GitHub says about the people on one pull request. */
 interface GitHubConflictHistory {
-  /** The latest push, review, or comment by a person, or the opening. */
+  /** The latest activity by a person, or the opening. */
   activeAtMs: number;
   approved: boolean;
 }
 
 /**
- * Read the history from GitHub's answer. A deleted account has no author,
- * and counts as a person. Activity by a bot is not activity.
+ * Read the history from GitHub's answer. A deleted account counts as a
+ * person, and a bot's activity is not activity. The opening counts, since a
+ * person asked for it. So does a person's base change, such as the merge of
+ * the PR below in a stack: its conflicts come from that merge, not from a
+ * loop of fixes.
  */
 function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   const pullRequest =
@@ -135,6 +128,7 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
   for (const item of [
     ...pullRequest.pushes.nodes,
     ...pullRequest.discussion.nodes,
+    ...pullRequest.baseChanges.nodes,
   ]) {
     if (!item) continue;
     switch (item.__typename) {
@@ -144,6 +138,8 @@ function parseGitHubConflictHistory(response: unknown): GitHubConflictHistory {
           item.commit.committedDate,
         );
         break;
+      case "AutomaticBaseChangeSucceededEvent":
+      case "BaseRefChangedEvent":
       case "HeadRefForcePushedEvent":
         record(item.actor?.__typename === "Bot", item.createdAt);
         break;
@@ -228,37 +224,16 @@ function gitHubConflictAction(input: {
   return !approved && nowMs - fixedAtMs < FIX_INTERVAL_MS ? "skip" : "fix";
 }
 
-const ITEM_KEY_PREFIX = "merge-conflict:";
-
-/** The dedupe key of the merge conflict item of one pull request. */
-export function gitHubConflictItemKey(ref: GitHubPullRequestRef): string {
-  return `${ITEM_KEY_PREFIX}${ref.repositoryFullName.toLowerCase()}#${ref.number}`;
-}
-
-/** Read the pull request of a merge conflict item's dedupe key. */
-export function parseGitHubConflictItemKey(
-  dedupeKey: string,
-): GitHubPullRequestRef | undefined {
-  const match = /^([^/#\s]+\/[^/#\s]+)#(\d+)$/.exec(
-    dedupeKey.startsWith(ITEM_KEY_PREFIX)
-      ? dedupeKey.slice(ITEM_KEY_PREFIX.length)
-      : "",
-  );
-  return match
-    ? { number: Number(match[2]), repositoryFullName: match[1]! }
-    : undefined;
-}
-
 /** Ask the requester to resume a fix that did not land. */
 async function addUnlandedItem(args: {
   conflict: GitHubMergeConflict;
   db: GitHubDb;
-  loadTitleParts?: LoadGitHubTitleParts | undefined;
+  /** GitHub's id of the pull request, the id of its item. */
+  pullRequestId: string;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
-  title?: string;
 }): Promise<void> {
-  const { conflict, ref, title } = args;
+  const { conflict, ref } = args;
   const opener = (
     await listGitHubPullRequestOpeners(args.db, {
       numbers: [ref.number],
@@ -267,26 +242,24 @@ async function addUnlandedItem(args: {
   ).get(ref.number);
   // Only a pull request that a person asked for has a Conversation.
   if (!opener?.conversationId) return;
-  const url =
-    conflict.url ??
-    `https://github.com/${ref.repositoryFullName}/pull/${ref.number}`;
-  const titleParts = title
-    ? await args.loadTitleParts?.({
-        repositoryFullName: ref.repositoryFullName,
-        title,
-      })
-    : undefined;
+  if (!opener.pullRequestId) {
+    await recordGitHubPullRequestOpenerId(args.db, {
+      conversationId: opener.conversationId,
+      number: ref.number,
+      pullRequestId: args.pullRequestId,
+      repositoryFullName: ref.repositoryFullName,
+    });
+  }
   await args.inboxItems.forConversation(opener.conversationId).upsert({
+    // The policy asks once per Resume, so each upsert is a new ask.
+    askedIdentityIds: [opener.identityId],
     assigneeIdentityIds: [opener.identityId],
     body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
     choices: [{ label: GITHUB_CONFLICT_RESUME }],
-    dedupeKey: gitHubConflictItemKey(ref),
-    subject: {
-      id: url,
-      title: title ? `${title} (#${ref.number})` : url,
-      ...(titleParts ? { titleParts } : undefined),
-      url,
-    },
+    subject: pullRequestSubject(
+      GITHUB_INBOX_SUBJECTS.mergeConflict,
+      args.pullRequestId,
+    ),
     title: `Merge conflict · #${ref.number}`,
   });
 }
@@ -305,13 +278,10 @@ export async function applyGitHubConflictPolicy(args: {
   events: EventInput[];
   /** Read the pull request's `PULL_REQUEST_CONFLICT_HISTORY` from GitHub. */
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
-  /** Read the title parts of the item subject. */
-  loadTitleParts?: LoadGitHubTitleParts | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   now: Date;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
-  title?: string;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
   const change = await findGitHubPullRequest(args.codeChanges, args.ref);
@@ -327,6 +297,7 @@ export async function applyGitHubConflictPolicy(args: {
     .from(t)
     .where(pullRequest)
     .limit(1);
+  // A pull request that Junior did not open goes to its Watch as before.
   if (!row) return args.events;
   const nowMs = args.now.getTime();
   const action = gitHubConflictAction({
@@ -352,7 +323,7 @@ export async function applyGitHubConflictPolicy(args: {
     return args.events;
   }
   try {
-    await addUnlandedItem(args);
+    await addUnlandedItem({ ...args, pullRequestId: change.providerId });
     // Save the ask after the item, so a failed item is asked again.
     await args.db
       .update(t)
@@ -377,6 +348,8 @@ export const GITHUB_CONFLICT_GONE_REASON =
  */
 export async function closeGitHubConflictItem(args: {
   db: GitHubDb;
+  /** GitHub's id of the pull request, the id of its item. */
+  pullRequestId: string;
   reason: string;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
@@ -391,7 +364,10 @@ export async function closeGitHubConflictItem(args: {
   ).get(ref.number);
   if (!opener?.conversationId) return;
   await args.inboxItems.forConversation(opener.conversationId).close({
-    dedupeKey: gitHubConflictItemKey(ref),
+    subject: pullRequestSubject(
+      GITHUB_INBOX_SUBJECTS.mergeConflict,
+      args.pullRequestId,
+    ),
     reason: args.reason,
     status: args.status,
   });
@@ -426,17 +402,23 @@ export async function closeGitHubConflictItems(args: {
     changes.map((change) => [change.number, change.providerId]),
   );
   const limit = pLimit(ITEM_CLOSE_CONCURRENCY);
-  const close = async (number: number, conversationId: string) => {
+  const close = async (
+    number: number,
+    conversationId: string,
+    pullRequestId: string,
+  ) => {
     try {
       const closed = await args.inboxItems
         .forConversation(conversationId)
         .close({
-          dedupeKey: gitHubConflictItemKey({ number, repositoryFullName }),
+          subject: pullRequestSubject(
+            GITHUB_INBOX_SUBJECTS.mergeConflict,
+            pullRequestId,
+          ),
           reason: args.reason,
           status: args.status,
         });
-      const pullRequestId = pullRequestIds.get(number);
-      if (closed && pullRequestId) {
+      if (closed) {
         await args.db
           .update(juniorGitHubPullRequests)
           .set({ conflictFixAskedAt: null })
@@ -452,8 +434,11 @@ export async function closeGitHubConflictItems(args: {
     }
   };
   await Promise.all(
-    [...openers].flatMap(([number, { conversationId }]) =>
-      conversationId ? [limit(() => close(number, conversationId))] : [],
-    ),
+    [...openers].flatMap(([number, { conversationId }]) => {
+      const pullRequestId = pullRequestIds.get(number);
+      return conversationId && pullRequestId
+        ? [limit(() => close(number, conversationId, pullRequestId))]
+        : [];
+    }),
   );
 }

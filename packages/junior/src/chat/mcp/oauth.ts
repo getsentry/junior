@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
-import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getChatConfig } from "@/chat/config";
 import { fetchWithBoundedOAuthErrorBodies } from "@/chat/oauth-response";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
@@ -15,7 +15,7 @@ export function getMcpOAuthCallbackPath(provider: string): string {
 }
 
 function requirePluginWithMcp(provider: string): PluginDefinition {
-  const plugin = pluginCatalogRuntime.getDefinition(provider);
+  const plugin = getAppContext().catalog.getDefinition(provider);
   if (!plugin?.manifest.mcp) {
     throw new Error(`Plugin "${provider}" does not support MCP`);
   }
@@ -39,7 +39,7 @@ export async function createMcpOAuthClientProvider(input: {
 }): Promise<StateBackedMcpOAuthClientProvider> {
   const plugin = requirePluginWithMcp(input.provider);
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)",
@@ -97,7 +97,7 @@ export async function finalizeMcpAuthorization(
     );
   }
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = getChatConfig().deployment.baseUrl;
   if (!baseUrl) {
     throw new Error(
       "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)",

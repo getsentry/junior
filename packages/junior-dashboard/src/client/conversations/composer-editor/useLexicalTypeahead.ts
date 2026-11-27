@@ -27,7 +27,7 @@ import type {
   ComposerMenuKey,
   ComposerTypeahead,
 } from "../ComposerMenu";
-import type { ComposerToken } from "../skillReferences";
+import type { ComposerToken } from "../composerTypeaheadToken";
 import { $createComposerMentionNode } from "./ComposerMentionNode";
 import { $isInCode } from "./composerLiveMarkdown";
 import { $createComposerReferenceNode } from "./ComposerReferenceNode";
@@ -42,6 +42,10 @@ type TokenFinder = (text: string, caret: number) => ComposerToken | undefined;
 type TextRange = { nodeKey: NodeKey; start: number; end: number };
 // The text and a collapsed caret that the last sync read.
 type Synced = { text: string; caret: string };
+// A reference whose menu is closed, up to `end`. Typing moves `end`, and a
+// caret move past it leaves the reference. With `query`, it stays closed
+// only while the query starts with it, so a shorter query searches again.
+type Closed = { nodeKey: NodeKey; start: number; end: number; query?: string };
 
 // Tags the update of an insert, so its sync keeps `inserted`.
 const INSERT_TAG = "composer-typeahead-insert";
@@ -64,8 +68,9 @@ export function useLexicalTypeahead(
   const [textbox, setTextbox] = useState<HTMLElement | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
-  // Escape closes the menu until the caret leaves that reference.
-  const dismissedRef = useRef<{ nodeKey: NodeKey; start: number }>(undefined);
+  // Escape closes the menu until the caret leaves that reference. An end
+  // closes it while the reader types on.
+  const closedRef = useRef<Closed>(undefined);
   // A press in the menu keeps it open through the blur that it causes.
   const heldRef = useRef(false);
   const clearInserted = () => {
@@ -99,20 +104,35 @@ export function useLexicalTypeahead(
       if (last?.text === read.text && last.caret === read.caret) return;
       syncedRef.current = read;
       clearInserted();
+      const edited = last !== undefined && last.text !== read.text;
       const found = editor.getEditorState().read(() => $tokenAtCaret(tokenAt));
-      const next = found && {
-        ...found,
-        edited: last !== undefined && last.text !== read.text,
-      };
-      const dismissed = dismissedRef.current;
-      if (
-        dismissed &&
-        (next?.nodeKey !== dismissed.nodeKey || next.start !== dismissed.start)
-      ) {
-        dismissedRef.current = undefined;
+      // Only typing opens a query with a space. A caret that moves to the
+      // end of `@name and more text` opens no menu, and an open menu stays
+      // open while the caret moves in its query.
+      const open = tokenRef.current;
+      const next =
+        found &&
+        (edited ||
+          !/\s/.test(found.query) ||
+          (open?.nodeKey === found.nodeKey && open.start === found.start))
+          ? { ...found, edited }
+          : undefined;
+      const closed = closedRef.current;
+      if (closed) {
+        if (
+          found?.nodeKey !== closed.nodeKey ||
+          found.start !== closed.start ||
+          (closed.query !== undefined &&
+            !found.query.startsWith(closed.query)) ||
+          (!edited && found.start + 1 + found.query.length > closed.end)
+        ) {
+          closedRef.current = undefined;
+        } else if (edited) {
+          closed.end = found.end;
+        }
       }
       setToken((current) =>
-        !next || dismissedRef.current
+        !next || closedRef.current
           ? undefined
           : current && sameToken(current, next)
             ? current
@@ -157,24 +177,28 @@ export function useLexicalTypeahead(
   const query = token?.query;
   const name = token?.name;
   const edited = token?.edited ?? false;
-  return useMemo<ComposerTypeahead>(
-    () => ({
+  return useMemo<ComposerTypeahead>(() => {
+    const close = (atQuery: boolean) => {
+      const current = tokenRef.current;
+      if (current) {
+        closedRef.current = {
+          nodeKey: current.nodeKey,
+          start: current.start,
+          end: current.end,
+          ...(atQuery ? { query: current.query } : undefined),
+        };
+      }
+      setToken(undefined);
+      clearInserted();
+    };
+    return {
       edited,
       inserted,
       name,
       query,
       textbox,
-      dismiss: () => {
-        const current = tokenRef.current;
-        if (current) {
-          dismissedRef.current = {
-            nodeKey: current.nodeKey,
-            start: current.start,
-          };
-        }
-        setToken(undefined);
-        clearInserted();
-      },
+      dismiss: () => close(false),
+      end: () => close(true),
       focus: () => editor.focus(),
       referenceRect: () => {
         const range = insertedRangeRef.current ?? token;
@@ -187,6 +211,14 @@ export function useLexicalTypeahead(
         const current = tokenRef.current;
         if (!current) return;
         if ("text" in insertion) {
+          // The text stays in this node, so the words typed after it are
+          // not a query.
+          closedRef.current = {
+            nodeKey: current.nodeKey,
+            start: current.start,
+            end: current.start + insertion.text.length + 1,
+            query: `${insertion.text.slice(1)} `,
+          };
           setInserted(insertion.text);
           insertedRangeRef.current = {
             nodeKey: current.nodeKey,
@@ -244,9 +276,8 @@ export function useLexicalTypeahead(
           ),
         );
       },
-    }),
-    [edited, editor, inserted, name, query, textbox, token],
-  );
+    };
+  }, [edited, editor, inserted, name, query, textbox, token]);
 }
 
 /** The screen box of a reference, or of its first line when it wraps. */

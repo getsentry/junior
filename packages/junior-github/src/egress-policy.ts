@@ -596,7 +596,11 @@ function applyGitHubEgressPolicy(input: {
 
   if (isGitHubIssueRead(input)) {
     enforceEgressPolicy({
-      allowed: input.operation === "github.issue.get",
+      // The object cards of a page, such as an Inbox page, read many issues
+      // and pull requests in one query.
+      allowed:
+        input.operation === "github.issue.get" ||
+        input.operation === "github.objects.cards.get",
       denialMessage: ISSUE_READ_DENIAL,
     });
   }

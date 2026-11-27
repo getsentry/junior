@@ -1,29 +1,30 @@
-import { and, eq, gt, max, sql } from "drizzle-orm";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
+import { and, eq, gt, inArray, max, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
   juniorConversationReadPositions,
+  juniorConversations,
   juniorIdentities,
   juniorInboxItems,
 } from "@/db/schema";
-import { inboxItemAssignedTo, REPLY_NOTICE_KEY_PREFIX } from "./access";
+import { inboxItemAssignedTo } from "./access";
 import {
   closeInboxItem,
-  getOpenInboxItemByDedupeKey,
+  getOpenInboxItemBySubject,
   insertInboxItem,
+  ownerConversationId,
   updateInboxItemContent,
+  type InboxItem,
   type InboxItemContent,
 } from "./store";
+import { INBOX_SUBJECT_KINDS } from "./subjects";
 
 // A reply in a dashboard Conversation is a notice for its starter. The
 // Conversation has one open reply notice at a time. Each reply replaces its
-// content, and the starter's read of the latest reply closes it. A Slack
-// thread already tells people, so a Conversation with a Location gets none.
-
-function replyNoticeKey(conversationId: string): string {
-  return `${REPLY_NOTICE_KEY_PREFIX}${conversationId}`;
-}
+// content, and the starter's read of the latest reply closes it. An open
+// action that waits on the starter, or their answer to an item, also closes
+// it: the item has their attention. A Slack thread already tells people, so
+// a Conversation with a Location gets none.
 
 /**
  * Add the reply notice of a Conversation for its starter, or replace the
@@ -41,27 +42,19 @@ export async function upsertReplyNotice(
     turnId: string;
   },
 ): Promise<string> {
-  const access = (
-    await readConversationAccessFromSql(db, [input.conversationId])
-  ).get(input.conversationId);
-  const tenant = access?.tenant;
-  const key = replyNoticeKey(input.conversationId);
   const content: InboxItemContent = {
     assignedToEveryone: false,
     assigneeUserIds: [input.starterUserId],
     body: input.body,
     conversationIds: [input.conversationId],
     kind: "notice",
+    subject: { id: input.conversationId, kind: INBOX_SUBJECT_KINDS.reply },
     title: input.title,
-    visibility: access?.visibility === "public" ? "public" : "private",
   };
-  const open = await getOpenInboxItemByDedupeKey(db, key, tenant);
+  const open = await getOpenInboxItemBySubject(db, content.subject);
   if (open) {
     const updated = await updateInboxItemContent(db, {
       ...content,
-      // A private Conversation that turned public keeps its items private.
-      visibility:
-        open.visibility === "private" ? "private" : content.visibility,
       addedByTurnId: input.turnId,
       id: open.id,
       nowMs: input.nowMs,
@@ -71,10 +64,8 @@ export async function upsertReplyNotice(
   const inserted = await insertInboxItem(db, {
     ...content,
     addedByTurnId: input.turnId,
-    dedupeKey: key,
     nowMs: input.nowMs,
     owner: { id: input.conversationId, kind: "conversation" },
-    ...(tenant ? { tenant } : undefined),
   });
   // Turns of one Conversation run one at a time, so a race here is
   // unexpected. The task retry then finds the open notice and updates it.
@@ -153,6 +144,69 @@ export async function closeReadReplyNotice(
   await closeRead(db, notice, input);
 }
 
+/**
+ * Close the User's open reply notice of a Conversation, because an open
+ * action in it already waits on them.
+ */
+export async function closeWaitingReplyNotice(
+  db: JuniorDatabase,
+  input: { conversationId: string; nowMs: number; userId: string },
+): Promise<void> {
+  const notice = await openReplyNoticeId(db, input);
+  if (!notice) return;
+  await closeInboxItem(db, {
+    id: notice,
+    nowMs: input.nowMs,
+    reason: "Item waits on you",
+    status: "done",
+  });
+}
+
+/**
+ * Close the User's open reply notices of the Conversations of an Inbox item
+ * that they answered or dismissed. An item of a child Conversation closes
+ * the notice of its root too. A dismissed reply notice is already closed,
+ * so it finds no open notice.
+ */
+export async function closeHandledReplyNotices(
+  db: JuniorDatabase,
+  input: {
+    item: Pick<InboxItem, "conversationIds" | "owner">;
+    nowMs: number;
+    userId: string;
+  },
+): Promise<void> {
+  const owner = ownerConversationId(input.item);
+  const ids = [
+    ...new Set([...input.item.conversationIds, ...(owner ? [owner] : [])]),
+  ];
+  if (ids.length === 0) return;
+  const roots = await db
+    .select({ id: juniorConversations.rootConversationId })
+    .from(juniorConversations)
+    .where(inArray(juniorConversations.conversationId, ids));
+  const conversationIds = new Set([
+    ...ids,
+    ...roots.flatMap((root) => root.id ?? []),
+  ]);
+  /* oxlint-disable no-await-in-loop -- Usually one or two Conversations. */
+  for (const conversationId of conversationIds) {
+    const notice = await openReplyNoticeId(db, {
+      conversationId,
+      userId: input.userId,
+    });
+    if (!notice) continue;
+    await closeInboxItem(db, {
+      closedByUserId: input.userId,
+      id: notice,
+      nowMs: input.nowMs,
+      reason: "Item handled",
+      status: "done",
+    });
+  }
+  /* oxlint-enable no-await-in-loop */
+}
+
 async function openReplyNoticeId(
   db: JuniorDatabase,
   input: { conversationId: string; userId: string },
@@ -162,7 +216,8 @@ async function openReplyNoticeId(
     .from(juniorInboxItems)
     .where(
       and(
-        eq(juniorInboxItems.dedupeKey, replyNoticeKey(input.conversationId)),
+        eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.reply),
+        eq(juniorInboxItems.subjectId, input.conversationId),
         eq(juniorInboxItems.status, "open"),
         inboxItemAssignedTo(input.userId),
       ),

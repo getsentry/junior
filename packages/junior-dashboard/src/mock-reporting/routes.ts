@@ -89,7 +89,6 @@ import {
   MOCK_AVATAR_SVG,
   readMockObjectLinks,
 } from "./objects";
-import { createMockSpaceLeadRoutes } from "./lead";
 import { readMockConversationOutline } from "./outline";
 import { answerMockInboxItemByReply } from "./inbox-items";
 import { markMockConversationRead } from "./read-positions";
@@ -134,7 +133,7 @@ import {
 import { addMockInboxItemRoutes } from "./inbox-item-routes";
 import { readMockConversationTodos, setMockTodoStatus } from "./todos";
 import {
-  addMockConversationSpaceRoute,
+  addMockConversationSpaceRoutes,
   createMockSpaceRoutes,
   mockSpaceForWork,
   startMockConversationInSpace,
@@ -296,9 +295,8 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(locationDetailReportSchema, report)
       : errorResponse("Location not found.", 404);
   });
-  app.route("/spaces", createMockSpaceLeadRoutes());
   app.route("/spaces", createMockSpaceRoutes());
-  addMockConversationSpaceRoute(app);
+  addMockConversationSpaceRoutes(app);
   app.get("/conversations", (c) => {
     const query = conversationFeedQuerySchema.safeParse(c.req.query());
     if (!query.success) {

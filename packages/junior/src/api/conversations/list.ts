@@ -41,10 +41,8 @@ import {
   readConversationAccessRows,
 } from "./access";
 import {
-  conversationIdsWithParticipantUser,
   conversationPinnedForUser,
   conversationIsMemberRoot,
-  rootSpaceReadableBy,
   conversationIsNotUnsubscribedRoot,
   type ConversationMember,
   readMemberParticipants,
@@ -123,7 +121,6 @@ function conversationFeedMembershipFilter(
   const member = feedMember(filter);
   return and(
     conversationIsMemberRoot(member),
-    rootSpaceReadableBy(member),
     status === "archived"
       ? isNotNull(juniorConversations.archivedAt)
       : status === "all"
@@ -242,10 +239,14 @@ async function conversationRows(
     .leftJoin(juniorUsers, conversationRecordJoins.user)
     .where(
       and(
-        listedConversation(),
+        // A Space's feed, its Threads panel, lists the Lead's children.
+        // Every other feed lists roots that are not a Lead.
         space
           ? conversationSpaceFilter(space.id, status, space.viewerUserId)
-          : conversationFeedMembershipFilter(status, filter),
+          : and(
+              listedConversation(),
+              conversationFeedMembershipFilter(status, filter),
+            ),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
           : undefined,
@@ -340,28 +341,9 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
 
 /**
  * Return a query for a token that changes when the viewer's default feed
- * page can change. It reads the same newest page as the feed, so its cost
- * does not grow with the viewer's history. The token lists a short token
- * for each feed-row input as `name:token`, separated by spaces, so the
- * dashboard can record which inputs moved it.
- *
- * Status and tree state come from stored watermarks, not from the rules
- * that derive them, so a poll reads no Events or read positions.
- * Each write that a status or the tree state reads moves `detail_version` on
- * its Conversation, so the token holds that version for each idle row and
- * tree member. Every Event of a live Turn moves it too, and a running row
- * shows its running state, so a running Conversation adds only that it runs
- * and the open Inbox items that it added. The end of the Turn writes
- * the row. Watches and Timers live outside SQL. A Turn makes or cancels one,
- * and the end of that Turn moves the version, so a read after it sees the
- * change. A Watch that expires on its own moves nothing, so its row shows
- * `watching` until the feed reads again. An authorization request expires
- * with no write, so the token counts the live ones.
- * Idle rows show an age in whole minutes, so the token holds that minute.
- * The rows are in feed order, so a move that reorders them moves the token.
- * The newest Message of each role stands for the preview and participants,
- * and moves the token during a live Turn. Waiting roots outside the page,
- * and the viewer's own Inbox items, move the Inbox items token.
+ * page can change. It reads only the newest page and stored watermarks, so a
+ * poll reads no Events. A Watch that expires on its own moves nothing, so its
+ * row shows `watching` until the next read.
  */
 export function conversationFeedVersionQuery(
   db: JuniorDatabase,
@@ -383,11 +365,10 @@ export function conversationFeedVersionQuery(
       else ${row.detailVersion}::text
     end`;
   // The tree's members, and the state of each one but the root, which its
-  // row holds. The tree counts the root's live authorization requests too.
-  // A running Thread hides its version, but its row shows its title, which
-  // a Turn can set, and an archive hides it, so the tree holds both.
-  // A Lead's child row reads its Lead's whole tree. That moves the token
-  // for changes in other Space work too, but never misses one in its own.
+  // row holds, plus the root's live authorization requests. A running Thread
+  // hides its version, but a Turn can set its title and an archive hides it,
+  // so the tree holds both. A Lead's child row reads its Lead's whole tree:
+  // that moves the token for other Space work too, but never misses its own.
   const feedRowTreeRoot = sql`coalesce(${juniorConversations.rootConversationId}, ${conversationId})`;
   const child = sql`${feedTree.conversationId} <> ${conversationId}`;
   const active = conversationIsActiveSql(feedTree);
@@ -522,17 +503,11 @@ function conversationFeedFilter(options: {
 }
 
 /**
- * Build a bounded dashboard feed. Prefer the viewer user when present; otherwise
- * keep only roots linked to actorEmail before applying the limit. Membership is
- * root-actor ownership or a materialized participant row for that person.
- *
- * `codeRepositoryId` replaces membership with every root linked to that
- * repository's code changes. Private roots appear only for their members, and
- * per-person archive state does not hide rows.
- *
- * Each page holds up to `limit` rows by activity, and `nextCursor` reads the
- * next one. A row with new activity moves to an earlier page, so clients
- * remove repeats when they join pages.
+ * Build a bounded feed of roots that the viewer, or else `actorEmail`,
+ * started or takes part in. `codeRepositoryId` replaces that with every root
+ * linked to the repository: private roots show only to members, and a
+ * person's archive hides nothing. A row with new activity moves to an
+ * earlier page, so clients remove repeats when they join pages.
  */
 export async function readConversationFeedFromSql(
   options: {
@@ -647,6 +622,15 @@ export async function readConversationFeedFromSql(
   const conversationIds = conversations.map(
     (conversation) => conversation.conversationId,
   );
+  // A Lead's Thread is a feed row whose root is the Lead.
+  const rootConversationIds = [
+    ...new Set(
+      conversations.map(
+        (conversation) =>
+          conversation.rootConversationId ?? conversation.conversationId,
+      ),
+    ),
+  ];
   // Every child of these roots, read once for work owners and Threads.
   const conversationTrees = readConversationTrees(db, conversationIds);
   const [
@@ -671,12 +655,11 @@ export async function readConversationFeedFromSql(
   ] = await Promise.all([
     readConversationAccessRows(db, conversationIds),
     conversationTrees,
-    // The viewer's rows give both access and pin marks. Without a viewer, an
-    // actor email feed reads only its pin marks. Feed rows are roots, so
-    // these roots cover the access check.
+    // The viewer's rows on the feed rows' roots give both access and pin
+    // marks. Without a viewer, an actor email feed reads only its pin marks.
     readMemberParticipants(
       db,
-      conversationIds,
+      rootConversationIds,
       options.viewer
         ? { userId: options.viewer.id }
         : filter
@@ -724,31 +707,9 @@ export async function readConversationFeedFromSql(
       conversations.flatMap(({ spaceId }) => (spaceId ? [spaceId] : [])),
     ),
   ]);
-  // A Lead's child has the Lead as its root. This reads only when a row is
-  // one, since other feed rows are their own roots.
-  const leadRootIds = [
-    ...new Set(
-      accessRows.flatMap((row) =>
-        row.storedRootConversationId &&
-        row.storedRootConversationId !== row.conversationId
-          ? [row.storedRootConversationId]
-          : [],
-      ),
-    ),
-  ];
-  const leadParticipantIds =
-    options.viewer && leadRootIds.length > 0
-      ? await conversationIdsWithParticipantUser(
-          db,
-          leadRootIds,
-          options.viewer.id,
-        )
-      : new Set<string>();
   const accessByConversation = conversationAccessFromRows(
     accessRows,
-    options.viewer
-      ? new Set([...participantsByRoot.keys(), ...leadParticipantIds])
-      : new Set(),
+    options.viewer ? new Set(participantsByRoot.keys()) : new Set(),
   );
   const tenantByConversation = new Map(
     rows.flatMap((row) => {
@@ -811,10 +772,9 @@ export async function readConversationFeedFromSql(
         ),
         conversation,
         access,
-        // Only members may learn a private Space's name.
+        // Only a reader of a private Space may learn its name.
         space:
-          conversation.spaceId &&
-          (!access?.privateSpaceId || access.canViewPrivateContent)
+          conversation.spaceId && access?.canViewPrivateContent
             ? (spaceRefs.get(conversation.spaceId) ?? null)
             : null,
         auxiliaryCosts: auxiliaryCosts?.total,

@@ -75,12 +75,12 @@ describe("getConversation MCP tool", () => {
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
     // An open action item reads `needs_input` while the Turn runs.
     await insertInboxItem(getDb(), {
+      subject: { id: "running-ask", kind: "question" },
       owner: { id: CONVERSATION_ID, kind: "conversation" as const },
       assignedToEveryone: true,
       assigneeUserIds: [],
       body: "Pick one.",
       conversationIds: [CONVERSATION_ID],
-      dedupeKey: "running-ask",
       kind: "action",
       nowMs: Date.now(),
       request: {
@@ -95,7 +95,6 @@ describe("getConversation MCP tool", () => {
         ],
       },
       title: "Ship the release?",
-      visibility: "public",
     });
 
     const running = await call("getConversation", {
@@ -138,10 +137,10 @@ describe("getConversation MCP tool", () => {
       visibility: "public" as const,
     };
     await insertInboxItem(getDb(), {
+      subject: { id: "other-ask", kind: "question" },
       ...ask,
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
-      dedupeKey: "other-ask",
     });
     const call = await connectMcpTools();
 
@@ -150,10 +149,10 @@ describe("getConversation MCP tool", () => {
       conversationId: CONVERSATION_ID,
     });
     await insertInboxItem(getDb(), {
+      subject: { id: "everyone-ask", kind: "question" },
       ...ask,
       assignedToEveryone: true,
       assigneeUserIds: [],
-      dedupeKey: "everyone-ask",
     });
     const forEveryone = await call("getConversation", {
       conversationId: CONVERSATION_ID,

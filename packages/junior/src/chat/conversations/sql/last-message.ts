@@ -5,19 +5,13 @@ import {
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
-import { isUserInstruction } from "@/db/schema/conversation-events";
 
 /**
- * Return a query for the newest event of one type in the outer Conversation
- * that matches the filter. It walks the message role or user message time
- * index from the newest event. The user message index has only matching
- * entries, so that read stops at the first one.
+ * Return a query for the newest Message in the outer Conversation that
+ * matches the filter. It walks the message role index from the newest
+ * Message.
  */
-function latestEventAtQuery(
-  db: JuniorDatabase,
-  type: "message" | "user_message",
-  filter: SQL,
-) {
+function latestMessageAtQuery(db: JuniorDatabase, filter: SQL) {
   return db
     .select({ createdAt: juniorConversationEvents.createdAt })
     .from(juniorConversationEvents)
@@ -27,7 +21,7 @@ function latestEventAtQuery(
           juniorConversationEvents.conversationId,
           juniorConversations.conversationId,
         ),
-        eq(juniorConversationEvents.type, type),
+        eq(juniorConversationEvents.type, "message"),
         filter,
       ),
     )
@@ -39,10 +33,11 @@ function latestEventAtQuery(
 }
 
 /**
- * Return queries for the latest user instruction and the latest true user
- * Message of the outer Conversation.
+ * Return a query for the latest Message that a person sent to the outer
+ * Conversation. It reads the transcript only: an agent history item is what
+ * the model saw, so it does not say that a person spoke.
  */
-export function userMessageQueries(db: JuniorDatabase) {
+export function latestUserMessageQuery(db: JuniorDatabase) {
   const payload = juniorConversationEvents.payload;
   // System Messages, such as events, carry the system Identity. A scalar
   // subquery, unlike a join or `exists`, keeps the newest-first index walk:
@@ -54,18 +49,10 @@ export function userMessageQueries(db: JuniorDatabase) {
     .where(
       eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
     )})`;
-  return {
-    instruction: latestEventAtQuery(
-      db,
-      "user_message",
-      isUserInstruction(payload),
-    ),
-    message: latestEventAtQuery(
-      db,
-      "message",
-      sql`${payload}->>'role' = 'user' and ${authorKind} = 'user'`,
-    ),
-  };
+  return latestMessageAtQuery(
+    db,
+    sql`${payload}->>'role' = 'user' and ${authorKind} = 'user'`,
+  );
 }
 
 /**
@@ -76,14 +63,13 @@ export function userMessageQueries(db: JuniorDatabase) {
  */
 export function lastMessageAtSql(db: JuniorDatabase): SQL<Date | null> {
   const payload = juniorConversationEvents.payload;
-  const { instruction, message } = userMessageQueries(db);
-  const reply = latestEventAtQuery(
+  const message = latestUserMessageQuery(db);
+  const reply = latestMessageAtQuery(
     db,
-    "message",
     sql`${payload}->>'role' = 'assistant' and (${payload}->'meta'->>'quiet') is distinct from 'true' and (${payload}->'meta'->>'progress') is distinct from 'true'`,
   );
   // `greatest` skips nulls.
-  return sql<Date | null>`greatest((${instruction}), (${message}), (${reply}))`.mapWith(
+  return sql<Date | null>`greatest((${message}), (${reply}))`.mapWith(
     juniorConversations.lastMessageAt,
   );
 }

@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { openAsk } from "./askSheet";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 import { waitForOutlineRead } from "./harness";
@@ -46,26 +47,37 @@ for (const view of [desktop, mobile]) {
   }) => {
     await page.setViewportSize(view);
     const snoozes = recordBodies(page, "/api/inbox/snoozes");
+    const phone = view === mobile;
     await openConversation(page, dashboard.baseURL);
-    await expect(
-      page.getByRole("button", { name: "3 questions waiting" }),
-    ).toBeVisible();
+    // A phone shows each card as one line, so the short transcript fits on
+    // the screen there and needs no pill.
+    if (!phone) {
+      await expect(
+        page.getByRole("button", { name: "3 questions waiting" }),
+      ).toBeVisible();
+    }
 
     // A question with two fields keeps its actions on one row, with the
-    // progress under them.
-    const batchCard = card(page, "Choose the first migration batch");
-    await batchCard
-      .getByRole("button", { name: "Send" })
-      .scrollIntoViewIfNeeded();
-    await expect(batchCard).toContainText("0 of 2 answered");
+    // progress under them. A phone opens the question in a sheet.
+    const batch = await openAsk(
+      card(page, "Choose the first migration batch"),
+      phone,
+    );
+    await batch.getByRole("button", { name: "Send" }).scrollIntoViewIfNeeded();
+    await expect(batch).toContainText("0 of 2 answered");
     await screenshot(page, "conversation-question-card-actions", {
       lightTheme: true,
       view: view.name,
     });
+    if (phone) {
+      await batch.getByRole("button", { exact: true, name: "Close" }).click();
+      await expect(batch).toHaveCount(0);
+    }
 
     const windowCard = card(page, "Pick the billing migration window");
     await windowCard.scrollIntoViewIfNeeded();
-    await windowCard.getByRole("button", { name: "Snooze" }).click();
+    const windowAsk = await openAsk(windowCard, phone);
+    await windowAsk.getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await expect(menu.getByRole("button", { name: /^1 hour/ })).toBeVisible();
     await screenshot(page, "conversation-question-card-snooze", {
@@ -88,12 +100,16 @@ for (const view of [desktop, mobile]) {
     await expect(
       windowCard.getByRole("button", { name: "Send", exact: true }),
     ).toHaveCount(0);
+    // A snooze shuts the sheet, back to the transcript.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     // The transcript opens at the latest message again, and the pill counts
     // the two questions that still wait.
     await reloadConversation(page);
-    await expect(
-      page.getByRole("button", { name: "2 questions waiting" }),
-    ).toBeVisible();
+    if (!phone) {
+      await expect(
+        page.getByRole("button", { name: "2 questions waiting" }),
+      ).toBeVisible();
+    }
   });
 }
 
@@ -108,7 +124,12 @@ for (const view of [desktop, mobile]) {
 
     const shared = card(page, "Handle the negative invoices");
     await shared.scrollIntoViewIfNeeded();
-    await shared.getByRole("button", { name: "Snooze" }).click();
+    // A phone opens the question in a sheet.
+    await (
+      await openAsk(shared, view === mobile)
+    )
+      .getByRole("button", { name: "Snooze" })
+      .click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await expect(menu.getByRole("button", { name: "Someday" })).toBeVisible();
     await screenshot(page, "conversation-question-card-someday", {
@@ -144,9 +165,12 @@ for (const view of [desktop, mobile]) {
       ).toHaveCount(0);
     }
     await reloadConversation(page);
-    await expect(
-      page.getByRole("button", { name: "2 questions waiting" }),
-    ).toBeVisible();
+    // A phone's one-line cards fit on the screen, so it needs no pill.
+    if (view === desktop) {
+      await expect(
+        page.getByRole("button", { name: "2 questions waiting" }),
+      ).toBeVisible();
+    }
   });
 }
 
@@ -166,33 +190,44 @@ test("Dismiss closes a shared question for everyone", async ({
   await expect(shared).toContainText(/Dismissed by/);
 });
 
-test("a Slack card's Snooze link opens the item's snooze dialog", async ({
-  dashboard,
-  page,
-}) => {
-  await page.setViewportSize(desktop);
-  const snoozes = recordBodies(page, "/api/inbox/snoozes");
-  await page.goto(
-    `${dashboard.baseURL}/inbox?item=qa-migration-negative&snooze=1`,
-  );
-  const dialog = page.getByRole("dialog", { name: "Custom snooze" });
-  await expect(dialog).toBeVisible();
-  // The link leaves the URL, so a reload does not open the dialog again.
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get("snooze"))
-    .toBe(null);
-  await screenshot(page, "inbox-linked-snooze-dialog", { lightTheme: true });
-  await dialog.getByRole("button", { name: "Someday" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect
-    .poll(() => snoozes)
-    .toEqual([
-      expect.objectContaining({
-        inboxItemId: "qa-migration-negative",
-        untilClosed: true,
-      }),
-    ]);
-});
+for (const view of [desktop, mobile]) {
+  test(`a Slack card's Snooze link opens the item's snooze dialog (${view.name})`, async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(view);
+    const snoozes = recordBodies(page, "/api/inbox/snoozes");
+    await page.goto(
+      `${dashboard.baseURL}/inbox?item=qa-migration-negative&snooze=1`,
+    );
+    const dialog = page.getByRole("dialog", { name: "Custom snooze" });
+    await expect(dialog).toBeVisible();
+    // The link leaves the URL, so a reload does not open the dialog again.
+    // The item leaves once the list shows its row.
+    await expect
+      .poll(() => {
+        const params = new URL(page.url()).searchParams;
+        return [params.get("item"), params.get("snooze")];
+      })
+      .toEqual([null, null]);
+    // A phone opens no sheet for the row, so the dialog stays in front.
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await screenshot(page, "inbox-linked-snooze-dialog", {
+      lightTheme: true,
+      view: view.name,
+    });
+    await dialog.getByRole("button", { name: "Someday" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect
+      .poll(() => snoozes)
+      .toEqual([
+        expect.objectContaining({
+          inboxItemId: "qa-migration-negative",
+          untilClosed: true,
+        }),
+      ]);
+  });
+}
 
 test("an Inbox question card reads Dismiss, Snooze, then Send", async ({
   dashboard,

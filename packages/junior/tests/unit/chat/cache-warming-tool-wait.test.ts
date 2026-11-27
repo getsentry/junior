@@ -4,7 +4,7 @@ import { createJuniorApi } from "@/api";
 import { cacheWarmingSavingsReportSchema } from "@/api/schema";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import type { ModelRequest } from "@/chat/cache-warming/request";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const mocks = vi.hoisted(() => ({

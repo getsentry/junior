@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "junior_github_pull_request_requesters_opener_id_uidx" ON "junior_github_pull_request_requesters" USING btree ("pull_request_id") WHERE "junior_github_pull_request_requesters"."conversation_id" is not null;

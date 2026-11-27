@@ -46,7 +46,11 @@ describe("sentAgentMessage", () => {
     );
     expect(
       sentAgentMessage(call({ output: "not reachable", status: "error" })),
-    ).toMatchObject({ conversationId: undefined, delivery: "refused" });
+    ).toMatchObject({
+      conversationId: undefined,
+      delivery: "refused",
+      reason: "not reachable",
+    });
   });
 
   it("shows no state for a result it cannot read", () => {
@@ -84,6 +88,30 @@ describe("receivedAgentMessage", () => {
       direction: "received",
       text: "Done. <b>Nothing</b> & no blockers.",
     });
+  });
+
+  it("reads a Parent message as a message from the parent", () => {
+    const role = "user" as const;
+    expect(
+      receivedAgentMessage({
+        fromParentAgent: true,
+        parts: [{ text: "Check the cache too.", type: "text" }],
+        role,
+      }),
+    ).toEqual({
+      direction: "received",
+      text: "Check the cache too.",
+      to: "parent",
+    });
+    // A Watch Event that reached the child is not one.
+    expect(
+      receivedAgentMessage({
+        eventType: "pull_request.checks.failed",
+        fromParentAgent: true,
+        parts: [{ text: "x", type: "text" }],
+        role,
+      }),
+    ).toBeUndefined();
   });
 
   it("ignores other Event messages and keeps hidden text hidden", () => {
@@ -180,5 +208,14 @@ describe("agentMessageConversationTitle", () => {
         { conversationId: "root-9", to: "root-9" },
       ),
     ).toBe("Conversation");
+  });
+
+  it("names a refused message by the target that it used", () => {
+    expect(
+      agentMessageConversationTitle(
+        { events: [] },
+        { delivery: "refused", to: "designer" },
+      ),
+    ).toBe("designer");
   });
 });

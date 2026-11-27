@@ -201,7 +201,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
 
 const carriedTurnIdSchema = z.looseObject({ turnId: z.string() });
 
-/** The Turn id that a step or delivery message carries. */
+/** The Turn id that a step or Turn-ended message carries. */
 export function messageTurnId(payload: unknown): string | undefined {
   const parsed = carriedTurnIdSchema.safeParse(payload);
   return parsed.success ? parsed.data.turnId : undefined;

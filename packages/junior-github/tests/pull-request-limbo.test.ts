@@ -147,7 +147,9 @@ describe("limbo review ask", () => {
   }>([
     { asks: true, github: {}, name: "waits on nobody" },
     {
-      asks: true,
+      // The v2 backfill asks as a webhook does, so it does not ask a
+      // requester who acted before the last push again.
+      asks: false,
       github: {
         comments: [{ at: "2026-07-02T11:00:00.000Z", login: "Requester" }],
       },
@@ -239,7 +241,7 @@ describe("limbo review ask", () => {
       name: "a comment-only review answers no ask, but Junior acts next",
     },
     {
-      asks: true,
+      asks: false,
       github: {
         reviews: [
           {

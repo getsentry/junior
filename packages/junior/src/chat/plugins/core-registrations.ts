@@ -6,7 +6,10 @@
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { eventSearchTaskRegistration } from "@/chat/conversations/event-embedding";
 import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
-import { memoryRegistration } from "@/chat/memory/registration";
+import {
+  createMemoryRegistration,
+  memoryRegistration,
+} from "@/chat/memory/registration";
 import { notificationsTaskRegistration } from "@/chat/notifications/task";
 import { readWebPushConfig } from "@/chat/notifications/web-push";
 import { relatedConversationsRegistration } from "@/chat/related-conversations/registration";
@@ -18,7 +21,7 @@ export function isCoreRegistrationName(name: string): boolean {
   // their registrations are not ready while this module loads.
   return [
     eventSearchTaskRegistration({ embedEvents: false }),
-    memoryRegistration(),
+    createMemoryRegistration(),
     notificationsTaskRegistration,
     relatedConversationsRegistration,
     todosRegistration,

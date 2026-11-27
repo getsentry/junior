@@ -1,73 +1,9 @@
 /**
- * The next action of a Junior pull request for its requester, and its one
- * item in the Inbox.
- *
- * The action derives from GitHub state. It is "merge" when the pull request
- * is open, not a draft, auto-merge is off, GitHub's merge state is `clean`,
- * no reviewer still requests changes, GitHub requests no review, and the
- * requester has write access to the repository. A requester without it
- * gets no merge ask: a person with write access merges it. GitHub
- * gives `blocked` until a required review approves, so a pull request with
- * no approval is "merge" only where GitHub requires no review, and its item
- * asks the requester to review it first. A pending review request comes
- * before the merge even there. Otherwise it is "review" while GitHub asks
- * the requester for a review. A request for only someone else gives no
- * action, because the pull request waits on them. When the requester still
- * requests changes and comments or reviews after GitHub last asked them,
- * the action ends, even while GitHub still asks them, because Junior acts
- * next.
- *
- * A review that GitHub asks for on a draft is "review_draft": the requester
- * reviews it and marks it ready. Junior keeps a draft for its requester when
- * marking it ready would ask the code owners, and asks only the requester on
- * GitHub (`github_updatePullRequest` `request_review`). When the draft
- * becomes ready, the same item says that GitHub asks for the review. When
- * the requester approves a draft that stays a draft, such as one that the
- * repo's AGENTS.md leaves for a person to mark ready, the action is
- * "mark_ready", and the same item says to mark it ready. It needs no new
- * review request, so none lingers after that.
- *
- * After a change request, only an explicit signal asks the requester again:
- * Junior marks every comment of it addressed or declined, and the required
- * checks pass (`pull-request-review-again.ts`). Pushes, base-branch syncs,
- * comments, and replies never ask on their own. When the checks had not
- * passed at the last mark, the ask is held. A later webhook, such as a
- * completed check suite, then asks on GitHub once they pass, so GitHub
- * notifies the requester, and shows the item. A comment or review by the
- * reviewer after the hold drops it, because Junior acts next. The item text
- * says why it asks: every comment is handled, or the checks now pass. Other
- * review requests from GitHub get a general text. One GitHub read gives the
- * state and each side's latest activity. A comment by another person needs
- * no read.
- *
- * A pull request is in limbo when it waits on nobody: it is ready, the
- * action is none, and no person or rule moves it on. Once its required
- * checks pass, the sync asks for the requester's review on GitHub, as Junior
- * does when a draft becomes ready, and the review request then shows the
- * item. So each ready pull request that the requester has not seen has an
- * item or a pending review request, also one opened before the requester
- * linked GitHub. Pushes do not ask a requester who reviewed or commented
- * again, so a webhook asks only one who has not. A requester's comment-only
- * review, such as a reply in a review thread, is not an answer: Junior
- * handles it like a change request (`requesterFeedback`). The item closes
- * and the pull request is not ready to merge while Junior acts, and the
- * review-again flow asks again once Junior marks its comments and the
- * checks pass. A comment after the requester approves, with no ask since,
- * leaves the approval in place. A requester who removed their own review
- * request is not asked again until someone else asks them.
- *
- * The requester takes one action, not both, so one item per pull request
- * shows it. Each webhook that can change one of these facts reads them
- * again from GitHub. Junior saves the derived action and changes the item
- * only when the action changes. GitHub does not send a failed webhook
- * again, so when GitHub fails the read for a while, such as when the
- * installation is out of GraphQL rate limit, a started task syncs the pull
- * request again later.
- *
- * The item goes to the Conversation where a person asked Junior to open the
- * pull request. It is assigned to that person only when they are in that
- * Conversation, and it waits on them. Junior maps a GitHub login to a person
- * only through the requester's linked GitHub account.
+ * The next action of a Junior PR for its requester, and its one `pull_request`
+ * Inbox item; `design/github.md` owns the ask rules. Each webhook that can
+ * change it reads GitHub again; the saved action shows when it changes. A
+ * person joins only with the event that asks them, and only in the requesting
+ * Conversation, mapped from GitHub only by linked accounts.
  */
 import type {
   ConversationInboxItemChange,
@@ -75,16 +11,22 @@ import type {
   PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
-  PluginInboxItems,
   PluginStartedTaskContext,
   PluginStartedTaskDefinition,
   PluginState,
   PluginTaskStarter,
-  InboxItemSubjectTitleParts,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import { loadGitHubTitleParts } from "./title-parts.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  pullRequestSubject,
+} from "../inbox-subjects.js";
+import {
+  ENDED_REASONS,
+  showPullRequestItem,
+  type EndedState,
+} from "./pull-request-item.js";
 import { GitHubRequestError } from "../credential-support.js";
 import { type GitHubDb, gitHubDbSchema } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
@@ -102,16 +44,17 @@ import {
   releaseGitHubPullRequestReadySync,
   setGitHubPullRequestNextAction,
 } from "../pull-request-outcomes/store.js";
+import { GITHUB_CONFLICT_GONE_REASON } from "../merge-conflict-checks/policy.js";
 import {
-  GITHUB_CONFLICT_GONE_REASON,
-  gitHubConflictItemKey,
-} from "../merge-conflict-checks/policy.js";
-import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+  listGitHubPullRequestOpeners,
+  recordGitHubPullRequestOpenerId,
+} from "../pull-request-requesters/store.js";
 import {
-  dropGitHubReviewAsked,
   dropHeldGitHubReviewAsk,
   type GitHubReviewAskReason,
+  markGitHubReviewAsked,
   readGitHubReviewAsked,
+  type GitHubReviewAsked,
   readHeldGitHubReviewAsk,
   readGitHubRequiredChecksPass,
   readReviewAgainReadiness,
@@ -119,12 +62,10 @@ import {
 import { linkedGitHubLogin } from "../tool-support/attribution.js";
 import { checkSuitePullRequests } from "./check-suite.js";
 import {
-  ENDED_REASONS,
-  endedReason,
-  closeReason,
-  actionText,
-  type EndedState,
-} from "./pull-request-action-text.js";
+  dropGitHubReviewRequested,
+  markGitHubReviewRequested,
+  readGitHubReviewRequested,
+} from "./review-requests.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
 import { GitHubGraphqlError } from "./graphql-request.js";
 import {
@@ -155,6 +96,10 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
     "auto_merge_enabled",
     "closed",
     "converted_to_draft",
+    "dequeued",
+    // Only a base change, such as GitHub's retarget after the base merged.
+    "edited",
+    "enqueued",
     "ready_for_review",
     "reopened",
     "review_request_removed",
@@ -164,39 +109,6 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
   pull_request_review: new Set(["dismissed", "submitted"]),
 };
 
-/**
- * Keys of the two items that came before the one item per pull request.
- * Each check closes them, so no old item stays open next to the new one.
- * Remove them when no item from before is open.
- */
-const LEGACY_DEDUPE_PREFIXES = [
-  "pull-request-ready:",
-  "pull-request-review-requested:",
-] as const;
-
-function itemName(target: GitHubPullRequestTarget): string {
-  return `${target.repositoryFullName}#${target.number}`.toLowerCase();
-}
-
-function actionDedupeKey(target: GitHubPullRequestTarget): string {
-  return `pull-request-action:${itemName(target)}`;
-}
-
-async function closeLegacyItems(
-  items: PluginInboxItems,
-  name: string,
-): Promise<void> {
-  await Promise.all(
-    LEGACY_DEDUPE_PREFIXES.map((prefix) =>
-      items.close({
-        dedupeKey: `${prefix}${name}`,
-        reason: "One item now shows the next action.",
-        status: "dismissed",
-      }),
-    ),
-  );
-}
-
 /** A pull request whose next action one webhook delivery can change. */
 export interface GitHubPullRequestActionTarget extends GitHubPullRequestTarget {
   /**
@@ -205,14 +117,19 @@ export interface GitHubPullRequestActionTarget extends GitHubPullRequestTarget {
    * people and by Junior with no GitHub read.
    */
   commentBy?: string;
+  /** The login of the reviewer that a `review_requested` webhook asks. */
+  reviewRequested?: string;
 }
 
 const repositorySchema = z.object({ full_name: z.string().min(1) });
 
 const pullRequestWebhookSchema = z.object({
   action: z.string(),
+  changes: z.object({ base: z.unknown().optional() }).optional(),
   pull_request: z.object({ number: z.number().int().positive() }),
   repository: repositorySchema,
+  // A team review request has no reviewer person.
+  requested_reviewer: z.object({ login: z.string().min(1) }).nullish(),
 });
 
 // The comment webhooks that a person or Junior's App sends by commenting
@@ -230,7 +147,7 @@ const commentWebhookSchema = z.object({
   repository: repositorySchema,
 });
 
-/** Return the pull requests whose next action one webhook delivery can change. */
+/** Return the pull requests whose next action one webhook can change. */
 export function pullRequestActionTargets(
   eventName: string,
   body: unknown,
@@ -256,74 +173,39 @@ export function pullRequestActionTargets(
   }
   const actions = ACTION_EVENTS[eventName];
   const parsed = pullRequestWebhookSchema.safeParse(body);
-  if (!actions || !parsed.success || !actions.has(parsed.data.action)) {
+  if (
+    !actions ||
+    !parsed.success ||
+    !actions.has(parsed.data.action) ||
+    (parsed.data.action === "edited" && !parsed.data.changes?.base)
+  ) {
     return [];
   }
+  const reviewer =
+    parsed.data.action === "review_requested"
+      ? parsed.data.requested_reviewer?.login
+      : undefined;
   return [
     {
       number: parsed.data.pull_request.number,
       repositoryFullName: parsed.data.repository.full_name,
+      ...(reviewer ? { reviewRequested: reviewer } : undefined),
     },
   ];
 }
 
-async function showAction(
-  items: PluginInboxItems,
-  args: {
-    action: GitHubPullRequestAction | undefined;
-    dedupeKey: string;
-    identityId: string;
-    /** Undefined when this sync did not read it. */
-    mergeAccess: boolean | undefined;
-    number: number;
-    previous: GitHubPullRequestAction | undefined;
-    reason: GitHubReviewAskReason | undefined;
-    state: GitHubPullRequestMergeState;
-    titleParts: InboxItemSubjectTitleParts | undefined;
-  },
-): Promise<void> {
-  const { action, number, state } = args;
-  if (action) {
-    await items.upsert({
-      assigneeIdentityIds: [args.identityId],
-      // The URL stands alone, so the dashboard shows the pull request as
-      // one card that carries its title. The text names it by number only.
-      // The Inbox hides the review and merge text under a row head that
-      // says it, so keep it in step with `textRepeatsHead` there.
-      body: `${actionText(action, number, args.reason, state)}\n\n${state.url}`,
-      dedupeKey: args.dedupeKey,
-      // The number stays visible where a view shows only the subject.
-      subject: {
-        id: state.url,
-        title: `${state.title} (#${number})`,
-        ...(args.titleParts ? { titleParts: args.titleParts } : undefined),
-        url: state.url,
-      },
-      title:
-        action === "merge"
-          ? `Ready to merge · #${number}`
-          : `Review requested · #${number}`,
-      waitsOnAssignees: true,
-    });
-  } else if (args.previous) {
-    await items.close({
-      dedupeKey: args.dedupeKey,
-      ...closeReason(state, args.previous, args.mergeAccess),
-    });
-  }
-}
-
 /**
- * Return the closes of the next-action item and the merge conflict notice
- * of a pull request that merged or closed, with the conversation that owns
- * them. Undefined when no person asked Junior for the pull request. The
- * outcome write saves them in one batch with that conversation's chip, so no
- * reader sees an ended pull request next to its open item.
+ * Return the close of the item of a pull request that merged or closed,
+ * with the conversation that owns it. Undefined when no person asked Junior
+ * for the pull request. The outcome write saves it in one batch with that
+ * conversation's chip, so no reader sees an ended pull request next to its
+ * open item.
  */
 export async function endedGitHubPullRequestItemChanges(args: {
   db: GitHubDb;
   state: EndedState;
-  target: GitHubPullRequestTarget;
+  /** The pull request, with GitHub's id, the id of its items. */
+  target: GitHubPullRequestTarget & { pullRequestId: string };
 }): Promise<
   | { conversationId: string; inboxItems: ConversationInboxItemChange[] }
   | undefined
@@ -339,9 +221,16 @@ export async function endedGitHubPullRequestItemChanges(args: {
   const reason = ENDED_REASONS[args.state];
   return {
     conversationId,
-    inboxItems: [actionDedupeKey(target), gitHubConflictItemKey(target)].map(
-      (dedupeKey) => ({ close: { dedupeKey, ...reason }, conversationId }),
-    ),
+    inboxItems: [
+      GITHUB_INBOX_SUBJECTS.pullRequest,
+      GITHUB_INBOX_SUBJECTS.mergeConflict,
+    ].map((kind) => ({
+      close: {
+        subject: pullRequestSubject(kind, target.pullRequestId),
+        ...reason,
+      },
+      conversationId,
+    })),
   };
 }
 
@@ -374,12 +263,10 @@ async function requestReviewAgain(
 }
 
 /**
- * Ask the reviewer of a held review ask again once the required checks
- * pass, and return their login and the reason. Keep the hold while the
- * checks have not passed, or while GitHub does not take the request, so a
- * later webhook asks again. Drop it when the pull request ended, when the
- * reviewer commented or reviewed since, or when their change request is no
- * longer ready.
+ * Ask the reviewer of a held review ask again once the required checks pass,
+ * and return their login and the reason. Keep the hold until the checks pass
+ * and GitHub takes the request. Drop it when the PR ended, the reviewer acted
+ * since, or their change request is no longer ready.
  */
 async function askHeldReview(
   args: {
@@ -443,21 +330,23 @@ async function askReason(
     requesterAt: Date | undefined;
     requesterLogin: string | undefined;
   },
-): Promise<GitHubReviewAskReason | undefined> {
+): Promise<
+  { mark?: GitHubReviewAsked; reason: GitHubReviewAskReason } | undefined
+> {
   if (args.asked !== undefined) {
     return sameLogin(args.asked.reviewer, args.requesterLogin)
-      ? args.asked.reason
+      ? { reason: args.asked.reason }
       : undefined;
   }
   const asked = await readGitHubReviewAsked(state, target);
   return asked &&
     sameLogin(asked.reviewer, args.requesterLogin) &&
     timeOf(args.requesterAt) <= Date.parse(asked.at)
-    ? (asked.reason ?? "handled")
+    ? { mark: asked, reason: asked.reason ?? "handled" }
     : undefined;
 }
 
-/** What a sync of the next action reads and writes. */
+/** What one sync of a pull request's items reads and writes. */
 interface PullRequestActionSyncContext {
   /**
    * Also ask in limbo when the requester reviewed or commented before the
@@ -471,6 +360,10 @@ interface PullRequestActionSyncContext {
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   env: GitHubInstallationEnv;
+  /** Find the people who linked these GitHub logins. */
+  findLinkedIdentityIds(
+    logins: readonly string[],
+  ): Promise<ReadonlyMap<string, string>>;
   loadGitHubLogin?:
     | ((identityId: string) => Promise<string | undefined>)
     | undefined;
@@ -480,6 +373,7 @@ interface PullRequestActionSyncContext {
   state: PluginState;
 }
 
+/** Read one Junior pull request from GitHub and change its items. */
 async function syncOne(
   args: PullRequestActionSyncContext,
   target: GitHubPullRequestActionTarget,
@@ -494,8 +388,6 @@ async function syncOne(
   // and a Conversation for the item.
   if (!opener?.conversationId) return;
   const items = args.inboxItems.forConversation(opener.conversationId);
-  const name = itemName(target);
-  const dedupeKey = actionDedupeKey(target);
   const requesterLogin = await args.loadGitHubLogin?.(opener.identityId);
   if (
     target.commentBy !== undefined &&
@@ -507,6 +399,19 @@ async function syncOne(
   const pullRequestId = (await findGitHubPullRequest(args.codeChanges, target))
     ?.providerId;
   if (!pullRequestId) return;
+  if (!opener.pullRequestId) {
+    await recordGitHubPullRequestOpenerId(args.db, {
+      conversationId: opener.conversationId,
+      number: target.number,
+      pullRequestId,
+      repositoryFullName: target.repositoryFullName,
+    });
+  }
+  // Save the reviewer before the claim, so the check that runs asks them,
+  // also when another webhook's check holds the claim.
+  if (target.reviewRequested) {
+    await markGitHubReviewRequested(args.state, target, target.reviewRequested);
+  }
   // One webhook at a time checks a pull request. A webhook that arrives
   // during a check asks again, and the running webhook checks once more with
   // a new GitHub read. No connection or lock stays open during the calls.
@@ -525,7 +430,7 @@ async function syncOne(
   // Ask the requester once per sync, so a request that GitHub takes but
   // does not show yet cannot ask again.
   let askedRequester = false;
-  // One check: read GitHub, change the items, and return the saved action.
+  // One check: read GitHub, change the item, and return the saved action.
   const check = async (
     previous: GitHubPullRequestAction | undefined,
   ): Promise<GitHubPullRequestAction | undefined> => {
@@ -536,11 +441,12 @@ async function syncOne(
     );
     const activity = latestActivity(state.activity, requesterLogin);
     const asked = await askHeldReview(args, target, state, requesterLogin);
-    const reason = await askReason(args.state, target, {
+    const ask = await askReason(args.state, target, {
       asked,
       requesterAt: activity.requesterAt,
       requesterLogin,
     });
+    const reason = ask?.reason;
     const requester = {
       actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
       askedAgain: asked !== undefined && reason !== undefined,
@@ -586,68 +492,82 @@ async function syncOne(
         }
       }
     }
-    // Act only on a change. So repeat events add no second item, and an
-    // item that a person closed does not come back until the action
-    // changes. When the action cannot be known yet, a later event decides.
-    // A new question from Junior is a change too: it can come while the
-    // review item is already open, and its mark is dropped once it shows.
-    // Only a review item shows why Junior asked.
+    // When the action cannot be known yet, the saved one stays until a
+    // later event decides. A new question from Junior is a change too: it
+    // can come while the review is already the action, and its mark is
+    // dropped once the item shows it. Only a review shows why Junior asked.
     const showsAsk =
       next?.action === "review" || next?.action === "review_draft";
     const changed =
       next !== undefined &&
-      (next.action !== previous || (reason === "question" && showsAsk));
-    if (changed) {
-      await showAction(items, {
-        action: next.action,
-        dedupeKey,
-        identityId: opener.identityId,
+      (next.action !== previous ||
+        (reason === "question" && showsAsk && !ask?.mark?.shown));
+    const action = next === undefined ? previous : next.action;
+    // The item stays as it is too, because its text depends on what GitHub
+    // has not computed yet, such as whether anyone approved.
+    if (next !== undefined || previous === undefined) {
+      // The requester's review is their action, so the other reviewers are
+      // the other people whose review GitHub requests.
+      const reviewers = state.requestedReviewers.filter(
+        (login) => !sameLogin(login, requesterLogin),
+      );
+      const newlyRequested = await readGitHubReviewRequested(
+        args.state,
+        target,
+        reviewers,
+      );
+      const linked = await args.findLinkedIdentityIds(reviewers);
+      await showPullRequestItem(items, {
+        action,
         mergeAccess,
+        askedReviewerIdentityIds: newlyRequested.flatMap(
+          (login) => linked.get(login) ?? [],
+        ),
         number: target.number,
         previous,
+        pullRequestId,
         reason,
+        requester: {
+          asked: changed && next.action !== undefined,
+          identityId: opener.identityId,
+        },
+        reviewerIdentityIds: reviewers.flatMap(
+          (login) => linked.get(login.toLowerCase()) ?? [],
+        ),
         state,
-        titleParts: next.action
-          ? await loadGitHubTitleParts(
-              args.env,
-              {
-                repositoryFullName: target.repositoryFullName,
-                title: state.title,
-              },
-              args.log,
-            )
-          : undefined,
       });
+      // Drop the requests only after the item shows them, so a failure asks
+      // again in the next check.
+      await dropGitHubReviewRequested(args.state, target, newlyRequested);
     }
-    // Close the old items only after the new one shows, so a failed show
-    // does not leave the Inbox with no next-action item.
-    await Promise.all([
-      closeLegacyItems(items, name),
-      // The same read closes the merge conflict item from
-      // `merge-conflict-checks/policy.ts` when the conflict is gone.
+    // The same read closes the merge conflict item from
+    // `merge-conflict-checks/policy.ts` when the conflict is gone.
+    if (
       state.state !== "open" ||
       (state.mergeableState && state.mergeableState !== "dirty")
-        ? items.close({
-            dedupeKey: gitHubConflictItemKey(target),
-            ...(endedReason(state.state) ?? {
-              reason: GITHUB_CONFLICT_GONE_REASON,
-              status: "done",
-            }),
-          })
-        : undefined,
-    ]);
-    // Keep the mark until an item shows it. A sync that closes the item,
-    // such as the one that GitHub's removal of a request starts, leaves it
-    // for the review request that follows.
-    if (
-      changed &&
-      showsAsk &&
-      (reason === "handled" || reason === "question")
     ) {
-      await dropGitHubReviewAsked(args.state, target);
+      await items.close({
+        subject: pullRequestSubject(
+          GITHUB_INBOX_SUBJECTS.mergeConflict,
+          pullRequestId,
+        ),
+        ...(state.state === "open"
+          ? { reason: GITHUB_CONFLICT_GONE_REASON, status: "done" as const }
+          : ENDED_REASONS[state.state]),
+      });
+    }
+    // Mark the ask shown once a review item shows it. A sync that closes
+    // the item, such as the one that GitHub's removal of a request starts,
+    // leaves it for the review request that follows. The mark stays, so
+    // each later sync keeps the item's text until the requester acts.
+    if (changed && showsAsk && ask?.mark && !ask.mark.shown) {
+      await markGitHubReviewAsked(args.state, target, {
+        ...ask.mark,
+        shown: true,
+      });
     }
     if (!changed) return previous;
-    // Save after the items change, so a failure leaves the old action and
+    // Save after the item changes, so a failure leaves the old action and
     // the next event tries again.
     await setGitHubPullRequestNextAction(args.db, pullRequestId, next.action);
     return next.action;
@@ -733,12 +653,11 @@ async function retryAfterFailure(
 }
 
 /**
- * Add, change, or close the next-action item of each Junior pull request that
- * a webhook delivery can change. The item is optional, so a failure does not
- * fail the delivery. A failure that GitHub causes for a while starts a task
- * that syncs the pull request again, when `tasks` is given. Other failures
- * are logged. Return the pull requests that another webhook was checking.
- * That webhook checks them again, but without `askAfterRequesterActed`.
+ * Add, change, or close the item of each Junior pull request that a webhook
+ * delivery can change. The item is optional, so failures are logged, and one
+ * that GitHub causes for a while starts a sync task when `tasks` is given.
+ * Return the pull requests that another webhook was checking, which it checks
+ * again without `askAfterRequesterActed`.
  */
 export async function syncGitHubPullRequestActions(
   args: PullRequestActionSyncContext & {
@@ -796,7 +715,7 @@ async function startSyncTask(
   const startsAt = Date.now() + (retry.delaySeconds ?? 0) * 1000;
   await tasks.start({
     ...retry,
-    key: `pull-request-action-sync:${itemName(target)}:${Math.floor(startsAt / 60_000)}:${restarts}`,
+    key: `pull-request-action-sync:${`${target.repositoryFullName}#${target.number}`.toLowerCase()}:${Math.floor(startsAt / 60_000)}:${restarts}`,
     name: GITHUB_PULL_REQUEST_ACTION_SYNC_TASK,
     payload: {
       number: target.number,
@@ -820,6 +739,8 @@ export function startedTaskSyncContext(
     codeChanges: ctx.codeChanges,
     db: gitHubDbSchema.parse(ctx.db),
     env: { ...options.env, responses: ctx.state, tokens: new Map() },
+    findLinkedIdentityIds: async (logins) =>
+      await ctx.users.findLinkedIdentityIds(logins),
     loadGitHubLogin: async (identityId) =>
       linkedGitHubLogin((await ctx.users.readIdentity(identityId))?.user),
     log: ctx.log,

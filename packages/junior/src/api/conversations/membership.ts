@@ -9,15 +9,12 @@ import {
   or,
   sql,
   type SQL,
-  type SQLWrapper,
 } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorSpaces,
   juniorUsers,
 } from "@/db/schema";
 import { isPublicConversation } from "@/chat/conversations/sql/privacy";
@@ -27,18 +24,22 @@ export type ConversationMember = { userId: string } | { email: string };
 
 /**
  * Select the person's participant row on the outer `juniorConversations`
- * root, with an optional extra condition.
+ * root, with an optional extra condition. `onRoot` matches the outer row's root
+ * when that row may be a child.
  */
-function memberParticipantRow(member: ConversationMember, condition?: SQL) {
+function memberParticipantRow(
+  member: ConversationMember,
+  condition?: SQL,
+  onRoot: SQL = eq(
+    juniorConversationParticipants.rootConversationId,
+    juniorConversations.conversationId,
+  ),
+) {
   const rows = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
     })
     .from(juniorConversationParticipants);
-  const onRoot = eq(
-    juniorConversationParticipants.rootConversationId,
-    juniorConversations.conversationId,
-  );
   return "userId" in member
     ? rows.where(
         and(
@@ -61,97 +62,37 @@ function memberParticipantRow(member: ConversationMember, condition?: SQL) {
         );
 }
 
-/** True when the viewer is a materialized participant on this root conversation. */
-export function conversationHasParticipantUser(userId: string): SQL {
-  return exists(memberParticipantRow({ userId }));
-}
-
-function privateSpaceIds() {
-  return getDb()
-    .select({ id: juniorSpaces.id })
-    .from(juniorSpaces)
-    .where(eq(juniorSpaces.visibility, "private"));
-}
-
-const spaceLead = alias(juniorConversations, "membership_space_lead");
-
 /**
- * The Leads of some Spaces, as one array. Every Conversation in a Space has
- * its Lead as its tree root, so this finds the Space of every row. The
- * uncorrelated `array(...)` runs once as an InitPlan, which Postgres charges
- * once, where a hashed subquery in a filter is charged on each index probe.
- */
-function spaceLeadArray(spaceIds: SQLWrapper): SQL {
-  const leads = getDb()
-    .select({ id: spaceLead.conversationId })
-    .from(spaceLead)
-    .where(
-      and(eq(spaceLead.kind, "lead"), inArray(spaceLead.spaceId, spaceIds)),
-    );
-  return sql`array(${leads})`;
-}
-
-/** True when the outer conversation is in no private Space. */
-function outsidePrivateSpaces(): SQL {
-  return or(
-    isNull(juniorConversations.rootConversationId),
-    sql`${juniorConversations.rootConversationId} <> all(${spaceLeadArray(privateSpaceIds())})`,
-  )!;
-}
-
-/**
- * True when the outer conversation is in a tree that the person is a
- * Participant of. In a Space the Lead is the root, so this holds for every
- * Conversation of each Space that the person is a member of.
- */
-function inParticipantTree(member: ConversationMember): SQL {
-  const rows = getDb()
-    .select({ id: juniorConversationParticipants.rootConversationId })
-    .from(juniorConversationParticipants);
-  const roots =
-    "userId" in member
-      ? rows.where(eq(juniorConversationParticipants.userId, member.userId))
-      : rows
-          .innerJoin(
-            juniorUsers,
-            eq(juniorUsers.id, juniorConversationParticipants.userId),
-          )
-          .where(eq(juniorUsers.primaryEmailNormalized, member.email));
-  return sql`${juniorConversations.rootConversationId} = any(array(${roots}))`;
-}
-
-/**
- * True when the outer root conversation is in no Space, in a public Space,
- * or in a private Space that the person is a member of. A participant who
- * leaves a private Space no longer reads its roots.
- */
-export function rootSpaceReadableBy(member: ConversationMember): SQL {
-  return or(outsidePrivateSpaces(), inParticipantTree(member))!;
-}
-
-/**
- * True when the viewer may find the outer root conversation by a link to
- * it: the root is public, or the viewer is a Participant. A root in a
- * private Space is visible only to the Space's members, and to all of them.
+ * True when the viewer may find the outer conversation by a link to it: it
+ * is public, or the viewer is a Participant of its root. A Space's Lead is
+ * the root of all of its work, so its Participants find all of it.
  */
 export function rootVisibleToViewer(viewerUserId: string | undefined): SQL {
   return or(
-    and(
-      outsidePrivateSpaces(),
-      or(
-        isPublicConversation(juniorConversations),
-        viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
-      ),
-    ),
-    viewerUserId ? inParticipantTree({ userId: viewerUserId }) : undefined,
+    isPublicConversation(juniorConversations),
+    viewerUserId ? inParticipantRoot(viewerUserId) : undefined,
   )!;
 }
 
 /**
- * True when the person is a Participant of the conversation, or of the Lead
- * whose child it is, since a Lead's Participants are its Space's members.
- * Feeds filter with this id set instead of a per-row membership check, so
- * Postgres reads only that person's conversations, not every root.
+ * True when the person is a Participant of the outer conversation's root.
+ * The uncorrelated `array(...)` runs once as an InitPlan, which Postgres
+ * charges once, where a correlated check is charged on each row.
+ */
+function inParticipantRoot(userId: string): SQL {
+  const roots = getDb()
+    .select({ id: juniorConversationParticipants.rootConversationId })
+    .from(juniorConversationParticipants)
+    .where(eq(juniorConversationParticipants.userId, userId));
+  return sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId}) = any(array(${roots}))`;
+}
+
+/**
+ * True when the person is a Participant of the root conversation, or of the
+ * root whose child it is, such as a Lead's Thread that top-level lists
+ * show. Participant rows belong to roots, so a child never matches its own
+ * id. Feeds filter with this id set instead of a per-row membership check,
+ * so Postgres reads only that person's conversations, not every root.
  */
 export function conversationIsMemberRoot(member: ConversationMember): SQL {
   const participating = getDb()
@@ -172,15 +113,19 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
           .where(eq(juniorUsers.primaryEmailNormalized, member.email));
   // Top-level filters keep only a parent match whose parent is a Lead.
   return or(
-    inArray(juniorConversations.conversationId, memberRoots),
+    and(
+      isNull(juniorConversations.parentConversationId),
+      inArray(juniorConversations.conversationId, memberRoots),
+    ),
     inArray(juniorConversations.parentConversationId, memberRoots),
   )!;
 }
 
 /**
- * True when the person has not unsubscribed from the conversation. The
- * active feed uses it, so a conversation that someone else carries on
- * leaves the feed of a person who left it.
+ * True when the person has not unsubscribed from the conversation's root.
+ * The active feed uses it, so a conversation that someone else carries on
+ * leaves the feed of a person who left it. A feed row can be a Lead's
+ * child, which has no subscription of its own, so it uses its root's.
  */
 export function conversationIsNotUnsubscribedRoot(
   member: ConversationMember,
@@ -193,6 +138,10 @@ export function conversationIsNotUnsubscribedRoot(
       memberParticipantRow(
         member,
         isNotNull(juniorConversationParticipants.unsubscribedAt),
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+        ),
       ),
     ),
   );

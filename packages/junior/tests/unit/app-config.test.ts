@@ -6,15 +6,12 @@ import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { botConfig } from "@/chat/config";
-import {
-  getConfigDefaults,
-  setConfigDefaults,
-} from "@/chat/configuration/defaults";
-import { getPlugins, setPlugins } from "@/chat/plugins/hooks/registry";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { getAppContext, installAppContext } from "@/app/context";
 import { validatePluginRegistrations } from "@/chat/plugins/validation";
 import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
+import { useAppContext } from "../fixtures/app-context";
 import { mockBuiltSystemPrompts } from "../fixtures/built-system-prompts";
 
 const originalCwd = process.cwd();
@@ -60,10 +57,7 @@ async function writePluginPackage(
 
 afterEach(async () => {
   process.chdir(originalCwd);
-  setPlugins([]);
-  pluginCatalogRuntime.setConfig(undefined);
-  setConfigDefaults(undefined);
-  setDashboardConversationLinkOptions(undefined);
+  installAppContext(undefined);
   vi.doUnmock("#junior/config");
   vi.doUnmock("#junior/system-prompts");
   if (originalPluginPackages === undefined) {
@@ -150,7 +144,7 @@ describe("createApp plugin config", () => {
       plugins: defineJuniorPlugins([]),
     });
 
-    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
+    expect(getAppContext().catalog.getProviders()).toEqual([]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
   });
 
@@ -188,7 +182,9 @@ describe("createApp plugin config", () => {
       "sandbox.egressTracePropagationDomains entries must be exact domains or leading wildcard domains",
     );
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name),
     ).toEqual(["base"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "base",
@@ -227,7 +223,9 @@ describe("createApp plugin config", () => {
     });
 
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name),
     ).toEqual(["dashboard", "env"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "dashboard",
@@ -264,7 +262,9 @@ describe("createApp plugin config", () => {
     });
 
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name),
     ).toEqual(["next"]);
     expect(getConfigDefaults()).toEqual({ "missing.org": "sentry" });
   });
@@ -299,7 +299,9 @@ describe("createApp plugin config", () => {
     );
 
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name),
     ).toEqual(["base"]);
     expect(getConfigDefaults()).toEqual({ "base.org": "sentry" });
   });
@@ -321,7 +323,9 @@ describe("createApp plugin config", () => {
     });
 
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name),
     ).toEqual(["hooked"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "hooked",
@@ -356,7 +360,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
+    expect(getAppContext().catalog.getProviders()).toEqual([]);
   });
 
   it("rejects plugin egress credential hooks without manifest domains", async () => {
@@ -392,7 +396,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
+    expect(getAppContext().catalog.getProviders()).toEqual([]);
   });
 
   it("rejects plugin OAuth without credentials or egress credential hooks", async () => {
@@ -424,7 +428,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
+    expect(getAppContext().catalog.getProviders()).toEqual([]);
   });
 
   it("loads plugins with egress credential hooks", async () => {
@@ -453,7 +457,9 @@ describe("createApp plugin config", () => {
     });
 
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name),
     ).toEqual(["example"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "example",
@@ -480,7 +486,7 @@ describe("createApp plugin config", () => {
       ]),
     });
 
-    expect(pluginCatalogRuntime.getSkillRoots()).toEqual([]);
+    expect(getAppContext().catalog.getSkillRoots()).toEqual([]);
   });
 
   it("assigns package skills to runtime hook inline plugin packages", async () => {
@@ -511,7 +517,7 @@ describe("createApp plugin config", () => {
     });
 
     const resolvedTempRoot = await fs.realpath(tempRoot);
-    expect(pluginCatalogRuntime.getSkillRoots()).toEqual([
+    expect(getAppContext().catalog.getSkillRoots()).toEqual([
       path.join(
         resolvedTempRoot,
         "node_modules",
@@ -553,10 +559,12 @@ describe("createApp plugin config", () => {
     });
 
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => ({
-        name: plugin.manifest.name,
-        domains: plugin.manifest.credentials?.domains,
-      })),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => ({
+          name: plugin.manifest.name,
+          domains: plugin.manifest.credentials?.domains,
+        })),
     ).toEqual([{ name: "hooked", domains: ["new.example.com"] }]);
   });
 
@@ -572,17 +580,19 @@ describe("createApp plugin config", () => {
       },
       hooks: {},
     });
-    pluginCatalogRuntime.setConfig({
-      inlineManifests: [
-        {
-          manifest: {
-            name: "hooked",
-            displayName: "Different Hooked",
-            description: "Runtime plugin",
-            configKeys: [],
+    useAppContext({
+      pluginConfig: {
+        inlineManifests: [
+          {
+            manifest: {
+              name: "hooked",
+              displayName: "Different Hooked",
+              description: "Runtime plugin",
+              configKeys: [],
+            },
           },
-        },
-      ],
+        ],
+      },
     });
 
     expect(() => validatePluginRegistrations([registration])).toThrow(
@@ -614,7 +624,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
+    expect(getAppContext().catalog.getProviders()).toEqual([]);
   });
 
   it("loads plugin instances from the Nitro virtual plugin set", async () => {
@@ -655,7 +665,9 @@ describe("createApp plugin config", () => {
     });
 
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name),
     ).toEqual(["hooked"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "hooked",
@@ -684,7 +696,9 @@ describe("createApp plugin config", () => {
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
     expect(
-      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+      getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name),
     ).toEqual(["full"]);
   });
 
@@ -713,7 +727,7 @@ describe("createApp plugin config", () => {
     ).toThrow('Duplicate plugin registration name "dupe"');
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
+    expect(getAppContext().catalog.getProviders()).toEqual([]);
   });
 
   it("rejects invalid plugin names before mutating app config", async () => {
@@ -735,7 +749,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
+    expect(getAppContext().catalog.getProviders()).toEqual([]);
   });
 
   it("rejects top-level plugin registration names", () => {
@@ -961,7 +975,7 @@ describe("createApp plugin config", () => {
         `Plugin "legacy-dashboard" route "${path}" conflicts with core dashboard routes`,
       );
       expect(getPlugins()).toEqual([]);
-      expect(pluginCatalogRuntime.getProviders()).toEqual([]);
+      expect(getAppContext().catalog.getProviders()).toEqual([]);
     }
   });
 });

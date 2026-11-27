@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_events_turn_idx" ON "junior_conversation_events" ("turn_id","seq") WHERE "turn_id" is not null;

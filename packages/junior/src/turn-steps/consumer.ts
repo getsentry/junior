@@ -3,7 +3,8 @@
 // model client, bot settings and tools that the host passes in.
 // oxlint-disable-next-line no-restricted-imports -- The core Turn's model stream. Each reply keeps its usage in history; Conversation cost metrics do not count it yet.
 import { streamSimple } from "@earendil-works/pi-ai/compat";
-import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import { getGatewayApiKey } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import type { BotConfig } from "@/chat/config";
 import type { QueueConsumer } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";

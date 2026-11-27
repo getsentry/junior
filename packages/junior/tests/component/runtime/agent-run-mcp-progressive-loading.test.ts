@@ -403,7 +403,6 @@ vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
   ) => await deliverPrivateMessageMock(input),
   deliverPrivateMessage: deliverPrivateMessageMock,
   formatProviderLabel: (provider: string) => provider,
-  resolveBaseUrl: () => "https://junior.example.com",
 }));
 
 vi.mock("@/chat/mcp/oauth", () => ({
@@ -482,6 +481,10 @@ vi.mock("@/chat/pi/client", () => ({
     },
   }),
   getGatewayApiKey: () => "test-gateway-key",
+}));
+
+vi.mock("@/chat/pi/gateway-models", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/gateway-models")>()),
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
@@ -597,7 +600,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   }),
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => {
+vi.mock("@/app/context", () => {
   const plugin = {
     dir: "/tmp/plugins/demo",
     skillsDir: "/tmp/plugins/demo/skills",
@@ -613,14 +616,13 @@ vi.mock("@/chat/plugins/catalog-runtime", () => {
     },
   };
 
-  return {
-    pluginCatalogRuntime: {
-      getDefinition: (provider: string) =>
-        provider === "demo" ? plugin : undefined,
-      getMcpProviders: () => [plugin],
-      getProviders: () => [plugin],
-    },
+  const catalog = {
+    getDefinition: (provider: string) =>
+      provider === "demo" ? plugin : undefined,
+    getMcpProviders: () => [plugin],
+    getProviders: () => [plugin],
   };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
 });
 
 vi.mock("@/chat/skills", async (importOriginal) => {
@@ -994,8 +996,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       toolCallId: expect.any(String),
       toolName: "mcp__demo__ping",
       decision: "allow",
-      riskLevel: "low",
-      userAuthorization: "high",
+      reason: "This test exercises MCP runtime behavior.",
     });
   });
 
@@ -1118,18 +1119,17 @@ describe("executeAgentRun progressive MCP loading", () => {
         toolCallId: expect.any(String),
         toolName: "mcp__demo__ping",
         decision: "deny",
-        riskLevel: "high",
-        userAuthorization: "low",
+        reason: "The test policy denied this action.",
       });
     },
   );
 
-  it("escalates unavailable Guardian review to the agent-run boundary", async () => {
+  it("does not run an MCP tool whose Guardian review cannot run", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
     guardianDecision.value = "unavailable";
 
-    const outcome = await executeAgentRun(
+    await executeAgentRun(
       makeAgentRun("help me", {
         conversationId: "conversation-guardian-unavailable",
         threadTs: "1712345.0100",
@@ -1137,15 +1137,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       }),
     );
 
-    expect(outcome).toMatchObject({
-      status: "completed",
-      result: {
-        diagnostics: {
-          outcome: "provider_error",
-        },
-        text: "",
-      },
-    });
+    expect(guardianProposals.length).toBeGreaterThan(0);
     expect(callToolMock).not.toHaveBeenCalled();
   });
 

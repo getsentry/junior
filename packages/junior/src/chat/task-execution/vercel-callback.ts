@@ -15,8 +15,10 @@ import {
   type ConversationQueueMessage,
   type ConversationWorkQueue,
 } from "./queue";
-import { resolveConversationWorkQueueTopic } from "@/chat/queue/topics";
-import { getVercelConversationWorkQueue } from "./vercel-queue";
+import {
+  getVercelConversationWorkQueue,
+  resolveConversationWorkTopic,
+} from "./vercel-queue";
 import {
   processConversationWork,
   type ConversationWorkProcessResult,
@@ -85,7 +87,7 @@ function queueProcessAttributes(
 ): Record<string, unknown> {
   return {
     "messaging.destination.name":
-      metadata?.topicName ?? resolveConversationWorkQueueTopic(),
+      metadata?.topicName ?? resolveConversationWorkTopic(),
     "messaging.system": getQueueProvider().messagingSystem,
     ...(metadata && {
       "messaging.message.id": metadata.messageId,
@@ -155,7 +157,7 @@ export async function consumeConversationQueueMessage(
     createdAt: new Date(nowMs),
     deliveryCount: 1,
     messageId: options.messageId,
-    topicName: resolveConversationWorkQueueTopic(options),
+    topicName: resolveConversationWorkTopic(options.topic),
   });
 }
 

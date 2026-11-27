@@ -1,39 +1,9 @@
 /**
- * Heartbeat backfill of the event search index. Each Turn that ends
- * indexes a bounded slice of its Conversation's events, newest first.
- * History from before the index, the events of a running Turn, and the rest
- * of a long Conversation wait for later Turns. This run stores
- * their lexemes, and their vectors when event embeddings are on, in the
- * Conversations with activity in the last week.
- *
- * A pass walks those Conversations newest first, one page at a time, and
- * keeps its cursor in state, so each run continues where the last one
- * stopped. Each run stops at a time budget and at an event count for each
- * half, so the database time and embedding spend of a run have a ceiling.
- * Every query reads one Conversation, or one page of Conversations from the
- * activity index, under a statement timeout. A pass that stores nothing
- * marks the index done for a while, so later heartbeats make one state
- * request instead of a pass. One run holds the claim until it ends, so runs
- * do not overlap. Runs and the task take the lock of each Conversation and
- * skip stored rows.
- *
- * Attributes on the `event_search.backfill` span:
- * - `app.event_search.backfill.conversation.count`: Conversations that the
- *   run checked.
- * - `app.event_search.backfill.skipped.count`: Conversations that the run
- *   skipped, because the task held their lock or a query hit the statement
- *   timeout.
- * - `app.event_search.backfill.lexeme.count`,
- *   `app.event_search.backfill.vector.count`: rows that the run stored.
- * - `app.event_search.backfill.pass.conversation.count`,
- *   `app.event_search.backfill.pass.event.count`: Conversations checked and
- *   rows stored in the current pass, this run included.
- * - `app.event_search.backfill.outcome`: `completed` when a whole pass
- *   stored and skipped nothing, so nothing remains. `limit_reached` when
- *   the run stopped at its budget with Conversations left in the pass.
- *   `pass_ended` when the pass reached the end but stored or skipped rows,
- *   so the next run starts a new pass.
- * Policy: policies/observability.md.
+ * Heartbeat backfill of the event search index for Conversations active in
+ * the last week. A pass keeps its cursor in state, so each run resumes it. A
+ * time budget and an event limit per half cap a run's database and embedding
+ * spend. A pass that stores nothing marks the index done for a while. One claim
+ * keeps runs apart. Runs and the task lock each Conversation, skip stored rows.
  */
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import { and, desc, eq, gt, gte, lt, notExists, or, sql } from "drizzle-orm";
@@ -49,6 +19,7 @@ import { getDb } from "@/chat/db";
 import { withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
+import { conversationIsActiveSql } from "./sql/status";
 import {
   embedConversationEvents,
   EVENT_INDEX_LOCK_TTL_MS,
@@ -67,8 +38,7 @@ const SCAN_STATEMENT_TIMEOUT_MS = 5_000;
 // run that died first. It is longer than the budget plus one canceled query
 // and one embedding batch, so a live run keeps it.
 const BACKFILL_CLAIM_TTL_MS = 5 * 60 * 1_000;
-// New events of a running Turn wait at most this long, unless the task of
-// its completed Turn indexes them first.
+// New events written outside a Turn wait at most this long.
 const BACKFILL_DONE_TTL_MS = 10 * 60 * 1_000;
 // A pass that no run continues for this long starts again from the newest
 // Conversation.
@@ -127,11 +97,12 @@ async function withScanTimeout<T>(
 }
 
 // One page of the Conversations with activity since `sinceMs`, newest first,
-// after `after`. It reads `junior_conversations_last_activity_idx`.
+// after `after`, and whether a Turn of each is queued or running. It reads
+// `junior_conversations_last_activity_idx`.
 async function listActiveConversations(
   db: JuniorDatabase,
   args: { after: PassCursor | null; sinceMs: number },
-): Promise<PassCursor[]> {
+): Promise<(PassCursor & { turnActive: boolean })[]> {
   const conversations = juniorConversations;
   const after = args.after;
   return await withScanTimeout(
@@ -141,6 +112,7 @@ async function listActiveConversations(
         .select({
           at: sql<string>`to_char(${conversations.lastActivityAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
           conversationId: conversations.conversationId,
+          turnActive: conversationIsActiveSql(conversations),
         })
         .from(conversations)
         .where(
@@ -286,7 +258,13 @@ export async function backfillEventSearchIndex(args: {
   pass: EventSearchBackfillPass;
 }) {
   const sinceMs = args.nowMs - ACTIVE_WINDOW_MS;
-  const run = { conversations: 0, lexemes: 0, skipped: 0, vectors: 0 };
+  const run = {
+    conversations: 0,
+    lexemes: 0,
+    running: 0,
+    skipped: 0,
+    vectors: 0,
+  };
   let after = args.pass.after;
   const progress = (): EventSearchBackfillPass => ({
     after,
@@ -300,7 +278,13 @@ export async function backfillEventSearchIndex(args: {
       return { outcome: "limit_reached" as const, pass: progress(), run };
     }
     const page = await listActiveConversations(args.db, { after, sinceMs });
-    for (const conversation of page) {
+    for (const { turnActive, ...conversation } of page) {
+      // The Turn indexes its events when it ends.
+      if (turnActive) {
+        run.running += 1;
+        after = conversation;
+        continue;
+      }
       const lexemeRoom = MAX_LEXEME_EVENTS_PER_RUN - run.lexemes;
       const vectorRoom = MAX_VECTOR_EVENTS_PER_RUN - run.vectors;
       if (
@@ -394,6 +378,7 @@ export async function runEventSearchBackfill(args: {
           "app.event_search.backfill.conversation.count":
             result.run.conversations,
           "app.event_search.backfill.skipped.count": result.run.skipped,
+          "app.event_search.backfill.running.count": result.run.running,
           "app.event_search.backfill.lexeme.count": result.run.lexemes,
           "app.event_search.backfill.vector.count": result.run.vectors,
           "app.event_search.backfill.pass.conversation.count":

@@ -540,14 +540,14 @@ test.describe("new UI", () => {
     await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
     const row = page
       .locator("[data-inbox-row]")
-      .filter({ hasText: prReview.subject.title });
+      .filter({ hasText: prReview.subject.object.title });
     // The head leads with the subject's title, so the second line does not
     // say it again.
     await expect(
-      row.getByText(prReview.subject.title, { exact: true }),
+      row.getByText(prReview.subject.object.title, { exact: true }),
     ).toHaveCount(0);
     await expect(row.locator("[data-code-change-title]")).toContainText(
-      prReview.subject.title,
+      prReview.subject.object.title,
     );
     await expect(row).not.toContainText(prReview.title);
   });

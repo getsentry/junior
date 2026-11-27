@@ -1,6 +1,8 @@
 import { useMemo, useRef, type Ref } from "react";
 import { Lock } from "lucide-react";
 
+import { Button } from "../components/ui/button";
+
 import type { ConversationData } from "./queries";
 import type { ConversationComposerHandle } from "./ConversationComposer";
 import { committedMessageIds } from "./conversationOutbox";
@@ -81,7 +83,7 @@ export function ConversationPageDock(props: {
  * Take the place of the composer when the reader may not post, so the
  * transcript does not just end without a reason.
  */
-export function ConversationReadOnlyDock() {
+export function ConversationReadOnlyDock(props: { notice: string }) {
   return (
     <ComposerDock>
       <p className="m-0 flex items-center justify-center gap-1.5 rounded-lg border border-dashboard-border px-3 py-2.5 text-center text-xs text-dashboard-text-muted">
@@ -91,8 +93,30 @@ export function ConversationReadOnlyDock() {
           size={12}
           strokeWidth={2}
         />
-        Only participants can reply to a private conversation.
+        {props.notice}
       </p>
+    </ComposerDock>
+  );
+}
+
+/**
+ * Take the place of the composer for a reader of a public root who is not a
+ * Participant. Only Participants post, so they Join first.
+ */
+export function ConversationJoinDock(props: {
+  joining: boolean;
+  onJoin(): void;
+}) {
+  return (
+    <ComposerDock>
+      <div className="flex items-center justify-center gap-3 rounded-lg border border-dashboard-border px-3 py-2">
+        <p className="m-0 text-xs text-dashboard-text-muted">
+          Join this conversation to reply.
+        </p>
+        <Button disabled={props.joining} onClick={props.onJoin}>
+          {props.joining ? "Joining…" : "Join"}
+        </Button>
+      </div>
     </ComposerDock>
   );
 }

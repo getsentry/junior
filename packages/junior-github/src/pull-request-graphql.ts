@@ -140,10 +140,34 @@ export const pullRequestCardNodeSchema = pullRequestHeadFactsNodeSchema.extend({
         .nullable(),
     })
     .nullable(),
+  reviewDecision: z
+    .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
+    .nullish(),
+  latestOpinionatedReviews: z
+    .object({ nodes: z.array(z.object({ state: z.string() }).nullable()) })
+    .nullish(),
   state: z.enum(["CLOSED", "MERGED", "OPEN"]),
   title: z.string(),
   url: z.string(),
 });
+
+/**
+ * Return GitHub's review decision. A repository that requires no review has
+ * none, so the latest review of each writer decides: approved when one
+ * approves and none asks for changes.
+ */
+function pullRequestReview(
+  node: z.output<typeof pullRequestCardNodeSchema>,
+): GitHubPullRequestFields["review"] {
+  if (node.reviewDecision === "APPROVED") return "approved";
+  if (node.reviewDecision === "CHANGES_REQUESTED") return "changes_requested";
+  if (node.reviewDecision === "REVIEW_REQUIRED") return "required";
+  const states = (node.latestOpinionatedReviews?.nodes ?? []).map(
+    (review) => review?.state,
+  );
+  if (states.includes("CHANGES_REQUESTED")) return "changes_requested";
+  return states.includes("APPROVED") ? "approved" : null;
+}
 
 const PASSED_CHECK_RUNS = new Set(["NEUTRAL", "SKIPPED", "SUCCESS"]);
 const PENDING_CHECK_RUNS = new Set([
@@ -198,6 +222,9 @@ export function githubPullRequestFieldsFromNode(
         return login ? [{ login }] : [];
       },
     ),
+    // `null` when there is none, so a read replaces a decision that GitHub
+    // dropped, such as a dismissed review, and marks the review read.
+    review: pullRequestReview(node),
     state: node.state === "OPEN" ? "open" : "closed",
     title: node.title,
     updated_at: node.updatedAt,

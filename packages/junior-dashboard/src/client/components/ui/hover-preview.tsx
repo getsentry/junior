@@ -38,13 +38,27 @@ export function useInsideHoverPreview(): boolean {
 /**
  * Hold the hover previews inside it while `open` is false. A preview that
  * was due shows once it turns true, if the pointer or focus is still on
- * its trigger.
+ * its trigger. A preview that already shows stays.
  */
 export function HoverPreviewGate(props: {
   children: ReactNode;
   open: boolean;
 }) {
   return <PreviewsOpen value={props.open}>{props.children}</PreviewsOpen>;
+}
+
+/**
+ * Tell whether a hover card shows. The gate (`allowed`) holds a card back
+ * only until it shows: `shown` is this result from the last render. A hand
+ * on a mouse is never still, so a gate that closed shown cards would hide
+ * one on each move over its trigger or into it.
+ */
+export function hoverPreviewVisible(state: {
+  allowed: boolean;
+  open: boolean;
+  shown: boolean;
+}): boolean {
+  return state.open && (state.allowed || state.shown);
 }
 
 /**
@@ -63,6 +77,9 @@ export function HoverPreview(props: {
 }) {
   const allowed = useContext(PreviewsOpen);
   const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(false);
+  const visible = hoverPreviewVisible({ allowed, open, shown });
+  if (visible !== shown) setShown(visible);
   // A touch screen has no hover, so the first tap shows the card.
   const [touch, setTouch] = useState(false);
   // When the reader moves into the card, it keeps its side. Opening "More
@@ -79,14 +96,14 @@ export function HoverPreview(props: {
         setOpen(next);
         if (!next) setLockedSide(undefined);
       }}
-      open={allowed && open}
+      open={visible}
     >
       <PreviewCard.Trigger
         delay={PREVIEW_DELAY_MS}
         render={props.trigger}
         {...(props.tapToOpen
           ? {
-              "aria-expanded": allowed && open,
+              "aria-expanded": visible,
               "aria-haspopup": "dialog" as const,
               onClick: (event: MouseEvent) => {
                 // With previews gated, a tap follows the link: no card can open.

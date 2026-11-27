@@ -1,18 +1,19 @@
 # Inbox
 
-The Inbox is where work waits for a person. Junior or a plugin adds an
-Inbox item: an action that asks a question, or a notice that names a step
-for a person. A To-do that an agent assigns to a person shows as a "To do
-for you" item. The first answer lets the work continue.
-[Inbox stacks](./inbox-stacks.md) owns how the dashboard groups and acts on
-its rows.
+The Inbox is where work waits for a person. An Inbox item points at one
+subject, such as a question that Junior asked in a Conversation, a
+Conversation message that a person must read, a To-do, a pull request, or
+an Automation. The subject owns its content, its owner and its links. The
+item adds only who must act and whether it is open. Each subject kind has
+its own renderer. [Inbox stacks](./inbox-stacks.md) owns how the dashboard
+groups and acts on its rows.
 
 ## Jobs
 
 - When work needs a person's decision, Junior asks them with an Inbox
   item, so who must act, whether it is open, and the answer are on record.
-- When a person must read or fix something, such as a reply or a blocked
-  Automation, they get a notice that says what to do.
+- When a person must read or act on something, such as a reply or a
+  blocked Automation, they get a notice that says what to do.
 - When an agent needs a person to do a task, the person sees it with their
   other asks and closes it themselves, so the agent learns that it is done.
 - When a person checks what waits on them, every surface shows the same
@@ -27,8 +28,9 @@ its rows.
   - Example: whether Junior starts new work for the requester, such as a
     Thread that implements an issue it filed, is the requester's decision.
     Junior asks.
-- `notice-never-asks` A notice never asks. It says what the person must
-  read or fix, and what to do.
+- `notice-never-asks` A notice is a Conversation message that a person must
+  read or act on. It says what to do and never asks. It can link to other
+  objects, such as a pull request.
 - `seen-everywhere` Each assignee sees an item in the Inbox and as a card
   in its linked Slack threads.
 - `same-asks` Slack and the dashboard ask for the same things. The
@@ -52,16 +54,43 @@ its rows.
   gives it. Junior, an Event, or a trigger never answers or approves for a
   person.
 - `first-answer-closes` The first answer or dismiss closes the item for
-  everyone. A dismiss is not a decision, so it does not continue the work.
+  everyone, and the item records who closed it and when. A dismiss is not a
+  decision, so it does not continue the work.
 - `click-picks` A click on a choice picks it. Send answers, with the note
   line. An action that takes no words, such as a plugin's Resume, is one
   click.
-- `snooze-for-others` When a person wants someone else to answer, they
-  snooze the item until it closes. It then waits in their Snoozed view,
-  where they can still answer it, dismiss it, or wake it.
+- `snooze-for-others` When a person wants someone else to act, they snooze
+  the item until it closes. Snooze is per person. The item then waits in
+  their Snoozed view, where they can still answer it, dismiss it, or wake
+  it.
 - `plugin-answers` The answer to an item that a plugin added goes to that
   plugin, which does the work, such as Resume on a merge conflict fix that
   did not land. It starts no Turn.
+
+**What an item is**
+
+- `subject-only` An Inbox item stores only its subject, a `{ kind, id }`
+  pair, and the fields that every item uses: assignees, status, and who
+  closed it and when. Owner, visibility, title, state, and links come from
+  the subject, live. An item can appear or disappear when its owner's
+  visibility changes.
+- `one-item-per-subject` A subject kind and id name one open item, across
+  all workspaces. There is no dedupe key. A plugin kind starts with the
+  plugin name. When the ask about the same object changes, such as from
+  review to merge, the same item shows the new ask.
+- `question-owner` A question belongs to the Conversation where Junior
+  asked it, and holds its title, body, form, related links, and answer. Its
+  related links show on the card, but they never decide the card or add
+  related work to another item.
+- `plugin-owner` The owner of a plugin item is a Conversation that the
+  plugin names. For each of its subject kinds, the plugin maps a subject id
+  to that Conversation from its own records, and Junior reads the owner
+  through that map. The item stores no owner.
+- `automation-runs` An Automation is a definition, and each of its runs is
+  a Conversation. A question that a run asks belongs to that run's
+  Conversation, like any question. A later run of the same Automation sees
+  the open questions of its earlier runs, with their ids, and changes one by
+  its id.
 
 **Who sees and changes an item**
 
@@ -70,12 +99,11 @@ its rows.
 - `default-assignees` When no assignees are named, the item goes to the
   person in the Turn, else the Automation creator, else the Conversation's
   active Participants.
-- `public-visible` An item from a public Conversation is visible to the
-  whole workspace.
-- `private-stays-private` An item from a private Conversation stays
-  private. Everyone means the people who can see the Conversation: its
-  members when it is private, and anyone when it is public. If the
-  Conversation becomes public, its private items stay hidden.
+- `public-visible` An item is visible to whoever can see its subject's
+  owner. An item from a public Conversation is visible to the whole
+  workspace.
+- `everyone-means-owner-audience` Everyone means the people who can see the
+  item's owner.
 - `owner-changes` Only the Conversation or the plugin that added an item
   can change it, and only within the assignee rules.
 
@@ -100,9 +128,13 @@ its rows.
 **Notices and Automation alerts**
 
 - `reply-notice` A reply in a dashboard Conversation is a notice for its
-  starter. One notice per Conversation holds the latest reply, and it
-  closes when the starter reads it. A Slack reply adds no notice, because
-  the Slack thread already tells people.
+  starter, unless an open action in that Conversation already waits on them
+  or a provider Event, such as a pull request review, started the Turn. The
+  notice closes when the starter reads the reply or answers an item in that
+  Conversation. A Slack reply adds no notice, because the Slack thread
+  already tells people.
+- `alert-owner` An Automation alert, such as a failed run, belongs to the
+  Automation itself.
 - `alert-visibility` An Automation alert follows its Automation's
   Destination: a public channel makes it visible to the workspace. No agent
   or plugin changes or closes it. A person can dismiss it.
@@ -117,12 +149,12 @@ its rows.
 
 - `needs-you` "Needs you" means one thing on every surface: an ask or a
   Conversation tree that waits on you.
-- `type-filters` The Inbox filters its asks by type: PRs (asks about a code
-  change), Decisions (other asks with a form), To-dos (the viewer's
-  To-dos), and Other (the rest, such as Resume). Each count holds the asks
-  that wait on the viewer, one per ask, and the counts add up to All. All
-  is the Inbox count. A type with nothing waiting hides, but All always
-  shows.
+- `type-filters` The Inbox filters its asks by type: PRs (a code change's
+  own asks, such as Review requested), Decisions (other asks with a form,
+  also when they cite a code change), To-dos (the viewer's To-dos), and
+  Other (the rest, such as Resume). Each count holds the asks that wait on
+  the viewer, one per ask, and the counts add up to All. All is the Inbox
+  count. A type with nothing waiting hides, but All always shows.
 - `conversation-filters` The Conversation filters use the state that the
   row shows: Needs you when an ask or the tree waits on the viewer, then
   Working, then Watching. Done is the rest.
@@ -182,14 +214,8 @@ its rows.
 - `todo-item`: a "To do for you" item appears only when its To-do changes.
   A person who can see the Conversation only after that gets no item until
   the To-do changes again.
-- `todo-private`: in a private Space, the Inbox lists and counts a "To do
-  for you" item by Participants and Destination, not by Space membership.
-  A Participant who is not a member sees it but cannot open it, and a
-  member who is not a Participant does not see it.
 - `never-blocks`: a typed message leaves a question for Everyone, or a
   question with no assignees, open. Only its card or the Inbox answers it.
-- `notice-never-asks`: an agent or a plugin can add a notice that names no
-  next step, and the Inbox shows it in FYI.
 - `same-asks`: an Automation alert shows only in the dashboard Inbox. For a
   blocked Automation, Slack gets a DM with no card. For a failed run or a
   trigger that is not available, Slack gets nothing.
@@ -201,3 +227,5 @@ its rows.
   push.
 - `push`: when an item closes, its push stays on a device until the next
   push to that User.
+- `everyone-means-owner-audience`: an item from a private Conversation
+  cannot go to Everyone yet.

@@ -8,7 +8,7 @@ import type {
   AgentUpdate,
   AgentUpdateStatus,
 } from "@/chat/child-agents/agent-update";
-import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
+import { piMessageFromHistoryItem } from "@/core/history/items";
 import { readTurnAnswer } from "@/chat/turn-answer";
 import type {
   ConversationEvent,

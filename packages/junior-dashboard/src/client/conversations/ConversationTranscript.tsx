@@ -25,7 +25,6 @@ import {
 import { Card } from "../components/layout/Card";
 import { unavailableTranscriptLabel } from "../format";
 import { KnownObjectsProvider } from "../display-text/DisplayText";
-import { ObjectAttachProvider } from "./ObjectAttach";
 import { ConversationSummary } from "./ConversationSummary";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
@@ -70,10 +69,6 @@ import {
   TranscriptAutomationTriggerView,
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
-import {
-  isConversationWatchReport,
-  LeadWatchReport,
-} from "../lead/LeadWatchReport";
 import { groupTranscriptMessages } from "./transcriptRenderModel";
 import { transcriptRowAnchor } from "./conversationRoutes";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -212,19 +207,17 @@ export const ConversationTranscriptView = memo(
           messages={messages}
         >
           <KnownObjectsProvider annotations={annotations}>
-            <ObjectAttachProvider conversation={props.conversation}>
-              <section className="min-w-0 pt-1">
-                <SegmentEvents
-                  onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-                  conversation={props.conversation}
-                  messages={messages}
-                  responding={props.responding}
-                  revealSeq={props.revealSeq}
-                  scrollAnchorKey={props.scrollAnchorKey}
-                  unread={props.unread}
-                />
-              </section>
-            </ObjectAttachProvider>
+            <section className="min-w-0 pt-1">
+              <SegmentEvents
+                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                conversation={props.conversation}
+                messages={messages}
+                responding={props.responding}
+                revealSeq={props.revealSeq}
+                scrollAnchorKey={props.scrollAnchorKey}
+                unread={props.unread}
+              />
+            </section>
           </KnownObjectsProvider>
         </TranscriptImagesProvider>
       </TranscriptTimestampProvider>
@@ -399,12 +392,6 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           <TranscriptAutomationTriggerView
             message={entry.message}
             sourceTask={props.conversation.sourceTask}
-          />
-        ) : props.conversation.kind === "lead" &&
-          isConversationWatchReport(entry.message) ? (
-          <LeadWatchReport
-            message={entry.message}
-            timestamp={entry.message.timestamp}
           />
         ) : isReceivedAgentMessage(entry.message) ? (
           <TranscriptReceivedAgentMessage

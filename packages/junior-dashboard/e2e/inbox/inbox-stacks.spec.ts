@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { mobile } from "../screenshot";
 import { expect, test } from "../test";
 import {
   audit,
@@ -316,6 +317,37 @@ test.describe("new UI", () => {
       await expect(row).toHaveAttribute("data-expanded", "true");
       await expect(open.first()).toBeVisible();
       await expect(dismissIn(row)).toBeVisible();
+    });
+
+    test("on a phone, a row opens in a sheet and stays closed in the list", async ({
+      dashboard,
+      page,
+    }) => {
+      await page.setViewportSize(mobile);
+      await mockInboxItems(page, { open: [rollout, childReview] });
+      // A phone shows the Inbox entries at `/inbox`.
+      await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
+      const row = rowOf(page, childReview);
+      // The row's head is its first link.
+      const head = row.getByRole("link").first();
+      await head.tap();
+      const sheet = page.getByRole("dialog");
+      await expect(dismissIn(sheet)).toBeVisible();
+      // The row stays closed in the list, so nothing moves under the sheet.
+      await expect(row).not.toHaveAttribute("data-expanded");
+
+      // A tap in the sheet is the sheet's, and Close goes back to the list.
+      await sheet.getByRole("heading").first().tap();
+      await expect(dismissIn(sheet)).toBeVisible();
+      await sheet.getByRole("button", { exact: true, name: "Close" }).tap();
+      await expect(sheet).toHaveCount(0);
+
+      // An action closes the sheet with its row, and opens no next row.
+      await head.tap();
+      await dismissIn(page.getByRole("dialog")).tap();
+      await expect(row).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(rowOf(page, rollout)).not.toHaveAttribute("data-expanded");
     });
   });
 
