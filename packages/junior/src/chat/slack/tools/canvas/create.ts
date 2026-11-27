@@ -1,4 +1,5 @@
 import { logError } from "@/chat/logging";
+import { slackChannelTarget } from "@/chat/slack/channel-audience";
 import { isConversationScopedChannel } from "@/chat/slack/client";
 import { createCanvas } from "@/chat/slack/tool-support/canvas/api";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
@@ -28,6 +29,10 @@ export function createSlackCanvasCreateTool(
       readOnlyHint: false,
     },
     approvalMode: "review",
+    guardian: async () =>
+      context.destinationChannelId
+        ? { target: await slackChannelTarget(context.destinationChannelId) }
+        : undefined,
     description: "Create a Slack canvas in the active channel.",
     inputSchema: z.object({
       title: z.string().min(1).max(160).describe("Canvas title."),

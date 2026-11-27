@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AutomationToolContext } from "@/chat/automations/tool-access";
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
+import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { conversationsInfoOk } from "../fixtures/slack/factories/api";
 import { queueSlackApiResponse } from "../msw/handlers/slack-api";
@@ -22,7 +23,7 @@ function queueSharedChannel(channelId: string, name: string) {
   });
 }
 
-describe("Automation delivery target", () => {
+describe("Slack channel targets", () => {
   it("counts a move to a Slack Connect channel as world", async () => {
     queueSharedChannel("CEXT", "acme-shared");
     const tool = createUpdateAutomationTool(context, NO_EVENTS);
@@ -57,6 +58,20 @@ describe("Automation delivery target", () => {
     expect(described?.target).toEqual({
       ref: "Slack channel #partner-room",
       audience: "world",
+    });
+  });
+
+  it("counts a canvas in a Slack Connect channel as world", async () => {
+    queueSharedChannel("CHOME", "partner-room");
+    const tool = createSlackCanvasCreateTool(
+      { destinationChannelId: "CHOME" } as never,
+      { getOperationResult: () => undefined, setOperationResult: () => {} },
+    );
+
+    await expect(
+      tool.guardian?.({ title: "Plan", markdown: "x" }),
+    ).resolves.toEqual({
+      target: { ref: "Slack channel #partner-room", audience: "world" },
     });
   });
 });

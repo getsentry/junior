@@ -3,12 +3,11 @@ import * as z from "zod";
 import { getConversationStore } from "@/chat/db";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
 import {
-  parseSlackChannelId,
   parseSlackTeamId,
   type SlackChannelId,
   type SlackTeamId,
 } from "@/chat/slack/ids";
-import { getConversationInfo } from "@/chat/slack/channel";
+import { slackChannelTarget } from "@/chat/slack/channel-audience";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import {
   resolveSlackChannelRef,
@@ -142,26 +141,17 @@ export async function automationDeliveryTarget(
   context: AutomationToolContext,
   value: z.output<typeof automationDestinationParam>,
 ): Promise<NonNullable<Action["target"]>> {
-  const current = value === "current_conversation";
-  if (current && !context.destination) {
-    return { ref: "this Conversation", audience: "internal" };
+  if (value !== "current_conversation") {
+    const channelId = await namedChannelId(context, value).catch(
+      () => undefined,
+    );
+    return channelId
+      ? await slackChannelTarget(channelId)
+      : { ref: `Slack channel ${value}`, audience: "world" };
   }
-  const ref = current ? (context.destination?.channelId ?? value) : value;
-  try {
-    const channelId = current
-      ? parseSlackChannelId(context.destination?.channelId)
-      : await namedChannelId(context, value);
-    if (!channelId) return { ref: `Slack channel ${ref}`, audience: "world" };
-    const info = await getConversationInfo(channelId);
-    return {
-      ref: info.name
-        ? `Slack channel #${info.name}`
-        : `Slack channel ${channelId}`,
-      audience: info.isExtShared ? "world" : "internal",
-    };
-  } catch {
-    return { ref: `Slack channel ${ref}`, audience: "world" };
-  }
+  return context.destination
+    ? await slackChannelTarget(context.destination.channelId)
+    : { ref: "this Conversation", audience: "internal" };
 }
 
 async function namedChannelId(
