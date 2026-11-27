@@ -166,17 +166,44 @@ async function annotateSavedIssue(
 /** Install options for the Linear plugin. */
 export interface LinearPluginOptions {
   /**
-   * Facts for action review about where Linear writes go. For example, say
-   * which teams sync issues to public GitHub repositories. Only Guardian reads
-   * it.
+   * Keys of the Linear teams whose issues sync to public GitHub
+   * repositories, such as `["SDK", "DOCS"]`. Guardian counts a write to
+   * these teams as one the world can read. Other teams are internal.
    */
-  reviewContext?: string;
+  publicTeams?: readonly string[];
+}
+
+const ISSUE_KEY = /^([A-Za-z][A-Za-z0-9]*)-\d+$/;
+
+/**
+ * The team key of one Linear MCP write, from its input: the `team` of a new
+ * issue, or the prefix of an issue key such as `PY-12`. Undefined when the
+ * input names neither, such as an issue UUID.
+ */
+function writeTeam(
+  tool: string,
+  input: Record<string, unknown>,
+): string | undefined {
+  const issue =
+    tool === "save_comment"
+      ? input["issueId"]
+      : tool === "save_issue"
+        ? input["id"]
+        : undefined;
+  if (typeof issue === "string") {
+    return ISSUE_KEY.exec(issue)?.[1]?.toUpperCase();
+  }
+  const team = tool === "save_issue" ? input["team"] : undefined;
+  return typeof team === "string" && team ? team.toUpperCase() : undefined;
 }
 
 /** Register Linear's hosted MCP provider and conversation-link side effects. */
 export function linearPlugin(
   options: LinearPluginOptions = {},
 ): PluginRegistration {
+  const publicTeams = new Set(
+    (options.publicTeams ?? []).map((team) => team.toUpperCase()),
+  );
   return defineJuniorPlugin({
     packageName: "@sentry/junior-linear",
     events: {
@@ -224,12 +251,25 @@ export function linearPlugin(
         url: "https://mcp.linear.app/mcp",
       },
       name: "linear",
-      ...(options.reviewContext
-        ? { reviewContext: options.reviewContext }
+      // The current Guardian reads this fact. The agent Guardian reads the
+      // audience that `describeMcpCall` gives each write.
+      ...(publicTeams.size > 0
+        ? {
+            reviewContext: `Issues in the Linear teams ${[...publicTeams].join(", ")} sync to public GitHub repositories, so people outside the organization can read their title and description. Other teams are internal.`,
+          }
         : undefined),
     },
     hooks: {
       afterMcpTool: annotateSavedIssue,
+      async describeMcpCall({ tool, input }) {
+        const team = writeTeam(tool, input);
+        return team
+          ? {
+              ref: `Linear team ${team}`,
+              audience: publicTeams.has(team) ? "world" : "internal",
+            }
+          : undefined;
+      },
       routes(ctx) {
         return [
           createLinearWebhookRoute({

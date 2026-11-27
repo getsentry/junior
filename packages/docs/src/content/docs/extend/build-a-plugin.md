@@ -171,6 +171,8 @@ accounts:
 - `mcp.audience` tells Guardian who can read what the MCP tools write:
   `internal` when only people in your organization can read it, or `world`.
   Without it, Guardian counts the audience as `world`.
+- A `describeMcpCall` hook can give one MCP call its own target from its
+  input, such as the team of a write. Its answer wins over `mcp.audience`.
 - Junior rejects unknown keys in `accounts`, so a typo cannot change which
   accounts Junior uses.
 

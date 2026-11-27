@@ -13,6 +13,7 @@ import type { PluginAnnotations } from "./annotations";
 import type { PluginCodeChanges } from "./code";
 import { objectAnnotationSchema } from "./object-annotations";
 import type { WatchResult, SubscribableResource } from "./events";
+import type { PluginCache } from "./cache";
 import type { PluginState } from "./state";
 import * as z from "zod";
 import type { ZodTypeAny } from "zod";
@@ -421,8 +422,17 @@ export function missingToolAnnotationKeys(
 /** Who can read a target. Core counts an unknown audience as `world`. */
 export type Audience = "internal" | "world";
 
+/**
+ * What a plugin may read while it says what a call touches: its cache and
+ * provider reads as Junior's own system account. Reads only.
+ */
+export interface DescribeReadContext {
+  cache: PluginCache;
+  egress: PluginEgress;
+}
+
 /** What core answers for a tool's `describe`, from its own records. */
-export interface DescribeContext {
+export interface DescribeContext extends DescribeReadContext {
   /** Whether this work created the pull request, from core's code-change records. */
   isOwnPullRequest(repo: string, number: number): Promise<boolean>;
 }

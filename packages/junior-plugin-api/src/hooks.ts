@@ -33,6 +33,7 @@ import type {
 import type {
   AfterMcpToolHookContext,
   Audience,
+  DescribeReadContext,
   AfterToolExecuteHookContext,
   BeforeToolExecuteHookContext,
   PluginEgress,
@@ -193,12 +194,25 @@ export interface PluginHooks {
   /**
    * Return the target behind a remote URL of this plugin's provider, such as
    * the repository of a Git remote, or nothing for another URL. Guardian
-   * reviews a shell command with it. Read who can see the target from stored
-   * records only, and return `world` when they do not say.
+   * reviews a shell command with it. Read who can see the target from the
+   * provider or stored records, never from the URL, and return `world` when
+   * they do not say.
    */
   describeUrl?(
     url: URL,
+    ctx: DescribeReadContext,
   ): Promise<{ ref: string; audience: Audience } | undefined>;
+  /**
+   * Say what one call of this plugin's MCP tools touches, so Guardian knows
+   * who can read what it writes. `tool` is the MCP tool's own name, such as
+   * `save_issue`. Read only the input and the install's options, and return
+   * undefined when they do not say. Without an answer, the manifest's
+   * `mcp.audience` applies.
+   */
+  describeMcpCall?(call: {
+    tool: string;
+    input: Record<string, unknown>;
+  }): Promise<{ ref: string; audience: Audience } | undefined>;
   /**
    * Select the grant for one sandbox egress request.
    *

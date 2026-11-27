@@ -4,9 +4,15 @@
  *
  * Code only reads facts here. The Git remotes come from the Sandbox, a
  * plugin's `describeUrl` hook types each one, and the plugin manifests say
- * which credential placeholder goes to which domains.
+ * which credential placeholder goes to which domains. For a push, the
+ * commits that no remote has yet show what a `world` checkout publishes:
+ * edits and commits stay in the Sandbox, so the push is where they leave.
  */
-import type { PluginManifest } from "@sentry/junior-plugin-api";
+import type {
+  DescribeReadContext,
+  PluginManifest,
+} from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
 import type { ReviewRequest } from "@/chat/guardian/guardian";
 import { describeRemote } from "@/chat/plugins/describe-url";
@@ -51,6 +57,42 @@ export async function readSandboxRepos(
   });
 }
 
+/** Most characters of unpushed commits that one checkout's facts keep. */
+const MAX_UNPUSHED_CHARS = 12_000;
+
+const shellInputSchema = z.object({ command: z.string() });
+
+/** Whether the input of a shell call runs `git push`. */
+export function isGitPush(input: unknown): boolean {
+  const parsed = shellInputSchema.safeParse(input);
+  return parsed.success && /\bgit\b[^\n;&|]*\bpush\b/.test(parsed.data.command);
+}
+
+/**
+ * Read the commits of one checkout that no remote branch has yet, with
+ * their patches, cut to a bound. This covers the first push of a new
+ * branch. A stale remote ref can only add commits here, never hide one.
+ */
+export async function readUnpushedCommits(
+  workspace: Pick<SandboxWorkspace, "runCommand">,
+  path: string,
+): Promise<string> {
+  const result = await workspace.runCommand({
+    cmd: "git",
+    args: ["-C", path, "log", "-p", "--no-color", "HEAD", "--not", "--remotes"],
+    timeoutMs: 10_000,
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Reading the unpushed commits of ${path} failed with exit ${result.exitCode}.`,
+    );
+  }
+  const log = result.stdout;
+  return log.length <= MAX_UNPUSHED_CHARS
+    ? log
+    : `${log.slice(0, MAX_UNPUSHED_CHARS)}\n[truncated]`;
+}
+
 /** Credential placeholders that the installed plugins put in the Sandbox. */
 export function credentialPlaceholders(
   manifests: readonly PluginManifest[],
@@ -63,16 +105,31 @@ export function credentialPlaceholders(
   });
 }
 
-/** What the Sandbox can reach: its typed Git checkouts and placeholders. */
+/**
+ * What the Sandbox can reach: its typed Git checkouts and placeholders. When
+ * the batch pushes, each `world` checkout also gets its unpushed commits.
+ */
 export async function sandboxFacts(args: {
   repos: readonly SandboxRepo[];
   placeholders: SandboxFacts["placeholders"];
+  /** Set only when the batch has a `git push`. */
+  unpushed?: (path: string) => Promise<string>;
+  /** What each plugin's `describeUrl` may read. */
+  readContext: (plugin: string) => DescribeReadContext;
 }): Promise<SandboxFacts> {
   return {
-    repos: await mapBounded(args.repos, async (repo) => ({
-      path: repo.path,
-      target: await describeRemote(repo.remote),
-    })),
+    repos: await mapBounded(args.repos, async (repo) => {
+      const target = await describeRemote(repo.remote, args.readContext);
+      const unpushed =
+        args.unpushed && target.audience === "world"
+          ? await args.unpushed(repo.path)
+          : "";
+      return {
+        path: repo.path,
+        target,
+        ...(unpushed ? { unpushed } : undefined),
+      };
+    }),
     placeholders: args.placeholders,
   };
 }

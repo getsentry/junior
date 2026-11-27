@@ -11,7 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubDbSchema } from "../db/database.js";
-import { describePullRequestCall } from "../tool-support/describe-pull-request-call.js";
+import { describePullRequestCall } from "../tool-support/describe-call.js";
 import {
   ADD_REVIEW_REACTION,
   type GitHubGraphqlOperation,

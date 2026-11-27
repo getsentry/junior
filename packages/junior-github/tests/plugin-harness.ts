@@ -41,6 +41,38 @@ export function signedRequest(input: {
   });
 }
 
+/** An in-memory plugin cache with no TTL, so a test can read what a hook wrote. */
+export function memoryCache(): HeartbeatHookContext["cache"] {
+  const cacheEntries = new Map<string, unknown>();
+  return {
+    async get<T>(key: string) {
+      return cacheEntries.get(key) as T | undefined;
+    },
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<{ value: T }>,
+      options?: { refresh?: boolean },
+    ) {
+      if (!options?.refresh && cacheEntries.has(key)) {
+        return cacheEntries.get(key) as T;
+      }
+      const { value } = await load();
+      cacheEntries.set(key, value);
+      return value;
+    },
+    async update<T>(
+      key: string,
+      next: (current: T | undefined) => { value: T } | undefined,
+    ) {
+      const entry = next(cacheEntries.get(key) as T | undefined);
+      if (entry) cacheEntries.set(key, entry.value);
+    },
+    async delete(key) {
+      cacheEntries.delete(key);
+    },
+  };
+}
+
 /** Plugin state in memory, with expiry. */
 export function memoryState(): PluginState {
   const stored = new Map<string, { expiresAtMs: number; value: unknown }>();
@@ -187,35 +219,7 @@ export function createPluginHarness(
       };
     },
   };
-  // An in-memory cache with no TTL, so a test can read what a hook wrote.
-  const cacheEntries = new Map<string, unknown>();
-  const cache: HeartbeatHookContext["cache"] = {
-    async get<T>(key: string) {
-      return cacheEntries.get(key) as T | undefined;
-    },
-    async getOrLoad<T>(
-      key: string,
-      load: () => Promise<{ value: T }>,
-      options?: { refresh?: boolean },
-    ) {
-      if (!options?.refresh && cacheEntries.has(key)) {
-        return cacheEntries.get(key) as T;
-      }
-      const { value } = await load();
-      cacheEntries.set(key, value);
-      return value;
-    },
-    async update<T>(
-      key: string,
-      next: (current: T | undefined) => { value: T } | undefined,
-    ) {
-      const entry = next(cacheEntries.get(key) as T | undefined);
-      if (entry) cacheEntries.set(key, entry.value);
-    },
-    async delete(key) {
-      cacheEntries.delete(key);
-    },
-  };
+  const cache = memoryCache();
 
   async function deliver(request: Request): Promise<void> {
     const unused = () => {

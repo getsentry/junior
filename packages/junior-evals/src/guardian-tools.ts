@@ -6,24 +6,38 @@
  * production builder. So a case sends Guardian what production sends, and a
  * change to a tool changes the eval prompt too.
  */
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import {
+  createSlackSource,
+  type DescribeReadContext,
+} from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
+import { linearPlugin } from "@sentry/junior-linear";
+import { notionPlugin } from "@sentry/junior-notion";
 import { googlePlugin } from "@sentry/junior-google";
 import { vercelPlugin } from "@sentry/junior-vercel";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { proposalTool, toolActionNeedsReview } from "@/chat/guardian/gate";
+import { actionFromDescription } from "@/chat/guardian/call-facts";
+import {
+  proposalTool,
+  toolActionNeedsReview,
+  undescribedAction,
+} from "@/chat/guardian/gate";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
-import type { AnyToolDefinition } from "@/chat/tool-support/definition";
+import type {
+  ActionDescription,
+  AnyToolDefinition,
+} from "@/chat/tool-support/definition";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 
 /**
  * MCP tools come from the provider's server at run time. These are copies of
  * what the Linear and Notion servers return, as the MCP tool manager resolves
- * them.
+ * them. Their plugins are installed, so their calls get production targets.
  */
 const MCP_TOOLS: ManagedMcpTool[] = [
   {
@@ -76,6 +90,9 @@ const MCP_TOOLS: ManagedMcpTool[] = [
 async function unavailable(): Promise<never> {
   throw new Error("Guardian evals do not run tools.");
 }
+
+/** Linear teams whose issues sync to public GitHub repositories. */
+export const LINEAR_PUBLIC_TEAMS = ["PY", "RUBY", "GO", "JAVA"];
 
 /** A public Slack thread, like the one of the evals' `slackContext()`. */
 const context: ToolRuntimeContext = {
@@ -135,6 +152,9 @@ async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
     plugins: defineJuniorPlugins([
       githubPlugin(),
       googlePlugin(),
+      // An install whose SDK teams sync issues to public repositories.
+      linearPlugin({ publicTeams: LINEAR_PUBLIC_TEAMS }),
+      notionPlugin(),
       vercelPlugin(),
     ]),
   });
@@ -172,6 +192,53 @@ export async function agentToolSpec(
     tool,
     await tool.resolveApprovalMetadata?.(input),
     summary,
+  );
+}
+
+/**
+ * The target and advice that production gives one call: the tool's own
+ * `describe`, or what core gives a tool without one. Core answers a plugin
+ * tool's `isOwnPullRequest` from its code-change records. The evals have no
+ * database, so `ownPullRequests` (`owner/repo#number`) stands in for them,
+ * and `readContext` stands in for the plugin's cache and provider reads.
+ */
+export async function agentActionFacts(
+  tool: ToolActionProposal["tool"],
+  input: Record<string, unknown>,
+  records: {
+    ownPullRequests: readonly string[];
+    readContext: DescribeReadContext;
+  },
+): Promise<ActionDescription> {
+  agentTools ??= buildAgentTools();
+  const name = tool.dispatcherName ?? tool.name;
+  const definition = (await agentTools)[name];
+  if (!definition) {
+    return {};
+  }
+  const identity = definition.identity;
+  if (identity) {
+    const source = getPlugins()
+      .find((plugin) => plugin.manifest.name === identity.plugin)
+      ?.hooks?.tools?.()[identity.name];
+    if (!source?.describe) {
+      return {};
+    }
+    const own = new Set(records.ownPullRequests);
+    return actionFromDescription(
+      await source.describe(input, {
+        ...records.readContext,
+        isOwnPullRequest: async (repo, number) => own.has(`${repo}#${number}`),
+      }),
+    );
+  }
+  return (
+    (await definition.describe?.(input)) ??
+    (await undescribedAction(
+      name,
+      await definition.resolveApprovalMetadata?.(input),
+      input,
+    ))
   );
 }
 

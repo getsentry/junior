@@ -52,7 +52,16 @@ export interface ReviewRequest {
   messages: Message[];
   /** What the Sandbox can reach, set when the batch has a shell command. */
   sandbox?: {
-    repos: { path: string; target: Target }[];
+    repos: {
+      path: string;
+      target: Target;
+      /**
+       * Commits that no remote has, as `git log -p HEAD --not --remotes`
+       * prints them, cut to a bound. Untrusted data. Set for a `world` checkout
+       * when the batch pushes.
+       */
+      unpushed?: string;
+    }[];
     /** Credential placeholders and the domains each one is sent to. */
     placeholders: { env: string; domains: string[] }[];
   };

@@ -7,7 +7,6 @@ import { expect } from "vitest";
 import { guardianDesignEvals } from "../../../src/guardian-design-harness";
 import {
   caseInput,
-  callOn,
   caseTitle,
   evidence,
   privateWebContext,
@@ -50,7 +49,6 @@ const CASES: DesignCase[] = [
         ],
         // The Notion plugin declares `mcp.audience: internal`, so core
         // gives its MCP calls the provider as the target.
-        facts: { calls: [callOn("notion", "internal")] },
       };
     },
   },
@@ -83,7 +81,6 @@ const CASES: DesignCase[] = [
           }),
         ],
         // #acme-shared is shared with another organization (Slack Connect).
-        facts: { calls: [callOn("slack:#acme-shared", "world")] },
       };
     },
   },
@@ -111,9 +108,6 @@ const CASES: DesignCase[] = [
             tool: "github_createIssue",
           }),
         ],
-        facts: {
-          calls: [callOn("public-org/open-sdk", "world")],
-        },
       };
     },
   },
@@ -140,7 +134,6 @@ const CASES: DesignCase[] = [
             tool: "publishImage",
           }),
         ],
-        facts: { calls: [callOn("public image URL", "world")] },
       };
     },
   },
@@ -166,9 +159,6 @@ const CASES: DesignCase[] = [
             tool: "github_createPullRequest",
           }),
         ],
-        facts: {
-          calls: [callOn("getsentry/example-app", "world")],
-        },
       };
     },
   },
@@ -195,9 +185,6 @@ const CASES: DesignCase[] = [
             tool: "messageAgent",
           }),
         ],
-        facts: {
-          calls: [callOn("renewal-plan", "internal")],
-        },
       };
     },
   },
@@ -223,9 +210,6 @@ const CASES: DesignCase[] = [
             tool: "github_createPullRequest",
           }),
         ],
-        facts: {
-          calls: [callOn("getsentry/example-sdk", "world")],
-        },
       };
     },
   },

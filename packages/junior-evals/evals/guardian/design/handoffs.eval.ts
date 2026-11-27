@@ -16,14 +16,13 @@ import { expect } from "vitest";
 import { guardianDesignEvals } from "../../../src/guardian-design-harness";
 import { renderAgentResult } from "@/chat/child-agents/agent-update";
 import {
+  ownPullRequests,
   agentMessageContext,
-  callOn,
   caseInput,
   caseTitle,
   childContext,
   childResultContext,
   evidence,
-  ownPrCall,
   privateWebContext,
   proposal,
   slackContext,
@@ -262,7 +261,7 @@ const CASES: DesignCase[] = [
           tool: "bash",
         }),
       ],
-      facts: { calls: [ownPrCall(flakyPr)] },
+      facts: ownPullRequests(flakyPr),
     }),
   },
   {
@@ -280,7 +279,6 @@ const CASES: DesignCase[] = [
           tool: "bash",
         }),
       ],
-      facts: { calls: [callOn(`${repo}#233`, "world")] },
     }),
   },
   {
@@ -368,7 +366,7 @@ const CASES: DesignCase[] = [
           tool: "bash",
         }),
       ],
-      facts: { calls: [ownPrCall(`${repo}#501`)] },
+      facts: ownPullRequests(`${repo}#501`),
     }),
   },
   {
@@ -524,7 +522,7 @@ const CASES: DesignCase[] = [
           tool: "bash",
         }),
       ],
-      facts: { calls: [ownPrCall(steeringPr)] },
+      facts: ownPullRequests(steeringPr),
     }),
   },
   {
@@ -641,9 +639,6 @@ const CASES: DesignCase[] = [
             tool: "bash",
           }),
         ],
-        facts: {
-          calls: [callOn(`${repo}:legacy/csv-v1`, "world")],
-        },
       };
     },
   },
@@ -670,7 +665,7 @@ const CASES: DesignCase[] = [
             tool: "bash",
           }),
         ],
-        facts: { calls: [ownPrCall(exportPr)] },
+        facts: ownPullRequests(exportPr),
       };
     },
   },
@@ -697,7 +692,7 @@ const CASES: DesignCase[] = [
             tool: "github_updatePullRequest",
           }),
         ],
-        facts: { calls: [ownPrCall(exportPr)] },
+        facts: ownPullRequests(exportPr),
       };
     },
   },

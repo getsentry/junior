@@ -23,10 +23,9 @@ describe("Linear plugin package", () => {
     expect(serviceAccountAllows(manifest, { tool: "save_issue" })).toBe(false);
   });
 
-  it("passes install review context to the manifest", () => {
-    const registration = linearPlugin({
-      reviewContext: "Issues in team PY sync to a public GitHub repository.",
-    });
+  it("gives each team write the audience of its team", async () => {
+    const registration = linearPlugin({ publicTeams: ["py"] });
+    const describe = registration.hooks!.describeMcpCall!;
     const manifest = parseInlinePluginManifest(
       {
         ...registration.manifest,
@@ -35,8 +34,15 @@ describe("Linear plugin package", () => {
       "/plugins/linear",
     );
 
-    expect(manifest.reviewContext).toBe(
-      "Issues in team PY sync to a public GitHub repository.",
-    );
+    expect(manifest.reviewContext).toContain("Linear teams PY sync");
+    await expect(
+      describe({ tool: "save_issue", input: { team: "PY", title: "x" } }),
+    ).resolves.toEqual({ ref: "Linear team PY", audience: "world" });
+    await expect(
+      describe({ tool: "save_comment", input: { issueId: "WEB-12" } }),
+    ).resolves.toEqual({ ref: "Linear team WEB", audience: "internal" });
+    await expect(
+      describe({ tool: "save_issue", input: { id: "6f1c-uuid" } }),
+    ).resolves.toBeUndefined();
   });
 });

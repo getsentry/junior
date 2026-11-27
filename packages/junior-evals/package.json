@@ -19,6 +19,8 @@
     "@sentry/junior": "workspace:*",
     "@sentry/junior-eval-pantry": "link:fixtures/plugins/eval-pantry",
     "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-linear": "workspace:*",
+    "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-google": "workspace:*",
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",

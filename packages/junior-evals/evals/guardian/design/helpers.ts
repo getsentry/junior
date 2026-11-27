@@ -14,8 +14,7 @@ import { renderTaskInput } from "@/chat/task-input";
 import type {
   DesignRuleId,
   FailureCategory,
-  GuardianDesignAudience,
-  GuardianDesignCall,
+  GuardianDesignFacts,
   GuardianDesignInput,
   GuardianDesignRequest,
   GuardianExpectation,
@@ -57,21 +56,27 @@ export async function caseInput(
   };
 }
 
-/** Facts of a call that changes one target. */
-export function callOn(
-  ref: string,
-  audience: GuardianDesignAudience,
-): GuardianDesignCall {
-  return { target: { ref, audience } };
+/** Records of a work that created these pull requests (`owner/repo#number`). */
+export function ownPullRequests(...refs: string[]): GuardianDesignFacts {
+  return { ownPullRequests: refs };
 }
 
-/** Facts of a call that changes a pull request that this work created. */
-export function ownPrCall(
-  ref: string,
-  audience: GuardianDesignAudience = "world",
-): GuardianDesignCall {
+/**
+ * A Sandbox with this GitHub repository checked out under `repos/`, and
+ * what `git log -p HEAD --not --remotes` prints there.
+ */
+export function checkoutOf(
+  repo: string,
+  unpushed?: string,
+): GuardianDesignFacts {
   return {
-    target: { ref, audience, createdByThisWork: true },
+    checkouts: [
+      {
+        path: `/vercel/sandbox/repos/${repo.split("/")[1]}`,
+        remote: `https://github.com/${repo}.git`,
+        ...(unpushed ? { unpushed } : undefined),
+      },
+    ],
   };
 }
 

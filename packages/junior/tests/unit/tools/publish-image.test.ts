@@ -107,7 +107,7 @@ describe("publishImage tool", () => {
       visibility: "public",
     });
     expect(tool.description).toContain("Anyone on the internet");
-    expect(tool.approvalMode).toBe("approve");
+    expect(tool.approvalMode).toBe("review");
   });
 
   it("rejects a missing file as input error", async () => {

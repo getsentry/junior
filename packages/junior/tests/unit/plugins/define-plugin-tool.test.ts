@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  type DescribeContext,
   definePluginTool,
   missingToolAnnotationKeys,
   PluginToolInputError,
@@ -39,6 +40,9 @@ describe("definePluginTool", () => {
     });
     const input = tool.prepareArguments?.({ query: "errors" });
     const call = await tool.describe?.(input!, {
+      // This describe reads nothing, so no read context is used.
+      cache: {} as DescribeContext["cache"],
+      egress: {} as DescribeContext["egress"],
       isOwnPullRequest: async () => false,
     });
     expect(call?.ref).toBe("search:errors");

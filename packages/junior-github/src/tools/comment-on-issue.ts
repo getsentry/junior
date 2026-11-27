@@ -5,6 +5,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
+import { describeRepositoryCall } from "../tool-support/describe-call.js";
 import * as z from "zod";
 import {
   githubApi,
@@ -47,6 +48,8 @@ export const gitHubCommentOnIssueTool = definePluginTool({
   description:
     "Post a comment on a GitHub issue. Returns the comment id and URL.",
   inputSchema,
+  describe: (input, ctx) =>
+    describeRepositoryCall(input.repo, ctx, input.issue),
   outputSchema,
   async execute(
     input,

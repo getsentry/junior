@@ -85,23 +85,22 @@ export const plugins = defineJuniorPlugins([linearPlugin()], {
 Until an admin connects the account, Junior tells people that Linear is not
 available yet.
 
-## Review context
+## Public teams
 
 Linear can sync issues to GitHub repositories. When some of those repositories
-are public, tell action review which teams sync, so that it blocks private
-data in their issues:
+are public, list the keys of the teams that sync, so that action review asks
+before internal detail goes into their issues:
 
 ```ts title="plugins.ts"
 export const plugins = defineJuniorPlugins([
-  linearPlugin({
-    reviewContext:
-      "Issues in the Linear teams SDK and DOCS sync to public GitHub repositories. Other teams are internal.",
-  }),
+  linearPlugin({ publicTeams: ["SDK", "DOCS"] }),
 ]);
 ```
 
-Action review reads this text in its system prompt. The agent does not see
-it. Without it, action review treats Linear as an internal destination.
+Action review reads the team of each issue or comment write from its input.
+A write to a listed team counts as public. A write to another team counts as
+internal. A write whose input names no team, such as an issue UUID, counts as
+public.
 
 ## Config
 

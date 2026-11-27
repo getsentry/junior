@@ -20,6 +20,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { describeRepositoryCall } from "../tool-support/describe-call.js";
 import * as z from "zod";
 import { appendGitHubFooter } from "../conversation-footer.js";
 import {
@@ -717,6 +718,7 @@ export function createGitHubPullRequestTool(
       "Create a GitHub pull request with a runtime-owned conversation footer. By default it assigns the pull request to the requester's linked GitHub account and asks for a review when available. Use this instead of shelling out to gh pr create when creating pull requests.",
     exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
+    describe: (input, ctx) => describeRepositoryCall(input.repo, ctx),
     outputSchema: gitHubPullRequestOutputSchema,
     async execute(
       input: z.output<typeof createPullRequestToolInputSchema>,

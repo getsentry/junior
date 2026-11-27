@@ -32,7 +32,7 @@ import {
 import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "../conversation-footer.js";
-import { describePullRequestCall } from "../tool-support/describe-pull-request-call.js";
+import { describePullRequestCall } from "../tool-support/describe-call.js";
 import {
   githubApi,
   githubErrorMessage,

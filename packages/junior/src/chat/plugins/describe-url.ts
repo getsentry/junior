@@ -1,8 +1,10 @@
+import type { DescribeReadContext } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { Target } from "@/chat/guardian/guardian";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
 
-const targetSchema = z.object({
+/** A target that a plugin hook returns. */
+export const targetSchema = z.object({
   ref: z.string().min(1),
   audience: z.enum(["internal", "world"]),
 });
@@ -26,12 +28,17 @@ function remoteUrl(remote: string): URL | undefined {
  * remote. The first plugin that knows it answers. A remote that no plugin
  * knows is its own target, which the world can read (`audience`).
  */
-export async function describeRemote(remote: string): Promise<Target> {
+export async function describeRemote(
+  remote: string,
+  readContext: (plugin: string) => DescribeReadContext,
+): Promise<Target> {
   const url = remoteUrl(remote);
   if (url) {
     for (const plugin of getPlugins()) {
+      const hook = plugin.hooks?.describeUrl;
+      if (!hook) continue;
       // oxlint-disable-next-line no-await-in-loop -- The first plugin that knows the URL answers.
-      const target = await plugin.hooks?.describeUrl?.(url);
+      const target = await hook(url, readContext(plugin.manifest.name));
       if (target) {
         return targetSchema.parse(target);
       }

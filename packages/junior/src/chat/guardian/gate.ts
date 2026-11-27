@@ -22,7 +22,6 @@ import {
 } from "@/chat/guardian/history";
 import type {
   Action,
-  Audience,
   Guardian,
   Review,
   ReviewRequest,
@@ -38,11 +37,13 @@ import type {
 import { guardianMessages } from "@/chat/guardian/request";
 import {
   credentialPlaceholders,
+  isGitPush,
   sandboxFacts,
   type SandboxRepo,
 } from "@/chat/guardian/sandbox-facts";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { describeReadContext } from "@/chat/guardian/call-facts";
+import { describeMcpCall } from "@/chat/plugins/describe-mcp-call";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -65,6 +66,8 @@ export interface ToolActionReviewContext {
    * shell commands, which only the agent Guardian does.
    */
   sandboxRepos?: () => Promise<SandboxRepo[]>;
+  /** Read the commits of one checkout that no remote has yet. */
+  sandboxUnpushed?: (path: string) => Promise<string>;
 }
 
 /** One exact tool call that the agent asked to run. */
@@ -482,20 +485,24 @@ export function toolActionNeedsReview(
 
 /**
  * The action of a tool that does not describe its own: no target. An MCP
- * call is the exception when its plugin declares who can read what its MCP
- * tools write: the provider is then the target, with that audience.
- * Without a target, the audience counts as `world`.
+ * call is the exception when its plugin says what the call touches
+ * (`describeMcpCall`). Without a target, the audience counts as `world`.
  */
-function defaultDescription(
+export async function undescribedAction(
   toolName: string,
   resolved: ToolApprovalResolution | undefined,
-): ActionDescription {
+  input: Record<string, unknown>,
+): Promise<ActionDescription> {
   const provider =
     toolName === "callMcpTool" ? resolved?.source?.id : undefined;
-  const audience: Audience | undefined = provider
-    ? pluginCatalogRuntime.getDefinition(provider)?.manifest.mcp?.audience
+  const target = provider
+    ? await describeMcpCall({
+        provider,
+        toolName: resolved?.name ?? String(input["tool_name"] ?? ""),
+        input: input["arguments"],
+      })
     : undefined;
-  return provider && audience ? { target: { ref: provider, audience } } : {};
+  return target ? { target } : {};
 }
 
 /** One action that Guardian must review, with the gate's proposal for it. */
@@ -548,7 +555,8 @@ async function prepareToolActionReview(
     action: {
       tool: proposal.tool.name,
       input,
-      ...(described ?? defaultDescription(action.toolName, resolved)),
+      ...(described ??
+        (await undescribedAction(action.toolName, resolved, input))),
       summary:
         described?.summary ??
         proposal.tool.proposalDescription ??
@@ -658,14 +666,20 @@ export function createToolActionReview(options: {
         actions: batch.map((review) => review.action),
         messages: guardianMessages(batch[0]!.proposal),
       };
-      const sandboxRepos = options.context.sandboxRepos;
+      const { sandboxRepos, sandboxUnpushed } = options.context;
+      const commands = request.actions.filter((a) => a.tool === "bash");
       // A shell command is reviewed by what the Sandbox can reach.
-      if (sandboxRepos && request.actions.some((a) => a.tool === "bash")) {
+      if (sandboxRepos && commands.length > 0) {
+        const pushes = commands.some((a) => isGitPush(a.input));
         request.sandbox = await sandboxFacts({
           repos: await sandboxRepos(),
           placeholders: credentialPlaceholders(
             getPlugins().map((plugin) => plugin.manifest),
           ),
+          ...(pushes && sandboxUnpushed
+            ? { unpushed: sandboxUnpushed }
+            : undefined),
+          readContext: describeReadContext,
         });
       }
       const decisions = await options

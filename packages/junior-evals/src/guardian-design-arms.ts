@@ -63,10 +63,7 @@ export function guardianArm(
         reviews = await guardian(
           armModelId(request.reviewUnavailable),
           batch,
-        ).review(
-          await designGuardianRequest(proposals, request.facts, indexes),
-          signal,
-        );
+        ).review(await designGuardianRequest(proposals, request.facts), signal);
       } catch (error) {
         // A provider failure that the case did not ask for is a broken eval
         // run, not an outcome of the case.

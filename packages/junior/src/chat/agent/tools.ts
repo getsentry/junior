@@ -95,7 +95,10 @@ import { createCurrentGuardian } from "@/chat/guardian/current";
 import type { GuardianBatch } from "@/chat/guardian/gate";
 import type { Guardian } from "@/chat/guardian/guardian";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { readSandboxRepos } from "@/chat/guardian/sandbox-facts";
+import {
+  readSandboxRepos,
+  readUnpushedCommits,
+} from "@/chat/guardian/sandbox-facts";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
@@ -580,6 +583,8 @@ export async function wireAgentTools(
                     SANDBOX_WORKSPACE_ROOT,
                   )
                 : [],
+            sandboxUnpushed: async (path: string) =>
+              await readUnpushedCommits(agentSandbox.workspace, path),
           }
         : undefined),
     },

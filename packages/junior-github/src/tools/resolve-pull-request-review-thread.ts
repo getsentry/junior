@@ -5,6 +5,7 @@ import {
   pluginToolOutputSchema,
   type PluginToolOutput,
 } from "@sentry/junior-plugin-api";
+import { describeRepositoryCall } from "../tool-support/describe-call.js";
 import * as z from "zod";
 import {
   RESOLVE_REVIEW_THREAD,
@@ -77,7 +78,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
       "Resolve a GitHub pull request review thread after acting on its feedback. Only works on pull requests the bot authored.",
     exposure: "direct",
     // The input names no pull request, so the call touches the repository.
-    describe: async (input) => ({ ref: input.repo, audience: "world" }),
+    describe: (input, ctx) => describeRepositoryCall(input.repo, ctx),
     inputSchema,
     outputSchema,
     async execute(

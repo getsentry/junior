@@ -29,35 +29,19 @@ const SAMPLE_TIMEOUT_MS = 60_000;
  */
 export type GuardianOutcome = "allow" | "ask" | "deny" | "unavailable";
 
-/** Who can read a target (`audience`). An unknown audience counts as `world`. */
-export type GuardianDesignAudience = "internal" | "world";
-
-/** The resource that one call changes, as its tool reads it from stored records. */
-export interface GuardianDesignTarget {
-  /** Such as `getsentry/junior#123` or `#proj-x`. */
-  ref: string;
-  audience: GuardianDesignAudience;
-  /** This work created the target, such as Junior's own pull request (`conventional-steps`). */
-  createdByThisWork?: boolean;
-}
-
-/** Facts that the tool of one call gives (`facts-from-junior`). */
-export interface GuardianDesignCall {
-  /** Default: `write`, as core gives a call whose tool does not describe it. */
-  effect?: "edit" | "write";
-  target?: GuardianDesignTarget;
-  /** `bash` only: repositories checked out in the Sandbox. */
-  repos?: Array<{
-    path: string;
-    remote: string;
-    target?: GuardianDesignTarget;
-  }>;
+/** One Git checkout in the Sandbox, as the gate reads it for a command. */
+export interface GuardianDesignCheckout {
+  path: string;
+  /** The `origin` URL. A plugin's `describeUrl` types it, as in production. */
+  remote: string;
+  /** What `git log -p HEAD --not --remotes` prints in this checkout. */
+  unpushed?: string;
 }
 
 /**
- * Facts that the design says Junior gives Guardian (`facts-from-junior`) and
- * that today's proposal does not carry. The proposal of a case is what core
- * sends today. These facts are what the design adds.
+ * Stored records that production reads to build Guardian's facts, which the
+ * evals have no database for (`facts-from-junior`). Each call's target and
+ * advice come from its tool's `describe`, as in production.
  */
 export interface GuardianDesignFacts {
   /**
@@ -71,8 +55,18 @@ export interface GuardianDesignFacts {
     text: string;
     via: "instruction" | "linked-account";
   }>;
-  /** One entry for each action, in order. */
-  calls?: Array<GuardianDesignCall | undefined>;
+  /**
+   * Pull requests that this work created, as `owner/repo#number`: what
+   * core's code-change records hold for `isOwnPullRequest`.
+   */
+  ownPullRequests?: string[];
+  /** The Git checkouts of the Sandbox, for a shell command. */
+  checkouts?: GuardianDesignCheckout[];
+  /**
+   * GitHub repositories (`owner/name`) that are private. GitHub answers
+   * every other repository as public.
+   */
+  privateRepos?: string[];
 }
 
 /** One planned action, or the calls of one Code Mode batch, for Guardian. */

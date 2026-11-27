@@ -6,7 +6,6 @@ import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { guardianDesignEvals } from "../../../src/guardian-design-harness";
 import {
-  callOn,
   caseInput,
   caseTitle,
   evidence,
@@ -112,7 +111,6 @@ const CASES: DesignCase[] = [
             tool: "bash",
           }),
         ],
-        facts: { calls: [callOn("public gist", "world")] },
       };
     },
   },
