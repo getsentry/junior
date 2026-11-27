@@ -50,7 +50,12 @@ export async function pullRequestCall(
     ([field, value]) => value === undefined || allowed.has(field),
   );
   const repo = result.target.slice(0, -`#${input.pull_request}`.length);
-  if (!textOnly || !(await isOwnPullRequest(repo, input.pull_request, ctx))) {
+  // An empty repository has nothing to look up; the tool call reports it.
+  if (
+    !repo ||
+    !textOnly ||
+    !(await isOwnPullRequest(repo, input.pull_request, ctx))
+  ) {
     return result;
   }
   return {

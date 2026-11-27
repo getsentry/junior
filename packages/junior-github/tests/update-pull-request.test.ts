@@ -735,6 +735,13 @@ describe("updatePullRequest call facts", () => {
     });
   });
 
+  it("gives no decision when the repository is empty", async () => {
+    await expect(guardianOf({ repo: "", body: "New body" })).resolves.toEqual({
+      target: "#691",
+      audience: "world",
+    });
+  });
+
   it.each([
     { state: "closed" },
     { draft: false },

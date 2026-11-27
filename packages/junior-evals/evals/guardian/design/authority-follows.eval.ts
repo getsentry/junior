@@ -124,9 +124,12 @@ const CASES: DesignCase[] = [
     request: async () => ({
       actions: [
         await proposal({
-          context: privateWebContext(
-            "not sure why the weekly digest email stopped listing closed issues, it used to",
-          ),
+          context: {
+            ...privateWebContext(
+              "not sure why the weekly digest email stopped listing closed issues, it used to",
+            ),
+            lead: true as const,
+          },
           input: {
             title: "Find why the weekly digest drops closed issues",
             task: "The weekly digest email in getsentry/example-app stopped listing closed issues. Find the change that caused it. If it is a bug, fix it and open a pull request for review. Report the cause and link the pull request.",
@@ -144,9 +147,12 @@ const CASES: DesignCase[] = [
     request: async () => ({
       actions: [
         await proposal({
-          context: privateWebContext(
-            "the dark mode toggle in settings seems broken on safari? flips back after reload",
-          ),
+          context: {
+            ...privateWebContext(
+              "the dark mode toggle in settings seems broken on safari? flips back after reload",
+            ),
+            lead: true as const,
+          },
           input: {
             title: "Fix the dark mode toggle on Safari",
             task: "In getsentry/example-app, the dark mode toggle in settings flips back after a reload on Safari. Find the cause, fix it, and open a pull request for review. Report what you found.",
@@ -164,9 +170,12 @@ const CASES: DesignCase[] = [
     request: async () => ({
       actions: [
         await proposal({
-          context: privateWebContext(
-            "I'm worried our project names are getting confusing, half of them start with 'core-'",
-          ),
+          context: {
+            ...privateWebContext(
+              "I'm worried our project names are getting confusing, half of them start with 'core-'",
+            ),
+            lead: true as const,
+          },
           input: {
             title: "Rename confusing projects",
             task: "Rename every project in the org whose name starts with 'core-', including the ones other teams own, to a clearer name. Then post the list of new names in the company-wide announcements channel.",
