@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.320.0
+
+Junior users get clearer work views and search, safer thread archiving, consistent product guidance, and more isolated, reliable testing.
+
+### New Features ✨
+
+Core history remains compatible while dashboards gain reorganized work views and wraparound transcript search.
+
+#### Core
+
+- Write main's reply and Turn end rows for core Turns by @thomasjiangcy with @sentry-junior in [#4618](https://github.com/getsentry/junior/pull/4618)
+- Write main's message and turn_started rows for core Turns by @thomasjiangcy with @sentry-junior in [#4617](https://github.com/getsentry/junior/pull/4617)
+
+#### Dashboard
+
+- Split Conversation details into Needs you, Agents, To-dos, and Waiting on by @dcramer with @sentry-junior in [#4560](https://github.com/getsentry/junior/pull/4560)
+- Add previous and next match arrows to transcript search by @lcian with @sentry-junior in [#4609](https://github.com/getsentry/junior/pull/4609)
+
+### Bug Fixes 🐛
+
+Parents can archive finished Threads despite recent messages; schema cleanup retains legacy columns one release; rollbacks to 0.317.0+ work, not 0.316.0.
+
+#### Dashboard
+
+- Read the viewer's feed answers once per statement by @dcramer with @sentry-junior in [#4625](https://github.com/getsentry/junior/pull/4625)
+- Follow up on conversation page usability review by @dcramer with @sentry-junior in [#4621](https://github.com/getsentry/junior/pull/4621)
+
+#### Other
+
+- (agents) Let a parent archive a Thread that a person messaged by @dcramer with @sentry-junior in [#4569](https://github.com/getsentry/junior/pull/4569)
+- (spaces) Drop junior_space_members and the legacy Space columns from the schema by @sentry-junior in [#4610](https://github.com/getsentry/junior/pull/4610)
+
+### Documentation 📚
+
+- (brand) Define Product and Marketing visual styles by @dcramer with @sentry-junior in [#4513](https://github.com/getsentry/junior/pull/4513)
+
+### Internal Changes 🔧
+
+App-scoped state and caches prevent test leakage; resets, worker emulators, SQL budgets, policy updates improve integration tests with PostgreSQL reset limits.
+
+#### App
+
+- Hold the bot team ids in the app context by @thomasjiangcy with @sentry-junior in [#4585](https://github.com/getsentry/junior/pull/4585)
+- Hold queue clients and the team-domain cache in the app context by @thomasjiangcy with @sentry-junior in [#4579](https://github.com/getsentry/junior/pull/4579)
+
+#### Other
+
+- (ai) Keep one AI emulator per worker by @thomasjiangcy with @sentry-junior in [#4575](https://github.com/getsentry/junior/pull/4575)
+- (env) Restore env that tests change by @thomasjiangcy with @sentry-junior in [#4574](https://github.com/getsentry/junior/pull/4574)
+- (migrations) Restore the index and trigger the subject migration test drops by @thomasjiangcy with @sentry-junior in [#4582](https://github.com/getsentry/junior/pull/4582)
+- (policy) Drop leftovers of searchConversations and setConversationVisibility by @sentry-junior in [#4624](https://github.com/getsentry/junior/pull/4624)
+- (postgres) Keep planner stats from leaking between tests by @thomasjiangcy with @sentry-junior in [#4580](https://github.com/getsentry/junior/pull/4580)
+- (sentry) Bind the Sentry client before each test by @thomasjiangcy with @sentry-junior in [#4581](https://github.com/getsentry/junior/pull/4581)
+- (slack) Hold the Slack user cache in the app context by @thomasjiangcy with @sentry-junior in [#4614](https://github.com/getsentry/junior/pull/4614)
+- (sql) Count only the measured call's statements in SQL budgets by @thomasjiangcy with @sentry-junior in [#4587](https://github.com/getsentry/junior/pull/4587)
+- (titles) Finish title work before each test ends by @thomasjiangcy with @sentry-junior in [#4612](https://github.com/getsentry/junior/pull/4612)
+- Run integration tests without per-file isolation by @thomasjiangcy with @sentry-junior in [#4615](https://github.com/getsentry/junior/pull/4615)
+- Restore the app context after tests that build the app by @thomasjiangcy with @sentry-junior in [#4613](https://github.com/getsentry/junior/pull/4613)
+
 ## 0.319.0
 
 Junior broadens Slack, Turn spending, GitHub Inbox, Space, and linting workflows; resolves rerun, cutoff, access, search, mobile, and visibility problems; clarifies documentation; and tightens delivery, testing, parsing, policies, and dashboard notices.
