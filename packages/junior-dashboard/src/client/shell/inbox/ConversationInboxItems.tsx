@@ -31,11 +31,11 @@ export function useConversationNeedsYou(conversationId: string) {
   // The Inbox already reads the viewer's waiting items, so the child items
   // come from that read, with no read of their own.
   const signedIn = Boolean(useDashboardCoreData().data?.me.user.email);
-  const waiting = useInboxItemsData({
+  const { items: waiting, query: waitingQuery } = useInboxItemsData({
     enabled: signedIn,
     forViewer: true,
     sort: "waiting",
-  }).items;
+  });
   const childIds = new Set(
     (useConversationChildAgents(conversationId).data?.agents ?? []).map(
       (child) => child.conversationId,
@@ -51,16 +51,33 @@ export function useConversationNeedsYou(conversationId: string) {
         childIds.has(item.owner.id) ||
         item.conversationIds.some((id) => childIds.has(id))),
   );
+  // The waiting read pages what needs the viewer first, so once its last
+  // item does not need them, its later pages hold no child's ask.
+  const lastWaiting = waiting.at(-1);
+  const moreWaiting = Boolean(
+    waitingQuery.hasNextPage && lastWaiting && needsViewer(lastWaiting),
+  );
   return {
-    items: [...items, ...fromChildren].filter(
-      (item) =>
-        item.status === "open" &&
-        !item.snoozedByViewer &&
-        (item.canAct || item.canAnswer) &&
-        inboxItemKind(item) !== "FYI",
-    ),
+    items: [...items, ...fromChildren].filter(needsViewer),
+    // Load more pages both reads, so a child's ask on a later page shows.
+    hasMore: Boolean(query.hasNextPage) || moreWaiting,
+    loadingMore: query.isFetchingNextPage || waitingQuery.isFetchingNextPage,
+    loadMore: () => {
+      if (query.hasNextPage) void query.fetchNextPage();
+      if (moreWaiting) void waitingQuery.fetchNextPage();
+    },
     query,
   };
+}
+
+/** True for an open, unsnoozed ask that the viewer can act on. */
+function needsViewer(item: InboxItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    !item.snoozedByViewer &&
+    (item.canAct || item.canAnswer) &&
+    inboxItemKind(item) !== "FYI"
+  );
 }
 
 /** Name the kind of ask for the viewer, such as "Question for you". */
@@ -78,7 +95,9 @@ export function ConversationInboxItems(props: {
   conversationId: string;
   highlight: boolean;
 }) {
-  const { items, query } = useConversationNeedsYou(props.conversationId);
+  const { hasMore, items, loadMore, loadingMore } = useConversationNeedsYou(
+    props.conversationId,
+  );
   const [openId, setOpenId] = useState<string>();
   const sectionRef = useRef<HTMLElement>(null);
   const mobile = useMobileLayout();
@@ -113,9 +132,9 @@ export function ConversationInboxItems(props: {
         />
       ))}
       <LoadMorePagination
-        hasMore={Boolean(query.hasNextPage)}
-        loading={query.isFetchingNextPage}
-        onLoadMore={() => void query.fetchNextPage()}
+        hasMore={hasMore}
+        loading={loadingMore}
+        onLoadMore={loadMore}
       />
       {open ? (
         mobile ? (

@@ -21,6 +21,7 @@ import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { Spinner } from "../components/ui/spinner";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
+import { agentInputText } from "./agentMessage";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useArchiveConversation } from "./conversationArchive";
 import {
@@ -97,7 +98,10 @@ export function childUpdateReasons(
       data.eventIdentifier &&
       data.text
     ) {
-      reasons.set(data.eventIdentifier, data.text);
+      reasons.set(
+        data.eventIdentifier,
+        agentInputText(data.text, "agent-result"),
+      );
     }
   }
   return reasons;

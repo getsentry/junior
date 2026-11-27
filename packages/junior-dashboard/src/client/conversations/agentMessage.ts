@@ -129,17 +129,21 @@ export function receivedAgentMessage(
   return {
     conversationId: message.eventIdentifier,
     direction: "received",
-    text: text === undefined ? undefined : agentMessageInputText(text),
+    text:
+      text === undefined ? undefined : agentInputText(text, "agent-message"),
   };
 }
 
 /**
- * Return the words of a received message without the `<agent-message>` tag
- * that core writes around them for the model. The first body line says who
- * wrote it. Other text stays as stored.
+ * Return the words of an agent's input without the `<agent-message>` or
+ * `<agent-result>` tag that core writes around them for the model. The
+ * first body line says who wrote it. Other text stays as stored.
  */
-function agentMessageInputText(text: string): string {
-  const body = readTag(text, "agent-message");
+export function agentInputText(
+  text: string,
+  tag: "agent-message" | "agent-result",
+): string {
+  const body = readTag(text, tag);
   if (body === undefined) return text;
   return unescapeTagText(body.split("\n").slice(1).join("\n"));
 }
