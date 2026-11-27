@@ -1,6 +1,9 @@
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, CircleOff } from "lucide-react";
-import type { SpaceRefReport } from "@sentry/junior/api/schema";
+import type {
+  SpaceRefReport,
+  SpaceVisibilityReport,
+} from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import {
@@ -37,8 +40,9 @@ export function MoveToSpaceDialogContent(props: MoveToSpaceDialogProps) {
   const [selected, setSelected] = useState(props.current?.id ?? NO_SPACE);
   const { current } = props;
   const spaces = useMemo(() => {
-    const listed: SpaceRefReport[] = memberSpaces.data?.spaces ?? [];
-    const all =
+    const listed: (SpaceRefReport & { visibility?: SpaceVisibilityReport })[] =
+      memberSpaces.data?.spaces ?? [];
+    const all: typeof listed =
       current && !listed.some((space) => space.id === current.id)
         ? [current, ...listed]
         : listed;
@@ -143,6 +147,7 @@ export function MoveToSpaceDialogContent(props: MoveToSpaceDialogProps) {
                       iconId={space.id}
                       name={space.name}
                       size="sm"
+                      visibility={space.visibility}
                     />,
                   ),
                 )}

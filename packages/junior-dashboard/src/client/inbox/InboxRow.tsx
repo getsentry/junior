@@ -928,7 +928,8 @@ function ExpandedActions(props: {
           <ButtonLabel look={props.look}>Wake</ButtonLabel>
         </Button>
       ) : null}
-      {props.conversation?.isParticipant ? (
+      {props.conversation?.isParticipant &&
+      canPinConversation(props.conversation) ? (
         <ExpandedPin conversation={props.conversation} look={props.look} />
       ) : null}
       {props.open ? <RowOwnerLink look={props.look} open={props.open} /> : null}
