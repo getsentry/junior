@@ -98,6 +98,7 @@ function providerContent(
 export function createViewerMcp(
   provider: string,
   userId: string,
+  options: { fetch?: typeof fetch } = {},
 ): PluginViewerMcp {
   return {
     async callTool(input) {
@@ -115,6 +116,7 @@ export function createViewerMcp(
       }
       const client = new PluginMcpClient(plugin, {
         authProvider: viewerAuthProvider(plugin, userId),
+        ...(options.fetch ? { fetch: options.fetch } : undefined),
       });
       try {
         const tool = (await client.listTools()).find(
