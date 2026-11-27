@@ -904,8 +904,19 @@ describe("inbox item actions API", () => {
     const dismissed = await api(fixture, cal).act(id, { action: "dismiss" });
     expect(dismissed.status).toBe(200);
     expect(await pendingMessages("slack:CPUB:1.000001")).toEqual([]);
+    // The Message names Cal's Identity, so the dashboard shows his photo.
+    const [calIdentity] = await getDb()
+      .select({ id: juniorIdentities.id })
+      .from(juniorIdentities)
+      .where(
+        and(
+          eq(juniorIdentities.provider, "junior"),
+          eq(juniorIdentities.providerSubjectId, "cal@example.com"),
+        ),
+      );
     expect(await savedChanges("slack:CPUB:1.000001", "dismissed")).toEqual([
       expect.objectContaining({
+        authorIdentityId: calIdentity!.id,
         text: expect.stringContaining("cal@example.com dismissed inbox item"),
         meta: expect.objectContaining({
           reviewItemChanges: [{ kind: "dismissed", reviewItemId: id }],

@@ -232,6 +232,13 @@ test.describe("new UI", () => {
     await expect(
       page.getByRole("textbox", { name: "Continue this conversation" }),
     ).toHaveCount(0);
+    // Only an Invite lets them in, so the menu offers no Join.
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    const menu = page.getByRole("menu");
+    await expect(menu.getByRole("menuitem", { name: "Share" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Join" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
   });
 
   test("a reader of a public conversation joins it to reply", async ({

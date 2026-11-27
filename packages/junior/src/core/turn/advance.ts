@@ -10,7 +10,7 @@
 // the Turn instead of running the step again. Host code that throws
 // `TurnFailedError` ends the Turn as failed, with no retry. After every
 // change it makes to the Turn, and on a message whose claim misses, it runs
-// `reconcileTurn`, which sends the delivery message and the next step message
+// `reconcileTurn`, which sends the Turn-ended message or the next step message
 // that the stored state calls for.
 import {
   extractGenAiUsageSummary,
@@ -226,15 +226,17 @@ async function runClaimedStep(
       if (delayMs !== undefined) {
         // A crash between the release and the publish leaves the Turn queued
         // with no message, and the sweep sends it again. A superseded Turn
-        // ends at the release; its delayed message then misses the claim and
-        // sends the next Turn's step.
-        if (await releaseTurn({ executor }, claim, discarded)) {
+        // ends at the release, so it gets no retry.
+        const released = await releaseTurn({ executor }, claim, discarded);
+        if (released === "queued") {
           await publishTurnStep({ queue }, claim.turnId, { delayMs });
           logWarn("agent.turn.provider.retrying", {
             ...modelFailureAttributes(result.failure),
             "app.ai.provider_error.retry_attempt": claim.attempts,
             "app.turn.id": claim.turnId,
           });
+        } else if (released) {
+          await reconcileTurn({ executor, queue }, claim.turnId);
         }
         return;
       }

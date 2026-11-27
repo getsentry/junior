@@ -1,12 +1,11 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DeliveryRetryableError } from "@/core/delivery/deliver";
-import { publishDelivery } from "@/core/delivery/queue";
-import { DELIVERY_TOPIC } from "@/core/delivery/topic";
+import { DeliveryRetryableError } from "@/delivery/deliver";
+import { publishTurnEnded } from "@/core/turn/ended";
 import type { EngineContext } from "@/core/engine-context";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { juniorTurnOutbox } from "@/db/schema";
-import { deliveryConsumer } from "@/turn-steps/delivery";
+import { turnEndedConsumer } from "@/turn-steps/turn-ended";
 import { modelRejected, setModelReplies } from "../fixtures/ai-emulator";
 import type { InProcessQueue } from "../fixtures/in-process-queue";
 import { createAssistantMessage } from "../fixtures/model-stream";
@@ -21,9 +20,9 @@ import {
 } from "../fixtures/turn-engine";
 import { createTurnHarness, type TurnHarness } from "../fixtures/turn-harness";
 
-// Delivery of core Turn replies to their Destination: a committed step sends a
-// delivery message, and the delivery consumer sends the Turn's replies with a
-// recording Delivery. The test delivers the messages from the in-process queue.
+// Delivery of core Turn replies to their Destination: core sends a Turn-ended
+// message, and the host's consumer sends the Turn's replies with a recording
+// Delivery. The test delivers the messages from the in-process queue.
 
 // Longer than the longest delivery backoff, so every delayed check is due.
 const AFTER_EVERY_BACKOFF_SECONDS = 60;
@@ -32,10 +31,10 @@ function reply(text: string) {
   return createAssistantMessage({ type: "text", text });
 }
 
-/** Counts the delivery messages of a Turn that the consumer finished. */
+/** Counts the Turn-ended messages of a Turn that the consumer finished. */
 function handledDeliveries(queue: InProcessQueue, turnId: string) {
   return queue
-    .delivered(DELIVERY_TOPIC)
+    .delivered(TURN_ENDED_TOPIC)
     .filter((message) => messageTurnId(message.payload) === turnId).length;
 }
 
@@ -166,7 +165,7 @@ describe("Turn delivery", () => {
     await harness.runUntilIdle();
 
     // The backoff after a first failure is 1 s, so 2 s is the Retry-After.
-    expect(queue.pending(DELIVERY_TOPIC)).toEqual([
+    expect(queue.pending(TURN_ENDED_TOPIC)).toEqual([
       expect.objectContaining({ delaySeconds: 2, due: false }),
     ]);
     queue.advanceTime(2);
@@ -187,7 +186,7 @@ describe("Turn delivery", () => {
     await sendForReply("Three.");
     await harness.runUntilIdle();
 
-    expect(queue.pending(DELIVERY_TOPIC)).toEqual([
+    expect(queue.pending(TURN_ENDED_TOPIC)).toEqual([
       expect.objectContaining({ delaySeconds: 60, due: false }),
     ]);
   });
@@ -258,11 +257,11 @@ describe("Turn delivery", () => {
     expect(harness.sends()).toHaveLength(1);
   });
 
-  it("posts the reply on a redelivered step message after a crash before the delivery message", async () => {
+  it("posts the reply on a redelivered step message after a crash before the Turn-ended message", async () => {
     const { engineCtx, conversationId, destination, queue } = harness;
     const { turnId } = await sendForReply("Three.");
     // Stands in for the process dying after the end commit, before the
-    // delivery message is sent.
+    // Turn-ended message is sent.
     vi.spyOn(queue, "send").mockRejectedValueOnce(
       new Error("The queue is unreachable"),
     );
@@ -283,13 +282,13 @@ describe("Turn delivery", () => {
     expect(harness.sends()).toEqual([{ text: "Three.", destination }]);
   });
 
-  it("keeps a reply's outbox row when the queue drops its delivery message, and the next delivery sends it", async () => {
+  it("keeps a reply's outbox row when the queue drops its Turn-ended message, and the next one sends it", async () => {
     const { engineCtx, conversationId, destination, queue } = harness;
     const { turnId } = await sendForReply("Three.");
     const send = queue.send.bind(queue);
-    // Injected fault: the queue takes the delivery message and loses it.
+    // Injected fault: the queue takes the Turn-ended message and loses it.
     vi.spyOn(queue, "send").mockImplementation((topic, payload, options) =>
-      topic === DELIVERY_TOPIC
+      topic === TURN_ENDED_TOPIC
         ? Promise.resolve({})
         : send(topic, payload, options),
     );
@@ -304,7 +303,7 @@ describe("Turn delivery", () => {
     ]);
 
     vi.mocked(queue.send).mockRestore();
-    await publishDelivery(engineCtx, { conversationId, turnId });
+    await publishTurnEnded(engineCtx, { conversationId, turnId });
     await harness.runUntilIdle();
 
     expect(harness.sends()).toEqual([{ text: "Three.", destination }]);
@@ -332,8 +331,8 @@ describe("Turn delivery with a test step", () => {
     ({ fixture, turnId } = engine);
     recording = createRecordingDelivery();
     engine.queue.mount(
-      DELIVERY_TOPIC,
-      deliveryConsumer(engine.engineCtx, recording.delivery),
+      TURN_ENDED_TOPIC,
+      turnEndedConsumer(engine.engineCtx, recording.delivery),
     );
   });
 
@@ -343,7 +342,7 @@ describe("Turn delivery with a test step", () => {
 
   /** Delivers each delivery message that is due, and returns how many. */
   function deliver() {
-    return engine.queue.runUntilIdle(DELIVERY_TOPIC);
+    return engine.queue.runUntilIdle(TURN_ENDED_TOPIC);
   }
 
   /** Delivers the delivery messages that wait out a backoff, too. */
@@ -374,14 +373,22 @@ describe("Turn delivery with a test step", () => {
     await engine.advance(stepWith([reply(second)]));
   }
 
-  it("sends the replies of one Turn to its Destination in order", async () => {
-    await advanceTwoReplies("Three.", "None.");
+  it("sends the replies of one Turn to its Destination in order, once it ends", async () => {
+    await engine.addTestInput("How many Turns?", DESTINATION);
+    await advanceContinuingStep("Three.");
+    // A Turn-ended message that arrives while the Turn runs sends nothing.
+    await publishTurnEnded(engine.engineCtx, {
+      conversationId: CONVERSATION_ID,
+      turnId,
+    });
+    await deliver();
+    expect(recording.sends()).toEqual([]);
 
+    await engine.advance(stepWith([reply("None.")]));
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "completed",
     });
     await deliver();
-    expect(handledDeliveries(engine.queue, turnId)).toBe(2);
     await expect(allSent(engine.engineCtx, CONVERSATION_ID)).resolves.toBe(
       true,
     );
@@ -407,7 +414,7 @@ describe("Turn delivery with a test step", () => {
     const release = await holdDeliveryLock(engine.engineCtx, CONVERSATION_ID);
     await advanceTwoReplies("Three.", "None.");
     await deliver();
-    expect(handledDeliveries(engine.queue, turnId)).toBe(2);
+    expect(handledDeliveries(engine.queue, turnId)).toBe(1);
     const [head] = await readOutbox(engine.engineCtx, CONVERSATION_ID);
     // Four retryable failures so far, so the next one is the fifth.
     await fixture.sql
@@ -437,10 +444,10 @@ describe("Turn delivery with a test step", () => {
     ]);
   });
 
-  it("posts a Turn's earlier reply when its delivery message was lost and a later step fails", async () => {
+  it("posts a Turn's earlier reply when a later step fails", async () => {
     const failure = new Error("The queue is unreachable");
     // Stands in for the process dying after a "continue" commit, before the
-    // delivery message is sent.
+    // next step message is sent.
     vi.spyOn(engine.queue, "send").mockRejectedValueOnce(failure);
     await engine.addTestInput("How many Turns?", DESTINATION);
     await expect(advanceContinuingStep("Three.")).rejects.toBe(failure);

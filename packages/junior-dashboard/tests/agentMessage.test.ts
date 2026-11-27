@@ -46,7 +46,11 @@ describe("sentAgentMessage", () => {
     );
     expect(
       sentAgentMessage(call({ output: "not reachable", status: "error" })),
-    ).toMatchObject({ conversationId: undefined, delivery: "refused" });
+    ).toMatchObject({
+      conversationId: undefined,
+      delivery: "refused",
+      reason: "not reachable",
+    });
   });
 
   it("shows no state for a result it cannot read", () => {
@@ -204,5 +208,14 @@ describe("agentMessageConversationTitle", () => {
         { conversationId: "root-9", to: "root-9" },
       ),
     ).toBe("Conversation");
+  });
+
+  it("names a refused message by the target that it used", () => {
+    expect(
+      agentMessageConversationTitle(
+        { events: [] },
+        { delivery: "refused", to: "designer" },
+      ),
+    ).toBe("designer");
   });
 });

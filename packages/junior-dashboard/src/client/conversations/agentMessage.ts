@@ -28,6 +28,8 @@ export type AgentMessage = {
   conversationId?: string | undefined;
   delivery?: AgentMessageDelivery | undefined;
   direction: "received" | "sent";
+  /** Why a refused message did not go, as the tool error stored it. */
+  reason?: string | undefined;
   /** Absent when the viewer cannot read the message. */
   text?: string | undefined;
   /** The `to` of a sent message, such as `parent` or a child agent name. */
@@ -87,6 +89,9 @@ export function sentAgentMessage(
           ? "refused"
           : output && deliveryByToolResult[output.delivery],
     direction: "sent",
+    ...(part.status === "error" && typeof part.output === "string"
+      ? { reason: part.output }
+      : undefined),
     text: input.data.text,
     to: input.data.to,
   };
@@ -146,13 +151,14 @@ function agentMessageInputText(text: string): string {
 
 /**
  * Name the other Conversation of a message from what this transcript
- * already holds: the agent tree above it, then the child agents that it
- * started, by id or by the agent name that `to` can use. The viewer can read
- * each of them, so no title leaks. Without one, a neutral label names it.
+ * holds: the agent tree above it, then its child agents, by id or by the
+ * agent name that `to` can use. The viewer can read each, so no title leaks.
+ * A refused message reached none, so its `to` names it. Otherwise a neutral
+ * label does.
  */
 export function agentMessageConversationTitle(
   conversation: Pick<ConversationTranscript, "agentTree" | "events">,
-  message: Pick<AgentMessage, "conversationId" | "to">,
+  message: Pick<AgentMessage, "conversationId" | "delivery" | "to">,
 ): string {
   const ids = [message.conversationId, message.to].filter(Boolean);
   const ancestor = conversation.agentTree?.find((node) =>
@@ -174,6 +180,7 @@ export function agentMessageConversationTitle(
     const title = data.title ?? data.agentName;
     if (title) return title;
   }
+  if (message.delivery === "refused" && message.to) return message.to;
   return "Conversation";
 }
 

@@ -32,11 +32,11 @@ import {
 import { withConversationEventLock } from "@/conversation-events/lock";
 import { historyItemFromPiMessage } from "@/core/history/items";
 import { appendAgentHistory } from "@/core/history/write";
-import { recordReplies } from "@/core/delivery/outbox";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
+import { publishTurnEnded } from "@/core/turn/ended";
 import { findUnreadInputs, inputEventKey } from "@/core/turn/inbox";
-import { publishTurnStep } from "@/core/turn/queue";
+import { recordReplies } from "@/core/turn/outbox";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
@@ -326,25 +326,28 @@ async function isSuperseded(
  * Makes way for a Turn that supersedes this one. Call it under the
  * Conversation lock. A queued Turn has no step in flight, so it ends now and
  * moves `lease_epoch`. A running Turn moves behind the new Turn, and
- * `commitStep` or `releaseTurn` ends it, so the step's work is kept.
+ * `commitStep` or `releaseTurn` ends it, so the step's work is kept. True
+ * when the Turn ended now.
  */
 export async function supersedeTurn(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
-): Promise<void> {
+): Promise<boolean> {
   const db = executor.db();
-  await db
+  const ended = await db
     .update(juniorTurns)
     .set({
       ...SUPERSEDED_END,
       leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")));
+    .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "queued")))
+    .returning({ id: juniorTurns.id });
   await db
     .update(juniorTurns)
     .set({ priority: TURN_PRIORITY.normal, updatedAt: sql`now()` })
     .where(and(eq(juniorTurns.id, turnId), eq(juniorTurns.state, "running")));
+  return ended.length > 0;
 }
 
 /**
@@ -648,14 +651,14 @@ export async function failTurn(
  * Queues a running Turn again after its invocation failed, so the queue's
  * retry can claim the step at once. The failed attempt still counts. A Turn
  * that another Turn supersedes ends instead, like at a commit. `discarded` is
- * the usage of the failed model reply that the retry drops. False when the
- * lease is lost.
+ * the usage of the failed model reply that the retry drops. Returns the
+ * Turn's new state, or undefined when the lease is lost.
  */
 export async function releaseTurn(
   { executor }: Pick<EngineContext, "executor">,
   lease: TurnLease & { conversationId: string },
   discarded?: AgentTurnUsage,
-): Promise<boolean> {
+): Promise<TurnState | undefined> {
   return executor.transaction(() =>
     withConversationEventLock(executor, lease.conversationId, async () => {
       const released = {
@@ -673,8 +676,8 @@ export async function releaseTurn(
             : { ...released, state: "queued" },
         )
         .where(leaseFence(lease))
-        .returning({ id: juniorTurns.id });
-      return rows.length > 0;
+        .returning({ state: juniorTurns.state });
+      return rows[0]?.state;
     }),
   );
 }
@@ -682,8 +685,8 @@ export async function releaseTurn(
 /**
  * Cancels every queued and running Turn of a Conversation in one commit, with
  * no lease. Moving each `lease_epoch` keeps a running step from committing,
- * and the lock sends a later input to a new Turn. It then publishes one
- * cancelled Turn, whose message runs `reconcileTurn` to send committed replies.
+ * and the lock sends a later input to a new Turn. It then publishes the
+ * message that each stopped Turn ended.
  */
 export async function stopTurns(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
@@ -711,11 +714,9 @@ export async function stopTurns(
         .returning({ id: juniorTurns.id }),
     ),
   );
-  // Delivery runs per Conversation, so one message sends every stopped
-  // Turn's replies.
-  const [first] = stopped;
-  if (first) {
-    await publishTurnStep({ queue }, first.id);
+  for (const { id } of stopped) {
+    // oxlint-disable-next-line no-await-in-loop -- Few Turns stop at once, and a failed send fails the stop.
+    await publishTurnEnded({ queue }, { conversationId, turnId: id });
   }
   return stopped.map(({ id }) => id);
 }

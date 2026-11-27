@@ -28,9 +28,9 @@ const deliveryLabels: Record<AgentMessageDelivery, string> = {
 
 /**
  * Show one message between two agents as a compact row: which way it went,
- * the other Conversation linked by its title, what happened to a sent one,
- * and the text, clamped when long. A sent and a received message share it,
- * so they read as a pair.
+ * the other Conversation linked by its title, what happened to a sent one
+ * and why a refused one did not go, and the text, clamped when long. A sent
+ * and a received message share it, so they read as a pair.
  */
 export function TranscriptAgentMessage(props: {
   conversation: ConversationTranscript;
@@ -73,6 +73,14 @@ export function TranscriptAgentMessage(props: {
             <TranscriptTimestamp value={props.timestamp} />
           </span>
         </div>
+        {message.reason ? (
+          <p
+            className="m-0 line-clamp-2 font-sans text-xs text-dashboard-text-muted"
+            title={message.reason}
+          >
+            {message.reason}
+          </p>
+        ) : null}
         {message.text === undefined ? (
           <RedactedMarker />
         ) : (
