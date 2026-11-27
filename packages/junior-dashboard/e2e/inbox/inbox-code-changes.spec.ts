@@ -144,6 +144,42 @@ test.describe("new UI", () => {
     expect(actions.at(-1)).toBe("Review on GitHub");
     await screenshot(page, "inbox-code-change-open", { lightTheme: true });
   });
+
+  test("Dismiss's note shows only in its tooltip", async ({
+    dashboard,
+    page,
+  }) => {
+    const note = "Also removes you from the reviewers on GitHub.";
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...breakingReview,
+          subject: { ...breakingReview.subject, dismissNote: note },
+        },
+      ],
+    });
+    await page.setViewportSize({ height: 844, width: 390 });
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
+    const review = row(page, "Pin the release train");
+    await review.click();
+    // A phone opens the card in a sheet. It has no tooltips, and the note
+    // does not show as text on every card.
+    const card = page.getByRole("dialog", { name: breakingReview.title });
+    await expect(card.getByRole("button", { name: "Dismiss" })).toBeVisible();
+    await expect(page.getByText(note)).toHaveCount(0);
+    await screenshot(page, "inbox-code-change-dismiss-note", {
+      lightTheme: true,
+      view: "mobile",
+    });
+
+    // A desktop shows the note in the Dismiss tooltip.
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    // Closed, the row's only Dismiss is its hover action.
+    await review.hover();
+    await review.getByRole("button", { name: "Dismiss" }).hover();
+    await expect(page.getByRole("tooltip")).toContainText(note);
+  });
 });
 
 /** The accessible names of `actions`, in page order. */
