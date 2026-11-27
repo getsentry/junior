@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { getAppContext } from "@/app/context";
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { createSlackActor, type SlackActor } from "@/chat/actor";
@@ -47,10 +48,11 @@ const slackUserInfoSchema = z.object({
 });
 
 const USER_CACHE_TTL_MS = 5 * 60 * 1000;
-const userCache = new Map<
+/** Slack profiles that an app looked up, by team and user id. */
+export type SlackUserCache = Map<
   string,
   { value: SlackUserLookupResult; expiresAt: number }
->();
+>;
 
 function userCacheKey(teamId: string, userId: string): string {
   return `${teamId}:${userId}`;
@@ -60,6 +62,7 @@ function readFromCache(
   teamId: string,
   userId: string,
 ): SlackUserLookupResult | null {
+  const userCache = getAppContext().slackUsers;
   const hit = userCache.get(userCacheKey(teamId, userId));
   if (!hit) return null;
   if (hit.expiresAt < Date.now()) {
@@ -74,7 +77,7 @@ function writeToCache(
   userId: string,
   value: SlackUserLookupResult,
 ): void {
-  userCache.set(userCacheKey(teamId, userId), {
+  getAppContext().slackUsers.set(userCacheKey(teamId, userId), {
     value,
     expiresAt: Date.now() + USER_CACHE_TTL_MS,
   });

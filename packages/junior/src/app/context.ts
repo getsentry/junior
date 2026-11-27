@@ -8,6 +8,7 @@ import {
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import type { QueueProviderState } from "@/chat/queue/provider";
 import type { SlackTeamDomainCache } from "@/chat/slack/team-domain";
+import type { SlackUserCache } from "@/chat/slack/user";
 
 export interface AppContext {
   /** App plugins, validated and sorted by manifest name. */
@@ -20,6 +21,8 @@ export interface AppContext {
   slackTeamDomains: SlackTeamDomainCache;
   /** The Slack team id of each bot token, looked up once per token. */
   slackBotTeamIds: Map<string, Promise<string>>;
+  /** Slack profiles that this instance looked up. */
+  slackUsers: SlackUserCache;
   /** Title generation in flight, by Conversation id. */
   conversationTitles: Map<string, Promise<string | undefined>>;
 }
@@ -44,6 +47,7 @@ export function createAppContext(
     queueProvider: {},
     slackTeamDomains: { entries: new Map(), inflight: new Map() },
     slackBotTeamIds: new Map(),
+    slackUsers: new Map(),
     conversationTitles: new Map(),
   };
 }
