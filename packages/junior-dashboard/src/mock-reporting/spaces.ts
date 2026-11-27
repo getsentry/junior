@@ -261,9 +261,8 @@ function leadParticipation(
     })),
   ];
   return {
-    ...(space.visibility === "public" || member
-      ? { canInvite: true as const }
-      : undefined),
+    // Match the API: only a Participant may Invite.
+    ...(member ? { canInvite: true as const } : undefined),
     isParticipant: member,
     participants,
     subscribed: member,

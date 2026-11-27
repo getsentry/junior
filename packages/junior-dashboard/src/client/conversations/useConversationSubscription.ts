@@ -46,9 +46,11 @@ export function useConversationSubscription(
           : detail,
       );
     },
-    // A Lead's subscribed Participants are its Space's members.
+    // A Join makes the viewer a Participant, which changes what the detail
+    // lets them do. A Lead's subscribed Participants are its Space's members.
     onSettled: () =>
       Promise.all([
+        queryClient.invalidateQueries({ queryKey: detailQueryKey }),
         invalidateConversationFeeds(queryClient),
         invalidateMemberSpaces(queryClient),
       ]),

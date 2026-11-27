@@ -183,7 +183,7 @@ export function createAcpConversations(
     async prompt({ conversationId, idempotencyKey, text, user }) {
       // ACP acts only in the person's own Conversations.
       const access = await readAccess(conversationId, user);
-      if (!access?.isParticipant || !canAddConversationMessages(access)) {
+      if (!canAddConversationMessages(access)) {
         return { status: "not_found" };
       }
       const currentCursor = await latestEventCursor(
