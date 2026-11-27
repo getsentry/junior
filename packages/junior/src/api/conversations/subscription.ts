@@ -272,6 +272,13 @@ async function readInvitableConversation(
   ).get(conversationId);
   const rootConversationId = access?.rootConversationId;
   if (!rootConversationId || !canInviteToConversation(access)) {
+    // A reader of a public root may Invite once they Join it.
+    if (access?.canViewPrivateContent && !access.isParticipant) {
+      throwApiError(
+        403,
+        "Only participants can invite people. Join the conversation first.",
+      );
+    }
     return undefined;
   }
   return {

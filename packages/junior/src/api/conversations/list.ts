@@ -239,10 +239,14 @@ async function conversationRows(
     .leftJoin(juniorUsers, conversationRecordJoins.user)
     .where(
       and(
-        listedConversation(),
+        // A Space's feed, its Threads panel, lists the Lead's children.
+        // Every other feed lists roots that are not a Lead.
         space
           ? conversationSpaceFilter(space.id, status, space.viewerUserId)
-          : conversationFeedMembershipFilter(status, filter),
+          : and(
+              listedConversation(),
+              conversationFeedMembershipFilter(status, filter),
+            ),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
           : undefined,

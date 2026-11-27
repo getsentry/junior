@@ -132,7 +132,6 @@ import { getConversationStore } from "@/chat/db";
 import type { ConversationKind } from "@/chat/conversations/store";
 import {
   isPersonInput,
-  isTopLevelWork,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import {
@@ -304,8 +303,6 @@ export async function executeAgentRun(
               ? "automation"
               : (conversation?.kind ?? "thread"),
             hasParent: Boolean(conversation?.parentConversationId),
-            // Only a root can run before its row exists.
-            topLevelWork: conversation ? isTopLevelWork(conversation) : true,
           },
           conversationPrivacy,
           runLogContext,
@@ -342,7 +339,6 @@ async function executeAgentRunInPrivacyContext(
   storedConversation: {
     kind: ConversationKind;
     hasParent: boolean;
-    topLevelWork: boolean;
   },
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
@@ -764,7 +760,6 @@ async function executeAgentRunInPrivacyContext(
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
       behavior,
-      topLevelWork: storedConversation.topLevelWork,
       currentActor: actor,
       currentAgentMessages,
       currentTurnMessages,

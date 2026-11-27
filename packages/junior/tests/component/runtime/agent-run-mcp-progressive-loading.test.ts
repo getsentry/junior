@@ -997,8 +997,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       toolCallId: expect.any(String),
       toolName: "mcp__demo__ping",
       decision: "allow",
-      riskLevel: "low",
-      userAuthorization: "high",
+      reason: "This test exercises MCP runtime behavior.",
     });
   });
 
@@ -1121,18 +1120,17 @@ describe("executeAgentRun progressive MCP loading", () => {
         toolCallId: expect.any(String),
         toolName: "mcp__demo__ping",
         decision: "deny",
-        riskLevel: "high",
-        userAuthorization: "low",
+        reason: "The test policy denied this action.",
       });
     },
   );
 
-  it("escalates unavailable Guardian review to the agent-run boundary", async () => {
+  it("does not run an MCP tool whose Guardian review cannot run", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
     guardianDecision.value = "unavailable";
 
-    const outcome = await executeAgentRun(
+    await executeAgentRun(
       makeAgentRun("help me", {
         conversationId: "conversation-guardian-unavailable",
         threadTs: "1712345.0100",
@@ -1140,15 +1138,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       }),
     );
 
-    expect(outcome).toMatchObject({
-      status: "completed",
-      result: {
-        diagnostics: {
-          outcome: "provider_error",
-        },
-        text: "",
-      },
-    });
+    expect(guardianProposals.length).toBeGreaterThan(0);
     expect(callToolMock).not.toHaveBeenCalled();
   });
 

@@ -113,28 +113,40 @@ function failure(): RenderedTranscriptEntry {
   };
 }
 
+const noCards = new Set<string>();
+
 describe("transcript activity group", () => {
   it("collapses non-message activity and child results, and keeps failures, subagents, agent messages, and chat messages open", () => {
-    expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
-    expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(true);
-    expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(false);
-    expect(isCollapsibleActivityEntry(reasoning("r1"))).toBe(true);
-    expect(isCollapsibleActivityEntry(compaction())).toBe(true);
-    expect(isCollapsibleActivityEntry(message())).toBe(false);
-    expect(isCollapsibleActivityEntry(message("pull_request.opened"))).toBe(
-      false,
+    expect(isCollapsibleActivityEntry(tool("1"), noCards)).toBe(true);
+    expect(isCollapsibleActivityEntry(tool("err", "error"), noCards)).toBe(
+      true,
     );
+    expect(isCollapsibleActivityEntry(subagent("ok"), noCards)).toBe(false);
+    expect(isCollapsibleActivityEntry(reasoning("r1"), noCards)).toBe(true);
+    expect(isCollapsibleActivityEntry(compaction(), noCards)).toBe(true);
+    expect(isCollapsibleActivityEntry(message(), noCards)).toBe(false);
     expect(
-      isCollapsibleActivityEntry(message("agent_invocation.completed")),
+      isCollapsibleActivityEntry(message("pull_request.opened"), noCards),
+    ).toBe(false);
+    expect(
+      isCollapsibleActivityEntry(
+        message("agent_invocation.completed"),
+        noCards,
+      ),
     ).toBe(true);
-    expect(isCollapsibleActivityEntry(failure())).toBe(false);
+    expect(isCollapsibleActivityEntry(failure(), noCards)).toBe(false);
+    // A child's update folds only when its card is in view.
+    const update = message("agent.update");
+    if (update.kind === "message") update.message.eventIdentifier = "child-1";
+    expect(isCollapsibleActivityEntry(update, new Set(["child-1"]))).toBe(true);
+    expect(isCollapsibleActivityEntry(update, noCards)).toBe(false);
     // A message to another agent stays open, like a message from one.
     const sent = tool("send");
     if (sent.kind === "tool") {
       sent.part.name = "messageAgent";
       sent.part.input = { text: "Check the cache too.", to: "reviewer" };
     }
-    expect(isCollapsibleActivityEntry(sent)).toBe(false);
+    expect(isCollapsibleActivityEntry(sent, noCards)).toBe(false);
   });
 
   it("uses a uniform event count for collapsed activity labels", () => {

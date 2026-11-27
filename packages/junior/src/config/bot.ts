@@ -172,7 +172,7 @@ export const botSchema = z.strictObject({
   loadingMessages: z
     .array(z.string())
     .default(() => [...DEFAULT_ASSISTANT_LOADING_MESSAGES]),
-  maxAgentDepth: z.number().int().nonnegative().default(1),
+  maxAgentDepth: z.number().int().nonnegative().default(2),
   maxSlicesPerTurn: positiveInt.default(MAX_SLICES_PER_TURN),
   maxToolCallsPerTurn: positiveInt.default(MAX_TOOL_CALLS_PER_TURN),
   maxTurnCostUsd: positiveInt.default(MAX_TURN_COST_USD),

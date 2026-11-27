@@ -1,17 +1,15 @@
 /**
- * Guardian snapshots for core `bash` commands in the Sandbox.
- *
- * Guardian reviews each bash command, so routine repository work must come
- * back `allow`: reads, builds and tests, local edits, clones and fetches,
- * commits on a work branch, a work-branch push for a requested PR, and docs
+ * Guardian snapshots for core `bash` commands in the Sandbox. Core `bash`
+ * skips review until these pass reliably. Until then, routine repository
+ * work must come back `allow`: reads, builds and tests, local edits, clones
+ * and fetches, commits and a requested PR push on a work branch, and docs
  * reads. A false `ask` interrupts the user, and in an Automation run it
  * becomes `deny`. The last cases must still block.
  *
- * The credential cases pass the facts that production builds from a
- * plugin's `credentials`, so a placeholder sent to the plugin's own domains
- * is allowed, and a secret sent anywhere else is still denied.
- *
- * Production bash has no proposal description, so these cases omit it.
+ * Credential cases pass the facts that production builds from a plugin's
+ * `credentials`: a placeholder sent to the plugin's own domains is allowed,
+ * and a secret sent anywhere else is denied. Production bash has no
+ * proposal description, so these cases omit it.
  */
 import { describeEval } from "vitest-evals";
 import { guardianPluginFacts } from "@/chat/guardian/policy";
