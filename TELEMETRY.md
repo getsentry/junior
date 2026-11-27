@@ -81,6 +81,7 @@ attributes. Nested logs and spans inherit them.
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
 | Related conversations missing/noisy | span `plugin.hook userPrompt` (`related-conversations`), `app.related-conversations.*`, `related_conversations_provider_failed`, `plugin.user_prompt.hook.failed` | `chat/related-conversations/find.ts` |
 | History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
+| Turn left its events unindexed      | span `event_search.index`, `app.event_search.index.*`                                                | `chat/conversations/event-embedding.ts`                         |
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
 | Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |
