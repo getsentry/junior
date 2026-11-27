@@ -1,11 +1,6 @@
 /**
- * The input audit of the agent Guardian: run each design case with one
- * input removed or collapsed, against a baseline of the same samples.
- *
- * It runs only when `GUARDIAN_ABLATIONS` names ablations (or `all`), and
- * only for the agent arm. Every switch lives here, in the eval harness.
- * Production code builds the same request with or without it. A case flips
- * only when every baseline sample agrees and every ablated sample differs.
+ * Input audit of the agent Guardian (`GUARDIAN_ABLATIONS`): each design case
+ * with one input removed, against a baseline of the same samples.
  */
 import { completeObject } from "@/chat/core-model";
 import { createAgentGuardian } from "@/chat/guardian/agent/guardian";
