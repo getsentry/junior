@@ -26,6 +26,7 @@ import { createTools } from "@/chat/tool-support/create-tools";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { designGuardianContext } from "./guardian-facts-context";
+import type { GuardianDesignFacts } from "./guardian-design-harness";
 import type {
   ActionDescription,
   AnyToolDefinition,
@@ -186,6 +187,7 @@ async function buildAgentTools(): Promise<Record<string, AnyToolDefinition>> {
 export async function agentToolSpec(
   name: string,
   input: Record<string, unknown>,
+  facts?: GuardianDesignFacts,
 ): Promise<ToolActionProposal["tool"]> {
   agentTools ??= buildAgentTools();
   const tool = (await agentTools)[name];
@@ -193,13 +195,13 @@ export async function agentToolSpec(
     throw new Error(`The agent has no tool named ${name}.`);
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  // A plugin tool's `guardian` reads provider state. These cases state no
-  // facts, so it gets an empty stand-in.
+  // A plugin tool's `guardian` reads provider state, which the case's
+  // records stand in for.
   const described = tool.identity
     ? await agentActionFacts(
         proposalTool(name, tool, resolved, undefined),
         input,
-        designGuardianContext(undefined),
+        designGuardianContext(facts),
       )
     : await tool.guardian?.(input);
   return proposalTool(

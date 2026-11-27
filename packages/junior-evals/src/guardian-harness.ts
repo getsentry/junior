@@ -33,8 +33,8 @@ export interface GuardianEvalInput {
   /** Plugin destination facts, as an install declares them. */
   destinationFacts?: GuardianDestinationFact[];
   /**
-   * Stored records that the agent Guardian's plugin lookups read, such as
-   * the agent's own pull requests. The current Guardian does not read them.
+   * Stored records that plugin lookups read, such as the agent's own pull
+   * requests, as production has them.
    */
   facts?: GuardianDesignFacts;
 }
@@ -110,6 +110,27 @@ async function reviewWithAgentGuardian(
   };
 }
 
+/**
+ * The proposal as production describes it when the case states records: a
+ * plugin's `guardian` reads them, and its decision reason reaches the
+ * current Guardian in `proposalDescription`.
+ */
+async function withRecords(
+  proposal: ToolActionProposal,
+  facts: GuardianDesignFacts | undefined,
+): Promise<ToolActionProposal> {
+  // Loaded here: the tools module imports the plugins.
+  const { agentHasTool, agentToolSpec } = await import("./guardian-tools");
+  if (!facts || !(await agentHasTool(proposal.tool))) {
+    return proposal;
+  }
+  const name = proposal.tool.dispatcherName ?? proposal.tool.name;
+  return {
+    ...proposal,
+    tool: await agentToolSpec(name, proposal.input, facts),
+  };
+}
+
 /** Lightweight vitest-evals harness for isolated Guardian decision cases. */
 export const guardianHarness = createHarness<
   GuardianEvalInput,
@@ -128,12 +149,15 @@ export const guardianHarness = createHarness<
             input.facts,
             reviewSignal,
           )
-        : await reviewGuardianProposal(input.proposal, {
-            ...(input.destinationFacts
-              ? { destinationFacts: input.destinationFacts }
-              : undefined),
-            signal: reviewSignal,
-          });
+        : await reviewGuardianProposal(
+            await withRecords(input.proposal, input.facts),
+            {
+              ...(input.destinationFacts
+                ? { destinationFacts: input.destinationFacts }
+                : undefined),
+              signal: reviewSignal,
+            },
+          );
     const output: GuardianEvalOutput = {
       costUsd: decision.costUsd ?? null,
       decision: decision.decision,
