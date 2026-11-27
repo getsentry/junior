@@ -7,11 +7,11 @@ import type {
 } from "./history";
 import { getConversationEventStore } from "@/chat/db";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
+import { legacyStartedByWatchEventsOnly } from "@/chat/events/inbound-message-id";
 import {
   failedTurnUpdate,
   readTurnUpdate,
 } from "@/chat/conversations/turn-update";
-import { isEventInboundMessageId } from "@/chat/events/inbound-message-id";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
@@ -24,6 +24,8 @@ export interface StartConversationTurnInput {
   /** Highest Message seq known when the Turn built its thread context. */
   threadContextThroughSeq?: number | undefined;
   turnId: string;
+  /** Only Watch Events started the Turn, so no Watch hears its end. */
+  watchEventsOnly?: true | undefined;
 }
 
 /** The text of a Turn's answer, and whether it is final text or a note. */
@@ -129,6 +131,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
           ...(input.threadContextThroughSeq === undefined
             ? undefined
             : { threadContextThroughSeq: input.threadContextThroughSeq }),
+          ...(input.watchEventsOnly ? { watchEventsOnly: true } : undefined),
         },
       },
     ]);
@@ -223,18 +226,20 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
     if (stored?.data.type !== "turn_completed") return;
     const { outcome } = stored.data;
     const terminalSeq = stored.seq;
-    let eventOnly: Promise<boolean> | undefined;
-    // A Turn that only Watch Events started, such as GitHub feedback.
-    const startedByEventsOnly = () =>
-      (eventOnly ??= this.loadInputMessageIds(
+    const loadStart = () =>
+      this.events.loadByIdempotencyKey(
         input.conversationId,
-        input.turnId,
-      ).then(
-        (inputs) =>
-          inputs !== undefined &&
-          inputs.length > 0 &&
-          inputs.every(isEventInboundMessageId),
-      ));
+        turnStartedKey(input.turnId),
+      );
+    // A Turn that only Watch Events started, such as GitHub feedback.
+    const startedByWatchEventsOnly = async () => {
+      const start = (await loadStart())?.data;
+      return (
+        start?.type === "turn_started" &&
+        (start.watchEventsOnly === true ||
+          legacyStartedByWatchEventsOnly(start.inputMessageIds))
+      );
+    };
     await publishAgentUpdate(
       input.conversationId,
       { type: "turn", turnId: input.turnId },
@@ -242,16 +247,13 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
         ...options,
         // A Watch skips a Turn that only Watch Events started, so a watcher
         // is not woken for each Event that the Conversation itself watches.
-        skip: startedByEventsOnly,
+        skip: startedByWatchEventsOnly,
         update: async () => {
           // Final text wakes the agents that wait on it, as a reply does.
           if (outcome === "no_reply" && input.answer?.kind === "final_text") {
             return { status: "done", text: input.answer.text };
           }
-          const start = await this.events.loadByIdempotencyKey(
-            input.conversationId,
-            turnStartedKey(input.turnId),
-          );
+          const start = await loadStart();
           return await readTurnUpdate(this.events, {
             conversationId: input.conversationId,
             outcome,

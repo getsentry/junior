@@ -225,11 +225,12 @@ async function viewerApi() {
 /**
  * Store one completed dashboard Turn and run the tasks it schedules. `reply`
  * is the raw model text. `stored` is the Message that the Turn saved; a
- * no-reply Turn saves none.
+ * no-reply Turn saves none. A `legacy` Message has only the old id that
+ * named its Turn, as saved before Messages stored their Turn.
  */
 async function completeDashboardTurn(
   reply: string,
-  stored: { text: string } | null = { text: reply },
+  stored: { legacy?: true; text: string } | null = { text: reply },
   {
     beforeTasks,
     conversationId = `local:web:${randomUUID()}`,
@@ -293,9 +294,11 @@ async function completeDashboardTurn(
         createdAtMs: Date.now(),
         data: {
           type: "message",
-          messageId: `${turnId}:assistant:1`,
           role: "assistant",
           text: stored.text,
+          ...(stored.legacy
+            ? { messageId: `${turnId}:assistant:1` }
+            : { messageId: randomUUID(), meta: { turnId } }),
         },
       },
     ]);
@@ -395,6 +398,12 @@ describe("reply notification task", () => {
     // A Turn with no reply notifies nobody.
     await completeDashboardTurn("Nothing to send.", null);
     expect(pushes).toHaveLength(1);
+
+    await completeDashboardTurn("The rollback finished.", {
+      legacy: true,
+      text: "The rollback finished.",
+    });
+    expect(pushes).toHaveLength(2);
   });
 
   it("turns dashboard replies into one notice for the starter, and closes it when they read the latest", async () => {

@@ -81,6 +81,11 @@ describe("conversation outline API", () => {
         explicitMention: true,
       }),
       message("answer", "assistant", "  done  "),
+      message("parent", "user", "check the deploy", { fromParentAgent: true }),
+      // A parent message saved before `fromParentAgent`.
+      message("legacy-parent", "user", "check the logs", {
+        author: { isBot: true, userId: "parent-agent:parent-1" },
+      }),
       message("long", "user", long),
       message("link", "user", `<${link}>`),
     ]);
@@ -91,13 +96,22 @@ describe("conversation outline API", () => {
       // The last reply before the next item.
       ["first question", "reply 199"],
       ["hi <@U1>", "done"],
+      ["check the deploy", undefined],
+      ["check the logs", undefined],
       ["a".repeat(195), undefined],
       [link.slice(0, 199), undefined],
     ]);
     expect(outline.items[0]?.seq).toBeLessThan(outline.items[1]!.seq);
     expect(outline.items[0]?.createdAt).toBe(new Date(1).toISOString());
     expect(outline.items[0]?.actorIdentityId).toBe(askerIdentityId);
-    expect(outline.items[1]?.fromParentAgent).toBe(true);
+    expect(outline.items.map((item) => item.fromParentAgent)).toEqual([
+      undefined,
+      true,
+      true,
+      true,
+      undefined,
+      undefined,
+    ]);
   });
 
   it("lists no items for a viewer who cannot see the transcript", async () => {

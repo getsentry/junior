@@ -19,7 +19,6 @@ import { loadConversationProjection } from "@/chat/conversations/projection";
 import {
   childAgentTurnOptions,
   commitParentMessageFork,
-  isParentMessageAuthor,
 } from "@/chat/child-agents/parent-message";
 import { readParentMessage } from "@/chat/child-agents/parent-message-input";
 import { isChildAgentEvent } from "@/chat/child-agents/child-input";
@@ -124,6 +123,7 @@ import {
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
+import { isWatchEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { StateAdapter } from "chat";
@@ -206,8 +206,9 @@ export function createConversationTurnWorker(
     let userMessageId = "";
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
+    let watchEventsOnly = false;
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
-    // A parent agent's task or message. On resume, its saved author says so.
+    // A parent agent's task or message. On resume, its saved Source says so.
     let fromParent =
       resolved.kind === "mailbox" &&
       resolved.batch.every((entry) => readParentMessage(entry.message));
@@ -254,6 +255,9 @@ export function createConversationTurnWorker(
       inputMessageIds = resolved.batch.map(
         (entry) => entry.message.inboundMessageId,
       );
+      watchEventsOnly = messages.every((message) =>
+        isWatchEventMailboxMetadata(message.input.metadata),
+      );
       authorIdentityId = sharedAuthorIdentityId(messages);
       turnInputFacts = first;
     } else {
@@ -278,7 +282,7 @@ export function createConversationTurnWorker(
         );
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
-      fromParent = isParentMessageAuthor(userMessage.author);
+      fromParent = savedTurn?.source?.kind === "parent_message";
       fromChildAgent = isChildAgentEvent(userMessage.meta);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
@@ -492,6 +496,7 @@ export function createConversationTurnWorker(
                 explicitMention: true,
                 replied: false,
                 ...(requestText ? { requestText } : undefined),
+                ...(fromParent ? { fromParentAgent: true } : undefined),
                 ...eventMeta,
               },
             });
@@ -511,6 +516,7 @@ export function createConversationTurnWorker(
             surface,
             threadContextThroughSeq: latestConversationMessageSeq(conversation),
             turnId,
+            watchEventsOnly: watchEventsOnly || undefined,
           });
           if (stopSignal?.aborted) {
             return await completeCancelledTurn();

@@ -12,6 +12,7 @@ import { savedInputInstruction } from "@/chat/inbox-items/prompt-input";
 import { logException, logWarn, withLogContext } from "@/chat/logging";
 import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { isTurnReply } from "@/chat/state/turn-id";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   loadConversationProjection,
@@ -874,11 +875,7 @@ async function runNextPausedTurnInContext(
     if (turnHasReply(conversation, running.turnId)) {
       const acceptedReply = [...conversation.messages]
         .reverse()
-        .find(
-          (message) =>
-            message.role === "assistant" &&
-            message.id.startsWith(`${running.turnId}:assistant:`),
-        );
+        .find((message) => isTurnReply(message, running.turnId));
       const completed = await completeTurnRecord({
         conversationId,
         expectedVersion: running.version,

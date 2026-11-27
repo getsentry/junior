@@ -177,22 +177,22 @@ async function compatReplyEvents(
   return [
     ...replies.flatMap((reply) => {
       const message = toStoredConversationMessage({
-        // Main's assistant message ids start with `<turnId>:assistant:`.
         id: `${turnId}:assistant:${reply.eventSeq}`,
         role: "assistant",
         text: normalizeConversationText(reply.text),
         createdAtMs: reply.createdAtMs,
         author: { userName: botConfig.userName, isBot: true },
-        ...(reply.destination?.platform === "slack"
-          ? {
-              meta: {
+        meta: {
+          turnId,
+          ...(reply.destination?.platform === "slack"
+            ? {
                 source: "slack" as const,
                 ...(reply.providerMessageId
                   ? { slackTs: reply.providerMessageId }
                   : undefined),
-              },
-            }
-          : undefined),
+              }
+            : undefined),
+        },
       });
       return [
         {

@@ -33,6 +33,7 @@ import {
   type PushNotificationPayload,
 } from "./web-push";
 import { botConfig } from "@/chat/config";
+import { isTurnReply } from "@/chat/state/turn-id";
 
 /**
  * Return the stored reply of the Turn: the text that the person sees. The
@@ -41,16 +42,10 @@ import { botConfig } from "@/chat/config";
 async function readTurnReply(
   run: PluginRunContext,
 ): Promise<ConversationMessage | undefined> {
-  const prefix = `${run.runId}:assistant:`;
   const messages = projectConversationMessages(
     await getConversationEventStore().loadMessageHistory(run.conversationId),
   );
-  return messages
-    .filter(
-      (message) =>
-        message.role === "assistant" && message.id.startsWith(prefix),
-    )
-    .at(-1);
+  return messages.filter((message) => isTurnReply(message, run.runId)).at(-1);
 }
 
 /**

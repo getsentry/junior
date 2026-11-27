@@ -110,7 +110,10 @@ import {
   TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
-import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
+import {
+  buildDeterministicAssistantMessageId,
+  isTurnReply,
+} from "@/chat/state/turn-id";
 import type { ConversationTurnFailureReason } from "@/chat/conversations/history";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
@@ -546,8 +549,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             .reverse()
             .find(
               (candidate) =>
-                candidate.role === "assistant" &&
-                candidate.id.startsWith(`${turnId}:assistant:`) &&
+                isTurnReply(candidate, turnId) &&
                 candidate.meta?.replied === true,
             );
           options.onTurnDeliveryAccepted?.(deliveredMessage?.meta?.slackTs);
@@ -662,6 +664,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             meta: {
               replied: true,
               source: "slack",
+              turnId,
             },
           });
           await persistThreadStateById(conversationId, {
