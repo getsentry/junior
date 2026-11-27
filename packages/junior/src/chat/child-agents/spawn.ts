@@ -1,5 +1,4 @@
 import type { StateAdapter } from "chat";
-import { childrenAreTopLevel } from "@/chat/conversations/kind-behavior";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRun, SpawnAgent, SpawnAgentInput } from "@/chat/agent/types";
 import { actorFromRun } from "@/chat/agent/types";
@@ -21,9 +20,8 @@ type SpawnOptions = {
 };
 
 /**
- * Count the parents of the Conversation that starts a child agent. A Lead's
- * children count as roots, so the Lead adds no level. A chain that does not
- * end at a root, such as a cycle, cannot start one.
+ * Count the parents of the Conversation that starts a child agent. A chain
+ * that does not end at a root, such as a cycle, cannot start one.
  */
 async function assertCanStartChildAgent(
   conversationId: string,
@@ -31,9 +29,11 @@ async function assertCanStartChildAgent(
 ): Promise<void> {
   const lineage = await readConversationLineage(conversationId);
   const root = lineage[0];
-  const levels =
-    lineage.length - (root && childrenAreTopLevel(root.kind) ? 2 : 1);
-  if (!root || root.parentConversationId || levels > maxAgentDepth) {
+  if (
+    !root ||
+    root.parentConversationId ||
+    lineage.length - 1 > maxAgentDepth
+  ) {
     throw new AgentDepthLimitError(maxAgentDepth);
   }
 }

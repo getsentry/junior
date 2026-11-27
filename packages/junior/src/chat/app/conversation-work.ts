@@ -19,7 +19,7 @@ import {
 import { stopChildAgentsOf } from "@/chat/child-agents/stop";
 import { logException, withLogContext } from "@/chat/logging";
 import { resumeForPersonInput } from "@/chat/conversations/session-stop";
-import { ownsLocation } from "@/chat/conversations/kind-behavior";
+import { isTopLevel } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { runConversation } from "@/chat/task-execution/run-conversation";
 import {
@@ -170,9 +170,7 @@ export function createConversationWork(
     const conversation = await options.conversationStore.get({
       conversationId: context.conversationId,
     });
-    // A Conversation with its own Location, such as a Slack Conversation
-    // that moved into a Space, runs as a root, so it still gets Slack work.
-    const topLevel = !conversation || ownsLocation(conversation);
+    const topLevel = !conversation || isTopLevel(conversation);
     // Bind the tree root once, so spans of child agents count by root.
     return await withLogContext(
       {

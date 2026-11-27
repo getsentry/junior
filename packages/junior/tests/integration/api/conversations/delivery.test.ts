@@ -137,9 +137,9 @@ describe("conversation delivery API", () => {
     );
   });
 
-  it("reads a pause from the top-level Conversation, not from a Lead above it", async () => {
+  it("reads a pause from the root, also under a Lead", async () => {
     const lead = "local:test:delivery-lead";
-    const thread = "slack:C123:1700000000.000300";
+    const thread = "local:test:delivery-thread";
     const task = "local:test:delivery-task";
     await getDb()
       .insert(juniorConversations)
@@ -163,15 +163,9 @@ describe("conversation delivery API", () => {
         .set({ deliveryPausedAt: at })
         .where(eq(juniorConversations.conversationId, conversationId));
 
-    // A paused Lead does not detach the Slack Conversations in its Space.
+    // A Lead's children are plain children, so its pause covers them.
     await pause(lead, new Date(1_000));
-    await expect(isConversationDeliveryPaused(lead)).resolves.toBe(true);
-    await expect(isConversationDeliveryPaused(thread)).resolves.toBe(false);
-    await expect(isConversationDeliveryPaused(task)).resolves.toBe(false);
-
-    // A detached Slack Conversation in a Space detaches its child agents.
-    await pause(lead, null);
-    await pause(thread, new Date(1_000));
+    await expect(isConversationDeliveryPaused(thread)).resolves.toBe(true);
     await expect(isConversationDeliveryPaused(task)).resolves.toBe(true);
   });
 });

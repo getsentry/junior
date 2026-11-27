@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationDetailReportSchema,
-  conversationFeedSchema,
   conversationInviteResponseSchema,
   userSearchReportSchema,
   setConversationSpaceResponseSchema,
@@ -341,11 +340,15 @@ describe("Spaces API", () => {
       name: "Ledger",
     });
     expect((await moveTo(ana, thread, null)).status).toBe(409);
-    // A member's own feed lists the Space's work, with its Threads.
-    const anaRow = (await spaceFeed(ana, "")).find(
+    // The Space's feed lists its work, with each one's Threads. A member's
+    // own feed lists roots, so it leaves the Space's work out.
+    const anaRow = (await spaceFeed(ana, space.id)).find(
       (row) => row.conversationId === inSpace,
     );
     expect(anaRow?.threads?.map((row) => row.conversationId)).toEqual([thread]);
+    expect(
+      (await spaceFeed(ana, "")).map((row) => row.conversationId),
+    ).not.toContain(inSpace);
 
     // A move writes only the root, and the child's detail token still
     // changes, so an open child detail refreshes its Space.
@@ -391,12 +394,8 @@ describe("Spaces API", () => {
       );
       expect(refused.status).toBe(409);
     }
-    const ownFeed = async () =>
-      (await spaceFeed(ana, "")).map((row) => row.conversationId);
-    expect(await ownFeed()).toContain(inSpace);
 
-    // Leaving the Lead takes all of the Space's work out of the leaver's
-    // feed. The last subscriber leaving never archives it.
+    // The last subscriber leaving the Lead never archives it.
     expect(await detail(ana, leadId)).toHaveProperty("subscribed", true);
     const left = await request(
       ana,
@@ -405,7 +404,6 @@ describe("Spaces API", () => {
     );
     expect(left.status).toBe(200);
     expect(await left.json()).toEqual({ archivedAt: null });
-    expect(await ownFeed()).not.toContain(inSpace);
     expect(
       (await spaceFeed(ana, space.id)).map((row) => row.conversationId),
     ).toEqual([inSpace]);
@@ -479,7 +477,7 @@ describe("Spaces API", () => {
     expect(
       await move({ conversation_id: conversationId, space: null }),
     ).toMatchObject({ space: null });
-    // A conversation in a private Space stays in it.
+    // Nothing moves into a private Space.
     const hidden = spaceSchema.parse(
       await (
         await send(ana, "POST", "", {
@@ -488,10 +486,9 @@ describe("Spaces API", () => {
         })
       ).json(),
     );
-    await move({ conversation_id: conversationId, space: hidden.id });
     await expect(
-      move({ conversation_id: conversationId, space: null }),
-    ).rejects.toThrow("A conversation in a private Space stays in it.");
+      move({ conversation_id: conversationId, space: hidden.id }),
+    ).rejects.toThrow("A conversation can't move into a private Space.");
 
     // The person finds every public Space, and a private one only from a
     // conversation in it.
@@ -604,14 +601,16 @@ describe("Spaces API", () => {
     ).toEqual([inSpace]);
 
     // Data stays in the Space: Conversations in it read each other, and a
-    // Conversation outside it reads none of them.
-    expect((await moveTo(ana, oneOff, space.id)).status).toBe(200);
-    expect(await detail(ana, oneOff)).toMatchObject({ visibility: "private" });
-    expect(await canReadConversation(getDb(), oneOff, inSpace)).toBe(true);
-    const outside = await startConversation(ana, "payroll-outside");
-    expect(await canReadConversation(getDb(), outside, inSpace)).toBe(false);
-    expect(await canReadConversation(getDb(), inSpace, outside)).toBe(true);
-    expect((await moveTo(ana, oneOff, null)).status).toBe(409);
+    // Conversation outside it reads none of them. Nothing moves in, and its
+    // private work never moves out.
+    expect((await moveTo(ana, oneOff, space.id)).status).toBe(409);
+    const sibling = await startConversation(ana, "payroll-sibling", {
+      spaceId: space.id,
+    });
+    expect(await canReadConversation(getDb(), sibling, inSpace)).toBe(true);
+    expect(await canReadConversation(getDb(), oneOff, inSpace)).toBe(false);
+    expect(await canReadConversation(getDb(), inSpace, oneOff)).toBe(true);
+    expect((await moveTo(ana, inSpace, null)).status).toBe(409);
 
     // A Space keeps the visibility it was created with.
     expect(
@@ -621,13 +620,8 @@ describe("Spaces API", () => {
     expect(await detailSpace(cy, inSpace)).toBeNull();
 
     // A member who leaves the Lead no longer finds its Conversations.
-    const inbox = async () =>
-      conversationFeedSchema
-        .parse(await (await request(bo, "GET", "/conversations")).json())
-        .conversations.map((row) => row.conversationId);
-    expect(await inbox()).toContain(inSpace);
     expect((await leave(bo, lead)).status).toBe(200);
-    expect(await inbox()).not.toContain(inSpace);
+    expect(await spaceFeed(bo, space.id)).toEqual([]);
     expect(await detailSpace(bo, inSpace)).toBeNull();
   });
 
