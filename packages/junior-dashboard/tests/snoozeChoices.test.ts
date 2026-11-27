@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { snoozeChoicesAt } from "../src/client/inbox/snoozeChoices";
 
@@ -13,6 +13,15 @@ function menuAt(...clock: [number, number, number, number, number]) {
     ];
   });
 }
+
+/** The local target time of "Tomorrow morning" at a local clock. */
+function tomorrowAt(...clock: [number, number, number, number, number]) {
+  return menuAt(...clock).find(([label]) => label === "Tomorrow morning")?.[1];
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("snoozeChoicesAt", () => {
   it("offers the afternoon and evening of today before noon", () => {
@@ -57,5 +66,23 @@ describe("snoozeChoicesAt", () => {
       "Next week",
       "8/17 9:00",
     ]);
+  });
+
+  it("wakes at 09:00 today when tomorrow morning is picked before 06:00", () => {
+    vi.stubEnv("TZ", "Europe/London");
+    // Friday, August 7.
+    expect(tomorrowAt(2026, 7, 7, 0, 42)).toBe("8/7 9:00");
+    expect(tomorrowAt(2026, 7, 7, 5, 59)).toBe("8/7 9:00");
+    expect(tomorrowAt(2026, 7, 7, 6, 0)).toBe("8/8 9:00");
+    expect(tomorrowAt(2026, 7, 7, 23, 30)).toBe("8/8 9:00");
+  });
+
+  it("wakes at local 09:00 across a DST change", () => {
+    vi.stubEnv("TZ", "Europe/London");
+    // Clocks go forward an hour at 01:00 on Sunday, March 29.
+    expect(tomorrowAt(2026, 2, 28, 23, 30)).toBe("3/29 9:00");
+    expect(tomorrowAt(2026, 2, 29, 0, 42)).toBe("3/29 9:00");
+    // Clocks go back an hour at 02:00 on Sunday, October 25.
+    expect(tomorrowAt(2026, 9, 25, 0, 42)).toBe("10/25 9:00");
   });
 });

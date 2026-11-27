@@ -57,8 +57,10 @@ const snoozeChoices: readonly (SnoozeChoice & { beforeHour?: number })[] = [
     untilMs: (nowMs) => atLocalHour(nowMs, 0, 18),
   },
   {
+    // Before 06:00 the viewer's night is not over: "tomorrow" is 09:00 today.
     label: "Tomorrow morning",
-    untilMs: (nowMs) => atLocalHour(nowMs, 1, 9),
+    untilMs: (nowMs) =>
+      atLocalHour(nowMs, new Date(nowMs).getHours() < 6 ? 0 : 1, 9),
   },
   {
     label: "Next week",
