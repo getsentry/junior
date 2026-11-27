@@ -58,7 +58,10 @@ function useInboxTabIcon(count: number | undefined): void {
       return;
     }
     let current = true;
-    drawBadgedIcon(faviconUrl, label).then(
+    drawBadgedIcon(
+      window.__JUNIOR_DASHBOARD_ICONS__?.faviconUrl ?? faviconUrl,
+      label,
+    ).then(
       (href) => {
         if (current) setIconHref(link, href);
       },
@@ -95,6 +98,8 @@ function readTheme() {
 
 async function drawBadgedIcon(src: string, label: string): Promise<string> {
   const image = new Image();
+  // A host favicon on another origin needs CORS for the canvas to read it.
+  image.crossOrigin = "anonymous";
   image.src = src;
   await image.decode();
   const canvas = document.createElement("canvas");

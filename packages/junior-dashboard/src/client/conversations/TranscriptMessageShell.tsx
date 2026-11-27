@@ -57,7 +57,10 @@ export function TranscriptMessageShell(props: {
               alt=""
               className="size-full object-contain"
               draggable={false}
-              src={juniorAvatarUrl}
+              src={
+                globalThis.window?.__JUNIOR_DASHBOARD_ICONS__?.iconUrl ??
+                juniorAvatarUrl
+              }
             />
           ) : props.fromAgent ? (
             <span className="grid size-full place-items-center rounded-full bg-dashboard-surface-hover text-cyan-200">

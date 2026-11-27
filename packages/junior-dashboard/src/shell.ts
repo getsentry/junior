@@ -190,9 +190,11 @@ export function renderDashboard(
   agentName: string,
   {
     bootstrap,
+    icons = {},
     sentry,
   }: {
     bootstrap?: DashboardBootstrap | undefined;
+    icons?: { faviconUrl?: string | undefined; iconUrl?: string | undefined };
     sentry?: BrowserSentryConfig | undefined;
   } = {},
 ): Response {
@@ -248,6 +250,7 @@ export function renderDashboard(
   <script>
     window.__JUNIOR_DASHBOARD_BASE_PATH__ = ${JSON.stringify(basePath)};
     window.__JUNIOR_DASHBOARD_AGENT_NAME__ = ${encodedAgentName};
+    window.__JUNIOR_DASHBOARD_ICONS__ = ${scriptJson(icons)};
     ${bootstrapScript}
     (function () {
       function escapeHtml(value) {
