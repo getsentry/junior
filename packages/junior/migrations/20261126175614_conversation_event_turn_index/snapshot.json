@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "489e1176-2574-42a9-8171-bf7705795047",
+  "prevIds": ["eeefb56c-6363-4ab7-8308-460c2987347c"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_turn_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_turn_idx",
+        "n|idx|public.junior_conversation_events_turn_idx",
+        "e|idx|public.junior_conversation_events_turn_idx",
+        "n|rel|public.junior_conversation_events_turn_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.turn_id",
+        "n|col|public.junior_conversation_events.seq"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_turn_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "turn_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "seq",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"turn_id\" is not null",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

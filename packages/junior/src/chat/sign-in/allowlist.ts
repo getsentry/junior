@@ -5,10 +5,14 @@
  * dashboard share one list. `chat/identities/trust` decides who matches.
  */
 import * as z from "zod";
+import { getChatConfig } from "@/chat/config";
 
-/** Read a list env var: a JSON string array or comma-separated values. */
-export function readEnvList(name: string): string[] | undefined {
-  const value = process.env[name]?.trim();
+/** Parse a list env var value: a JSON string array or comma-separated values. */
+export function parseEnvList(
+  name: string,
+  rawValue: string | undefined,
+): string[] | undefined {
+  const value = rawValue?.trim();
   if (!value) return undefined;
   if (!value.startsWith("[")) return value.split(",");
   let parsed: unknown;
@@ -29,7 +33,14 @@ export function readEnvList(name: string): string[] | undefined {
 export function resolveAllowedDomains(allowedDomains?: string[]): string[] {
   return [
     ...new Set(
-      (allowedDomains ?? readEnvList("JUNIOR_ALLOWED_DOMAINS") ?? [])
+      (
+        allowedDomains ??
+        parseEnvList(
+          "JUNIOR_ALLOWED_DOMAINS",
+          getChatConfig().signIn.allowedDomains,
+        ) ??
+        []
+      )
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean),
     ),
@@ -37,8 +48,9 @@ export function resolveAllowedDomains(allowedDomains?: string[]): string[] {
 }
 
 /**
- * Fail startup on the removed Google-specific names. Ignoring them would
+ * Fail startup on the removed Google-specific option. Ignoring it would
  * leave the list empty, which lets every Slack workspace member in.
+ * `loadConfig` rejects the removed env var the same way.
  */
 export function assertNoLegacyAllowedDomains(
   dashboardOptionKeys: readonly string[],
@@ -46,11 +58,6 @@ export function assertNoLegacyAllowedDomains(
   if (dashboardOptionKeys.includes("allowedGoogleDomains")) {
     throw new Error(
       "dashboard.allowedGoogleDomains was removed; set createApp({ allowedDomains }) instead",
-    );
-  }
-  if (process.env["JUNIOR_DASHBOARD_GOOGLE_DOMAINS"]?.trim()) {
-    throw new Error(
-      "JUNIOR_DASHBOARD_GOOGLE_DOMAINS was removed; set JUNIOR_ALLOWED_DOMAINS instead",
     );
   }
 }

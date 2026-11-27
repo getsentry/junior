@@ -7,7 +7,6 @@ import {
   acceptedConversationMessageSchema,
   attachmentUploadSchema,
   conversationDetailReportSchema,
-  leadSchema,
   spaceSchema,
 } from "@/api/schema";
 import type { FileInput, WebMessageInput } from "./inputs";
@@ -135,7 +134,7 @@ export async function createSpace(
   api: Hono<JuniorApiEnv>,
   viewerEmail: string,
   name: string,
-): Promise<{ id: string }> {
+): Promise<{ id: string; leadConversationId: string }> {
   const created = await api.request(
     "/api/spaces",
     jsonRequest(viewerEmail, { name }),
@@ -171,25 +170,12 @@ export async function readConversationSpace(
   );
 }
 
-/**
- * Create a Space as `viewerEmail` and make its Lead, as the Space page does
- * when a member opens it.
- */
-export async function readLeadConversationId(
+/** Create a Space as `viewerEmail` and return its Lead. */
+export async function createLeadConversation(
   api: Hono<JuniorApiEnv>,
   viewerEmail: string,
 ): Promise<string> {
-  const space = await createSpace(api, viewerEmail, "Eval work");
-  const response = await api.request(
-    `/api/spaces/${encodeURIComponent(space.id)}/lead`,
-    { headers: { [VIEWER_HEADER]: viewerEmail } },
-  );
-  if (response.status !== 200) {
-    throw new Error(
-      `Lead returned ${response.status}: ${await response.text()}`,
-    );
-  }
-  return leadSchema.parse(await response.json()).conversationId;
+  return (await createSpace(api, viewerEmail, "Eval work")).leadConversationId;
 }
 
 /**

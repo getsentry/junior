@@ -8,7 +8,7 @@ import {
   getDb,
   getSqlExecutor,
 } from "@/chat/db";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { historyItemFromPiMessage } from "@/core/history/items";
 import type { PiMessage } from "@/chat/pi/messages";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";

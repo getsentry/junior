@@ -8,7 +8,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - The run starts with an empty database and an empty Redis database. Nothing from another run or from your own `pnpm dev` shows.
 - A model credential (`AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN`) is set, so the dashboard composer runs real Turns.
 - Run `node scripts/instance.mjs doctor $RUN_DIR` and require every line to be `ok`.
-- Never drive an instance that this run did not start. `launch` refuses when port 3000 or 8969 is in use.
+- Never drive an instance that this run did not start. `launch` refuses when port 3000 or 8970 is in use.
 - Set `S=.agents/skills/verify-junior/scripts` and run commands from the repo root.
 
 ## Driving conventions
@@ -47,7 +47,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 ## Features
 
 - [Composer](./composer.md) covers the message box under the transcript: sending, the queue (edit, delete, steer), `Stop`, drafts, files, quoting a reply, the `$` skill menu, and who sees the box.
-- [Inbox](./inbox.md) covers asking a person, answering in the Inbox or in the composer, notices, taking, dedupe, and closing with a reason.
+- [Inbox](./inbox.md) covers asking a person, answering in the Inbox or in the composer, notices, taking, changes by id, and closing with a reason.
 - [Guardian](./guardian.md) covers action review: ordinary work that runs, risky actions that ask or stop, the recorded decision, and the System card.
 - [Background work](./background-work.md) covers one reply per message, a Turn that outlives its time limit, and a Turn whose worker is killed.
 - [Automations](./automations.md) covers Scheduled, Event, and channel-message Automations from Slack, and the Automations pages.

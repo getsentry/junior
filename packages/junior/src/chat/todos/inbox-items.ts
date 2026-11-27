@@ -11,14 +11,13 @@
  * change. An assignee who cannot see the
  * Conversation's content gets no item.
  */
-import { and, eq, inArray, like } from "drizzle-orm";
+import { inboxItemOwnerConversationId } from "@/chat/inbox-items/owner";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   conversationAccessFromRows,
   readConversationAccessRows,
-  type ProviderTenant,
 } from "@/api/conversations/access";
 import { conversationIdsWithParticipantUser } from "@/api/conversations/membership";
-import { TODO_INBOX_ITEM_KEY_PREFIX } from "@/chat/inbox-items/access";
 import {
   clearInboxItemDeliveries,
   deleteInboxItemDeliveries,
@@ -29,6 +28,7 @@ import {
   updateInboxItemContent,
   type InboxItemContent,
 } from "@/chat/inbox-items/store";
+import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorInboxItemAssignees,
@@ -37,12 +37,12 @@ import {
 } from "@/db/schema";
 import { isOpenTodoStatus } from "./types";
 
-/** The dedupe key of the Inbox item of one To-do. */
-export function todoInboxItemKey(
-  conversationId: string,
-  todoId: number,
-): string {
-  return `${TODO_INBOX_ITEM_KEY_PREFIX}${conversationId}:${todoId}`;
+/**
+ * The subject id of the Inbox item of one To-do, which is also its dedupe
+ * key: `<conversationId>:<todoId>`.
+ */
+function todoSubjectId(conversationId: string, todoId: number): string {
+  return `${conversationId}:${todoId}`;
 }
 
 type TodoRow = Pick<
@@ -85,17 +85,16 @@ export async function syncTodoInboxItems(
   const openItems = await db
     .select({
       body: juniorInboxItems.body,
-      dedupeKey: juniorInboxItems.dedupeKey,
       id: juniorInboxItems.id,
+      subjectId: juniorInboxItems.subjectId,
       title: juniorInboxItems.title,
     })
     .from(juniorInboxItems)
     .where(
       and(
-        eq(juniorInboxItems.ownerKind, "conversation"),
-        eq(juniorInboxItems.ownerId, conversationId),
+        eq(inboxItemOwnerConversationId(), conversationId),
         eq(juniorInboxItems.status, "open"),
-        like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+        eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
       ),
     );
   const assigneeOf = new Map(
@@ -116,9 +115,9 @@ export async function syncTodoInboxItems(
             )
         ).map((row) => [row.itemId, row.userId]),
   );
-  const itemByKey = new Map(openItems.map((item) => [item.dedupeKey, item]));
+  const itemByKey = new Map(openItems.map((item) => [item.subjectId, item]));
   const todoByKey = new Map(
-    todos.map((todo) => [todoInboxItemKey(conversationId, todo.id), todo]),
+    todos.map((todo) => [todoSubjectId(conversationId, todo.id), todo]),
   );
 
   // Each person's access to the Conversation, read once.
@@ -136,7 +135,6 @@ export async function syncTodoInboxItems(
     people.length > 0
       ? await readConversationAccessRows(db, [conversationId])
       : [];
-  let tenant: ProviderTenant | undefined;
   const shown: string[] = [];
   /* oxlint-disable no-await-in-loop -- Reads share one transaction; a list has few people. */
   for (const userId of people) {
@@ -152,7 +150,6 @@ export async function syncTodoInboxItems(
       conversationId,
     );
     canSee.set(userId, access?.canViewPrivateContent ?? false);
-    tenant = access?.tenant;
   }
 
   for (const [key, todo] of todoByKey) {
@@ -181,16 +178,14 @@ export async function syncTodoInboxItems(
       body: todo.notes ?? "",
       conversationIds: [],
       kind: "action",
+      subject: { id: key, kind: INBOX_SUBJECT_KINDS.todo },
       title: todo.title,
-      visibility: "private",
     };
     if (!item) {
       const inserted = await insertInboxItem(db, {
         ...content,
-        dedupeKey: key,
         nowMs,
         owner: { id: conversationId, kind: "conversation" },
-        ...(tenant ? { tenant } : undefined),
       });
       if (inserted) shown.push(inserted.id);
     } else if (
@@ -210,7 +205,7 @@ export async function syncTodoInboxItems(
     }
   }
   for (const item of openItems) {
-    if (todoByKey.has(item.dedupeKey)) continue;
+    if (todoByKey.has(item.subjectId)) continue;
     await closeInboxItem(db, {
       id: item.id,
       nowMs,

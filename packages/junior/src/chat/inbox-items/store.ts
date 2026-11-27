@@ -2,47 +2,48 @@ import { randomUUID } from "node:crypto";
 import {
   and,
   asc,
-  count,
   desc,
   eq,
   gt,
   ilike,
   inArray,
-  like,
-  isNull,
   lt,
   not,
-  notLike,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import {
-  inboxSnoozesVersion,
-  inboxItemSnoozedBy,
-} from "@/chat/inbox-snoozes/store";
+import { inboxItemSnoozedBy } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
-import type { InboxItemOwnerKind } from "@/db/schema/inbox-items";
+import {
+  inboxItemOwnerConversationId,
+  inboxItemOwnerId,
+  inboxItemOwnerKind,
+  inboxItemTenantId,
+  inboxItemTenantProvider,
+  inboxItemVisibility,
+} from "@/chat/inbox-items/owner";
 import {
   hasUserPhoto,
   userAvatarUrlsFromIdentities,
 } from "@/chat/identities/avatar";
 import {
+  juniorAutomationRuns,
   juniorConversations,
   juniorIdentities,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
+  juniorQuestions,
   juniorUsers,
 } from "@/db/schema";
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import {
-  PLUGIN_INBOX_ITEM_KEY_PREFIX,
-  TODO_INBOX_ITEM_KEY_PREFIX,
+  inboxItemAddedByAnyAutomation,
+  inboxItemAddedByAutomation,
   inboxItemAssignedTo,
   inboxItemForUser,
   inboxItemLinkedTo,
@@ -52,7 +53,15 @@ import {
   type InboxItemReader,
 } from "./access";
 import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
-import type { InboxItemRequest } from "./evidence";
+import type { InboxItemNoticeRequest, InboxItemRequest } from "./request";
+import {
+  inboxItemBody,
+  inboxItemTitle,
+  itemQuestion,
+} from "./question-content";
+import { INBOX_SUBJECT_KINDS, type InboxItemSubject } from "./subjects";
+
+export type { InboxItemSubject } from "./subjects";
 
 type InboxItemKind = "notice" | "action";
 
@@ -64,15 +73,6 @@ export const INBOX_ITEM_REPLIED_REASON = "Replied in thread";
 export type InboxItemStatus = "open" | "done" | "dismissed";
 export type InboxItemVisibility = "public" | "private";
 
-/** The thing an Inbox item is about, such as a pull request. */
-export interface InboxItemSubject {
-  /** Stable id that Search matches, such as a URL. */
-  id: string;
-  title?: string;
-  url?: string;
-  titleParts?: InboxItemSubjectTitleParts;
-}
-
 /** One assigned User of an Inbox item. */
 export interface InboxItemAssignee {
   /** Junior API path of the profile photo. */
@@ -82,9 +82,13 @@ export interface InboxItemAssignee {
   userId: string;
 }
 
+/** The kind of an Inbox item's owner. */
+type InboxItemOwnerKind = "conversation" | "automation";
+
 /**
  * What an Inbox item belongs to, like a parent: the Conversation of the
  * agent or plugin that added it, or the Automation of an Automation alert.
+ * The item's subject names it (`owner.ts`).
  */
 export interface InboxItemOwner {
   id: string;
@@ -100,21 +104,21 @@ export function ownerConversationId(
 
 /** The owner Conversations, whose detail versions an item change moves. */
 function ownerConversationIds(
-  owners: readonly { ownerId: string; ownerKind: InboxItemOwnerKind }[],
+  owners: readonly { ownerConversationId: string | null }[],
 ): string[] {
   return [
     ...new Set(
       owners.flatMap((owner) =>
-        owner.ownerKind === "conversation" ? [owner.ownerId] : [],
+        owner.ownerConversationId ? [owner.ownerConversationId] : [],
       ),
     ),
   ];
 }
 
-const ownerColumns = {
-  ownerId: juniorInboxItems.ownerId,
-  ownerKind: juniorInboxItems.ownerKind,
-};
+// Read in RETURNING, so a change moves the detail version of its owner.
+function ownerColumns() {
+  return { ownerConversationId: inboxItemOwnerConversationId() };
+}
 
 /** An Inbox item with its assignees and linked Conversations. */
 export interface InboxItem {
@@ -123,13 +127,16 @@ export interface InboxItem {
   answer?: UserInputAnswer;
   assignedToEveryone: boolean;
   assignees: InboxItemAssignee[];
-  automationId?: string;
+  /**
+   * The Automation whose run added the item, read from the run of the
+   * owner Conversation. Its later runs can read and change the item.
+   */
+  addedByAutomationId?: string;
   closeReason?: string;
   closedAt?: Date;
   closedBy?: InboxItemAssignee;
   conversationIds: string[];
   createdAt: Date;
-  dedupeKey: string;
   /**
    * The stored root of the Conversation that owns the item. Only a search
    * sets it; unset means unknown, and null means none, such as for an
@@ -139,14 +146,15 @@ export interface InboxItem {
   id: string;
   kind: InboxItemKind;
   owner: InboxItemOwner;
-  request?: InboxItemRequest;
+  request?: InboxItemRequest | InboxItemNoticeRequest;
   status: InboxItemStatus;
-  subject?: InboxItemSubject;
-  /** Provider tenant of the Conversation that added the item. */
+  subject: InboxItemSubject;
+  /** Provider tenant of the item's owner. */
   tenant?: ProviderTenant;
   title: string;
   body: string;
   updatedAt: Date;
+  /** Live from the Destination of the item's owner. */
   visibility: InboxItemVisibility;
 }
 
@@ -157,13 +165,64 @@ export interface InboxItemContent {
   body: string;
   conversationIds: string[];
   kind: InboxItemKind;
-  request?: InboxItemRequest;
-  subject?: InboxItemSubject | undefined;
+  request?: InboxItemRequest | InboxItemNoticeRequest;
+  subject: InboxItemSubject;
   title: string;
-  visibility: InboxItemVisibility;
 }
 
-type ItemRow = typeof juniorInboxItems.$inferSelect;
+/**
+ * One stored item, with the Automation whose run owns it, and the question
+ * of a question item. The run of the owner Conversation names that
+ * Automation, so the item stores no copy.
+ */
+interface ItemRow {
+  addedByAutomationId: string | null;
+  item: typeof juniorInboxItems.$inferSelect;
+  owner: {
+    id: string | null;
+    kind: InboxItemOwnerKind;
+    tenantId: string | null;
+    tenantProvider: string | null;
+    visibility: InboxItemVisibility;
+  };
+  question: typeof juniorQuestions.$inferSelect | null;
+}
+
+// The fields of an item row (`ItemRow`).
+function itemRowFields() {
+  return {
+    addedByAutomationId: juniorAutomationRuns.automationId,
+    item: juniorInboxItems,
+    owner: {
+      id: inboxItemOwnerId(),
+      kind: inboxItemOwnerKind(),
+      tenantId: inboxItemTenantId(),
+      tenantProvider: inboxItemTenantProvider(),
+      visibility: inboxItemVisibility(),
+    },
+    question: juniorQuestions,
+  };
+}
+
+/** The join that reads the Automation of an item's owner run. */
+function ownerRun(): SQL {
+  return eq(
+    juniorAutomationRuns.conversationId,
+    inboxItemOwnerConversationId(),
+  );
+}
+
+/**
+ * Select item rows with their owner, the Automation of their owner run, and
+ * the question of a question item.
+ */
+function selectItemRows(db: JuniorDatabase) {
+  return db
+    .select(itemRowFields())
+    .from(juniorInboxItems)
+    .leftJoin(juniorAutomationRuns, ownerRun())
+    .leftJoin(juniorQuestions, itemQuestion);
+}
 
 const userPhotos = alias(juniorIdentities, "inbox_item_user_photos");
 
@@ -214,9 +273,13 @@ async function readUsers(
 
 async function hydrate(
   db: JuniorDatabase,
-  rows: readonly ItemRow[],
+  itemRows: readonly ItemRow[],
 ): Promise<InboxItem[]> {
-  if (rows.length === 0) return [];
+  // An item whose owner row is gone, such as a purged Conversation's, has
+  // nobody to show it to.
+  const owned = itemRows.filter((row) => row.owner.id !== null);
+  if (owned.length === 0) return [];
+  const rows = owned.map((row) => row.item);
   const ids = rows.map((row) => row.id);
   const [assigneeRows, conversationRows] = await Promise.all([
     db
@@ -232,7 +295,10 @@ async function hydrate(
     ...assigneeRows.map((row) => row.userId),
     ...rows.flatMap((row) => (row.closedByUserId ? [row.closedByUserId] : [])),
   ]);
-  return rows.map((row) => {
+  return rows.map((row, index) => {
+    const { addedByAutomationId, owner, question } = owned[index]!;
+    // A question item's content is its question's.
+    const content = question ?? row;
     const closedBy = row.closedByUserId
       ? users.get(row.closedByUserId)
       : undefined;
@@ -242,44 +308,32 @@ async function hydrate(
         .filter((assignee) => assignee.itemId === row.id)
         .flatMap((assignee) => users.get(assignee.userId) ?? [])
         .sort((a, b) => a.email.localeCompare(b.email)),
-      body: row.body,
+      body: content.body ?? "",
       conversationIds: conversationRows
         .filter((link) => link.itemId === row.id)
         .map((link) => link.conversationId)
         .sort(),
       createdAt: row.createdAt,
-      dedupeKey: row.dedupeKey,
       id: row.id,
       kind: row.kind,
-      owner: { id: row.ownerId, kind: row.ownerKind },
+      owner: { id: owner.id!, kind: owner.kind },
       status: row.status,
-      title: row.title,
+      subject: { id: row.subjectId, kind: row.subjectKind },
+      title: content.title ?? "",
       updatedAt: row.updatedAt,
-      visibility: row.visibility,
-      ...(row.answer ? { answer: row.answer } : undefined),
+      visibility: owner.visibility,
+      ...(content.answer ? { answer: content.answer } : undefined),
       ...(row.addedByTurnId ? { addedByTurnId: row.addedByTurnId } : undefined),
-      ...(row.automationId ? { automationId: row.automationId } : undefined),
+      ...(addedByAutomationId ? { addedByAutomationId } : undefined),
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
-      ...(row.request ? { request: row.request } : undefined),
-      ...(row.provider && row.providerTenantId
+      ...(content.request ? { request: content.request } : undefined),
+      ...(owner.tenantProvider && owner.tenantId
         ? {
             tenant: {
-              provider: row.provider,
-              providerTenantId: row.providerTenantId,
-            },
-          }
-        : undefined),
-      ...(row.subjectId
-        ? {
-            subject: {
-              id: row.subjectId,
-              ...(row.subjectTitle ? { title: row.subjectTitle } : undefined),
-              ...(row.subjectUrl ? { url: row.subjectUrl } : undefined),
-              ...(row.subjectTitleParts
-                ? { titleParts: row.subjectTitleParts }
-                : undefined),
+              provider: owner.tenantProvider,
+              providerTenantId: owner.tenantId,
             },
           }
         : undefined),
@@ -287,18 +341,29 @@ async function hydrate(
   });
 }
 
+function isQuestion(subject: InboxItemSubject): boolean {
+  return subject.kind === INBOX_SUBJECT_KINDS.question;
+}
+
+// A question item stores no content: its question holds it.
 function contentColumns(content: InboxItemContent) {
+  const own = !isQuestion(content.subject);
   return {
     assignedToEveryone: content.assignedToEveryone,
-    body: content.body,
+    body: own ? content.body : null,
     kind: content.kind,
+    request: own ? (content.request ?? null) : null,
+    subjectId: content.subject.id,
+    subjectKind: content.subject.kind,
+    title: own ? content.title : null,
+  };
+}
+
+function questionColumns(content: InboxItemContent) {
+  return {
+    body: content.body,
     request: content.request ?? null,
-    subjectId: content.subject?.id ?? null,
-    subjectTitle: content.subject?.title ?? null,
-    subjectUrl: content.subject?.url ?? null,
-    subjectTitleParts: content.subject?.titleParts ?? null,
     title: content.title,
-    visibility: content.visibility,
   };
 }
 
@@ -334,10 +399,7 @@ export async function getInboxItem(
   db: JuniorDatabase,
   id: string,
 ): Promise<InboxItem | undefined> {
-  const rows = await db
-    .select()
-    .from(juniorInboxItems)
-    .where(eq(juniorInboxItems.id, id));
+  const rows = await selectItemRows(db).where(eq(juniorInboxItems.id, id));
   return (await hydrate(db, rows))[0];
 }
 
@@ -367,96 +429,108 @@ export async function listReplyActionItems(
   db: JuniorDatabase,
   conversationId: string,
 ): Promise<InboxItem[]> {
-  const rows = await db
-    .select()
-    .from(juniorInboxItems)
-    .where(
-      and(
-        inboxItemOwnedByConversation(conversationId),
-        eq(juniorInboxItems.kind, "action"),
-        notLike(juniorInboxItems.dedupeKey, `${PLUGIN_INBOX_ITEM_KEY_PREFIX}%`),
-        notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
-        or(
-          eq(juniorInboxItems.status, "open"),
-          eq(juniorInboxItems.closeReason, INBOX_ITEM_REPLIED_REASON),
-        ),
+  const rows = await selectItemRows(db).where(
+    and(
+      inboxItemOwnedByConversation(conversationId),
+      eq(juniorInboxItems.kind, "action"),
+      eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.question),
+      or(
+        eq(juniorInboxItems.status, "open"),
+        eq(juniorInboxItems.closeReason, INBOX_ITEM_REPLIED_REASON),
       ),
-    );
+    ),
+  );
   return await hydrate(db, rows);
 }
 
 /**
- * Read the open Inbox item with one dedupe key in one provider tenant, if
- * there is one. Dedupe keys are unique only inside a tenant.
+ * Read the open Inbox item of one subject, if there is one. The subject
+ * names at most one open item.
  */
-export async function getOpenInboxItemByDedupeKey(
+export async function getOpenInboxItemBySubject(
   db: JuniorDatabase,
-  dedupeKey: string,
-  tenant: ProviderTenant | undefined,
+  subject: InboxItemSubject,
 ): Promise<InboxItem | undefined> {
-  const rows = await db
-    .select()
-    .from(juniorInboxItems)
-    .where(
-      and(
-        eq(juniorInboxItems.dedupeKey, dedupeKey),
-        eq(juniorInboxItems.status, "open"),
-        tenant
-          ? and(
-              eq(juniorInboxItems.provider, tenant.provider),
-              eq(juniorInboxItems.providerTenantId, tenant.providerTenantId),
-            )
-          : isNull(juniorInboxItems.provider),
-      ),
-    );
+  const rows = await selectItemRows(db).where(
+    and(
+      eq(juniorInboxItems.subjectKind, subject.kind),
+      eq(juniorInboxItems.subjectId, subject.id),
+      eq(juniorInboxItems.status, "open"),
+    ),
+  );
   return (await hydrate(db, rows))[0];
 }
 
 /**
- * Add one open Inbox item. Return undefined when another open item in the
- * same tenant already uses its dedupe key.
+ * Add one open Inbox item. Return undefined when another open item already
+ * has its subject. `owner` is the owner that the subject names: a question
+ * stores it as the Conversation that asked.
  */
 export async function insertInboxItem(
   db: JuniorDatabase,
   input: InboxItemContent & {
     addedByTurnId?: string;
-    automationId?: string;
-    dedupeKey: string;
     nowMs: number;
     owner: InboxItemOwner;
-    tenant?: ProviderTenant;
   },
 ): Promise<InboxItem | undefined> {
   const now = new Date(input.nowMs);
   const id = await db.transaction(async (tx) => {
+    if (isQuestion(input.subject)) {
+      if (input.owner.kind !== "conversation") {
+        throw new Error("Only a Conversation asks a question");
+      }
+      // A concurrent add of the same question adds it first.
+      const asked = await tx
+        .insert(juniorQuestions)
+        .values({
+          ...questionColumns(input),
+          conversationId: input.owner.id,
+          createdAt: now,
+          id: input.subject.id,
+          turnId: input.addedByTurnId ?? null,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+        .returning({ id: juniorQuestions.id });
+      if (!asked[0]) return undefined;
+    }
+    // The old owner columns stay for the release before this one, and a
+    // trigger writes them from this owner (migration
+    // `20261126154025_inbox_item_owners`). A later release drops both.
+    await tx.execute(
+      sql`select set_config('junior.inbox_item_owner_kind', ${input.owner.kind}, true), set_config('junior.inbox_item_owner_id', ${input.owner.id}, true)`,
+    );
     const inserted = await tx
       .insert(juniorInboxItems)
       .values({
         ...contentColumns(input),
-        ownerId: input.owner.id,
-        ownerKind: input.owner.kind,
         addedByTurnId: input.addedByTurnId ?? null,
-        automationId: input.automationId ?? null,
         createdAt: now,
-        dedupeKey: input.dedupeKey,
         id: randomUUID(),
-        provider: input.tenant?.provider ?? null,
-        providerTenantId: input.tenant?.providerTenantId ?? null,
         status: "open",
         updatedAt: now,
       })
-      // The only possible conflict is the open dedupe index. It is an
-      // expression index, so the statement names no target.
+      // The only possible conflict is the open subject index.
       .onConflictDoNothing()
       .returning({ id: juniorInboxItems.id });
     if (!inserted[0]) return undefined;
+    // The subject names the owner. An item whose subject names another
+    // owner, or none, such as a plugin subject with no owner row, would
+    // show to the wrong people or to nobody.
+    const [owned] = await tx
+      .select({ ownerId: inboxItemOwnerId() })
+      .from(juniorInboxItems)
+      .where(eq(juniorInboxItems.id, inserted[0].id));
+    if (owned?.ownerId !== input.owner.id) {
+      throw new Error(
+        `Inbox item subject ${input.subject.kind}:${input.subject.id} does not belong to ${input.owner.kind} ${input.owner.id}`,
+      );
+    }
     await replaceLinks(tx, inserted[0].id, input);
-    await touchConversationDetail(
-      tx,
-      ownerConversationIds([
-        { ownerId: input.owner.id, ownerKind: input.owner.kind },
-      ]),
-    );
+    if (input.owner.kind === "conversation") {
+      await touchConversationDetail(tx, [input.owner.id]);
+    }
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -479,6 +553,33 @@ export async function updateInboxItemContent(
   },
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
+    // Lock the open item first, so a close cannot land between the
+    // question write and the item write. A close locks in the same order.
+    const open = await tx
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems)
+      .where(
+        and(
+          eq(juniorInboxItems.id, input.id),
+          eq(juniorInboxItems.status, "open"),
+        ),
+      )
+      .for("update");
+    if (!open[0]) return false;
+    // The question changes first: the item write copies its content onto
+    // the item for the release before this one (`20261126154025_inbox_item_owners`).
+    if (isQuestion(input.subject)) {
+      await tx
+        .update(juniorQuestions)
+        .set({
+          ...questionColumns(input),
+          updatedAt: new Date(input.nowMs),
+          ...(input.addedByTurnId
+            ? { turnId: input.addedByTurnId }
+            : undefined),
+        })
+        .where(eq(juniorQuestions.id, input.subject.id));
+    }
     const updated = await tx
       .update(juniorInboxItems)
       .set({
@@ -494,7 +595,7 @@ export async function updateInboxItemContent(
           eq(juniorInboxItems.status, "open"),
         ),
       )
-      .returning({ ...ownerColumns, id: juniorInboxItems.id });
+      .returning({ ...ownerColumns(), id: juniorInboxItems.id });
     if (!updated[0]) return false;
     await replaceLinks(tx, updated[0].id, input);
     await touchConversationDetail(tx, ownerConversationIds(updated));
@@ -519,26 +620,42 @@ export async function closeInboxItem(
   },
 ): Promise<boolean> {
   const now = new Date(input.nowMs);
-  const updated = await db
-    .update(juniorInboxItems)
-    .set({
-      answer: input.answer ?? null,
-      closeReason: input.reason ?? null,
-      closedAt: now,
-      closedByUserId: input.closedByUserId ?? null,
-      status: input.status,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(juniorInboxItems.id, input.id),
-        eq(juniorInboxItems.status, "open"),
-      ),
-    )
-    .returning(ownerColumns);
+  const updated = await db.transaction(async (tx) => {
+    const closed = await tx
+      .update(juniorInboxItems)
+      .set({
+        // A question item's answer goes to its question. The item keeps a
+        // copy, because the release before this one reads it there.
+        answer: input.answer ?? null,
+        closeReason: input.reason ?? null,
+        closedAt: now,
+        closedByUserId: input.closedByUserId ?? null,
+        status: input.status,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(juniorInboxItems.id, input.id),
+          eq(juniorInboxItems.status, "open"),
+        ),
+      )
+      .returning({
+        ...ownerColumns(),
+        subjectId: juniorInboxItems.subjectId,
+        subjectKind: juniorInboxItems.subjectKind,
+      });
+    const item = closed[0];
+    if (input.answer && item?.subjectKind === INBOX_SUBJECT_KINDS.question) {
+      await tx
+        .update(juniorQuestions)
+        .set({ answer: input.answer, updatedAt: now })
+        .where(eq(juniorQuestions.id, item.subjectId));
+    }
+    await touchConversationDetail(tx, ownerConversationIds(closed));
+    return closed;
+  });
   if (updated.length === 0) return false;
   await clearInboxItemDeliveries(db, [input.id], input.nowMs);
-  await touchConversationDetail(db, ownerConversationIds(updated));
   return true;
 }
 
@@ -574,17 +691,16 @@ export async function dismissOpenInboxItems(
         "ids" in input
           ? inArray(juniorInboxItems.id, [...input.ids])
           : "automationId" in input
-            ? eq(juniorInboxItems.automationId, input.automationId)
+            ? inboxItemAddedByAutomation(input.automationId)
             : and(
-                eq(juniorInboxItems.ownerKind, "conversation"),
-                inArray(juniorInboxItems.ownerId, [
+                inArray(inboxItemOwnerConversationId(), [
                   ...input.ownerConversationIds,
                 ]),
-                isNull(juniorInboxItems.automationId),
+                not(inboxItemAddedByAnyAutomation()),
               ),
       ),
     )
-    .returning({ ...ownerColumns, id: juniorInboxItems.id });
+    .returning({ ...ownerColumns(), id: juniorInboxItems.id });
   await clearInboxItemDeliveries(
     db,
     dismissed.map((item) => item.id),
@@ -611,7 +727,7 @@ export async function takeInboxItem(
           eq(juniorInboxItems.status, "open"),
         ),
       )
-      .returning(ownerColumns);
+      .returning(ownerColumns());
     if (!updated[0]) return false;
     await tx
       .delete(juniorInboxItemAssignees)
@@ -755,7 +871,7 @@ function searchConditions(
     conditions.push(eq(juniorInboxItems.subjectId, filters.subjectId));
   }
   if (filters.automationId) {
-    conditions.push(eq(juniorInboxItems.automationId, filters.automationId));
+    conditions.push(inboxItemAddedByAutomation(filters.automationId));
   }
   if (filters.conversationId) {
     conditions.push(inboxItemLinkedTo(filters.conversationId));
@@ -768,7 +884,7 @@ function searchConditions(
     );
   }
   if (filters.ownerKind) {
-    conditions.push(eq(juniorInboxItems.ownerKind, filters.ownerKind));
+    conditions.push(eq(inboxItemOwnerKind(), filters.ownerKind));
   }
   if (filters.forUserId) {
     conditions.push(inboxItemForUser(filters.forUserId));
@@ -782,77 +898,10 @@ function searchConditions(
   if (filters.query) {
     const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
     conditions.push(
-      or(
-        ilike(juniorInboxItems.title, pattern),
-        ilike(juniorInboxItems.body, pattern),
-      )!,
+      or(ilike(inboxItemTitle, pattern), ilike(inboxItemBody, pattern))!,
     );
   }
   return conditions;
-}
-
-/**
- * SQL: the Inbox item needs the User now: `inboxItemNeedsUser`, and the
- * User has not snoozed it.
- */
-export function inboxItemNeedsUserNow(userId: string): SQL {
-  return and(inboxItemNeedsUser(userId), not(inboxItemSnoozedBy(userId)))!;
-}
-
-/**
- * Count the open Inbox items that need a User (`inboxItemNeedsUser`), one
- * row per subject URL, with the ones that ask with a form as `decisions`,
- * the Automation alerts as `automations`, and the To-dos as `todos`.
- * The nav count and the Inbox bundle counts all read this one query. A
- * snoozed item does not count until it wakes.
- */
-export async function countInboxItemsNeedingUserBySubject(
-  db: JuniorDatabase,
-  userId: string,
-): Promise<
-  Array<{
-    automations: number;
-    decisions: number;
-    subjectUrl: string | null;
-    todos: number;
-    total: number;
-  }>
-> {
-  return await db
-    .select({
-      automations:
-        sql<number>`count(*) filter (where ${eq(juniorInboxItems.ownerKind, "automation")})`.mapWith(
-          Number,
-        ),
-      decisions: count(juniorInboxItems.request),
-      subjectUrl: juniorInboxItems.subjectUrl,
-      todos:
-        sql<number>`count(*) filter (where ${like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`)})`.mapWith(
-          Number,
-        ),
-      total: count(),
-    })
-    .from(juniorInboxItems)
-    .where(inboxItemNeedsUserNow(userId))
-    .groupBy(juniorInboxItems.subjectUrl);
-}
-
-/**
- * Return a query for a token that changes when the open Inbox items that
- * need a User change. An item that is added or changed moves the newest
- * `updated_at`, and an item that closes, leaves the User, or is snoozed
- * changes the count. A new or ended snooze also changes the token.
- */
-export function inboxItemsNeedingUserVersionQuery(
-  db: JuniorDatabase,
-  userId: string,
-) {
-  return db
-    .select({
-      version: sql<string>`concat_ws(':', count(*), max(${juniorInboxItems.updatedAt}), ${inboxSnoozesVersion(userId)})`,
-    })
-    .from(juniorInboxItems)
-    .where(inboxItemNeedsUserNow(userId));
 }
 
 /**
@@ -873,7 +922,7 @@ export async function searchInboxItems(
 ): Promise<InboxItem[]> {
   const rows = await db
     .select({
-      item: juniorInboxItems,
+      ...itemRowFields(),
       ownerRootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorInboxItems)
@@ -881,6 +930,8 @@ export async function searchInboxItems(
       juniorConversations,
       inboxItemOwnedByConversation(juniorConversations.conversationId),
     )
+    .leftJoin(juniorAutomationRuns, ownerRun())
+    .leftJoin(juniorQuestions, itemQuestion)
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorInboxItems.status, "open")),
@@ -897,12 +948,11 @@ export async function searchInboxItems(
             : [desc(juniorInboxItems.updatedAt), desc(juniorInboxItems.id)]),
     )
     .limit(filters.limit);
-  const items = await hydrate(
-    db,
-    rows.map((row) => row.item),
+  const roots = new Map(
+    rows.map((row) => [row.item.id, row.ownerRootConversationId]),
   );
-  return items.map((item, index) => ({
+  return (await hydrate(db, rows)).map((item) => ({
     ...item,
-    ownerRootConversationId: rows[index]!.ownerRootConversationId,
+    ownerRootConversationId: roots.get(item.id) ?? null,
   }));
 }

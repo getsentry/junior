@@ -70,7 +70,6 @@ import { bashToolDefinition } from "@/chat/tools/sandbox/bash";
 import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
 import { writeFileToolDefinition } from "@/chat/tools/sandbox/write-file";
-import { searchConversationsToolDefinition } from "@/chat/tools/search-conversations";
 import { searchConversationEventsToolDefinition } from "@/chat/tools/search-conversation-events";
 import { searchEventTypesToolDefinition } from "@/chat/tools/search-event-types";
 import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";
@@ -205,15 +204,6 @@ const CORE_TOOLS = {
   },
   searchConversationEvents: always(searchConversationEventsToolDefinition),
   readConversationEvent: always(readConversationEventToolDefinition),
-  // Only a Turn whose `only` list names it lists it, such as a Lead's.
-  searchConversations: {
-    when: ({ listedTools }) =>
-      listedTools.only?.includes("searchConversations") === true,
-    definition: ({ platform }) =>
-      searchConversationsToolDefinition(
-        platform === "slack" ? slackConversationSearchChannelFilter : undefined,
-      ),
-  },
   createPreview: RUN_BUILT,
   viewImage: RUN_BUILT,
   imageGenerate: RUN_BUILT,
@@ -234,7 +224,12 @@ const CORE_TOOLS = {
     when: hasChildAgents,
     definition: () => archiveAgentToolDefinition,
   },
-  listAgents: { definition: listAgentsToolDefinition },
+  listAgents: {
+    definition: ({ platform }) =>
+      listAgentsToolDefinition(
+        platform === "slack" ? slackConversationSearchChannelFilter : undefined,
+      ),
+  },
   messageAgent: always(messageAgentToolDefinition),
   [REPLY_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reply,

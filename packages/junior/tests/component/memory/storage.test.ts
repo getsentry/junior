@@ -119,6 +119,7 @@ function memoryHeartbeatContext(args: {
     inboxItems: { forConversation: vi.fn() },
     state: memoryState,
     tasks: { start: vi.fn() },
+    users: { findLinkedIdentityIds: vi.fn(), readIdentity: vi.fn() },
   };
 }
 

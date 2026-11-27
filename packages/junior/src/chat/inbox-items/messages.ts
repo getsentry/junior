@@ -25,6 +25,7 @@ import { juniorConversations } from "@/db/schema";
 import type { InboxItemChangeRecord } from "./change-record";
 import { isPluginInboxItem } from "./access";
 import type { InboxItem } from "./store";
+import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /** One change to an Inbox item that linked Conversations learn about. */
 export type InboxItemChange =
@@ -61,14 +62,15 @@ export function renderInboxItemMessage(
   change: InboxItemChange,
 ): string {
   const label = `inbox item "${item.title}" (${item.id})`;
-  const question = item.request ? [`Question: ${item.request.question}`] : [];
+  const request = inboxItemQuestion(item.request);
+  const question = request ? [`Question: ${request.question}`] : [];
   switch (change.kind) {
     case "submitted":
       return [
         `${personName(change.user)} answered ${label}. The item is done.`,
         "",
-        item.request && item.answer
-          ? formatUserInputAnswer(item.request, item.answer)
+        request && item.answer
+          ? formatUserInputAnswer(request, item.answer)
           : "(no answer)",
       ].join("\n");
     case "dismissed":

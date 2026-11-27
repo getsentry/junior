@@ -1,13 +1,12 @@
-import { createHash } from "node:crypto";
 import {
   and,
   eq,
   gt,
+  gte,
   inArray,
   isNotNull,
   isNull,
   notExists,
-  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -20,11 +19,10 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   inboxItemRequestSchema,
   type InboxItemRequest,
-} from "@/chat/inbox-items/evidence";
+} from "@/chat/inbox-items/request";
 import { USER_INPUT_LIMITS } from "@/chat/inbox-items/user-input-request";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
 import { mapBounded } from "@/chat/fan-out";
-import { AUTOMATION_INBOX_ITEM_KEY_PREFIX } from "@/chat/inbox-items/access";
 import { automationCreatorUserId } from "@/chat/inbox-items/assignees";
 import {
   dismissOpenInboxItems,
@@ -32,12 +30,12 @@ import {
   updateInboxItemContent,
   type InboxItemContent,
 } from "@/chat/inbox-items/store";
+import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAutomationRuns,
   juniorAutomations,
-  juniorDestinations,
   juniorInboxItems,
 } from "@/db/schema";
 
@@ -55,6 +53,7 @@ import {
 
 type AutomationRow = {
   kind: "scheduled" | "event";
+  lastRunEndedAtMs: number | null;
   lastRunError: string | null;
   lastRunId: string | null;
   lastRunStatus: string | null;
@@ -113,7 +112,11 @@ function stepsRequest(
 function automationAlert(row: AutomationRow):
   | {
       body: string;
-      identity: unknown[];
+      /**
+       * When the cause of the alert began, such as the end of the run that
+       * failed. A person who closed the same text since then saw this alert.
+       */
+      sinceMs?: number;
       steps?: AutomationAlertStepLabel[];
     }
   | undefined {
@@ -130,36 +133,30 @@ function automationAlert(row: AutomationRow):
       body: reason
         ? `Blocked: ${reason} Fix the problem, then resume it.`
         : "Blocked. Fix the problem, then resume it.",
-      identity: ["blocked", row.statusReason, row.lastRunId],
+      ...(row.lastRunEndedAtMs === null
+        ? undefined
+        : { sinceMs: row.lastRunEndedAtMs }),
     };
   }
   const problems = row.kind === "event" ? triggerProblems(row.record) : [];
   if (problems.length > 0) {
     return {
       body: `Trigger unavailable: ${problems.join(" ")} Update the trigger.`,
-      identity: ["trigger", ...problems],
     };
   }
   if (row.lastRunStatus === "failed" || row.lastRunStatus === "blocked") {
     const error = row.lastRunError ? oneLine(row.lastRunError) : undefined;
     return {
       body: `Last run ${row.lastRunStatus}${error ? `: ${error}` : "."}`,
-      identity: ["run", row.lastRunId],
+      ...(row.lastRunEndedAtMs === null
+        ? undefined
+        : { sinceMs: row.lastRunEndedAtMs }),
       // Only a scheduled Automation can run now. An event one runs when a
       // matching event arrives.
       steps: row.kind === "scheduled" ? ["Run again", "Pause"] : ["Pause"],
     };
   }
   return undefined;
-}
-
-/** The dedupe key of one alert. The same alert keeps the same key. */
-function alertKey(automationId: string, identity: unknown[]): string {
-  const hash = createHash("sha256")
-    .update(JSON.stringify(identity))
-    .digest("hex")
-    .slice(0, 16);
-  return `${AUTOMATION_INBOX_ITEM_KEY_PREFIX}${automationId}:${hash}`;
 }
 
 /**
@@ -181,6 +178,12 @@ export async function syncAutomationAlert(
         alertRecoveredAtMs: juniorAutomations.alertRecoveredAtMs,
         channelId: juniorAutomations.channelId,
         kind: juniorAutomations.kind,
+        lastRunEndedAtMs: sql<
+          number | null
+        >`coalesce(${juniorAutomationRuns.completedAtMs}, ${juniorAutomationRuns.startedAtMs})`.mapWith(
+          (value: string | number | null) =>
+            value === null ? null : Number(value),
+        ),
         lastRunError: juniorAutomationRuns.errorMessage,
         lastRunId: juniorAutomations.lastRunId,
         lastRunStatus: juniorAutomationRuns.status,
@@ -202,32 +205,17 @@ export async function syncAutomationAlert(
     const needed = automationAlert(row);
     // Nobody can see an alert without a User, so it needs none.
     const alert = creatorId ? needed : undefined;
-    const key = alert ? alertKey(automationId, alert.identity) : undefined;
+    // The Automation is the subject, so it has at most one open alert. A
+    // newer alert changes that item.
     const owned = and(
-      eq(juniorInboxItems.ownerKind, "automation"),
-      eq(juniorInboxItems.ownerId, automationId),
+      eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.automation),
+      eq(juniorInboxItems.subjectId, automationId),
     );
-    const stale = await tx
-      .select({ id: juniorInboxItems.id })
-      .from(juniorInboxItems)
-      .where(
-        and(
-          owned,
-          eq(juniorInboxItems.status, "open"),
-          key ? notInArray(juniorInboxItems.dedupeKey, [key]) : undefined,
-        ),
-      );
-    await dismissOpenInboxItems(tx, {
-      ids: stale.map((item) => item.id),
-      nowMs,
-      reason: alert
-        ? "A newer alert replaced it."
-        : "The Automation no longer needs attention.",
-    });
     // Since the Automation last recovered, a person dismissed one of its
     // alerts, so they stay hidden, or a person closed this same alert, such
-    // as with Run again, so it stays closed. An alert that core closed
-    // hides nothing.
+    // as with Run again, so it stays closed. The same alert has the same
+    // text, and the person closed it after its cause began. An alert that
+    // core closed hides nothing.
     const [closedByPerson] = await tx
       .select({ id: juniorInboxItems.id })
       .from(juniorInboxItems)
@@ -240,12 +228,33 @@ export async function syncAutomationAlert(
             : gt(juniorInboxItems.closedAt, new Date(row.alertRecoveredAtMs)),
           or(
             eq(juniorInboxItems.status, "dismissed"),
-            key ? eq(juniorInboxItems.dedupeKey, key) : undefined,
+            alert
+              ? and(
+                  eq(juniorInboxItems.body, alert.body),
+                  alert.sinceMs === undefined
+                    ? undefined
+                    : gte(juniorInboxItems.closedAt, new Date(alert.sinceMs)),
+                )
+              : undefined,
           ),
         ),
       )
       .limit(1);
     const hidden = closedByPerson !== undefined;
+    // An open alert that is not the one needed now is stale. A hidden
+    // alert shows nothing, so an open alert with other text closes too,
+    // such as a Blocked alert after the Automation is active again.
+    if (!alert || hidden) {
+      const stale = await tx
+        .select({ id: juniorInboxItems.id })
+        .from(juniorInboxItems)
+        .where(and(owned, eq(juniorInboxItems.status, "open")));
+      await dismissOpenInboxItems(tx, {
+        ids: stale.map((item) => item.id),
+        nowMs,
+        reason: "The Automation no longer needs attention.",
+      });
+    }
     // Recovered: active, its last run succeeded, and it needs no alert, so
     // its trigger is available. A paused Automation needs no alert, but its
     // problem can still be there, so a pause is no recovery.
@@ -258,38 +267,24 @@ export async function syncAutomationAlert(
         .where(eq(juniorAutomations.id, automationId));
       return;
     }
-    if (!alert || !key || !creatorId || hidden) return;
+    if (!alert || !creatorId || hidden) return;
     const [open] = await tx
       .select({
         body: juniorInboxItems.body,
         id: juniorInboxItems.id,
         title: juniorInboxItems.title,
-        visibility: juniorInboxItems.visibility,
       })
       .from(juniorInboxItems)
-      .where(
-        and(
-          owned,
-          eq(juniorInboxItems.dedupeKey, key),
-          eq(juniorInboxItems.status, "open"),
-        ),
-      );
-    const [destination] = await tx
-      .select({ visibility: juniorDestinations.visibility })
-      .from(juniorDestinations)
-      .where(
-        and(
-          eq(juniorDestinations.provider, "slack"),
-          eq(juniorDestinations.providerTenantId, row.teamId),
-          eq(juniorDestinations.providerDestinationId, row.channelId),
-        ),
-      );
+      .where(and(owned, eq(juniorInboxItems.status, "open")));
+    // The Automation's Destination decides who can see its alerts
+    // (`inbox-items/owner.ts`).
     const content: InboxItemContent = {
       assignedToEveryone: false,
       assigneeUserIds: [creatorId],
       body: alert.body,
       conversationIds: [],
       kind: "action",
+      subject: { id: automationId, kind: INBOX_SUBJECT_KINDS.automation },
       ...(alert.steps
         ? { request: stepsRequest(alert.body, alert.steps) }
         : undefined),
@@ -301,19 +296,10 @@ export async function syncAutomationAlert(
             ? "Scheduled automation"
             : "Event automation",
         ),
-      // The Automation's Destination decides who can see its alerts.
-      visibility: destination?.visibility === "public" ? "public" : "private",
     };
     if (open) {
-      // A private alert stays private, as a private Conversation's items do
-      // when it becomes public.
-      if (open.visibility === "private") content.visibility = "private";
-      // A rename or a private Destination changes the open alert.
-      if (
-        open.title !== content.title ||
-        open.body !== content.body ||
-        open.visibility !== content.visibility
-      ) {
+      // A rename changes the open alert.
+      if (open.title !== content.title || open.body !== content.body) {
         await updateInboxItemContent(tx, {
           ...content,
           id: open.id,
@@ -324,10 +310,8 @@ export async function syncAutomationAlert(
     }
     await insertInboxItem(tx, {
       ...content,
-      dedupeKey: key,
       nowMs,
       owner: { id: automationId, kind: "automation" },
-      tenant: { provider: "slack", providerTenantId: row.teamId },
     });
   });
 }
@@ -360,15 +344,15 @@ export async function syncAutomationAlerts(
       : [],
   );
   const alerted = await db
-    .selectDistinct({ id: juniorInboxItems.ownerId })
+    .selectDistinct({ id: juniorInboxItems.subjectId })
     .from(juniorInboxItems)
     .innerJoin(
       juniorAutomations,
-      eq(juniorAutomations.id, juniorInboxItems.ownerId),
+      eq(juniorAutomations.id, juniorInboxItems.subjectId),
     )
     .where(
       and(
-        eq(juniorInboxItems.ownerKind, "automation"),
+        eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.automation),
         eq(juniorAutomations.kind, "event"),
         // An open alert, or a dismiss that hides alerts until a recovery
         // that a fixed trigger can bring without a run. Only an active
@@ -409,8 +393,11 @@ export async function syncAutomationAlerts(
             .from(juniorInboxItems)
             .where(
               and(
-                eq(juniorInboxItems.ownerKind, "automation"),
-                eq(juniorInboxItems.ownerId, juniorAutomations.id),
+                eq(
+                  juniorInboxItems.subjectKind,
+                  INBOX_SUBJECT_KINDS.automation,
+                ),
+                eq(juniorInboxItems.subjectId, juniorAutomations.id),
               ),
             ),
         ),

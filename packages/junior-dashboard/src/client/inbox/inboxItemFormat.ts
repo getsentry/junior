@@ -1,7 +1,9 @@
 import * as z from "zod";
 import {
+  inboxItemQuestion,
   normalizeUserInputAnswer,
   type InboxItemPayload,
+  type UserInputRequest,
 } from "@sentry/junior/api/schema";
 
 import { conversationPath } from "../conversations/conversationRoutes";
@@ -57,7 +59,9 @@ export function inboxItemStatusLabel(item: InboxItemPayload): string {
   if (item.status === "open") {
     if (item.kind === "notice") return "Notice";
     // A plugin ask waits on a step outside Junior, so it has no question.
-    return item.request ? "Needs an answer" : "Waiting on you";
+    return inboxItemQuestion(item.request)
+      ? "Needs an answer"
+      : "Waiting on you";
   }
   return item.status === "done" ? "Done" : "Dismissed";
 }
@@ -114,7 +118,7 @@ export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
   return (
     item.status === "open" &&
     item.kind === "action" &&
-    Boolean(item.request) &&
+    Boolean(inboxItemQuestion(item.request)) &&
     item.canAnswer &&
     !item.snoozedByViewer
   );
@@ -125,7 +129,7 @@ export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
  * the note.
  */
 export function answerRows(
-  request: NonNullable<InboxItemPayload["request"]>,
+  request: UserInputRequest,
   answer: NonNullable<InboxItemPayload["answer"]>,
 ): Array<{ label: string; value: string }> {
   const normalized = normalizeUserInputAnswer(request, answer);
@@ -144,7 +148,7 @@ export function answerRows(
  * note, so a transcript row can show it after the question.
  */
 export function answerLine(
-  request: NonNullable<InboxItemPayload["request"]>,
+  request: UserInputRequest,
   answer: NonNullable<InboxItemPayload["answer"]>,
 ): string {
   return answerRows(request, answer)

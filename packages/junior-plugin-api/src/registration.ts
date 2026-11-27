@@ -6,6 +6,7 @@ import {
 } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
 import type { PluginImageSource } from "./images";
+import type { PluginInboxSubjectKind } from "./inbox-items";
 import type { PluginManifest } from "./manifest";
 import {
   objectLinkFilterSchema,
@@ -31,6 +32,8 @@ export type PluginRegistrationInput = {
   hooks?: PluginHooks;
   /** Images that this plugin serves through the Junior image proxy. */
   images?: PluginImageSource;
+  /** The kinds of Inbox items that this plugin adds. */
+  inboxSubjects?: PluginInboxSubjectKind[];
   manifest: PluginManifest;
   model?: PluginModelConfig;
   /** URLs that this plugin shows as object cards. */
@@ -44,6 +47,16 @@ export type PluginRegistrationInput = {
 export interface PluginRegistration extends PluginRegistrationInput {}
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
+const INBOX_SUBJECT_KIND_RE = /^[a-z][a-z0-9_]*$/;
+const SQL_IDENTIFIER_RE = /^[a-z][a-z0-9_]{0,62}$/;
+// Core Inbox subject kinds. A plugin kind starts with the plugin name, so a
+// plugin with one of these names could take over core items.
+const CORE_INBOX_SUBJECT_NAMESPACES = new Set([
+  "automation",
+  "question",
+  "reply",
+  "todo",
+]);
 const USER_PAGE_ID_RE = /^[a-z][a-z0-9-]*$/;
 
 /** Define one Junior plugin registration for app and build-time wiring. */
@@ -78,6 +91,11 @@ export function defineJuniorPlugin(
       'Plugin registration name "junior" is reserved for native host events.',
     );
   }
+  if (CORE_INBOX_SUBJECT_NAMESPACES.has(name)) {
+    throw new Error(
+      `Plugin registration name "${name}" is reserved for core Inbox items.`,
+    );
+  }
   if (
     typeof manifest.displayName !== "string" ||
     !manifest.displayName.trim()
@@ -108,6 +126,7 @@ export function defineJuniorPlugin(
     }
   }
   validateObjectLinks(name, plugin.objectLinks);
+  validateInboxSubjects(name, plugin.inboxSubjects);
   if (
     plugin.images !== undefined &&
     typeof plugin.images.resolve !== "function"
@@ -225,5 +244,46 @@ function validateObjectLinks(
         );
       }
     }
+  }
+}
+
+function validateInboxSubjects(
+  name: string,
+  kinds: PluginInboxSubjectKind[] | undefined,
+): void {
+  if (kinds === undefined) return;
+  if (!Array.isArray(kinds)) {
+    throw new Error(`Plugin "${name}" inboxSubjects must be an array.`);
+  }
+  const seen = new Set<string>();
+  for (const subject of kinds) {
+    if (
+      typeof subject?.kind !== "string" ||
+      !INBOX_SUBJECT_KIND_RE.test(subject.kind) ||
+      typeof subject.label !== "string" ||
+      !subject.label.trim() ||
+      (subject.ask !== undefined && typeof subject.ask !== "function")
+    ) {
+      throw new Error(
+        `Plugin "${name}" inbox subjects need a snake_case kind and a label.`,
+      );
+    }
+    const owner = subject.owner;
+    if (
+      ![owner?.table, owner?.subjectId, owner?.conversationId].every(
+        (identifier) =>
+          typeof identifier === "string" && SQL_IDENTIFIER_RE.test(identifier),
+      )
+    ) {
+      throw new Error(
+        `Plugin "${name}" inbox subject "${subject.kind}" needs an owner table, subjectId column, and conversationId column in snake_case.`,
+      );
+    }
+    if (seen.has(subject.kind)) {
+      throw new Error(
+        `Plugin "${name}" has duplicate inbox subject kind "${subject.kind}".`,
+      );
+    }
+    seen.add(subject.kind);
   }
 }

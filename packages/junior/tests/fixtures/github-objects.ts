@@ -205,7 +205,7 @@ export function checkRuns(counts: Record<string, number>) {
 }
 
 /** Card and patch queries name pull requests by repository and number. */
-interface GraphqlQuery {
+export interface GraphqlQuery {
   numbers: number[];
   operationName: string;
 }
@@ -257,6 +257,16 @@ export function stubGraphql(answers: {
     }),
   );
   return queries;
+}
+
+/**
+ * The merge state and check patch queries. A page read also asks for the
+ * card of an entry with no review decision, such as a REST read.
+ */
+export function patchQueries(queries: GraphqlQuery[]): GraphqlQuery[] {
+  return queries.filter(
+    (query) => query.operationName === "PullRequestHeadFacts",
+  );
 }
 
 /** A card query result for one open pull request. */

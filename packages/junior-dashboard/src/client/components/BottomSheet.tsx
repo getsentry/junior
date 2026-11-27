@@ -1,40 +1,89 @@
-import { cn } from "../styles";
-import type { ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
-import { useSheet } from "./ui/useSheet";
+// A sheet opens only after a tap, so base-ui's drawer loads with the first
+// open instead of with the page.
+const BottomSheetContent = lazy(() =>
+  import("./BottomSheetContent").then((module) => ({
+    default: module.BottomSheetContent,
+  })),
+);
 
-/** Show app details in the shadcn sheet with a visible title and close control. */
-export function BottomSheet(props: {
+/** Props of a bottom sheet. */
+export type BottomSheetProps = {
+  /** Classes for the scrolling body, such as its padding. */
+  bodyClassName?: string;
   children: ReactNode;
   label: string;
-  title?: string | undefined;
-  size?: "full" | "content";
+  /**
+   * False shuts the sheet with its motion, as when the item in it closes.
+   * `onClose` runs once it is shut.
+   */
+  open?: boolean;
+  /** Runs once the sheet is shut, however it shut. */
   onClose(): void;
-}) {
-  const sheet = useSheet(props.onClose);
+  /** `full`, the default, is a fixed tall sheet; `content` fits its content. */
+  size?: "full" | "content";
+  /**
+   * Mount the sheet's layer where the sheet renders, not at the page's end.
+   * A sheet that mounts by itself, as on a resize, then stays behind a
+   * sheet or drawer that is already open.
+   */
+  stayBehind?: boolean;
+  /** The visible title. Defaults to `label`. */
+  title?: ReactNode;
+};
+
+/**
+ * The phone sheet. It rises from the bottom edge over the page, with a
+ * visible title, a close button, and a body that scrolls by itself. A swipe
+ * down, a tap on the dimmed page, Esc, or the close button shuts it, and
+ * nothing else does, so a tap inside it never loses it. Mount it to open
+ * it. A sheet opened from inside another sheet stacks in front of it.
+ */
+export function BottomSheet(props: BottomSheetProps) {
   return (
-    <Sheet {...sheet.rootProps}>
-      <SheetContent
-        {...sheet.contentProps}
-        aria-label={props.label}
-        side="bottom"
-        className={cn(
-          "mx-auto w-full max-w-2xl gap-0 rounded-t-2xl outline-none",
-          props.size === "content"
-            ? "max-h-[85dvh]"
-            : "max-h-full data-[side=bottom]:h-[85dvh]",
-        )}
-      >
-        <SheetHeader className="border-b border-dashboard-border">
-          <SheetTitle className="break-words">
-            {props.title ?? props.label}
-          </SheetTitle>
-        </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
-          {props.children}
-        </div>
-      </SheetContent>
-    </Sheet>
+    <Suspense fallback={null}>
+      <BottomSheetContent {...props} />
+    </Suspense>
+  );
+}
+
+/**
+ * A `BottomSheet` for an open state that its owner keeps, such as a list's
+ * open row on a phone. It shows while `open`, and through its motion once
+ * `open` turns false. `onDismiss` runs when the reader shuts it while it is
+ * still open, so the owner can close its state. When `open` turns true
+ * again during the motion, as when a failed action restores its row, a new
+ * sheet opens once the old one is shut.
+ */
+export function ToggleSheet(
+  props: Omit<BottomSheetProps, "onClose" | "open"> & {
+    onDismiss(): void;
+    open: boolean;
+  },
+) {
+  const { onDismiss, open, ...sheet } = props;
+  const [shown, setShown] = useState(false);
+  // Each opening gets its own sheet, since a shutting sheet cannot reopen.
+  const [opening, setOpening] = useState(0);
+  // Whether the owner shut this sheet, not the reader.
+  const [ownerShut, setOwnerShut] = useState(false);
+  if (open && !shown) {
+    setShown(true);
+    setOpening(opening + 1);
+  }
+  if (!open && shown && !ownerShut) setOwnerShut(true);
+  if (!shown) return null;
+  return (
+    <BottomSheet
+      {...sheet}
+      key={opening}
+      onClose={() => {
+        setShown(false);
+        setOwnerShut(false);
+        if (!ownerShut) onDismiss();
+      }}
+      open={open && !ownerShut}
+    />
   );
 }

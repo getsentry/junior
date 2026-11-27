@@ -17,7 +17,7 @@ vi.mock("@vercel/sandbox", () => ({
 
 import { closeDb, getDb } from "@/chat/db";
 import { getChatConfig } from "@/chat/config";
-import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config/function-duration";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { getSandboxProvider } from "@/chat/sandbox/provider";
 import * as profile from "@/chat/sandbox/snapshot/profile";

@@ -342,26 +342,33 @@ function useBuildInboxData(input: {
   };
   const conversationRows = rowsByTime(inboxBundles(awake));
 
-  // In flight: every pin and every busy Conversation, whose tree waits on
-  // the viewer, works, or watches for an Event or Timer. Pins come first,
-  // busy or not, in the viewer's order, then the busy Conversations in
+  // In flight: every pinned or busy root that is not a Lead. A busy tree
+  // waits on the viewer, works, or watches for an Event or Timer. A child,
+  // such as a Space's Thread, shows in its Space, not here. Pins come
+  // first, busy or not, in the viewer's order, then the busy roots in
   // `attentionOrder`, as a Space's Threads show them. Collapsed, every pin
-  // shows, each one click away, and busy Conversations fill the rows left,
-  // up to IN_FLIGHT_LIMIT.
+  // shows, each one click away, and busy roots fill the rows left, up to
+  // IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
     conversations.filter((conversation) => conversation.pinnedAt),
   );
+  const inFlightRoot = (conversation: Conversation) =>
+    !conversation.parentConversationId && conversation.kind !== "lead";
+  const inFlightPinned = pinned.filter(inFlightRoot);
   const busy = (conversation: Conversation) => {
     const state = conversationDisplayState(conversation);
     return state !== undefined && state !== "pinned";
   };
   const busyRows = attentionOrder(
     conversations.filter(
-      (conversation) => busy(conversation) && !conversation.pinnedAt,
+      (conversation) =>
+        inFlightRoot(conversation) &&
+        busy(conversation) &&
+        !conversation.pinnedAt,
     ),
   );
   const inFlightFor = (unpinnedBusy: Conversation[]) => [
-    ...pinned,
+    ...inFlightPinned,
     ...unpinnedBusy,
   ];
 
@@ -410,8 +417,10 @@ function useBuildInboxData(input: {
     inFlight: inFlightFor(busyRows),
     /** Collapsed In flight: every pin, and busy rows up to the limit. */
     inFlightCollapsed: inFlightFor(
-      busyRows.slice(0, Math.max(0, IN_FLIGHT_LIMIT - pinned.length)),
+      busyRows.slice(0, Math.max(0, IN_FLIGHT_LIMIT - inFlightPinned.length)),
     ),
+    /** The pins that In flight shows, in the viewer's stored order. */
+    inFlightPinned,
     isPinned,
     // The open asks load a page at a time too, as the list scrolls.
     itemPages: scrollPages(itemsQuery),

@@ -9,6 +9,7 @@ import {
   GITHUB_API,
   GITHUB_REPO,
   linkGitHubMember,
+  patchQueries,
   pullRequest,
   sendGitHubWebhook,
   stubGitHubApp,
@@ -111,9 +112,12 @@ describe("GitHub pull request cache refresh", () => {
 
     vi.setSystemTime(start + 60_000);
     await tasks.deliver();
-    // The page query has no card for #34, so it read on its own. Then one
-    // query reads only the merge state and checks, not the whole entry.
+    // The page query has no card for #34, so it read on its own. Its entry
+    // has no review decision, so the next page asks for the card again.
+    // Then one query reads only the merge state and checks, not the whole
+    // entry.
     expect(queries).toEqual([
+      { numbers: [34], operationName: "PullRequestCards" },
       { numbers: [34], operationName: "PullRequestCards" },
       { numbers: [34], operationName: "PullRequestHeadFacts" },
     ]);
@@ -142,7 +146,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     vi.setSystemTime(start + 120_000);
     await tasks.deliver();
-    expect(queries).toHaveLength(3);
+    expect(patchQueries(queries)).toHaveLength(2);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 1, passed: 5, pending: 0 },
       mergeable: false,
@@ -245,14 +249,20 @@ describe("GitHub pull request cache refresh", () => {
       });
     }
 
-    // Webhooks keep pull request entries fresh for an hour.
+    // Webhooks keep pull request entries fresh for an hour. They have no
+    // review decision, so the first page asks GitHub for it once.
     vi.setSystemTime(start + 30 * 60_000);
     await read(...urls);
-    expect([reads, queries]).toEqual([[], []]);
+    await read(...urls);
+    expect([reads, queries]).toEqual([
+      [],
+      [{ numbers: [34, 35, 36], operationName: "PullRequestCards" }],
+    ]);
 
-    vi.setSystemTime(start + 61 * 60_000);
+    vi.setSystemTime(start + 91 * 60_000);
     const cards = (await read(...urls)).objects;
     expect(queries).toEqual([
+      { numbers: [34, 35, 36], operationName: "PullRequestCards" },
       { numbers: [34, 35, 36], operationName: "PullRequestCards" },
     ]);
     expect(reads).toEqual([]);
@@ -699,8 +709,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     vi.setSystemTime(start + 6 * 60_000);
     expect(await tasks.deliver()).toBe(1);
-    // One card read, then six patch reads.
-    expect(queries).toHaveLength(7);
+    expect(patchQueries(queries)).toHaveLength(6);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       mergeable: true,
     });
@@ -810,15 +819,17 @@ describe("GitHub pull request cache refresh", () => {
     });
     vi.setSystemTime(start + 120_000);
     await tasks.deliver();
-    expect(queries).toHaveLength(3);
+    expect(patchQueries(queries)).toHaveLength(2);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 0, passed: 4, pending: 0 },
       mergeable: true,
     });
   });
-  it("keeps known checks and merge state when a webhook on the same head says mergeable null", async () => {
+  it("keeps known checks, merge state and review when a webhook on the same head says mergeable null", async () => {
     stubGitHubApp();
-    const queries = stubGraphql({ cards: [cardNode(34)] });
+    const queries = stubGraphql({
+      cards: [{ ...cardNode(34), reviewDecision: "APPROVED" }],
+    });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
@@ -845,9 +856,11 @@ describe("GitHub pull request cache refresh", () => {
     expect(queries.map((query) => query.operationName)).toEqual([
       "PullRequestCards",
     ]);
+    // Only the page read has the review decision, and webhooks keep it.
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 0, passed: 2, pending: 0 },
       mergeable: true,
+      review: "approved",
     });
   });
   it("keeps known checks and patches the merge state after a base retarget", async () => {

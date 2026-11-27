@@ -11,6 +11,8 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { automationPath } from "../format";
 import { DashboardApiError } from "../http";
 import { useAutomationLifecycle } from "../pages/automations/useAutomationLifecycle";
+import { ToggleSheet } from "../components/BottomSheet";
+import { useMobileLayout } from "../layoutMedia";
 import { cn } from "../styles";
 import {
   INBOX_ROW_DETAIL_CLASS,
@@ -56,7 +58,8 @@ function attentionStatus(automation: AutomationListItem): string {
  * Automations page, on the same columns as a Conversation row: its icon in
  * the dot's place, then its title, its status where the summary goes, and
  * "Automation" with the ages. A click expands it in place with its
- * attention details (`AutomationAttentionDetails`). It leaves when the
+ * attention details (`AutomationAttentionDetails`), or opens them in a sheet
+ * on a phone. It leaves when the
  * Automation is fixed or resumed. In the Inbox, the Automation's alert is a
  * Inbox item instead, with the same details.
  */
@@ -75,20 +78,39 @@ export function InboxAutomationRow(props: {
   const status = attentionStatus(automation);
   const detail = attentionDetail(automation);
   const regionId = `inbox-automation-${automation.id}`;
+  // A phone opens the row in a sheet, and the row itself stays closed.
+  const mobile = useMobileLayout();
+  const expanded = props.expanded && !mobile;
+  const attention = (
+    <div
+      aria-label={`${automation.title}: attention`}
+      className={cn(
+        // The sheet's header already rules it off.
+        mobile ? "grid min-w-0 p-4" : INBOX_ROW_DETAIL_CLASS,
+        "gap-3 font-sans text-sm",
+      )}
+      id={regionId}
+      role="region"
+    >
+      <AutomationAttentionDetails automation={automation}>
+        {props.children}
+      </AutomationAttentionDetails>
+    </div>
+  );
   return (
     <li
-      className={inboxCardClass(props.expanded)}
-      data-expanded={props.expanded || undefined}
+      className={inboxCardClass(expanded)}
+      data-expanded={expanded || undefined}
     >
       <button
         aria-controls={regionId}
-        aria-expanded={props.expanded}
+        aria-expanded={expanded}
         className={cn(
           inboxHeadGridClass(),
           "w-full cursor-pointer border-0 bg-transparent pb-3 text-left font-sans text-inherit transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           // Open, the header ends flat on the detail's rule, inside the
           // card. A closed card lights as a whole instead.
-          props.expanded && "rounded-b-none hover:bg-dashboard-fill-hover",
+          expanded && "rounded-b-none hover:bg-dashboard-fill-hover",
         )}
         data-inbox-row={props.rowKey}
         onClick={props.onToggle}
@@ -127,17 +149,17 @@ export function InboxAutomationRow(props: {
           Automation
         </span>
       </button>
-      {props.expanded ? (
-        <div
-          aria-label={`${automation.title}: attention`}
-          className={cn(INBOX_ROW_DETAIL_CLASS, "gap-3 font-sans text-sm")}
-          id={regionId}
-          role="region"
+      {mobile ? (
+        <ToggleSheet
+          label={automation.title}
+          onDismiss={props.onToggle}
+          open={props.expanded}
+          size="content"
         >
-          <AutomationAttentionDetails automation={automation}>
-            {props.children}
-          </AutomationAttentionDetails>
-        </div>
+          {attention}
+        </ToggleSheet>
+      ) : expanded ? (
+        attention
       ) : null}
     </li>
   );

@@ -545,6 +545,7 @@ describe("merge conflict check on webhook events", () => {
           createdAt: new Date(pushedAt),
           identityId: "identity-jane",
           number: 946,
+          pullRequestId: "9460",
           repositoryFullName: "getsentry/junior",
           updatedAt: new Date(pushedAt),
         });
@@ -560,8 +561,8 @@ describe("merge conflict check on webhook events", () => {
     const resume = {
       choice: "Resume",
       conversationId: "slack:C1:1.0",
-      dedupeKey: "merge-conflict:getsentry/junior#946",
       itemId: "item-1",
+      subject: { id: "9460", kind: "merge_conflict" },
       nowMs: pushedAt + day + hour,
     };
 
@@ -574,7 +575,7 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + day + hour, "2");
       // Nothing is left to close.
       await checkAt(pushedAt + day + 2 * hour, "2");
-      expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#946"]);
+      expect(h.closedNotices).toEqual(["merge_conflict:9460"]);
 
       // The closed item was not dismissed, so when the conflict comes back
       // and the fix still did not land, Junior asks again.
@@ -587,7 +588,7 @@ describe("merge conflict check on webhook events", () => {
       await askedInSlack();
       await fixThatDoesNotLand();
       expect(h.notices).toHaveLength(1);
-      h.dismiss("merge-conflict:getsentry/junior#946");
+      h.dismiss("merge_conflict:9460");
 
       mergeability[946] = "MERGEABLE";
       await checkAt(pushedAt + day + hour, "1");
@@ -706,19 +707,13 @@ describe("merge conflict check on webhook events", () => {
         {
           conversationId: "slack:C1:1.0",
           notice: {
+            askedIdentityIds: ["identity-jane"],
             assigneeIdentityIds: ["identity-jane"],
             body: "#946 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
             choices: [{ label: "Resume" }],
-            dedupeKey: "merge-conflict:getsentry/junior#946",
             subject: {
-              id: "https://github.com/getsentry/junior/pull/946",
-              title: "fix(conflicts): Pull request 946 (#946)",
-              titleParts: {
-                scope: "conflicts",
-                text: "Pull request 946",
-                type: "Fix",
-              },
-              url: "https://github.com/getsentry/junior/pull/946",
+              id: "9460",
+              kind: "merge_conflict",
             },
             title: "Merge conflict · #946",
           },
@@ -727,7 +722,7 @@ describe("merge conflict check on webhook events", () => {
 
       // A Dismiss tells the plugin nothing. Junior asked once, so it does
       // not ask again, also after activity by a person.
-      h.dismiss("merge-conflict:getsentry/junior#946");
+      h.dismiss("merge_conflict:9460");
       reviewAt(pushedAt + 2 * day, "User");
       await checkAt(pushedAt + 2 * day + hour, "1");
       expect(h.notices).toHaveLength(1);
@@ -800,6 +795,40 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + day + 4 * hour, "7");
       expect(fixedShas()).toEqual(["1", "5", "6"]);
       expect(h.notices).toHaveLength(1);
+    });
+
+    it("Resume reads the current repository name from the code index", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      // The opener's row keeps the name from when Junior opened it.
+      await fixture
+        .db()
+        .update(juniorGitHubPullRequestRequesters)
+        .set({ repositoryFullName: "getsentry/junior-old" });
+      pullRequest.head.sha = "1".repeat(40);
+      await h.answer(resume);
+      expect(
+        conflicts().filter((event) =>
+          event.eventKey.endsWith(":resume:item-1"),
+        ),
+      ).toEqual([
+        expect.objectContaining({ identifier: "getsentry/junior#946" }),
+        expect.objectContaining({ identifier: "getsentry/junior" }),
+      ]);
+    });
+
+    it("lets the next conflict ask again when Resume finds no pull request", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      // No pull request with the item's id was opened in this Conversation,
+      // so the Resume starts no fix. Core closed the item already.
+      const published = conflicts().length;
+      await h.answer({ ...resume, conversationId: "slack:C9:9.0" });
+      expect(conflicts()).toHaveLength(published);
+      await checkAt(pushedAt + day + hour + 10 * minute, "1");
+      expect(h.notices).toHaveLength(2);
     });
 
     it("adds no item for a conflict check that runs while Resume reads the pull request", async () => {

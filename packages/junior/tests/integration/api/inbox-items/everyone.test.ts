@@ -3,6 +3,12 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { createSpace } from "@/chat/spaces/store";
+import { leaveConversation } from "@/api/conversations/subscription";
+import { juniorConversationParticipants } from "@/db/schema";
 import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { buildSlackInboxItemCard } from "@/chat/slack/inbox-item-card";
@@ -14,8 +20,8 @@ import {
 
 const CONVERSATION_ID = "slack:CPUB:1.000001";
 
-/** A person signed in to the dashboard, linked to Slack workspace T123. */
-async function user(email: string): Promise<User> {
+/** A person signed in to the dashboard, linked to a Slack workspace. */
+async function user(email: string, tenantId = "T123"): Promise<User> {
   const resolved = await resolveViewerUserFromSql(getDb(), email);
   if (!resolved) throw new Error(`no user for ${email}`);
   return {
@@ -25,7 +31,7 @@ async function user(email: string): Promise<User> {
         id: `identity:slack:${email}`,
         provider: "slack",
         providerSubjectId: `U-${email}`,
-        providerTenantId: "T123",
+        providerTenantId: tenantId,
       },
     ],
   };
@@ -53,7 +59,7 @@ async function addAsk(input: {
     assigneeUserIds: input.assigneeUserIds,
     body: "It waits on a person.",
     conversationIds: [CONVERSATION_ID],
-    dedupeKey: input.key,
+    subject: { id: input.key, kind: "question" },
     kind: "action",
     nowMs: input.nowMs,
     request: {
@@ -67,9 +73,7 @@ async function addAsk(input: {
       ],
       question: "Approve or reject this entry?",
     },
-    tenant: { provider: "slack", providerTenantId: "T123" },
     title: `Ask ${input.key}`,
-    visibility: "public",
   });
   if (!created) throw new Error(`ask ${input.key} was not added`);
   return created.id;
@@ -115,13 +119,154 @@ describe("inbox item with no assignees", () => {
       conversations: [{ items: [{ title: "Ask b" }] }],
     });
 
+    // Everyone stays in the owner's workspace: a person of another
+    // workspace does not get these items in their Inbox.
+    const carl = await user("carl@example.com", "T999");
+    expect(
+      (await api(fixture, carl)("?for=viewer&sort=waiting")).items,
+    ).toEqual([]);
+
     // Its Slack card names Everyone, as the card of an item for Everyone does.
     const item = await getInboxItem(getDb(), unassigned);
     if (!item) throw new Error("the ask is missing");
-    expect(buildSlackInboxItemCard(item).blocks[1]).toMatchObject({
+    expect(buildSlackInboxItemCard(item, undefined).blocks[1]).toMatchObject({
       elements: expect.arrayContaining([
         { type: "mrkdwn", text: "For Everyone" },
       ]),
     });
+  });
+});
+
+describe("inbox item in a private Conversation", () => {
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("cannot go to Everyone yet, and is only for the people who can see the Conversation", async () => {
+    const fixture = await createConversationFixture();
+    const privateId = "slack:CPRIV:1.000001";
+    await getConversationStore().recordActivity({
+      conversationId: privateId,
+      destination: { platform: "slack", teamId: "T123", channelId: "CPRIV" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "slack",
+      visibility: "private",
+    });
+    const ana = await user("ana@example.com");
+    const ben = await user("ben@example.com");
+    // Ana takes part in the private Conversation. Ben does not.
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date("2026-10-01T12:00:00.000Z"),
+        rootConversationId: privateId,
+        userId: ana.id,
+      });
+    const add = createAddInboxItemTool(
+      {
+        conversationId: privateId,
+        resolveActorIdentity: async () => ({
+          identity: { id: `identity:${ana.id}` } as any,
+          user: ana,
+        }),
+        source: { kind: "slack" } as any,
+      },
+      createSlackInboxItemToolServices(() => fixture.queue),
+    ) as any;
+    const ask = (assignees?: string[]) =>
+      add.execute(
+        add.prepareArguments({
+          kind: "action",
+          title: "Pick a rollout day",
+          body: "The deploy waits on a day.",
+          ...(assignees ? { assignees } : undefined),
+          request: {
+            question: "Which day?",
+            fields: [
+              {
+                id: "day",
+                kind: "choice",
+                label: "Day",
+                options: [{ label: "Monday" }, { label: "Tuesday" }],
+              },
+            ],
+          },
+        }),
+        {} as any,
+      );
+    // The old visibility check stays for the release before this one, so a
+    // private item cannot name Everyone yet.
+    await expect(ask(["everyone"])).rejects.toThrow(
+      "cannot be assigned to Everyone",
+    );
+    const added = await ask();
+    expect(added.item).toMatchObject({ visibility: "private" });
+
+    // With no assignees named, the item goes to Ana, who asked.
+    const anas = await api(fixture, ana)("?for=viewer&sort=waiting");
+    expect(anas.items).toMatchObject([{ id: added.item.id, canAct: true }]);
+    expect(await api(fixture, ana)(`/${added.item.id}`)).toMatchObject({
+      id: added.item.id,
+      canAct: true,
+    });
+    // Ben cannot see the Conversation, so the item is not for him.
+    expect((await api(fixture, ben)("?for=viewer&sort=waiting")).items).toEqual(
+      [],
+    );
+    expect((await api(fixture, ben)(`/${added.item.id}`)).id).toBeUndefined();
+  });
+});
+
+describe("inbox item in a private Space", () => {
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("is up for grabs for the Space's members, not for a member who left it", async () => {
+    const fixture = await createConversationFixture();
+    const nowMs = Date.parse("2026-10-01T12:00:00.000Z");
+    const ana = await user("ana@example.com");
+    const ben = await user("ben@example.com");
+    const cy = await user("cy@example.com");
+    // Ana's private Space has Cy as a member. Ben joined it and left.
+    const space = await createSpace({
+      creator: ana,
+      description: null,
+      name: "Launch",
+      visibility: "private",
+    });
+    const lead = await getSpaceLead(space.id);
+    const privateId = lead.conversationId;
+    // A Space's members are its Lead's Participants.
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values(
+        [cy, ben].map((member) => ({
+          lastMessageAt: new Date(nowMs),
+          rootConversationId: privateId,
+          userId: member.id,
+        })),
+      );
+    await leaveConversation(ben, privateId);
+    const created = await insertInboxItem(getDb(), {
+      owner: { id: privateId, kind: "conversation" },
+      assignedToEveryone: false,
+      assigneeUserIds: [],
+      body: "It waits on a person.",
+      conversationIds: [privateId],
+      subject: { id: "space-ask", kind: "question" },
+      kind: "notice",
+      nowMs,
+      title: "Launch notes",
+    });
+    if (!created) throw new Error("the item was not added");
+
+    const list = async (viewer: User) =>
+      (await api(fixture, viewer)("?for=viewer&sort=waiting")).items.map(
+        (item: { id: string }) => item.id,
+      );
+    expect(await list(ana)).toEqual([created.id]);
+    expect(await list(cy)).toEqual([created.id]);
+    expect(await list(ben)).toEqual([]);
   });
 });

@@ -1,11 +1,11 @@
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import type { Conversation } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
 import { ownsLocation } from "@/chat/conversations/kind-behavior";
 import { topLevelConversation } from "@/chat/conversations/sql/listed";
+import { conversationAncestorsOrSelf } from "@/chat/conversations/sql/subtree";
 
 /** True when the Conversation delivers to a Location of its own. */
 export function canPauseConversationDelivery(
@@ -67,29 +67,28 @@ export async function resumeConversationDelivery(
 
 /**
  * True while this Conversation is detached from its Location. Only a
- * Conversation with its own Location stores the pause, so a child agent
- * reads its root's.
+ * top-level Conversation with its own Location stores the pause, so a child
+ * agent reads the pause of its top-level ancestor. A Lead's pause covers
+ * only the Lead: its children, such as Slack Conversations in its Space,
+ * own their Locations.
  */
 export async function isConversationDeliveryPaused(
   conversationId: string,
 ): Promise<boolean> {
-  const root = alias(juniorConversations, "root");
   const [row] = await getSqlExecutor()
     .db()
-    // A Conversation with its own Location, such as a Slack Conversation in
-    // a Space, stores its own pause.
-    .select({
-      pausedAt: sql<Date | null>`coalesce(${juniorConversations.deliveryPausedAt}, ${root.deliveryPausedAt})`,
-    })
+    .select({ id: juniorConversations.conversationId })
     .from(juniorConversations)
-    .innerJoin(
-      root,
-      eq(
-        root.conversationId,
-        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+    .where(
+      and(
+        sql`${juniorConversations.conversationId} IN ${conversationAncestorsOrSelf(sql`${conversationId}`)}`,
+        isNotNull(juniorConversations.deliveryPausedAt),
+        or(
+          eq(juniorConversations.conversationId, conversationId),
+          sql`${juniorConversations.kind} is distinct from 'lead'`,
+        ),
       ),
     )
-    .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1);
-  return Boolean(row?.pausedAt);
+  return Boolean(row);
 }

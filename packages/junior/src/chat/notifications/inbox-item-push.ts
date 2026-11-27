@@ -15,7 +15,7 @@ import {
   recordRepeatInboxItemPush,
   type InboxItemDeliverySkipReason,
 } from "@/chat/inbox-items/deliveries";
-import { REPLY_NOTICE_KEY_PREFIX } from "@/chat/inbox-items/access";
+import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 import {
   getInboxItem,
   isInboxItemOpen,
@@ -284,7 +284,7 @@ function wakePushUrl(item: InboxItem, userId: string): string | undefined {
   }
   if (item.kind === "action") return getDashboardInboxItemLink(item.id);
   const [conversationId] = item.conversationIds;
-  if (item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX) && conversationId) {
+  if (item.subject.kind === INBOX_SUBJECT_KINDS.reply && conversationId) {
     return getDashboardConversationLink(conversationId);
   }
   return undefined;

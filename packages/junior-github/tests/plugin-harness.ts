@@ -16,6 +16,12 @@ import { conversationChangesThrough } from "./conversation-changes";
 import type { GitHubFixture } from "./github-db";
 
 /** A signed GitHub webhook delivery. */
+
+/** The key of a plugin item's subject in the harness: `<kind>:<id>`. */
+export function subjectKey(subject: { id: string; kind: string }): string {
+  return `${subject.kind}:${subject.id}`;
+}
+
 export function signedRequest(input: {
   body: unknown;
   deliveryId: string;
@@ -79,6 +85,9 @@ export function createPluginHarness(
   fixture: GitHubFixture,
   /** The people that the plugin reads. Nobody, unless a test sets them. */
   users: PluginStartedTaskContext["users"] = {
+    async findLinkedIdentityIds() {
+      return new Map();
+    },
     async readIdentity() {
       return undefined;
     },
@@ -123,8 +132,8 @@ export function createPluginHarness(
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
   const { codeChanges } = fixture.codeIndex;
-  /** Dedupe keys of the open inbox items. */
-  const openNotices = new Set<string>();
+  /** The assignees of each open inbox item, by subject. */
+  const openNotices = new Map<string, string[]>();
   const events: EventPublisher = {
     async hasMatch(candidates) {
       return candidates.some(
@@ -153,14 +162,26 @@ export function createPluginHarness(
             failures.upsert -= 1;
             throw new Error("The Inbox is down");
           }
-          // Like core, an open item with the key only gets new content.
-          if (openNotices.has(notice.dedupeKey)) return;
-          openNotices.add(notice.dedupeKey);
+          // Like core: a person joins only when asked, and the item
+          // closes when nobody is left. `notices` records each item that
+          // opens and each ask that pushes.
+          const key = subjectKey(notice.subject);
+          const on = openNotices.get(key);
+          const assignees = notice.assigneeIdentityIds.filter(
+            (id) => notice.askedIdentityIds.includes(id) || on?.includes(id),
+          );
+          if (assignees.length === 0) {
+            if (openNotices.delete(key)) recorded.closedNotices.push(key);
+            return;
+          }
+          openNotices.set(key, assignees);
+          if (on && notice.askedIdentityIds.length === 0) return;
           recorded.notices.push({ conversationId, notice });
         },
         async close(input) {
-          if (!openNotices.delete(input.dedupeKey)) return false;
-          recorded.closedNotices.push(input.dedupeKey);
+          const key = subjectKey(input.subject);
+          if (!openNotices.delete(key)) return false;
+          recorded.closedNotices.push(key);
           return true;
         },
       };
@@ -283,6 +304,7 @@ export function createPluginHarness(
           recorded.startedTasks.push(input);
         },
       },
+      users,
     });
   }
 
@@ -329,11 +351,11 @@ export function createPluginHarness(
   async function answer(input: {
     choice: string;
     conversationId: string;
-    dedupeKey: string;
     itemId: string;
     nowMs: number;
+    subject: { id: string; kind: string };
   }): Promise<void> {
-    expect(openNotices.delete(input.dedupeKey)).toBe(true);
+    expect(openNotices.delete(subjectKey(input.subject))).toBe(true);
     await githubPlugin().hooks!.inboxItemAnswered!({
       ...input,
       cache,
@@ -371,9 +393,12 @@ export function createPluginHarness(
     });
   }
 
-  /** A person's Dismiss: core closes the item and tells the plugin nothing. */
-  const dismiss = (dedupeKey: string) => {
-    openNotices.delete(dedupeKey);
+  /**
+   * A person's Dismiss of an item that only they are on: core closes it and
+   * tells the plugin nothing.
+   */
+  const dismiss = (key: string) => {
+    openNotices.delete(key);
   };
 
   return {

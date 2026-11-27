@@ -37,7 +37,6 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchChannelPort } from "@/chat/slack/tool-support/conversation-search";
-import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import {
@@ -292,26 +291,6 @@ const STATIC_TOOL_BINDERS = {
         : undefined,
     ),
   readConversationEvent: (run) => createReadConversationEventTool(run.context),
-  searchConversations: (run) =>
-    createSearchConversationsTool({
-      ...(run.slack
-        ? {
-            channels: createSlackConversationSearchChannelPort(
-              run.slack.teamId,
-            ),
-          }
-        : undefined),
-      conversationId: run.context.conversationId,
-      embedder: createConversationEmbedder({
-        cost: {
-          conversationId: run.context.conversationId,
-          ...(run.context.turnId ? { turnId: run.context.turnId } : undefined),
-        },
-        operation: "conversation_search_embedding",
-      }),
-      resolveUserId: async () =>
-        (await run.context.resolveActorIdentity?.())?.user?.id,
-    }),
   startAgent: (run) =>
     run.context.spawnAgent
       ? createStartAgentTool(run.context.spawnAgent, run.modelCost)
@@ -328,6 +307,13 @@ const STATIC_TOOL_BINDERS = {
   // child agent that is too deep to start child agents.
   listAgents: (run) =>
     createListAgentsTool({
+      ...(run.slack
+        ? {
+            channels: createSlackConversationSearchChannelPort(
+              run.slack.teamId,
+            ),
+          }
+        : undefined),
       conversationId: run.context.conversationId,
       embedder: createConversationEmbedder({
         cost: {

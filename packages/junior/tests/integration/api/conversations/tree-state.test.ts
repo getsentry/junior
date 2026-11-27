@@ -9,11 +9,15 @@ import {
   conversationFeedSchema,
   spaceListSchema,
 } from "@/api/schema";
+import { getSpaceLead } from "@/chat/lead/conversation";
 import { createSpace } from "@/chat/spaces/store";
 import { Hono } from "hono";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { conversationSubtree } from "@/chat/conversations/sql/subtree";
-import { juniorConversations } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
@@ -104,17 +108,16 @@ describe("conversation tree state", () => {
     // An item for another person is not shown to the viewer.
     const other = await resolveViewerUser("bob@example.com");
     const forOther = await insertInboxItem(getDb(), {
+      subject: { id: "for-other", kind: "question" },
       owner: { id: asking.childConversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
       conversationIds: [asking.childConversationId],
-      dedupeKey: "for-other",
       kind: "action",
       nowMs: Date.now(),
       request: REQUEST,
       title: "Bob's call",
-      visibility: "public",
     });
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",
@@ -288,7 +291,7 @@ describe("conversation tree state", () => {
     });
   });
 
-  it("needs the starter only for the Conversation's own wait on them", async () => {
+  it("needs the starter for a wait on them anywhere in the tree", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordDashboardRoot(
       fixture.conversationStore,
@@ -300,11 +303,24 @@ describe("conversation tree state", () => {
       kind: "thread",
       parentConversationId: conversationId,
     });
-    // A Thread's unread answer waits on the starter in the Thread only.
+    // A Thread's unread answer waits on the starter, so its parent needs
+    // them too, until they read it.
     await recordAnswer(threadId, 1);
     await expect(fixture.tree(threadId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
+    await expect(fixture.tree(conversationId)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+    const read = await fixture.request(
+      `${detailPath(threadId)}/read-position`,
+      {
+        body: JSON.stringify({ lastReadSeq: await lastSeq(threadId) }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(read.status).toBe(200);
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
     await recordAnswer(conversationId, 1);
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
@@ -460,17 +476,16 @@ describe("conversation tree state", () => {
     );
     const other = await resolveViewerUser("bob@example.com");
     await insertInboxItem(getDb(), {
+      subject: { id: "token-for-other", kind: "question" },
       owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
       conversationIds: [conversationId],
-      dedupeKey: "token-for-other",
       kind: "action",
       nowMs: Date.now(),
       request: REQUEST,
       title: "Bob's call",
-      visibility: "public",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
@@ -575,11 +590,13 @@ describe("conversation tree state", () => {
       "/",
       createJuniorApi({ conversationWorkQueue: fixture.queue }),
     );
-    const joined = await bobApp.request(
-      `http://localhost/api/spaces/${space.id}/members/me`,
-      { method: "PUT" },
-    );
-    expect(joined.status).toBe(200);
+    // A Space's members are the Participants of its Lead.
+    const lead = await getSpaceLead(space.id);
+    await getDb().insert(juniorConversationParticipants).values({
+      lastMessageAt: new Date(),
+      rootConversationId: lead.conversationId,
+      userId: bob!.id,
+    });
     const spaceRow = async (request: (path: string) => Promise<Response>) => {
       const response = await request("/api/spaces");
       expect(response.status).toBe(200);
