@@ -80,8 +80,9 @@ const OTHER_STEPS = [
 ];
 
 /**
- * Return the files that differ from the merge base with origin/main, or
- * `undefined` when git cannot find that base, such as in a shallow clone.
+ * Return the files that differ from the merge base with origin/main,
+ * deleted files included, or `undefined` when git cannot find that base,
+ * such as in a shallow clone.
  */
 function changedFiles() {
   const git = (...args) =>
@@ -96,7 +97,7 @@ function changedFiles() {
   } catch {
     return undefined;
   }
-  return git("diff", "--name-only", "--diff-filter=d", "-z", base)
+  return git("diff", "--name-only", "-z", base)
     .split("\0")
     .filter(Boolean);
 }
@@ -106,7 +107,9 @@ function oxlintStep(changed) {
   if (!changed || changed.some((file) => OXLINT_CONFIG.test(file))) {
     return OXLINT;
   }
-  const files = changed.filter((file) => OXLINT_FILE.test(file));
+  const files = changed.filter(
+    (file) => OXLINT_FILE.test(file) && fs.existsSync(path.join(ROOT, file)),
+  );
   if (files.length === 0) return undefined;
   // An ignored file, such as an eval fixture, can be the only change.
   return { ...OXLINT, args: ["--no-error-on-unmatched-pattern", ...files] };
