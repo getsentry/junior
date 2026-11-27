@@ -152,7 +152,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
   async complete(input: CompleteConversationTurnInput): Promise<void> {
     await this.events.append(input.conversationId, [
       {
-        idempotencyKey: `turn:${input.turnId}:terminal`,
+        idempotencyKey: turnTerminalKey(input.turnId),
         createdAtMs: input.createdAtMs,
         data: {
           type: "turn_completed",
@@ -168,7 +168,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
   async fail(input: FailConversationTurnInput): Promise<void> {
     await this.events.append(input.conversationId, [
       {
-        idempotencyKey: `turn:${input.turnId}:terminal`,
+        idempotencyKey: turnTerminalKey(input.turnId),
         createdAtMs: input.createdAtMs,
         data: {
           type: "turn_failed",
@@ -206,7 +206,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
     };
     const stored = await this.events.loadByIdempotencyKey(
       input.conversationId,
-      `turn:${input.turnId}:terminal`,
+      turnTerminalKey(input.turnId),
     );
     if (stored?.data.type === "turn_failed") {
       const { failureCode } = stored.data;
@@ -265,6 +265,14 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
       },
     );
   }
+}
+
+/**
+ * The idempotency key of a Turn's `turn_completed` or `turn_failed` event.
+ * The two share it, so a Turn ends once.
+ */
+export function turnTerminalKey(turnId: string): string {
+  return `turn:${turnId}:terminal`;
 }
 
 /** Return the Turn lifecycle that records Conversation events. */

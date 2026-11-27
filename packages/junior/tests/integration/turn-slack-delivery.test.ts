@@ -52,6 +52,7 @@ describe("deployment Delivery", () => {
       }),
     ]);
     expect(posts[0]?.params["text"]).toContain("Three.");
+    // A reply in an existing thread starts no thread.
     expect(sent).toEqual({ providerMessageId: expect.any(String) });
   });
 
