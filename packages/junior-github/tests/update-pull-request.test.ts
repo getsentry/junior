@@ -255,7 +255,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
       message: expect.stringContaining(
-        "- Remove check results, test plans, test coverage notes, and commands.",
+        "- Remove how your own runs of tests, lint, or CI on this change went",
       ),
     });
     expect(fetch).not.toHaveBeenCalled();

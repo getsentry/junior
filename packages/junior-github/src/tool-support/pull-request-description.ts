@@ -14,8 +14,10 @@ const MISSING_REASON_FIX = "Say why the change is needed.";
 const DESCRIPTION_CHECKS = [
   {
     question:
-      "Does the description report how tests, lint, typecheck, or CI went when the author ran them, passing or failing, locally or in CI, or describe a test plan or test coverage, including what has no tests? Text about what the product does with such commands does not count.",
-    fix: "Remove check results, test plans, test coverage notes, and commands. Reviewers see checks on the pull request.",
+      "Does the description report how tests, lint, typecheck, or CI went on this change when the author ran them, passing or failing, locally or in CI, or describe a test plan or test coverage, including what has no tests? Text about what the product does with such commands does not count. Evidence of the failure that the change fixes, such as failed runs before the change, how often a flaky test failed, or a reproduction of the bug, does not count.",
+    // Name what to keep: told only to remove check results, agents also cut
+    // the failing runs that say why a test or CI fix is needed.
+    fix: "Remove how your own runs of tests, lint, or CI on this change went, and test plans or coverage notes. Reviewers see checks on the pull request. Keep the evidence of the failure that the change fixes.",
   },
   {
     question:
@@ -39,7 +41,7 @@ const DESCRIPTION_CHECKS = [
  * tools, so the first draft can pass without a rejection.
  */
 export const PULL_REQUEST_BODY_RULES =
-  "Say what changes and why. Omit your own test or CI results, test plans or coverage, work logs, and the request or chat behind it. Describing what a test tool checks is fine. The runtime appends attribution and the footer.";
+  "Say what changes and why. Omit your test or CI runs of the change, test plans or coverage, work logs, and the chat behind it. Failed runs it fixes and what a test tool checks are fine. Attribution and the footer are added.";
 
 /** List the fixes that a pull request description needs. Empty means it passes. */
 export async function pullRequestDescriptionFixes(

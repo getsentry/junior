@@ -219,7 +219,7 @@ export const plugins = defineJuniorPlugins([
 - **Required:** No
 - **Environment override:** None
 
-`pullRequestDescriptionChecks` checks the description before `github_createPullRequest` or `github_updatePullRequest` writes it. The decision model answers a few yes/no questions about it. The tool rejects a description that has check results, a test plan or test coverage notes, a work log, or talk about the request, or that does not say why the change is needed. The agent gets the fixes and sends the description again.
+`pullRequestDescriptionChecks` checks the description before `github_createPullRequest` or `github_updatePullRequest` writes it. The decision model answers a few yes/no questions about it. The tool rejects a description that has the author's own check results for the change, a test plan or test coverage notes, a work log, or talk about the request, or that does not say why the change is needed. Evidence of the failure that the change fixes, such as a failed CI run, passes. The agent gets the fixes and sends the description again.
 
 </details>
 

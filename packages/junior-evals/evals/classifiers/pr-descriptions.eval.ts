@@ -3,7 +3,8 @@ import { describeEval } from "vitest-evals";
 import { pullRequestDescriptionCheckEvals } from "../../src/pr-description-check-harness";
 
 // Drafts and finals of getsentry/junior PRs. A draft is the first body the
-// agent wrote. A final is the body after review, without the footer.
+// agent wrote. A redraft is the body it sent after the check rejected the
+// draft. A final is the body after review, without the footer.
 function body(name: string): string {
   return readFileSync(
     new URL(`./fixtures/pr-descriptions/${name}.md`, import.meta.url),
@@ -11,7 +12,7 @@ function body(name: string): string {
   );
 }
 
-const CHECKS = "check results";
+const CHECKS = "your own runs";
 const WORK_LOG = "work log";
 const CONVERSATION = "conversation";
 const REASON = "why the change is needed";
@@ -62,6 +63,24 @@ describeEval(
         await run({ body: body(`pr-${pr}-final`), reject: false });
       });
     }
+
+    it("when a flaky test fix also reports its local runs before and after the fix, it rejects the checks", async ({
+      run,
+    }) => {
+      await run({ body: body("pr-4063-draft"), reject: [CHECKS] });
+    });
+
+    it("when a flaky test fix links the CI runs that failed before it, it accepts it", async ({
+      run,
+    }) => {
+      await run({ body: body("pr-4063-redraft"), reject: false });
+    });
+
+    it("when a flaky test fix shows how the race reproduces, it accepts it", async ({
+      run,
+    }) => {
+      await run({ body: body("pr-4056-draft"), reject: false });
+    });
 
     it("when a body has a test plan, it rejects the checks", async ({
       run,
