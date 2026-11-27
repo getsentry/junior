@@ -1,5 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull, not } from "drizzle-orm";
-import { topLevelConversation } from "@/chat/conversations/sql/listed";
+import { and, asc, desc, eq, isNotNull, isNull, notInArray } from "drizzle-orm";
 import { isThread } from "@/chat/conversations/kind-behavior";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -71,11 +70,11 @@ export async function readFeedThreadRecords(
     )
     .where(
       and(
-        // A child Thread: a `thread` with a parent, other than a Lead's
-        // child, which is top-level Space work.
+        // A child Thread below a listed row. A Space's feed lists the
+        // Lead's children, which have a parent too.
         eq(juniorConversations.kind, "thread"),
         isNotNull(juniorConversations.parentConversationId),
-        not(topLevelConversation()),
+        notInArray(juniorConversations.conversationId, rootIds),
         isNull(juniorConversations.archivedAt),
       ),
     )

@@ -343,6 +343,16 @@ describe("user search API", () => {
       "carla@example.com",
       "casey@example.com",
     ]);
+    // Only a Participant may Invite, so the owner joins first.
+    const joined = await owner.app.request(
+      "http://localhost/api/conversations/slack:C2:1.0/subscription",
+      {
+        body: JSON.stringify({ subscribed: true }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      },
+    );
+    expect(joined.status).toBe(200);
     for (const user of found) {
       const invited = await owner.app.request(
         "http://localhost/api/conversations/slack:C2:1.0/invites",

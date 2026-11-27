@@ -18,7 +18,6 @@ export {
   type SetupPostgresTemplateOptions,
 } from "./template";
 export {
-  cleanupPostgresWorkerDatabases,
   createEmptyPostgresDatabase,
   createPostgresTransactionFixture,
   getPostgresWorkerDatabaseUrl,

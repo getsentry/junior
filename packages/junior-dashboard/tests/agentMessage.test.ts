@@ -86,6 +86,30 @@ describe("receivedAgentMessage", () => {
     });
   });
 
+  it("reads a Parent message as a message from the parent", () => {
+    const role = "user" as const;
+    expect(
+      receivedAgentMessage({
+        fromParentAgent: true,
+        parts: [{ text: "Check the cache too.", type: "text" }],
+        role,
+      }),
+    ).toEqual({
+      direction: "received",
+      text: "Check the cache too.",
+      to: "parent",
+    });
+    // A Watch Event that reached the child is not one.
+    expect(
+      receivedAgentMessage({
+        eventType: "pull_request.checks.failed",
+        fromParentAgent: true,
+        parts: [{ text: "x", type: "text" }],
+        role,
+      }),
+    ).toBeUndefined();
+  });
+
   it("ignores other Event messages and keeps hidden text hidden", () => {
     const role = "user" as const;
     expect(

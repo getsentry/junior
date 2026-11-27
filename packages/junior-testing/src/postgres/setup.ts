@@ -6,7 +6,6 @@ import pg from "pg";
 import { afterAll, beforeEach } from "vitest";
 import { getPostgresTestDatabaseUrl } from "./worker";
 import { resetPostgresTestDatabase } from "./reset";
-import { cleanupPostgresWorkerDatabases } from "./transaction";
 
 const resetPool = new pg.Pool({
   connectionString: await getPostgresTestDatabaseUrl(),
@@ -19,5 +18,4 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await resetPool.end();
-  await cleanupPostgresWorkerDatabases();
 });

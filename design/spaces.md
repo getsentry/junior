@@ -48,8 +48,9 @@ Conversation. What the Lead does is in `./lead.md`.
   person.
 - When a Conversation leaves a Space, it becomes a root. Its own child
   agents move with it in every move.
-- A Conversation that moves into a Space keeps its Location, so a Slack
-  thread still gets its replies.
+- A Conversation that moves into a Space follows the Space's rules. It
+  drops its own Destination and Location and uses its Lead's, so a Slack
+  thread no longer gets its replies in Slack.
 - The Lead's Participants are the Space's members, and each child inherits
   them for access.
 - Archive and snooze act on one child: they change that Thread and its own
@@ -82,9 +83,8 @@ Only these sit on top of the tree:
   members. No data goes from it to a Conversation outside the Space.
 - A Space's visibility is its Lead's visibility. It is set when the Lead is
   created and never changes.
-  To make public work private, a person moves it into a private Space.
-  Private work never becomes public, so a private Conversation never joins a
-  public Space.
+  Only public work moves, and only into a public Space. Private work never
+  becomes public.
 
 **Rendering**
 
@@ -107,10 +107,9 @@ Only these sit on top of the tree:
   need. getsentry/junior#4416 tracks it.
 - The public MCP server does not show a Conversation's Space, so the iOS app
   cannot show it. This breaks "every Conversation knows its Space".
-- A Conversation in a private Space cannot move to another private Space,
-  and a private Conversation cannot join a private Space. So a person
-  cannot put private work in the Space they choose. This breaks "a
-  Conversation joins a Space only when a person puts it there".
+- No Conversation can move into a private Space, and private work cannot
+  move. So a person cannot put private work in the Space they choose. This
+  breaks "a Conversation joins a Space only when a person puts it there".
 - The Space row stores its own visibility and archive state, apart from its
   Lead. So archiving a Space is its own action, not archiving the Lead.
   This breaks "a Space is its Lead".

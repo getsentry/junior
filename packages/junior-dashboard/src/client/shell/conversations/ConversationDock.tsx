@@ -1,6 +1,7 @@
 import type { ComponentProps } from "react";
 
 import {
+  ConversationJoinDock,
   ConversationPageDock,
   ConversationReadOnlyDock,
 } from "../../conversations/ConversationPageDock";
@@ -13,12 +14,14 @@ import type { TranscriptViewMode } from "../../conversations/transcriptRenderMod
 export function ConversationDock(
   props: ComponentProps<typeof ConversationPageDock> & {
     canReply: boolean;
+    joining: boolean;
     /** Focus or a click in the composer counts as reading. */
     onEngage(): void;
+    onJoin(): void;
     view: TranscriptViewMode;
   },
 ) {
-  const { canReply, onEngage, view, ...dock } = props;
+  const { canReply, joining, onEngage, onJoin, view, ...dock } = props;
   if (canReply) {
     return (
       <div
@@ -34,7 +37,20 @@ export function ConversationDock(
   // The event log has no composer either way.
   const data = dock.detail.data;
   if (view === "rich" && data && data.kind !== "task") {
-    return <ConversationReadOnlyDock />;
+    // The detail offers Join only on a public root, to a reader who is not
+    // a Participant (`subscribed: false`).
+    if (data.subscribed === false) {
+      return <ConversationJoinDock joining={joining} onJoin={onJoin} />;
+    }
+    return (
+      <ConversationReadOnlyDock
+        notice={
+          data.visibility === "public"
+            ? "Join the conversation this one started from to reply."
+            : "Only participants can reply to a private conversation."
+        }
+      />
+    );
   }
   return null;
 }

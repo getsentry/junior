@@ -59,13 +59,13 @@ import {
  *   of theirs names a person.
  * - Given a public root, when a person who is not a Participant Joins it
  *   (Subscribe), then they become a subscribed Participant. A Slack Message
- *   adds its author too. A dashboard or other web Message does not: on the
- *   web a person joins explicitly.
- * - Given a public Conversation that a person can add Messages to, when
- *   they Invite a person, then that person becomes a subscribed
- *   Participant. This is the only way to subscribe another person. A
- *   mention in a dashboard or Slack Message adds nobody. Invite gives no
- *   access: anyone can already read a public Conversation and join it.
+ *   adds its author too. On the web only a Participant posts or Invites, so
+ *   a person joins explicitly first.
+ * - Given a public Conversation, when a Participant Invites a person, then
+ *   that person becomes a subscribed Participant. This is the only way to
+ *   subscribe another person. A mention in a dashboard or Slack Message
+ *   adds nobody. Invite gives no access: anyone can already read a public
+ *   Conversation and join it.
  * - Invite names a User of this install, the one that user search finds,
  *   so it works the same in every Conversation, with or without Slack.
  * - Given a private Conversation, when a Participant Invites a person, then
@@ -346,6 +346,13 @@ async function readInvitableConversation(
   ).get(conversationId);
   const rootConversationId = access?.rootConversationId;
   if (!rootConversationId || !canInviteToConversation(access)) {
+    // A reader of a public root may Invite once they Join it.
+    if (access?.canViewPrivateContent && !access.isParticipant) {
+      throwApiError(
+        403,
+        "Only participants can invite people. Join the conversation first.",
+      );
+    }
     return undefined;
   }
   return {

@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../test";
-import { screenshot } from "../screenshot";
+import { mobile, screenshot } from "../screenshot";
 import { viewAsParticipant } from "./conversationMenu";
 
 test.describe("new UI", () => {
@@ -203,6 +203,36 @@ test.describe("new UI", () => {
         lightTheme: true,
         view: "desktop",
       });
+    });
+
+    test("on a phone, the row menu is an action sheet, and Rename is a sheet", async ({
+      page,
+      dashboard,
+    }) => {
+      await viewAsParticipant(page);
+      await page.setViewportSize(mobile);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+      const row = conversationsList(page).getByRole("link", {
+        name: /Closed issue summary/,
+      });
+      // A long press opens the row menu, as a right click does.
+      await row.click({ button: "right" });
+      const cancel = page.getByRole("menuitem", { name: "Cancel" });
+      await expect(cancel).toBeVisible();
+      await screenshot(page, "conversation-row-action-sheet", {
+        view: "mobile",
+      });
+      await cancel.click();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+
+      // A form dialog opens as a sheet with its own close button.
+      await row.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Rename" }).click();
+      const rename = page.getByRole("dialog", { name: "Rename conversation" });
+      await expect(page.getByRole("textbox", { name: "Title" })).toBeFocused();
+      await screenshot(page, "conversation-rename-sheet", { view: "mobile" });
+      await rename.getByRole("button", { exact: true, name: "Close" }).click();
+      await expect(rename).toHaveCount(0);
     });
 
     test("renames a conversation from the row menu", async ({

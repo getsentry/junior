@@ -44,10 +44,10 @@ end-of-Turn contract. A person can see and steer each agent.
   person moves it into, out of, or between Spaces.
 - `any-shape` The contract does not depend on how many Spaces a person is
   in, or on which kind is the top of a person's work.
-- `limits` A parent other than a Lead has at most 8 active child agents.
+- `limits` A parent has at most 8 active child agents.
   Only `limits.maxAgentDepth` levels of child agents can start their own.
-  The children of a Lead count as roots for this limit. The default is 1, so a root's child can start children. With 0, only a root
-  can.
+  The default is 2, so a Lead's child, or a root's grandchild, can start
+  children. With 0, only a root can.
 
 **Authority**
 

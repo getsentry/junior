@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AnyToolDefinition } from "@/chat/tool-support/definition";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import {
   createToolActionReview,
   MAX_TOOL_ACTION_BATCH,
@@ -9,10 +10,8 @@ import {
   type ToolActionReview,
   type ToolActionReviewContext,
 } from "@/chat/guardian/gate";
-import type {
-  ToolActionReviewDecision,
-  ToolActionReviewer,
-} from "@/chat/guardian/proposal";
+import type { Guardian, Review, ReviewRequest } from "@/chat/guardian/guardian";
+import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 
 const LOCAL_SOURCE = {
   kind: "local",
@@ -64,9 +63,9 @@ function reviewContext(
       }),
       ...overrides,
     },
+    onFatal: () => undefined,
     onDecision: vi.fn(async () => undefined),
-    onFatal: vi.fn(),
-    reviewer,
+    guardian: (batch) => createCurrentGuardian(reviewer, batch),
   });
 }
 
@@ -77,7 +76,7 @@ async function reviewToolAction(
   tool: AnyToolDefinition,
   input: Record<string, unknown>,
   review: ToolActionReview | undefined,
-): Promise<ToolActionReviewDecision | undefined> {
+): Promise<Review | undefined> {
   const results = await reviewToolActions(
     [{ toolCallId, toolName, tool, input }],
     review,
@@ -482,6 +481,104 @@ describe("tool action review", () => {
     );
   });
 
+  it("escalates a review that cannot run to the run boundary", async () => {
+    const failure = new Error("provider unavailable");
+    const onFatal = vi.fn();
+    const guardian: Guardian = {
+      review: async () => {
+        throw failure;
+      },
+    };
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Generate the report.",
+      },
+      guardian: () => guardian,
+      onFatal,
+      onDecision: vi.fn(async () => undefined),
+    });
+
+    await expect(
+      reviewToolAction(
+        "tool-call",
+        "generateReport",
+        definition({ approvalMode: "review" }),
+        { reportId: "weekly" },
+        actionReview,
+      ),
+    ).rejects.toMatchObject({
+      cause: failure,
+      name: "ToolActionReviewUnavailableError",
+    });
+    // The current gate ends the Run when review cannot run.
+    expect(onFatal).toHaveBeenCalledOnce();
+  });
+
+  it("sends the ordered messages of the work and one action for each call", async () => {
+    const requests: ReviewRequest[] = [];
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "yes, go ahead",
+        rootConversation: async () => ({
+          messages: [
+            { author: "user", text: "Draft the weekly report." },
+            { author: "assistant", text: "Generate report weekly now?" },
+            { author: "other person", text: "Also send it to me." },
+            { author: "user", text: "yes, go ahead" },
+          ],
+          truncated: true,
+        }),
+      },
+      guardian: () => ({
+        review: async (request) => {
+          requests.push(request);
+          return request.actions.map(() => ({
+            decision: "allow",
+            reason: "The person confirmed it.",
+          }));
+        },
+      }),
+      onFatal: () => undefined,
+      onDecision: vi.fn(async () => undefined),
+    });
+
+    await reviewToolAction(
+      "tool-call",
+      "generateReport",
+      definition({
+        approvalMode: "review",
+        annotations: { destructiveHint: true },
+      }),
+      { reportId: "weekly" },
+      actionReview,
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.messages).toEqual([
+      { from: "context", text: "[Older messages are not shown.]" },
+      { from: "instruction", text: "Draft the weekly report." },
+      { from: "context", text: "Generate report weekly now?" },
+      { from: "other_person", text: "Also send it to me." },
+      { from: "instruction", text: "yes, go ahead" },
+    ]);
+    expect(requests[0]!.actions).toEqual([
+      {
+        tool: "generateReport",
+        input: { reportId: "weekly" },
+        effect: "write",
+        summary: "generateReport",
+      },
+    ]);
+  });
+
   it("fails closed when the Guardian decision cannot be recorded", async () => {
     const failure = new Error("event log unavailable");
     const actionReview = createToolActionReview({
@@ -492,18 +589,22 @@ describe("tool action review", () => {
         source: LOCAL_SOURCE,
         userIntent: () => "Generate the report.",
       },
+      onFatal: () => undefined,
       onDecision: async () => {
         throw failure;
       },
-      onFatal: vi.fn(),
-      reviewer: {
-        review: async () => ({
-          decision: "allow",
-          reason: "The requested report is safe.",
-          riskLevel: "low",
-          userAuthorization: "high",
-        }),
-      },
+      guardian: (batch) =>
+        createCurrentGuardian(
+          {
+            review: async () => ({
+              decision: "allow",
+              reason: "The requested report is safe.",
+              riskLevel: "low",
+              userAuthorization: "high",
+            }),
+          },
+          batch,
+        ),
     });
 
     await expect(
@@ -573,9 +674,9 @@ describe("tool action review", () => {
         source: LOCAL_SOURCE,
         userIntent: () => "Clean up the preview workspaces.",
       },
+      onFatal: () => undefined,
       onDecision,
-      onFatal: vi.fn(),
-      reviewer: { review },
+      guardian: (batch) => createCurrentGuardian({ review }, batch),
     });
     const reviewed = definition({ approvalMode: "review" });
 

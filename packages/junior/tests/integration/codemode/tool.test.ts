@@ -4,6 +4,7 @@ import { Type } from "@sinclair/typebox";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { createResumeState } from "@/chat/agent/resume";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
@@ -100,9 +101,10 @@ describe("codemode tool", () => {
             source: SOURCE,
             userIntent: () => "What time is it, and what am I watching?",
           },
-          onDecision: async () => undefined,
           onFatal: () => undefined,
-          reviewer: { review: denyPosts },
+          onDecision: async () => undefined,
+          guardian: (batch) =>
+            createCurrentGuardian({ review: denyPosts }, batch),
         }),
         codeMode: { countToolCall: resume.countToolCall },
       },

@@ -179,7 +179,7 @@ test("a new Lead opens as an empty Conversation", async ({
   await screenshot(page, "space-lead-empty");
 });
 
-test("a non-member reads and can message a public Lead", async ({
+test("a non-member reads a public Lead and joins it to message", async ({
   page,
   dashboard,
 }) => {
@@ -191,8 +191,11 @@ test("a non-member reads and can message a public Lead", async ({
       "Which onboarding pages still describe the old setup flow?",
     ),
   ).toBeVisible();
-  // As in any public Conversation, a message joins them.
-  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
+  // As in any public Conversation, only a Participant posts, so they Join.
+  await expect(
+    page.getByRole("button", { name: "Join", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
   await screenshot(page, "space-lead-non-member");
 });
 
