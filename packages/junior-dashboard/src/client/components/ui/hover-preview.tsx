@@ -48,6 +48,20 @@ export function HoverPreviewGate(props: {
 }
 
 /**
+ * Tell whether a hover card shows. The gate (`allowed`) holds a card back
+ * only until it shows: `shown` is this result from the last render. A hand
+ * on a mouse is never still, so a gate that closed shown cards would hide
+ * one on each move over its trigger or into it.
+ */
+export function hoverPreviewVisible(state: {
+  allowed: boolean;
+  open: boolean;
+  shown: boolean;
+}): boolean {
+  return state.open && (state.allowed || state.shown);
+}
+
+/**
  * Show a card beside a link or button when the reader hovers or focuses it.
  * `trigger` is the element without children: `children` fill it. With
  * `tapToOpen`, a tap on a touch screen opens the card instead of following
@@ -63,11 +77,8 @@ export function HoverPreview(props: {
 }) {
   const allowed = useContext(PreviewsOpen);
   const [open, setOpen] = useState(false);
-  // The gate holds a card back only until it shows. A hand on a mouse is
-  // never still, so a gate that closed shown cards would hide this one on
-  // each move over its trigger or into it.
   const [shown, setShown] = useState(false);
-  const visible = open && (allowed || shown);
+  const visible = hoverPreviewVisible({ allowed, open, shown });
   if (visible !== shown) setShown(visible);
   // A touch screen has no hover, so the first tap shows the card.
   const [touch, setTouch] = useState(false);
