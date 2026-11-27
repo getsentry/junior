@@ -1,5 +1,6 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
+import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { signedInViewer } from "../../../fixtures/user";
@@ -40,6 +41,7 @@ describe("conversation detail API", () => {
   });
 
   it("returns newly appended events when refreshed", async () => {
+    await seedDashboardScale();
     const conversationId = "local:test:refreshed-detail";
     await getConversationStore().recordActivity({
       destination: { platform: "local" as const, conversationId },
@@ -55,9 +57,15 @@ describe("conversation detail API", () => {
     });
 
     const app = createJuniorApi();
-    const detailResponse = await expectSqlBudget(
-      () => app.request(`http://localhost/api/conversations/${conversationId}`),
-      { statements: 15, serialRounds: 3 },
+    const detailResponse = await expectPlanCost(
+      () =>
+        expectSqlBudget(
+          () =>
+            app.request(`http://localhost/api/conversations/${conversationId}`),
+          { statements: 15, serialRounds: 3 },
+        ),
+      // About 4,500.
+      7_000,
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),
