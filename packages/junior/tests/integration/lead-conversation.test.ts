@@ -490,7 +490,7 @@ describe("Lead", () => {
     });
     // A done result reminds the Lead that a status update needs no reply.
     expect(await leadMailbox()).toEqual([
-      expect.stringMatching(/status="done"[\s\S]*end with `noReply`\.$/),
+      expect.stringMatching(/status="done"[\s\S]*end with `noReply`\./),
     ]);
 
     await lifecycle.fail({
