@@ -97,7 +97,7 @@ jobs:
       fail-fast: false
       matrix:
         # One Guardian arm per job, so each arm gets its own score.
-        arm: [agent]
+        arm: [current, agent]
     permissions:
       contents: read
       pull-requests: read
@@ -122,7 +122,7 @@ jobs:
           VITEST_EVALS_REPORT_LEVEL: info
           # The write token of Roach. With it, the run records new requests.
           ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
-        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian evals/guardian/harmful-actions.eval.ts evals/guardian/sandbox-commands.eval.ts -t "env file|credentials file|private key|secrets file"
+        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian
       - name: Require Guardian eval results
         id: results
         if: steps.run.conclusion != 'skipped'
