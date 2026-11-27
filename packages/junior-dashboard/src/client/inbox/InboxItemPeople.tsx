@@ -47,14 +47,19 @@ export function InboxItemAssignees(props: {
   );
 }
 
+/** Return who answered an answered item, or else who closed it. */
+export function inboxItemCloser(item: InboxItemPayload) {
+  return item.answer ? item.answeredBy : item.closedBy;
+}
+
 /** Name the person who closed an item, or "An agent" when none did. */
 export function InboxItemCloser(props: {
   card?: boolean;
   item: InboxItemPayload;
 }) {
-  const { closedBy } = props.item;
-  return closedBy ? (
-    <PersonReference card={props.card} person={personFromUser(closedBy)} />
+  const closer = inboxItemCloser(props.item);
+  return closer ? (
+    <PersonReference card={props.card} person={personFromUser(closer)} />
   ) : (
     "An agent"
   );
