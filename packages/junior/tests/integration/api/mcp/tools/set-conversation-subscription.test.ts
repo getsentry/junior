@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createConversationWorkQueueTestAdapter } from "../../../../fixtures/conversation-work";
 import {
   connectMcpTools,
   MCP_TEST_OTHER_VIEWER,
@@ -42,6 +43,37 @@ describe("setConversationSubscription MCP tool", () => {
     expect(other).toMatchObject({
       isError: true,
       content: [{ type: "text", text: "Conversation not found." }],
+    });
+  });
+
+  it("joins a public root, and only then can the caller send a Message", async () => {
+    await seedMcpConversation({
+      conversationId: "slack:C123:1700000000.000600",
+      email: MCP_TEST_OTHER_VIEWER,
+      title: "Shared incident",
+    });
+    const queue = createConversationWorkQueueTestAdapter();
+    const call = await connectMcpTools(MCP_TEST_VIEWER, "", {
+      conversationWorkQueue: () => queue,
+    });
+    const send = () =>
+      call("sendMessage", {
+        conversationId: "slack:C123:1700000000.000600",
+        message: "Can I help?",
+      });
+
+    expect(await send()).toMatchObject({ isError: true });
+    const joined = await call("setConversationSubscription", {
+      conversationId: "slack:C123:1700000000.000600",
+      subscribed: true,
+    });
+
+    expect(joined.structuredContent).toEqual({
+      archivedAt: null,
+      subscribed: true,
+    });
+    expect((await send()).structuredContent).toMatchObject({
+      status: "accepted",
     });
   });
 });

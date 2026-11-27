@@ -242,10 +242,10 @@ Threads alike. The model can archive a finished child agent with `archiveAgent`.
 A stopped conversation gives its child agents no new work: its `messageAgent`
 calls return `noted` and start nothing, and its `startAgent` calls fail.
 
-By default, a child agent of the root Conversation can start its own child
-agents, and those cannot start more. Set `limits.maxAgentDepth` to change how
-many levels of child agents can start their own. `0` lets only the root
-Conversation start child agents.
+By default, a child agent of the root Conversation and its child agents can
+start their own child agents, and the level below cannot start more. Set
+`limits.maxAgentDepth` to change how many levels of child agents can start
+their own. `0` lets only the root Conversation start child agents.
 
 Each event automation can start at most 10 runs in a rolling minute. Set
 `limits.eventAutomationRunLimit.maxRuns` to change the count. Set

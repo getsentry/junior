@@ -312,6 +312,8 @@ describe("child agent task work", () => {
           type: "message",
           messageId: taskMessageId,
           fromParentAgent: true,
+          // The dashboard shows the parent's words, not the model's tag.
+          text: slackSpawnInput.input,
         }),
       );
       expect(run).toHaveBeenCalledOnce();

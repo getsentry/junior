@@ -52,6 +52,14 @@ const deliveryByToolResult = {
   started: "delivered",
 } as const satisfies Record<string, AgentMessageDelivery>;
 
+/**
+ * True for a tool that sends a message to another agent. Its call shows as
+ * a message row, never as a child's card.
+ */
+export function isAgentMessageTool(name: string | undefined): boolean {
+  return name === MESSAGE_AGENT_TOOL_NAME;
+}
+
 /** True for a `messageAgent` call whose arguments the viewer can read. */
 export function isSentAgentMessage(part: TranscriptViewToolCallPart): boolean {
   return sentAgentMessage(part) !== undefined;
@@ -65,7 +73,7 @@ export function isSentAgentMessage(part: TranscriptViewToolCallPart): boolean {
 export function sentAgentMessage(
   part: TranscriptViewToolCallPart,
 ): AgentMessage | undefined {
-  if (part.name !== MESSAGE_AGENT_TOOL_NAME) return undefined;
+  if (!isAgentMessageTool(part.name)) return undefined;
   const input = messageAgentInputSchema.safeParse(part.input);
   if (!input.success) return undefined;
   const output =
@@ -86,10 +94,10 @@ export function sentAgentMessage(
 
 type ReceivedMessage = Pick<
   TranscriptViewMessage,
-  "eventIdentifier" | "eventType" | "parts" | "role"
+  "eventIdentifier" | "eventType" | "fromParentAgent" | "parts" | "role"
 >;
 
-/** True for an Event message that another agent sent. */
+/** True for a message that another agent sent to this Conversation. */
 export function isReceivedAgentMessage(
   message: TranscriptViewMessage,
 ): boolean {
@@ -97,16 +105,27 @@ export function isReceivedAgentMessage(
 }
 
 /**
- * Read an Event message that another agent sent: a child agent's message to
- * its parent, or a message from another top-level agent. Returns undefined
- * for other messages.
+ * Read a message that another agent sent to this Conversation: a Parent
+ * message, including a child's first task, a child agent's message to its
+ * parent, or a message from another top-level agent. Returns undefined for
+ * other messages.
  */
 export function receivedAgentMessage(
   message: ReceivedMessage,
 ): AgentMessage | undefined {
-  if (message.role !== "user" || !message.eventType) return undefined;
-  if (!isAgentMessageEventType(message.eventType)) return undefined;
+  if (message.role !== "user") return undefined;
   const text = message.parts.find((part) => part.type === "text")?.text;
+  // A Watch Event that reaches a child is not a Parent message.
+  if (message.fromParentAgent && !message.eventType) {
+    return {
+      direction: "received",
+      text,
+      to: PARENT_AGENT_TARGET,
+    };
+  }
+  if (!message.eventType || !isAgentMessageEventType(message.eventType)) {
+    return undefined;
+  }
   return {
     conversationId: message.eventIdentifier,
     direction: "received",

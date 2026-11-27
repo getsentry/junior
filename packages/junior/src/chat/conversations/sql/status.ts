@@ -5,6 +5,7 @@ import {
   gt,
   gte,
   inArray,
+  isNull,
   or,
   sql,
   type SQL,
@@ -185,9 +186,8 @@ function conversationStarterUserIdSql(
  *
  * - The latest Turn failed.
  * - The starter has not read the latest assistant Message. The starter read
- *   it when Slack accepted it for a Top-level Conversation's Location, when
- *   the starter wrote a later Message, or when their dashboard read
- *   position reaches it.
+ *   it when Slack accepted it for a root's Location, when the starter wrote
+ *   a later Message, or when their dashboard read position reaches it.
  *   With no starter, nobody reads it, so an answer does not wait.
  */
 function conversationWaitsOnStarterSql(
@@ -217,9 +217,9 @@ function conversationWaitsOnStarterSql(
   )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
   const readByStarter = or(
     and(
-      // Only a Top-level Conversation delivers to its Location. A child
-      // copies its parent's Location but does not deliver to it.
-      sql`(${conversation.parentConversationId} is null or ${isLeadSql(conversation.parentConversationId)})`,
+      // Only a root delivers to its Location. A child copies its parent's
+      // Location but does not deliver to it.
+      isNull(conversation.parentConversationId),
       sql`${conversation.location} is not null`,
       // No reply must read false: `not (null)` is null, not true.
       sql`coalesce(${replyInSlack}, false)`,
