@@ -21,7 +21,9 @@ type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   | "promptGuidelines"
   | "executionMode"
 > & {
-  guardian?(input: z.output<TInputSchema>): ActionDescription;
+  guardian?(
+    input: z.output<TInputSchema>,
+  ): ActionDescription | Promise<ActionDescription>;
   inputSchema: TInputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
   resolveApprovalMetadata?(

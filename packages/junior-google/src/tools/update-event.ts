@@ -103,6 +103,11 @@ export const updateCalendarEventTool = definePluginTool({
   description:
     "Change a Google Calendar event organized by your own Google account: title, description, time, location, video call, or attendees. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. You cannot change events other people organize. Confirm the change with the requester first unless they already stated it exactly.",
   inputSchema,
+  // Only people in the company's Workspace domains can be invited.
+  guardian: async (input) => ({
+    target: `Google Calendar event ${input.event_id}`,
+    audience: "internal",
+  }),
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());

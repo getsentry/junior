@@ -23,6 +23,11 @@ export const vercelDeploymentDeleteTool = definePluginTool({
   inputSchema: z
     .object({ deployment_id: deploymentIdSchema, team: teamSchema })
     .strict(),
+  // A deployment URL is public unless the project protects it.
+  guardian: async (input) => ({
+    target: `Vercel deployment ${input.deployment_id}`,
+    audience: "world",
+  }),
   outputSchema: pluginToolOutputSchema.extend({
     target: z.literal("deployment"),
     deployment_id: nonEmptyText,

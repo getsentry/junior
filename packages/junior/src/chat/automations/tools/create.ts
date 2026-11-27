@@ -23,6 +23,7 @@ import {
 import {
   automationDestinationParam,
   resolveToolDestination,
+  automationDeliveryTarget,
 } from "@/chat/automations/tool-destination";
 import {
   automationIdForToolCall,
@@ -225,7 +226,11 @@ export function createAutomationTool(
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
-    guardian: (input) => ({
+    guardian: async (input) => ({
+      target: await automationDeliveryTarget(
+        context,
+        input.destination ?? "current_conversation",
+      ),
       summary: describeDelivery(input),
     }),
     annotations: {

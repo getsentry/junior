@@ -26,6 +26,11 @@ export const vercelAliasAssignTool = definePluginTool({
       team: teamSchema,
     })
     .strict(),
+  // Anyone can open an alias hostname.
+  guardian: async (input) => ({
+    target: `Vercel alias ${input.alias}`,
+    audience: "world",
+  }),
   outputSchema: aliasOutputSchema.extend({ matches: z.boolean() }),
   async execute(input, _options, ctx) {
     await vercelRequest(

@@ -3,12 +3,14 @@ import * as z from "zod";
 import { getConversationStore } from "@/chat/db";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
 import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
+import { getConversationInfo } from "@/chat/slack/channel";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { Action } from "@/chat/guardian/guardian";
 import type { AutomationDestination } from "./creator";
 import {
   requireToolDestination,
@@ -123,4 +125,45 @@ export async function resolveToolDestination(
     visibility: "public",
   });
   return { destination, visibility: "public" };
+}
+
+/**
+ * Where an Automation delivers and who can read it, for Guardian
+ * (`audience`). Junior runs no Turn in a channel that another organization
+ * shares, so this Conversation's own channel or DM is `internal`. A named
+ * channel is `world` when Slack says it is shared with another
+ * organization (Slack Connect), and when Slack cannot answer.
+ */
+export async function automationDeliveryTarget(
+  context: AutomationToolContext,
+  value: z.output<typeof automationDestinationParam>,
+): Promise<NonNullable<Action["target"]>> {
+  if (value === "current_conversation") {
+    return {
+      ref: context.destination
+        ? `Slack channel ${context.destination.channelId}`
+        : "this Conversation",
+      audience: "internal",
+    };
+  }
+  try {
+    const teamId =
+      parseSlackTeamId(context.destination?.teamId) ??
+      parseSlackTeamId(await resolveBotSlackTeamId());
+    if (!teamId) return { ref: `Slack channel ${value}`, audience: "world" };
+    const { channelId } = await resolveSlackChannelRef({
+      field: "destination",
+      value,
+      teamId,
+    });
+    const info = await getConversationInfo(channelId);
+    return {
+      ref: info.name
+        ? `Slack channel #${info.name}`
+        : `Slack channel ${channelId}`,
+      audience: info.isExtShared ? "world" : "internal",
+    };
+  } catch {
+    return { ref: `Slack channel ${value}`, audience: "world" };
+  }
 }

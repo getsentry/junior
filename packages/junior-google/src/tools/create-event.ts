@@ -94,6 +94,11 @@ export const createCalendarEventTool = definePluginTool({
   description:
     "Create a Google Calendar event organized by your own Google account and email invites to the attendees. Every event gets a Google Meet link. You can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
   inputSchema,
+  // Only people in the company's Workspace domains can be invited.
+  guardian: async (input) => ({
+    target: `new Google Calendar event "${input.title}"`,
+    audience: "internal",
+  }),
   outputSchema,
   async execute(input, options, ctx: GoogleToolContext) {
     const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());

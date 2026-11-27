@@ -16,6 +16,7 @@ import {
   presentationReferenceSchema,
   presentationUrl,
 } from "../slides/presentation";
+import { fileGuardian } from "../drive/file-audience";
 
 // Google validates each request. The tool checks only the shape that every
 // batchUpdate request has: one key, the request kind.
@@ -244,6 +245,8 @@ export const updateGoogleSlidesTool = definePluginTool({
   description:
     "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation. A Sheets chart needs a Sheet that the requester can open; videos must be from YouTube.",
   inputSchema,
+  guardian: async (input, ctx) =>
+    await fileGuardian("Google Slides presentation", input.presentation, ctx),
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const file = await requireEditableFile(
