@@ -57,7 +57,6 @@ import {
 } from "@/chat/log-context";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import * as Sentry from "@/chat/sentry";
-import { formatSentryEventReference } from "@/chat/sentry-links";
 import {
   captureException as captureSentryException,
   captureMessage,
@@ -1731,11 +1730,6 @@ export function getActiveTraceId(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-/** Build the static user-facing response for a failed turn. */
-export function buildTurnFailureResponse(eventId: string): string {
-  return `I ran into an internal error while processing that. Reference: ${formatSentryEventReference(eventId)}.`;
 }
 
 // ---------------------------------------------------------------------------

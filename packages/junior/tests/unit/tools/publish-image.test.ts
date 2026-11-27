@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
+import { useConfig } from "../../fixtures/config";
 
 const PNG_BYTES = Buffer.from([
   137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 0, 0, 0, 1,
@@ -74,11 +75,7 @@ function memoryDb(): JuniorSqlDatabase & {
 
 describe("publishImage tool", () => {
   beforeEach(() => {
-    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
+    useConfig({}, { JUNIOR_BASE_URL: "https://junior.example.com" });
   });
 
   it("publishes a sandbox image to a conversation-owned public URL", async () => {

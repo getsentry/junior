@@ -8,7 +8,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { createEmulator } from "emulate";
 import { afterAll, afterEach } from "vitest";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { modelClient, type ModelClient } from "@/core/model/client";
 
 type ModelReplyEvent =

@@ -57,6 +57,7 @@
     "e2e/space-lead.spec.ts",
     "e2e/space-threads.spec.ts",
     "e2e/object-live-cards.spec.ts",
+    "e2e/askSheet.ts",
     "e2e/pick-option.ts",
     "e2e/push-notification.ts",
     "e2e/question-card-snooze.spec.ts",

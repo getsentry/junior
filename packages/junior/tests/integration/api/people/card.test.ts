@@ -5,7 +5,6 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { personCardReportSchema } from "@/api/schema";
-import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { recordCodeChange } from "@/chat/code/store";
 import {
   closeDb,
@@ -16,6 +15,7 @@ import {
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { expectSqlBudget, measureSql } from "../../../fixtures/sql-budget";
 import { signedInViewer } from "../../../fixtures/user";
+import { patchConfig } from "../../../fixtures/config";
 
 const DASHBOARD = "https://junior.example.com";
 const HOUR_MS = 60 * 60 * 1000;
@@ -104,18 +104,17 @@ async function cardApi(email: string) {
 }
 
 describe("person card API", () => {
-  let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
-
   beforeEach(async () => {
     // The GitHub plugin builds the code links.
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    previousDashboard = setDashboardConversationLinkOptions({
-      baseURL: DASHBOARD,
+    patchConfig({
+      dashboard: {
+        baseURL: DASHBOARD,
+      },
     });
   });
 
   afterEach(async () => {
-    setDashboardConversationLinkOptions(previousDashboard);
     await closeDb();
   });
 

@@ -21,7 +21,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import type { ToolDefinitionsKey } from "@/chat/tool-support/registry";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";

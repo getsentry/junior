@@ -363,4 +363,30 @@ describe("child agent worker crash", () => {
       await fixture.close();
     }
   });
+
+  // The host kills a request at its deadline. A child's agent run must stop
+  // first, so it pauses instead of losing its worker.
+  it("ends a child's agent run when its host request ends", async () => {
+    const { conversationStore, fixture } = await prepareParentConversation();
+    const runner = readingAgentRunner();
+    const { processNearRequestDeadline, queue, state } =
+      await createConversationWorkHarness(runner.agentRunner);
+    try {
+      const childId = await spawnChild(
+        { conversationStore, queue, state },
+        "near-deadline",
+      );
+      // Injected fault: the host request has 2.5s left.
+      const { requestDeadlineAtMs } = await processNearRequestDeadline(
+        queue.takeMessageFor(childId),
+        2_500,
+      );
+
+      expect(runner.runs.map(({ run }) => run.deadlineAtMs)).toEqual([
+        requestDeadlineAtMs,
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });

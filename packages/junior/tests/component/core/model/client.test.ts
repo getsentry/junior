@@ -1,6 +1,6 @@
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { describe, expect, it } from "vitest";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { modelClient } from "@/core/model/client";
 
 describe("model client", () => {

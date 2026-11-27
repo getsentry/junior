@@ -85,6 +85,10 @@ vi.mock("@/chat/pi/client", () => ({
     vectors: texts.map(() => [1]),
   })),
   GEN_AI_PROVIDER_NAME: "test-provider",
+}));
+
+vi.mock("@/chat/pi/gateway-models", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/pi/gateway-models")>()),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
 

@@ -19,6 +19,7 @@ import {
 
 import { cn } from "../styles";
 import { readAnswerDraft, saveAnswerDraft } from "./answerDrafts";
+import { useInBottomSheet } from "./bottomSheetContext";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import {
@@ -33,6 +34,11 @@ import {
 import { Input } from "./ui/input";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
+
+// In a sheet, the actions stay on its bottom edge while the fields scroll
+// under them.
+const SHEET_ACTIONS_CLASS =
+  "sticky bottom-0 z-10 bg-dashboard-bg-elevated pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-0.75rem_0.75rem_-0.75rem_var(--color-dashboard-overlay-soft)]";
 
 // A described choice is one button row, so its description stays beside its
 // label. The picked row keeps the accent while the answer sends.
@@ -290,6 +296,7 @@ export function UserInputForm(props: {
     if (!empty) void send(normalized);
   }
 
+  const inSheet = useInBottomSheet();
   const secondary = props.secondaryActions ? (
     <div className="flex flex-wrap gap-1">{props.secondaryActions}</div>
   ) : null;
@@ -303,7 +310,12 @@ export function UserInputForm(props: {
     return (
       <>
         {/* The options are the main actions, so they end the row. */}
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div
+          className={cn(
+            "flex flex-wrap items-center justify-end gap-2",
+            inSheet && SHEET_ACTIONS_CLASS,
+          )}
+        >
           {secondary}
           {actionField.options.map((option) => (
             <Button
@@ -429,7 +441,12 @@ export function UserInputForm(props: {
         />
       )}
       {/* Send is the main action, so it ends the row, on the right. */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-end gap-2",
+          inSheet && SHEET_ACTIONS_CLASS,
+        )}
+      >
         {choiceField ? (
           // One line, so the choices stay the answer and the note stays
           // short.

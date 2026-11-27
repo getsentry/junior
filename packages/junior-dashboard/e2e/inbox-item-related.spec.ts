@@ -1,4 +1,5 @@
 import type { Locator } from "@playwright/test";
+import { openAsk } from "./askSheet";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -40,12 +41,15 @@ for (const view of [desktop, mobile]) {
     const question = page.getByRole("region", {
       name: "Asked Approve the payments-v42 rollout",
     });
-    await expectRelated(question);
-    // The pill shows until the card reports that it is in full view.
-    await question.scrollIntoViewIfNeeded();
-    await expect(
-      page.getByRole("button", { name: /questions? waiting$/ }),
-    ).toHaveCount(0);
+    // A phone opens the question in a sheet.
+    await expectRelated(await openAsk(question, view === mobile));
+    if (view === desktop) {
+      // The pill shows until the card reports that it is in full view.
+      await question.scrollIntoViewIfNeeded();
+      await expect(
+        page.getByRole("button", { name: /questions? waiting$/ }),
+      ).toHaveCount(0);
+    }
     await screenshot(page, "inbox-item-related-card", {
       lightTheme: true,
       view: view.name,

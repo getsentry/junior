@@ -5,7 +5,7 @@ import { gatewayProvidersSchema } from "@/api/schema";
 import { botConfig } from "@/chat/config";
 import { closeDb, getDb } from "@/chat/db";
 import { withEnabledGatewayProviders } from "@/chat/gateway-providers/routing";
-import { resolveGatewayModel } from "@/chat/pi/client";
+import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import type { Api, Model, StreamOptions } from "@/chat/pi/sdk";
 import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import { cacheKeyPrefix, createCache } from "@/chat/state/cache";

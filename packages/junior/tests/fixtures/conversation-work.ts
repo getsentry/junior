@@ -19,7 +19,11 @@ import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
 import type { AgentRun } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import {
+  getTurnRequestDeadline,
+  runWithNewTurnRequestDeadline,
+  runWithTurnRequestDeadline,
+} from "@/chat/runtime/request-deadline";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type {
   ConversationQueueMessage,
@@ -515,6 +519,27 @@ export async function createConversationWorkHarness(
   return {
     adapter,
     process,
+    /**
+     * Injected fault: run one wake in a host request that has only
+     * `remainingMs` left, as when the worker ran other work first. Returns
+     * the worker result and when the host stops that request.
+     */
+    processNearRequestDeadline: async (
+      message: ConversationQueueMessage,
+      remainingMs: number,
+    ) => {
+      const budgetMs = runWithNewTurnRequestDeadline(() => {
+        const request = getTurnRequestDeadline()!;
+        return request.deadlineAtMs - request.startedAtMs;
+      });
+      return await runWithNewTurnRequestDeadline(
+        async () => ({
+          requestDeadlineAtMs: getTurnRequestDeadline()!.deadlineAtMs,
+          result: await process(message),
+        }),
+        Date.now() - budgetMs + remainingMs,
+      );
+    },
     /**
      * Injected fault: kill the worker process while the agent runs, as a
      * function timeout, OOM, or deploy does. The worker keeps its lease, runs

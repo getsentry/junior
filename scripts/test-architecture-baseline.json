@@ -97,7 +97,6 @@
     "packages/junior/tests/component/tools/load-skill.test.ts": 1,
     "packages/junior/tests/component/vercel-queue-dev.test.ts": 1,
     "packages/junior/tests/component/workspace-tools.test.ts": 2,
-    "packages/junior/tests/fixtures/experimental-setup.ts": 1,
     "packages/junior/tests/fixtures/slack-harness.ts": 1,
     "packages/junior/tests/integration/agent-continue-slack.test.ts": 1,
     "packages/junior/tests/integration/annotation-cards.test.ts": 2,
