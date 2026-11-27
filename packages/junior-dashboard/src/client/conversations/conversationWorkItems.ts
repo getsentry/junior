@@ -71,11 +71,9 @@ function todoWorkState(
 
 /**
  * Join the To-dos, child Conversations, and Watches of one Conversation
- * into one list, sorted by `WORK_STATES`, each kind in its loaded order. A
- * To-do assigned to a listed child is one row with the child's state while
- * the child has work going, and the To-do's own state after that. A
- * Watch that a listed child owns shows on that child's row. The
- * viewer's own open To-dos (`viewerTodoIds`) show in Needs you instead.
+ * into one list by `WORK_STATES`. A To-do assigned to a listed child, and
+ * that child's Watches, share the child's row. The viewer's own open
+ * To-dos (`viewerTodoIds`) show in Needs you instead.
  */
 export function conversationWorkItems(input: {
   children: readonly ConversationChildAgent[];

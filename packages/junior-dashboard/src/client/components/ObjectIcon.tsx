@@ -24,7 +24,7 @@ export function ObjectIcon(props: {
   size?: number;
   decorative?: boolean;
   className?: string;
-  /** Draw this tone instead of the state's, as in a list that shows state by shape. */
+  /** Draw this tone instead of the state's, when shape shows state. */
   tone?: ObjectTone | undefined;
 }) {
   const presentation = objectPresentation(props);

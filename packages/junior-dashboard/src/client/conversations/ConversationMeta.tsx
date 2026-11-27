@@ -627,7 +627,7 @@ type ConversationStatItem = {
   label: string;
 };
 
-/** Render activity, runtime, token, cost, and child totals as a labeled list. */
+/** List activity, runtime, token, cost, and child totals with labels. */
 export function ConversationStats(props: ConversationStatsProps) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
