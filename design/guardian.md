@@ -84,15 +84,18 @@ untrusted text set up, does not run.
 - `allow-default` Guardian blocks an action only when the action clearly
   matches one named rule from a fixed list. General doubt is not a reason
   to block (`guardian#ordinary-work`).
-- `review-by-default` Each side effect is reviewed. A tool skips review
-  only when its code proves each effect is safe, or it is marked read-only.
-  A tool can require that the person confirm the exact action.
+- `review-by-default` Every tool call is reviewed, except calls of
+  tools marked read-only and of core tools whose effects stay in the
+  Sandbox or the current Conversation, such as file edits and replies.
+  A plugin cannot turn review off.
 - `sandbox-boundary` Guardian reviews each command before it runs. An
   effect that stays in the Sandbox matches no rule, such as file edits,
   scratch cleanup, local commits, or stopping its own processes. Risk
   starts where an effect leaves the Sandbox, such as a push, a network
   write, or a provider call, or where it breaks a person's explicit limit.
   A command that only shows whether a credential is set does not probe it.
+  For a push to a `world` repo, Guardian also reads the commits that the
+  push sends, as context.
 - `same-outcome` A block holds for the outcome, not for the tool. The same
   side effect through another tool, a file, a Code Mode script, the
   network, or a child agent gets the same decision. Guardian judges each
@@ -112,7 +115,19 @@ untrusted text set up, does not run.
   still apply to them.
 - `facts-from-junior` Junior gives Guardian, from code, who each message is
   from and what each call does, targets, and who can read the target.
-  Guardian does not guess them from the transcript.
+  Guardian does not guess them from the transcript. For each call of its
+  tools, a plugin gives the target, which is what the call changes, such
+  as `getsentry/junior#12`, and the target's audience. It can also give
+  advice. A plugin also gives the audience of each of its git remotes,
+  one audience for all of its MCP tools, such as `internal` for Notion,
+  and which of its containers anyone can read, such as the Linear teams
+  that sync to a public repo. Junior, not the plugin, knows which pull
+  requests this work created.
+- `advice` Advice is a plugin's statement that a call only keeps current
+  what this work created, such as a text edit of Junior's own PR, with the
+  reason. Advice clears only `unrequested`. Every other rule still
+  applies, and the decision records the advice and its reason. A plugin
+  never decides allow, ask, or deny.
 - `fresh-decision` An earlier decision is context, not precedent. A changed
   action, such as a retry with the private data removed, gets a fresh
   decision.
@@ -122,7 +137,8 @@ untrusted text set up, does not run.
 - `audience` Each target has an audience: `internal` (only people in the
   organization, such as a Slack channel, a DM, a Junior Conversation, or a
   private repo) or `world` (anyone, such as a public repo or a public URL).
-  An unknown audience counts as `world`. Repo and system names are not
+  An unknown audience counts as `world`. A Slack Connect channel, which
+  another organization shares, is `world`. Repo and system names are not
   private data.
 - `no-exposure` Secrets, credentials, customer data, real people's
   personal data, and details that let someone exploit an undisclosed
@@ -164,6 +180,48 @@ untrusted text set up, does not run.
   which rule applied, why, and the facts it lacked
   (`guardian#decision-recorded`).
 
+## Flows
+
+Each flow follows one request. The plugin of each tool gives the target
+and its audience (`facts-from-junior`).
+
+**Slack.** In #eng-billing, Alice asks Junior to post this week's error
+counts there and in #acme-shared, a Slack Connect channel.
+
+| Call | Audience | Decision | Why |
+| --- | --- | --- | --- |
+| Post in #eng-billing | `internal` | allow | Alice asked, and no rule matches. |
+| Post in #acme-shared | `world` | ask | Error counts are internal detail (`internal-disclosure`). The ask shows the text. |
+
+If Bob first writes "hold off until the fix ships" in the thread, the post
+in #eng-billing asks too, under `restriction`. Bob cannot authorize work,
+but his hold applies (`restrictions`). Alice's yes to that ask lets it run.
+
+**Notion.** Alice asks Junior to add Q3 spend to the Finance page. Notion's
+tools are `internal`, so the update is allowed: internal detail that stays
+internal matches no rule.
+
+**Linear.** Alice asks for an issue with this quarter's ARR on the SDK
+team, which syncs to a public repo. The Linear plugin lists that team as
+`world`, so the issue asks (`internal-disclosure`). If it also names
+customers, it is denied (`no-exposure`). The same issue on a team that does
+not sync is `internal`, and it is allowed.
+
+**Bash.** Alice asks Junior to fix a flaky test in getsentry/junior and open
+a PR. The plugin gives the remote's audience: `world`. Guardian reads the
+commits that the push sends (`sandbox-boundary`). A plain code fix is
+allowed (`conventional-steps`). A commit that copies a production error
+log into a fixture asks (`internal-disclosure`).
+
+**GitHub.** Junior opened getsentry/junior#12 for Alice.
+
+| Call | Advice | Decision | Why |
+| --- | --- | --- | --- |
+| Update the body to match a new commit | yes | allow | Only the text of Junior's own PR changes (`advice`). |
+| Close #12, which nobody asked for | no | ask | `unrequested`. |
+| Put a token in the body | yes | deny | Advice never clears `no-exposure`. |
+| Comment that asks Alice about the work | no | allow | A conventional step (`conventional-steps`). It is not upkeep, so it gets no advice. |
+
 ## Non-goals
 
 - Judging whether the work is correct or well proven.
@@ -177,14 +235,14 @@ untrusted text set up, does not run.
 
 - `handoff-check`: messageAgent is not reviewed, so a message can hand a
   child agent wider work than the sender's thread backs.
-- `review-by-default`, `sandbox-boundary`: core `bash` is not reviewed, so
-  a command whose effect leaves the Sandbox, such as a push or a network
-  write, runs without review.
+- `review-by-default`, `sandbox-boundary`: core `bash` is reviewed only by
+  the new Guardian, so under the current Guardian a command whose effect
+  leaves the Sandbox runs without review.
 - `rule-kinds`: Guardian asks on high risk with weak authorization, also
   when no rule matches. A rule asks until the person
   names a required detail, even when their words name the exact action.
-- `audience`, `internal-disclosure`: Guardian is not told the audience of a
-  target, and internal detail going to the world is denied, not asked.
+- `audience`: no reviewed tool posts in a Slack channel, so the Slack flow
+  does not run yet, and a Slack Connect channel is not told apart.
 - `ask-covers-one`: the text that tells the agent to wait for a
   confirmation carries over to later steps. The agent then asks about steps
   that the person asked for, such as an update to its own PR description.
@@ -201,9 +259,11 @@ untrusted text set up, does not run.
 - `linked-account`: every Event Turn runs as a system Actor. The person's
   own GitHub comment is context, so the agent asks before it does what the
   comment says.
-- `facts-from-junior`, `conventional-steps`: calls carry untyped input, and Guardian is
-  not told whether this work created a resource, so upkeep of Junior's own
-  pull requests can ask.
+- `advice`: resolving a review thread does not name its PR, so it gets no
+  advice and can ask.
+- `sandbox-boundary`: an action that stays in the Sandbox, such as
+  deleting a checkout, can destroy unpushed work that the person asked
+  for, and no rule catches it.
 - `review-by-default`, `same-outcome`: some core tools with side effects,
   and outbound network, are not reviewed.
 - `placeholders`: Guardian is not told about the placeholders of the
