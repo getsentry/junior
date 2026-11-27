@@ -14,7 +14,8 @@ export const juniorSpaces = pgTable(
   {
     id: text("id").primaryKey(),
     // No code reads or writes name, visibility, or archived_at. The Lead
-    // holds them. They are dropped after 0.318.0 ships.
+    // holds them. They are dropped after the first release with this change
+    // ships.
     name: text("name"),
     description: text("description"),
     visibility: text("visibility")
