@@ -286,7 +286,7 @@
     "packages/junior/src/chat/inbox-items/tools/add.ts": 1,
     "packages/junior/src/chat/inbox-snoozes/triggers.ts": 2,
     "packages/junior/src/chat/inbox-snoozes/viewer.ts": 1,
-    "packages/junior/src/chat/ingress/slack-inbox-item.ts": 2,
+    "packages/junior/src/chat/ingress/slack-inbox-item.ts": 1,
     "packages/junior/src/chat/ingress/slack-interaction-input.ts": 1,
     "packages/junior/src/chat/ingress/slack-payload.ts": 1,
     "packages/junior/src/chat/ingress/slack-stop.ts": 6,

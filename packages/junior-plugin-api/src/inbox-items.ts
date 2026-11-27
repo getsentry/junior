@@ -50,12 +50,27 @@ export interface PluginInboxSubjectKind {
    */
   owner: PluginInboxSubjectOwner | "annotation";
   /**
+   * Buttons on each open item of the kind, in display order, such as
+   * Resume. An item of a kind with actions waits on its assignees. The
+   * first click closes it as done, records the action's `id`, and calls the
+   * plugin's `inboxItemAction` hook. It starts no Turn: the plugin does the
+   * work.
+   */
+  actions?: PluginInboxKindAction[];
+  /**
    * Each assignee holds a role on the object, such as a GitHub assignee, so
    * they are on the item without the owner Conversation. Nobody can take it.
    * A dismiss first calls `inboxItemDismissed` to remove the person's role,
    * and fails when the hook fails. With nobody left, the item closes.
    */
   assigneeRoles?: boolean;
+}
+
+/** One button on the open items of a subject kind. */
+export interface PluginInboxKindAction {
+  /** Stable id, recorded on the item that it closes, such as `resume`. */
+  id: string;
+  label: string;
 }
 
 /** The table and columns that map a subject id to its owner Conversation. */
@@ -117,13 +132,6 @@ export interface PluginReviewNotice {
    */
   title: string;
   /**
-   * Buttons that answer the item, in display order, such as `Resume`. An
-   * item with choices waits on its assignees. The first click closes it as
-   * done and calls the plugin's `inboxItemAnswered` hook with the choice.
-   * The answer starts no Turn: the plugin does the work.
-   */
-  choices?: Array<{ label: string; description?: string }>;
-  /**
    * The assignees must act, such as merge a pull request that is ready. The
    * item then waits on them: its Conversation shows in their Needs you, and
    * it counts in their Inbox. Leave it unset for a notice that is only for
@@ -137,8 +145,8 @@ export interface PluginReviewNotice {
  * and when it closed, so a subject's items say what people did on it.
  */
 export interface PluginInboxItemRecord {
-  /** The label of the choice that a person picked to close it. */
-  choice?: string;
+  /** The id of the kind action that a person ran to close it. */
+  action?: string;
   /** Unset while the item is open. */
   closedAtMs?: number;
   id: string;
@@ -208,10 +216,10 @@ export interface InboxItemDismissedHookContext extends PluginContext {
   subject: PluginInboxItemSubject;
 }
 
-/** A person picked one of the `choices` of an item that this plugin added. */
-export interface InboxItemAnsweredHookContext extends PluginContext {
-  /** The label of the picked choice. */
-  choice: string;
+/** A person ran an action of the kind of an item that this plugin added. */
+export interface InboxItemActionHookContext extends PluginContext {
+  /** The `id` of the kind action. */
+  action: string;
   /** Junior's native code index, as from a plugin route. */
   codeChanges: PluginCodeChanges;
   /** The Conversation that the item belongs to. */
@@ -220,7 +228,7 @@ export interface InboxItemAnsweredHookContext extends PluginContext {
   subject: PluginInboxItemSubject;
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
-  /** The closed item's id. It is the same on a retry of the same answer. */
+  /** The closed item's id. It is the same on a retry of the same action. */
   itemId: string;
   nowMs: number;
   /** Inbox items, as from a plugin route. */

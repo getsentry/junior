@@ -28,6 +28,7 @@ import {
   recordGitHubPullRequestOpenerId,
 } from "../pull-request-requesters/store.js";
 import {
+  GITHUB_CONFLICT_RESUME,
   GITHUB_INBOX_SUBJECTS,
   pullRequestSubject,
 } from "../inbox-subjects.js";
@@ -50,9 +51,6 @@ const FIX_INTERVAL_MS = DAY_MS;
 
 /** Fixes in a row, with no activity by a person, before Junior waits. */
 const MAX_FIXES = 3;
-
-/** The choice of the merge conflict item that resumes the fixes. */
-export const GITHUB_CONFLICT_RESUME = "Resume";
 
 const actorSchema = z.object({ __typename: z.string() }).nullable();
 
@@ -206,14 +204,14 @@ export function gitHubConflictAsks(
   const [latest] = items;
   const holds = latest?.status === "open" || latest?.status === "dismissed";
   const resuming =
-    latest?.choice === GITHUB_CONFLICT_RESUME &&
+    latest?.action === GITHUB_CONFLICT_RESUME &&
     nowMs - (latest.closedAtMs ?? 0) < RESUMING_MS &&
     !fixes.some(({ itemId }) => itemId === latest.id);
   const fix = [...fixes].reverse().find(({ itemId }) => itemId);
   const resumed = items.some(
-    (item) => item.id === fix?.itemId && item.choice === GITHUB_CONFLICT_RESUME,
+    (item) => item.id === fix?.itemId && item.action === GITHUB_CONFLICT_RESUME,
   );
-  // The fix starts when the Resume runs, also on a retry of the answer.
+  // The fix starts when the Resume runs, also on a retry of the action.
   return fix?.itemId && resumed
     ? { holds, resume: { atMs: fix.atMs, itemId: fix.itemId }, resuming }
     : { holds, resuming };
@@ -287,7 +285,6 @@ async function addUnlandedItem(args: {
     askedIdentityIds: [opener.identityId],
     assigneeIdentityIds: [opener.identityId],
     body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
-    choices: [{ label: GITHUB_CONFLICT_RESUME }],
     subject: pullRequestSubject(
       GITHUB_INBOX_SUBJECTS.mergeConflict,
       args.pullRequestId,

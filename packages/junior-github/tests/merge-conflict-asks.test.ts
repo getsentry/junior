@@ -28,13 +28,13 @@ describe("merge conflict asks from the item history", () => {
     const items = [
       { id: "item-3", status: "open" as const },
       {
-        choice: "Resume",
+        action: "resume",
         closedAtMs: 300,
         id: "item-2",
         status: "done" as const,
       },
       {
-        choice: "Resume",
+        action: "resume",
         closedAtMs: 200,
         id: "item-1",
         status: "done" as const,
@@ -45,7 +45,7 @@ describe("merge conflict asks from the item history", () => {
         items,
         [
           { ...fix, atMs: 200, itemId: "item-1" },
-          // A retry of the answer ran the Resume after the item closed.
+          // A retry of the action ran the Resume after the item closed.
           { atMs: 350, headSha: "2".repeat(40), itemId: "item-2" },
           { atMs: 400, headSha: "3".repeat(40) },
         ],
@@ -61,13 +61,13 @@ describe("merge conflict asks from the item history", () => {
   it("waits on a Resume that has saved no fix, then lets the next conflict ask", () => {
     const items = [
       {
-        choice: "Resume",
+        action: "resume",
         closedAtMs: nowMs - minute,
         id: "item-2",
         status: "done" as const,
       },
       {
-        choice: "Resume",
+        action: "resume",
         closedAtMs: 200,
         id: "item-1",
         status: "done" as const,

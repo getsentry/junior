@@ -66,7 +66,7 @@ const DAY = 24 * 60;
  */
 export type MockSubject = Pick<
   InboxItemPayload["subject"],
-  "id" | "label" | "objectType" | "resource" | "url"
+  "actions" | "id" | "label" | "objectType" | "resource" | "url"
 > & {
   kind?: string;
   title?: string;
@@ -301,20 +301,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       createdAt: at(40),
       id: "qa-conflict-2188",
       plugin: "github",
-      request: {
-        question:
-          "#2188 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
-        fields: [
-          {
-            id: "choice",
-            kind: "choice",
-            label: "Merge conflict · #2188",
-            options: [{ label: "Resume" }],
-          },
-        ],
-      },
       status: "open",
       subject: {
+        actions: [{ id: "resume", label: "Resume" }],
         id: "https://github.com/getsentry/junior/pull/2188",
         kind: "github:merge_conflict",
         label: "Merge conflict",

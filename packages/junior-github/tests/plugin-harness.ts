@@ -161,7 +161,7 @@ export function createPluginHarness(
   /** Close the open item of a subject, and return whether one was open. */
   const closeItem = (
     key: string,
-    close: Pick<PluginInboxItemRecord, "choice" | "closedAtMs" | "status">,
+    close: Pick<PluginInboxItemRecord, "action" | "closedAtMs" | "status">,
   ): boolean => {
     const item = openItem(key);
     if (!item) return false;
@@ -415,11 +415,11 @@ export function createPluginHarness(
   }
 
   /**
-   * A person picks a choice on an open item. Like core, the item closes
-   * first, then the plugin gets the answer.
+   * A person runs a kind action on an open item. Like core, the item closes
+   * first, then the plugin gets the action.
    */
-  async function answer(input: {
-    choice: string;
+  async function act(input: {
+    action: string;
     conversationId: string;
     itemId: string;
     nowMs: number;
@@ -428,11 +428,11 @@ export function createPluginHarness(
     const key = subjectKey(input.subject);
     expect(openItem(key)?.id).toBe(input.itemId);
     closeItem(key, {
-      choice: input.choice,
+      action: input.action,
       closedAtMs: input.nowMs,
       status: "done",
     });
-    await githubPlugin().hooks!.inboxItemAnswered!({
+    await githubPlugin().hooks!.inboxItemAction!({
       ...input,
       cache,
       codeChanges,
@@ -479,7 +479,7 @@ export function createPluginHarness(
 
   return {
     ...recorded,
-    answer,
+    act,
     cache,
     deliver,
     dismiss,

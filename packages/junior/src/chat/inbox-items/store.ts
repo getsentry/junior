@@ -133,6 +133,8 @@ export interface InboxItem {
    * owner Conversation. Its later runs can read and change the item.
    */
   addedByAutomationId?: string;
+  /** The id of the subject kind's action that closed it, such as `resume`. */
+  closeAction?: string;
   closeReason?: string;
   closedAt?: Date;
   closedBy?: InboxItemAssignee;
@@ -326,6 +328,7 @@ async function hydrate(
       ...(content.answer ? { answer: content.answer } : undefined),
       ...(row.addedByTurnId ? { addedByTurnId: row.addedByTurnId } : undefined),
       ...(addedByAutomationId ? { addedByAutomationId } : undefined),
+      ...(row.closeAction ? { closeAction: row.closeAction } : undefined),
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
@@ -628,6 +631,7 @@ export async function updateInboxItemContent(
 export async function closeInboxItem(
   db: JuniorDatabase,
   input: {
+    action?: string;
     answer?: UserInputAnswer;
     closedByUserId?: string;
     id: string;
@@ -644,6 +648,7 @@ export async function closeInboxItem(
         // A question item's answer goes to its question. The item keeps a
         // copy, because the release before this one reads it there.
         answer: input.answer ?? null,
+        closeAction: input.action ?? null,
         closeReason: input.reason ?? null,
         closedAt: now,
         closedByUserId: input.closedByUserId ?? null,

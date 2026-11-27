@@ -117,17 +117,17 @@ async function refreshCards(
 /**
  * Do one person action from a Slack card. The thread of the card gets an
  * answer as Slack input from the person, like a typed reply. A dismiss, or
- * the answer to a plugin item, starts no Turn, so the thread gets the same
- * recorded Message as the other linked Conversations, from
- * `actOnInboxItem`. An expected failure, such as
- * an item that is already closed, goes to the person as an ephemeral
- * message.
+ * an answer or action on a plugin item, starts no Turn, so the thread gets
+ * the same recorded Message as the other linked Conversations, from
+ * `actOnInboxItem`. An expected failure, such as an item that is already
+ * closed, goes to the person as an ephemeral message.
  */
 async function act(args: {
   action: InboxItemAction;
   answer?: (item: InboxItem) => UserInputAnswer;
   inputTs: SlackMessageTs;
   itemId: string;
+  kindAction?: string;
   messageId: string;
   payload: SlackInteractivePayload;
   services: SlackInboxItemServices;
@@ -149,22 +149,25 @@ async function act(args: {
   let item: InboxItem;
   try {
     const current = await readInboxItemForUser(actor.user, args.itemId);
-    // The plugin that added an item does the work of its answer, so the
+    // The plugin that added an item does the work of its action, so the
     // thread gets the recorded Message, not input that starts a Turn.
-    const pluginAnswer = args.action === "submit" && isPluginInboxItem(current);
+    const pluginAnswer =
+      (args.action === "submit" || args.action === "done") &&
+      isPluginInboxItem(current);
     recordOnly ||= pluginAnswer;
     item = await actOnInboxItem({
       action: args.action,
       ...(recordOnly ? undefined : { exceptConversationId: conversationId }),
       // Two clicks can both see an open item. Only the click that closes it
       // adds the input to this thread, so one action adds one Turn. A plugin
-      // answer adds no input, so a retry of it after a failed plugin hook
+      // action adds no input, so a retry of it after a failed plugin hook
       // calls the plugin again.
       firstCloseOnly: !pluginAnswer,
       delivery,
       id: current.id,
       user: actor.user,
       ...(args.answer ? { answer: args.answer(current) } : undefined),
+      ...(args.kindAction ? { kindAction: args.kindAction } : undefined),
     });
   } catch (error) {
     if (!(error instanceof InboxItemActionError)) throw error;
@@ -281,6 +284,10 @@ export async function handleSlackInboxItemClick(args: {
   };
   if (click.kind === "dismiss") {
     await act({ ...common, action: "dismiss" });
+    return;
+  }
+  if (click.kind === "action") {
+    await act({ ...common, action: "done", kindAction: click.action });
     return;
   }
   await act({

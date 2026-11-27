@@ -66,6 +66,9 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
         <InboxItemCloser item={item} /> {what} this{" "}
         {formatRelativeTime(item.closedAt)}.
       </p>
+      {item.closeAction ? (
+        <p className="m-0 text-dashboard-text-muted">{item.closeAction}</p>
+      ) : null}
       {item.closeReason ? (
         <p className="m-0 text-dashboard-text-muted">{item.closeReason}</p>
       ) : null}
@@ -147,8 +150,10 @@ export function InboxItemActions(props: {
     }
   }
 
-  // A To-do for the viewer closes with Mark done, its main action.
+  // A To-do for the viewer closes with Mark done, its main action. A plugin
+  // kind can bring its own, such as Resume.
   const todo = item.todoId !== undefined;
+  const kindActions = item.canAct ? (item.subject.actions ?? []) : [];
   // A person who may only answer, such as a reader of a public question,
   // gets no Dismiss or Snooze.
   const dismiss = item.canAct && (props.dismiss ?? true);
@@ -191,6 +196,19 @@ export function InboxItemActions(props: {
           Mark done
         </Button>
       ) : null}
+      {kindActions.map((kindAction) => (
+        <Button
+          disabled={action.isPending || sending}
+          key={kindAction.id}
+          onClick={() =>
+            void run({ action: "done", id: kindAction.id }).catch(() => {})
+          }
+          // The subject's link stays the main action, as for a choice.
+          variant="outline"
+        >
+          {kindAction.label}
+        </Button>
+      ))}
     </>
   );
 
@@ -233,7 +251,12 @@ export function InboxItemActions(props: {
             words={item.owner.kind !== "automation"}
           />
         </div>
-      ) : take || snooze || dismiss || todo || props.extra ? (
+      ) : take ||
+        snooze ||
+        dismiss ||
+        todo ||
+        kindActions.length > 0 ||
+        props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           {/* Where tooltips are off, Dismiss's note shows next to it. */}
           {item.canAct && item.subject.dismissNote ? (

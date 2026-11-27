@@ -21,6 +21,9 @@ export const GITHUB_INBOX_SUBJECTS = {
   pullRequest: "pull_request",
 } as const;
 
+/** The action of a merge conflict item that resumes the fixes. */
+export const GITHUB_CONFLICT_RESUME = "resume";
+
 /**
  * Name the ask on a Junior pull request from its live card. Once it is
  * approved, GitHub reports that it can merge, and it is no draft, the ask
@@ -93,6 +96,7 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
     owner: pullRequestOwner,
   },
   {
+    actions: [{ id: GITHUB_CONFLICT_RESUME, label: "Resume" }],
     codeChange: true,
     kind: GITHUB_INBOX_SUBJECTS.mergeConflict,
     label: "Merge conflict",

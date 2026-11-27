@@ -288,6 +288,22 @@ function validateInboxSubjects(
         `Plugin "${name}" inbox subject "${subject.kind}" assigneeRoles must be a boolean.`,
       );
     }
+    const actionIds = (subject.actions ?? []).map((action) => action?.id);
+    if (
+      (subject.actions !== undefined && !Array.isArray(subject.actions)) ||
+      (subject.actions ?? []).some(
+        (action) =>
+          typeof action?.id !== "string" ||
+          !INBOX_SUBJECT_KIND_RE.test(action.id) ||
+          typeof action.label !== "string" ||
+          !action.label.trim(),
+      ) ||
+      new Set(actionIds).size !== actionIds.length
+    ) {
+      throw new Error(
+        `Plugin "${name}" inbox subject "${subject.kind}" actions need unique snake_case ids and labels.`,
+      );
+    }
     if (seen.has(subject.kind)) {
       throw new Error(
         `Plugin "${name}" has duplicate inbox subject kind "${subject.kind}".`,

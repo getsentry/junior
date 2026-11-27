@@ -1,10 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 
 import {
+  expandRow,
   mockInboxItems,
   prMerge,
   prReview,
   pullRequestSubject,
+  rowHead,
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -28,34 +30,26 @@ const breakingReview = {
   }),
 };
 
-// A merge conflict ask has Resume choices, so its kind is a Question. Its
-// state pill still names the conflict.
+// A merge conflict ask has its kind's Resume action. Its state pill names
+// the conflict.
 const conflict = {
   ...prMerge,
   id: "item-pr-conflict",
-  request: {
-    question: "Resolve the conflict in #57?",
-    fields: [
-      {
-        id: "resume",
-        kind: "choice" as const,
-        label: "Resume",
-        options: [{ label: "Resolve it" }, { label: "Leave it" }],
+  subject: {
+    ...pullRequestSubject({
+      kind: "github:merge_conflict",
+      label: "Merge conflict",
+      resource: prMerge.subject.resource,
+      title: "fix(slack): Keep thread replies in order",
+      titleParts: {
+        scope: "slack",
+        text: "Keep thread replies in order",
+        type: "Fix",
       },
-    ],
+      url: "https://github.com/getsentry/payments/pull/57",
+    }),
+    actions: [{ id: "resume", label: "Resume" }],
   },
-  subject: pullRequestSubject({
-    kind: "github:merge_conflict",
-    label: "Merge conflict",
-    resource: prMerge.subject.resource,
-    title: "fix(slack): Keep thread replies in order",
-    titleParts: {
-      scope: "slack",
-      text: "Keep thread replies in order",
-      type: "Fix",
-    },
-    url: "https://github.com/getsentry/payments/pull/57",
-  }),
   title: "Merge conflict · #57",
 };
 
@@ -100,6 +94,23 @@ test.describe("new UI", () => {
     );
     await expect(conflictRow.getByTitle("Question")).toHaveCount(0);
     await screenshot(page, "inbox-code-change-rows", { lightTheme: true });
+  });
+
+  test("a merge conflict card runs its kind's Resume", async ({
+    dashboard,
+    page,
+  }) => {
+    const actions = await mockInboxItems(page, { open: [conflict] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const conflictRow = row(page, "Keep thread replies in order");
+    await expandRow(rowHead(page, "Keep thread replies in order"));
+    await conflictRow
+      .getByRole("button", { exact: true, name: "Resume" })
+      .click();
+    await expect(conflictRow).toHaveCount(0);
+    expect(actions).toEqual([
+      { body: { action: "done", id: "resume" }, id: conflict.id },
+    ]);
   });
 
   test("a code change row opens its pull request first", async ({

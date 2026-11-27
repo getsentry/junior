@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "4e537f96-34dc-42bf-b878-18e810183962",
+  "prevIds": ["5dddf30d-1fa5-4f06-a90e-acd6a2f366d3"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_items",
+        "close_action"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_items.close_action",
+        "n|col|public.junior_inbox_items.close_action",
+        "e|col|public.junior_inbox_items.close_action"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "close_action",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}
