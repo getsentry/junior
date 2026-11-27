@@ -266,7 +266,7 @@ export const DASHBOARD_QA_THREAD_ID = "junior:internal:dashboard-qa:thread";
 export const DASHBOARD_QA_ARCHIVED_THREAD_ID =
   "junior:internal:dashboard-qa:archived-thread";
 /** A Thread whose parent is the Thread above, not the root. */
-const DASHBOARD_QA_NESTED_THREAD_ID =
+export const DASHBOARD_QA_NESTED_THREAD_ID =
   "junior:internal:dashboard-qa:thread:nested";
 /** Process-local pins so the Pinned section can be exercised in visual QA. */
 const mockPinnedConversationIds = new Set<string>();
@@ -1213,6 +1213,7 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         role: "user",
         eventType: "agent.update",
         eventIdentifier: DASHBOARD_QA_REVIEW_ID,
+        eventStatus: "blocked",
         trustedSummary: 'Child agent "reviewer" is blocked.',
         text: "The reviewer needs access to the dashboard repository.",
       }),

@@ -1,4 +1,5 @@
 import {
+  Circle,
   CircleAlert,
   CircleCheck,
   CircleX,
@@ -18,6 +19,7 @@ import {
 import { statusToneClass } from "../components/StatusChip";
 import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { Spinner } from "../components/ui/spinner";
+import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useArchiveConversation } from "./conversationArchive";
@@ -26,6 +28,7 @@ import {
   useConversationChildAgents,
 } from "./ConversationChildAgents";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
+import { ConversationStateIcon } from "./ConversationStateIcon";
 import { conversationPath } from "./conversationRoutes";
 import {
   useConversationWatches,
@@ -41,11 +44,13 @@ import { FeedThreads } from "./feedThreads";
 
 /** Where a child Conversation stands, from its own run only. */
 export type ChildState =
+  | "needs_you"
   | "blocked"
   | "failed"
   | "running"
   | "watching"
   | "paused"
+  | "stopped"
   | "done";
 
 /**
@@ -56,7 +61,7 @@ export type ChildState =
 export function childState(child: ConversationChildAgent): ChildState {
   if (child.archivedAt) return "done";
   const { lastResult, status, treeState } = child;
-  if (treeState === "needs_you") return "blocked";
+  if (treeState === "needs_you") return "needs_you";
   if (status === "running" || status === "pending") return "running";
   if (status === "failed") return "failed";
   if (status === "idle" && lastResult === "failed") return "failed";
@@ -64,12 +69,17 @@ export function childState(child: ConversationChildAgent): ChildState {
   // A nested child can still work after this child's own run ended.
   if (treeState === "working") return "running";
   if (status === "paused") return "paused";
-  return child.watching ? "watching" : "done";
+  if (child.watching) return "watching";
+  return status === "stopped" ? "stopped" : "done";
 }
 
+/** Finished children hide behind "Show finished". */
+const FINISHED_STATES: ReadonlySet<ChildState> = new Set(["done", "stopped"]);
+
 /**
- * Read why each child stopped from the parent's loaded Events: the latest
- * agent update that a child sent, by child Conversation id.
+ * Read why each child is blocked or failed from the parent's loaded Events:
+ * the latest blocked or failed agent update that a child sent, by child
+ * Conversation id.
  */
 export function childUpdateReasons(
   events: ConversationDetailReport["events"] | undefined,
@@ -83,6 +93,7 @@ export function childUpdateReasons(
       (isLegacyResultEventType(data.eventType) ||
         (isAgentUpdateEventType(data.eventType) &&
           data.eventWatchId === undefined)) &&
+      (data.eventStatus === "blocked" || data.eventStatus === "failed") &&
       data.eventIdentifier &&
       data.text
     ) {
@@ -106,25 +117,35 @@ const stateLabels: Record<ChildState, string> = {
   blocked: "Blocked",
   done: "Done",
   failed: "Failed",
+  needs_you: "Waiting on you",
   paused: "Paused",
   running: "Running",
+  stopped: "Stopped",
   watching: "Watching",
 };
 
-const stateIcons: Record<Exclude<ChildState, "running">, LucideIcon> = {
+const stateIcons: Record<
+  Exclude<ChildState, "needs_you" | "running">,
+  LucideIcon
+> = {
   blocked: CircleAlert,
   done: CircleCheck,
   failed: CircleX,
   paused: Clock,
+  stopped: Circle,
   watching: Eye,
 };
 
 /**
- * Mark where a child stands with the sidebar's spinner, or with the colors
- * of the transcript's child chip for blocked and failed.
+ * Mark where a child stands with the sidebar's icons for a wait on the
+ * viewer and a run, or with the colors of the transcript's child chip for
+ * blocked and failed.
  */
 function ChildStateIcon(props: { state: ChildState }) {
   const label = stateLabels[props.state];
+  if (props.state === "needs_you") {
+    return <ConversationStateIcon className="size-4" state="needs_you" />;
+  }
   if (props.state === "running") {
     return (
       <Spinner aria-label={label} className="size-4 text-dashboard-accent" />
@@ -189,14 +210,18 @@ export function ConversationAgents(props: {
   // The children to look at lead, then running ones, then waiting ones.
   // `sort` is stable, so each state keeps the loaded order.
   const rank = (state: ChildState) =>
-    state === "blocked" || state === "failed" ? 0 : state === "running" ? 1 : 2;
+    state === "needs_you" || state === "blocked" || state === "failed"
+      ? 0
+      : state === "running"
+        ? 1
+        : 2;
   const open = rows
-    .filter((item) => item.state !== "done")
+    .filter((item) => !FINISHED_STATES.has(item.state))
     .sort((left, right) => rank(left.state) - rank(right.state));
   return (
     <DetailsSection
       finished={rows
-        .filter((item) => item.state === "done")
+        .filter((item) => FINISHED_STATES.has(item.state))
         .map((item) => item.row)}
       rows={open.map((item) => item.row)}
       title="Agents"
@@ -234,7 +259,11 @@ function ChildRow(props: {
       title={title}
       {...childOpener(child, props.onOpenTask)}
     >
-      {props.reason ? <DetailsRowLine>{props.reason}</DetailsRowLine> : null}
+      {props.reason ? (
+        <DetailsRowLine>
+          <DisplayText inline text={props.reason} />
+        </DetailsRowLine>
+      ) : null}
     </DetailsRow>
   );
 }

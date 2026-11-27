@@ -209,7 +209,6 @@ export function ConversationDetails(props: {
           conversationId={props.conversationId}
           key={`todos:${props.conversationId}`}
           needsYouTodoIds={needsYouTodoIds}
-          viewerTodoIds={needsYou.viewerTodoIds}
         />
         <ConversationWaitingOn
           canEdit={canEdit}

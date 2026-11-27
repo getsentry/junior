@@ -65,21 +65,15 @@ const statusLabels: Record<ConversationTodo["status"], string> = {
 
 /**
  * Name who owns a To-do: "You", a person, the bot, or the child agent by
- * its title. `viewer` is true for the viewer's own To-do.
+ * its title.
  */
-export function todoOwner(
-  todo: ConversationTodo,
-  input: {
-    agentTitle?: string | undefined;
-    viewer: boolean;
-  },
-): string {
+export function todoOwner(todo: ConversationTodo, agentTitle?: string): string {
   const { assignee } = todo;
   if (assignee.kind === "self") return getDashboardAgentName();
   if (assignee.kind === "agent") {
-    return input.agentTitle ?? assignee.name ?? "Child agent";
+    return agentTitle ?? assignee.name ?? "Child agent";
   }
-  if (input.viewer) return "You";
+  if (assignee.viewer) return "You";
   return assignee.name ?? "Person";
 }
 
@@ -94,8 +88,6 @@ export function ConversationTodoList(props: {
   conversationId: string;
   /** The viewer's To-dos that Needs you shows. */
   needsYouTodoIds: ReadonlySet<number>;
-  /** Every To-do of the viewer that their Inbox items name. */
-  viewerTodoIds: ReadonlySet<number>;
 }) {
   const todos = useConversationTodos(props.conversationId).data?.todos ?? [];
   const children =
@@ -114,15 +106,14 @@ export function ConversationTodoList(props: {
         canEdit={props.canEdit && !todo.redacted}
         conversationId={props.conversationId}
         key={todo.id}
-        owner={todoOwner(todo, {
-          agentTitle:
-            child &&
+        owner={todoOwner(
+          todo,
+          child &&
             childTitle(
               child,
               feedThreads.get(child.conversationId)?.displayTitle,
             ),
-          viewer: props.viewerTodoIds.has(todo.id),
-        })}
+        )}
         todo={todo}
       />
     );

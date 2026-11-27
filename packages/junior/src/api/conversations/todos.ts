@@ -16,8 +16,15 @@ const RECENT_CLOSED_TODOS = 5;
 function reportTodo(
   todo: Todo,
   canViewPrivateContent: boolean,
+  viewer: User | undefined,
 ): ConversationTodo {
   const { assignee } = todo;
+  const forViewer =
+    assignee.kind === "user" &&
+    viewer !== undefined &&
+    assignee.userId === viewer.id
+      ? { viewer: true as const }
+      : undefined;
   return {
     id: todo.id,
     status: todo.status,
@@ -28,7 +35,11 @@ function reportTodo(
           ...(todo.notes ? { notes: todo.notes } : undefined),
           assignee:
             assignee.kind === "user"
-              ? { kind: "user", name: assignee.name ?? assignee.email }
+              ? {
+                  kind: "user",
+                  name: assignee.name ?? assignee.email,
+                  ...forViewer,
+                }
               : assignee,
           ...(todo.changedBy
             ? { changedBy: todo.changedBy.name ?? todo.changedBy.email }
@@ -40,7 +51,9 @@ function reportTodo(
           assignee:
             assignee.kind === "agent"
               ? { kind: "agent", conversationId: assignee.conversationId }
-              : { kind: assignee.kind },
+              : assignee.kind === "user"
+                ? { kind: "user", ...forViewer }
+                : { kind: assignee.kind },
           redacted: true as const,
         }),
   };
@@ -73,7 +86,7 @@ export async function requireConversationTodos(
     todos: [
       ...todos.filter((todo) => isOpenTodoStatus(todo.status)),
       ...closed,
-    ].map((todo) => reportTodo(todo, canViewPrivateContent)),
+    ].map((todo) => reportTodo(todo, canViewPrivateContent, options.viewer)),
   };
 }
 
@@ -105,5 +118,5 @@ export async function setConversationTodoStatus(
     userId: viewer.id,
   });
   if (!todo) throwApiError(404, "To-do not found.");
-  return reportTodo(todo, conversationAccess.canViewPrivateContent);
+  return reportTodo(todo, conversationAccess.canViewPrivateContent, viewer);
 }

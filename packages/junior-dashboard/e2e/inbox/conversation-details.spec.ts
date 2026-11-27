@@ -326,10 +326,9 @@ test.describe("new UI", () => {
     await expect(
       rollback.getByRole("img", { name: "Not started" }),
     ).toBeVisible();
-    // Each To-do names its owner before its notes.
-    await expect(rollback).toContainText(
-      "Morgan Lee · Check the deploy calendar",
-    );
+    // Each To-do names its owner before its notes. The viewer's own To-do
+    // says "You".
+    await expect(rollback).toContainText("You · Check the deploy calendar");
     await screenshot(page, "conversation-details-todos", {
       lightTheme: true,
       target: work,
@@ -383,6 +382,73 @@ test.describe("new UI", () => {
       lightTheme: true,
       view: "mobile",
     });
+  });
+
+  test("an Agents row menu cancels the child's Watch and archives the child", async ({
+    dashboard,
+    page,
+  }) => {
+    const parentId = "junior:internal:dashboard-qa:thread";
+    const childId = "junior:internal:dashboard-qa:thread:nested";
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(parentId)}`,
+    );
+    const agents = page
+      .getByRole("complementary", { exact: true, name: "Conversation details" })
+      .getByRole("region", { exact: true, name: "Agents" });
+    const child = agents
+      .getByRole("listitem")
+      .filter({ hasText: "Recheck pin order in Safari" });
+    const menu = child.getByRole("button", {
+      name: "Change Recheck pin order in Safari",
+    });
+    // The child's run is done, so it waits behind "Show finished".
+    await agents.getByRole("button", { name: "Show finished" }).click();
+    await expect(child.getByRole("img", { name: "Done" })).toBeVisible();
+
+    // Only the child cancels its own Watch, so the cancel goes to its route.
+    await menu.click();
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Cancel Recheck in Safari when the preview deploy is ready.",
+      "Archive",
+    ]);
+    const cancel = page.waitForResponse(
+      (response) =>
+        response.request().method() === "DELETE" &&
+        response.url() ===
+          `${dashboard.baseURL}/api/conversations/${encodeURIComponent(childId)}/watches/watch-thread-child`,
+    );
+    await page
+      .getByRole("menuitem", {
+        name: "Cancel Recheck in Safari when the preview deploy is ready.",
+      })
+      .click();
+    expect((await cancel).status()).toBe(204);
+    await menu.click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Archive"]);
+
+    // Archive is for everyone, so it asks first.
+    const archive = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" &&
+        response.url() ===
+          `${dashboard.baseURL}/api/conversations/${encodeURIComponent(childId)}/archive`,
+    );
+    await page.getByRole("menuitem", { name: "Archive" }).click();
+    await page
+      .getByRole("alertdialog", { name: "Archive for everyone?" })
+      .getByRole("button", { name: "Archive" })
+      .click();
+    const archived = await archive;
+    expect(archived.ok()).toBe(true);
+    expect(archived.request().postDataJSON()).toMatchObject({
+      applyToChildren: true,
+      archived: true,
+    });
+    // An archived child stays listed, with nothing left to change.
+    await expect(menu).toHaveCount(0);
+    await expect(child.getByRole("img", { name: "Done" })).toBeVisible();
   });
 
   test("a viewer who is not a Participant sees To-dos without actions", async ({

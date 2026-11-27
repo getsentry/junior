@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, ExternalLink, Eye } from "lucide-react";
+import { Clock, ExternalLink, Eye, LockKeyhole } from "lucide-react";
 import {
   conversationWatchesReportSchema,
   type ConversationWatch,
@@ -9,7 +9,7 @@ import {
 import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { deleteDashboardResource } from "../http";
 import { revalidatedJsonQuery } from "../revalidation";
-import { formatRelativeTime } from "../time";
+import { formatRelativeTime, formatTime } from "../time";
 import { useConversationChildAgents } from "./ConversationChildAgents";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
@@ -123,12 +123,14 @@ function WatchRow(props: {
   const title = watchTitle(watch);
   // A Timer has the clock. A Watch for an Event has the sidebar's eye.
   const timer = Boolean(watch.firesAt);
-  const Icon = timer ? Clock : Eye;
+  const Icon = watch.redacted ? LockKeyhole : timer ? Clock : Eye;
+  const at = watch.firesAt ?? watch.expiresAt;
+  const verb = timer ? "Fires" : "Expires";
   return (
     <DetailsRow
       icon={
         <Icon
-          aria-label={timer ? "Timer" : "Watching"}
+          aria-label={watch.redacted ? "Private" : timer ? "Timer" : "Watching"}
           className="size-4 text-dashboard-text-muted"
           role="img"
         />
@@ -160,9 +162,13 @@ function WatchRow(props: {
       }
     >
       <DetailsRowLine>
-        {watch.firesAt
-          ? `Fires ${formatRelativeTime(watch.firesAt)}`
-          : `Expires ${formatRelativeTime(watch.expiresAt)}`}
+        {/* The exact time shows on hover. */}
+        <time
+          dateTime={at}
+          title={`${verb} ${formatTime(at, { dateStyle: "medium", timeStyle: "short" })}`}
+        >
+          {verb} {formatRelativeTime(at)}
+        </time>
       </DetailsRowLine>
     </DetailsRow>
   );

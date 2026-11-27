@@ -71,6 +71,10 @@ describe("a child Conversation's state", () => {
       thread("Close the books", { treeState: "working" }),
       thread("Reconcile Stripe balances", { lastResult: "failed" }),
       thread("Ask about the cutover", { lastResult: "blocked" }),
+      thread("Stopped by a person", {
+        lastResult: undefined,
+        status: "stopped",
+      }),
       thread("Old archived work", {
         archivedAt: "2026-08-03T07:00:00.000Z",
         status: "running",
@@ -84,11 +88,12 @@ describe("a child Conversation's state", () => {
       "running",
       "failed",
       "blocked",
+      "stopped",
       "done",
     ]);
   });
 
-  it("marks a failed Thread that waits on the viewer as blocked", () => {
+  it("shows a failed Thread that waits on the viewer as waiting on you", () => {
     expect(
       childState(
         thread("Retry the export", {
@@ -96,16 +101,22 @@ describe("a child Conversation's state", () => {
           treeState: "needs_you",
         }),
       ),
-    ).toBe("blocked");
+    ).toBe("needs_you");
   });
 
-  it("reads why a child stopped from its latest update", () => {
+  it("reads why a child is blocked from its latest blocked update", () => {
     const reasons = childUpdateReasons([
-      update(1, { eventIdentifier: "internal:a", text: "Started." }),
-      update(2, { eventIdentifier: "internal:a", text: "Needs repo access." }),
+      update(1, {
+        eventIdentifier: "internal:a",
+        eventStatus: "blocked",
+        text: "Needs repo access.",
+      }),
+      // A progress update is not a reason.
+      update(2, { eventIdentifier: "internal:a", text: "Still working." }),
       // A Watch delivered this update, so it says nothing about the child.
       update(3, {
         eventIdentifier: "internal:b",
+        eventStatus: "failed",
         eventWatchId: "w1",
         text: "The deploy finished.",
       }),
@@ -118,15 +129,18 @@ describe("a child Conversation's state", () => {
 describe("a To-do's owner", () => {
   it("names the viewer, a person, the bot, or the child agent", () => {
     const person = todo({ assignee: { kind: "user", name: "Avery" } });
+    const viewer = todo({
+      assignee: { kind: "user", name: "Avery", viewer: true },
+    });
     const agent = todo({
       assignee: { conversationId: "internal:a", kind: "agent" },
     });
     expect([
-      todoOwner(person, { viewer: true }),
-      todoOwner(person, { viewer: false }),
-      todoOwner(todo(), { viewer: false }),
-      todoOwner(agent, { agentTitle: "Fix the flaky test", viewer: false }),
-      todoOwner(agent, { viewer: false }),
+      todoOwner(viewer),
+      todoOwner(person),
+      todoOwner(todo()),
+      todoOwner(agent, "Fix the flaky test"),
+      todoOwner(agent),
     ]).toEqual([
       "You",
       "Avery",

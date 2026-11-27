@@ -33,10 +33,6 @@ export function useConversationNeedsYou(conversationId: string) {
         inboxItemKind(item) !== "FYI",
     ),
     query,
-    /** The To-dos that the loaded items show, which are the viewer's. */
-    viewerTodoIds: new Set(
-      items.flatMap((item) => (item.todoId === undefined ? [] : [item.todoId])),
-    ),
   };
 }
 
