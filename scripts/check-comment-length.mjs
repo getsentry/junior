@@ -18,8 +18,8 @@ const BASELINE_PATH = "scripts/comment-length-baseline.json";
 const SCAN_DIRECTORIES = ["packages", "scripts", "tools"];
 export const MAX_BLOCK_LINES = 5;
 export const MAX_LINE_WIDTH = 80;
-// `/**`, `*/`, their JSX forms, and empty comment lines hold no text.
-const DELIMITER_LINE = /^\s*(?:\{?\/\*\*?|\*\/\}?|\*|\/\/)\s*$/;
+// `/**`, `*/`, their JSX forms, and empty lines hold no text.
+const DELIMITER_LINE = /^\s*(?:\{?\/\*\*?|\*\/\}?|\*|\/\/)?\s*$/;
 // Links and tool directives cannot wrap.
 const UNWRAPPABLE =
   /https?:\/\/|(?:oxlint|eslint)-(?:disable|enable)|@ts-|ast-grep-ignore/;

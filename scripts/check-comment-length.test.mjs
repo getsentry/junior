@@ -41,6 +41,9 @@ test("counts JSDoc text lines, not its delimiters or blank lines", () => {
   assert.deepEqual(within["block-lines"], {});
   const over = measure(["/**", ...body, " * more", " */", "function a() {}"]);
   assert.deepEqual(over["block-lines"], { [FILE]: 1 });
+  const plain = body.map((line) => line.replace(" * ", "   "));
+  const unstarred = measure(["/*", ...plain, "", "   ", "*/", "let a;"]);
+  assert.deepEqual(unstarred["block-lines"], {});
 });
 
 test("ignores blocks split by code, and comment text in strings", () => {
