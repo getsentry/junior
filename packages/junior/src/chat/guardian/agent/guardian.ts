@@ -27,10 +27,10 @@ import { ProviderError } from "@/chat/services/provider-error";
 // names the rule.
 const assessmentFields = {
   reason: z.string().trim().min(1).max(500),
-  personSaidYes: z
+  confirmed: z
     .boolean()
     .describe(
-      "True only when the `instruction` person's own line said yes to a question that named this exact action.",
+      "True only when one of the `instruction` person's own lines says yes to a question that named this exact action.",
     ),
   rule: z.enum(AGENT_GUARDIAN_RULE_IDS),
 };
@@ -76,13 +76,12 @@ function isDenyRule(rule: Rule): boolean {
 
 /**
  * Turn the model's assessment into the review (`rule-kinds`,
- * `allow-default`). The tool's own `deny` always holds, and its `ask` holds
- * until the person says yes to this exact action. Its `allow` clears only
- * `unrequested`. The reason starts with the tool's decision, so the record
- * keeps it.
+ * `plugin-decision`, `answer-is-a-line`). A deny always holds, and only the
+ * person's yes to this exact action (`confirmed`) clears an ask. The reason
+ * starts with the tool's decision, so the record keeps it.
  */
 export function decide(
-  assessment: { rule: Rule | "none"; reason: string; personSaidYes?: boolean },
+  assessment: { rule: Rule | "none"; reason: string; confirmed?: boolean },
   action: Pick<Action, "toolDecision">,
 ): Pick<Review, "decision" | "rule" | "reason"> {
   const { rule, reason } = assessment;
@@ -98,7 +97,10 @@ export function decide(
   if (tool?.decision === "deny") {
     return { decision: "deny", ...ruled, reason: withTool(reason) };
   }
-  if (tool?.decision === "ask" && !assessment.personSaidYes) {
+  if (assessment.confirmed) {
+    return { decision: "allow", ...ruled, reason: withTool(reason) };
+  }
+  if (tool?.decision === "ask") {
     return { decision: "ask", ...ruled, reason: withTool(reason) };
   }
   if (rule === "none") {

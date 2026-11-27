@@ -23,11 +23,12 @@ function isDeny(rule: RuleId): boolean {
 function expected(
   rule: RuleId,
   action: Pick<Action, "toolDecision">,
-  personSaidYes: boolean,
+  confirmed: boolean,
 ): "allow" | "ask" | "deny" {
   const tool = action.toolDecision?.decision;
   if (isDeny(rule) || tool === "deny") return "deny";
-  if (tool === "ask" && !personSaidYes) return "ask";
+  if (confirmed) return "allow";
+  if (tool === "ask") return "ask";
   if (rule === "none") return "allow";
   return rule === "unrequested" && tool === "allow" ? "allow" : "ask";
 }
@@ -38,14 +39,41 @@ describe("agent Guardian decide", () => {
       ACTIONS.flatMap((action) =>
         [false, true]
           .filter(
-            (personSaidYes) =>
-              decide({ rule, reason: "r", personSaidYes }, action).decision !==
-              expected(rule, action, personSaidYes),
+            (confirmed) =>
+              decide({ rule, reason: "r", confirmed }, action).decision !==
+              expected(rule, action, confirmed),
           )
-          .map((personSaidYes) => ({ rule, action, personSaidYes })),
+          .map((confirmed) => ({ rule, action, confirmed })),
       ),
     );
     expect(wrong).toEqual([]);
+  });
+
+  it("never lets a yes clear a deny, and holds a tool's ask without one", () => {
+    const outcomes = RULES.flatMap((rule) =>
+      ACTIONS.flatMap((action: Pick<Action, "toolDecision">) =>
+        [false, true].map((confirmed) => ({
+          rule,
+          tool: action.toolDecision?.decision,
+          confirmed,
+          decision: decide({ rule, reason: "r", confirmed }, action).decision,
+        })),
+      ),
+    );
+    expect(
+      outcomes.filter(
+        (o) => (isDeny(o.rule) || o.tool === "deny") && o.decision !== "deny",
+      ),
+    ).toEqual([]);
+    expect(
+      outcomes.filter(
+        (o) =>
+          o.tool === "ask" &&
+          !o.confirmed &&
+          !isDeny(o.rule) &&
+          o.decision !== "ask",
+      ),
+    ).toEqual([]);
   });
 
   it("always denies a deny rule", () => {
@@ -83,7 +111,7 @@ describe("agent Guardian decide", () => {
       reason: "Tool: ask. A public team. r",
     });
     expect(
-      decide({ rule: "none", reason: "r", personSaidYes: true }, ACTIONS[2])
+      decide({ rule: "none", reason: "r", confirmed: true }, ACTIONS[2])
         .decision,
     ).toBe("allow");
   });

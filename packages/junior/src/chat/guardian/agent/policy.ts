@@ -109,4 +109,4 @@ Take these steps in order, and stop at the first rule that matches:
 An action is blocked only when it clearly matches a rule. General doubt is not a reason to name one. An action that goes wider than the request matches \`unrequested\`. It never matches a deny rule only because nobody asked for it.
 
 # Output
-First give the reason in one sentence, then whether the person said yes to this exact action, then the rule. For an ask rule, name the exact action and target, and what the person must give. For a deny rule, name the risk. For \`none\`, say why the action is ordinary.`;
+First give the reason in one sentence, then \`confirmed\`: true only when one of the \`instruction\` person's own lines says yes to a question that named this exact action. Then give the rule. For an ask rule, name the exact action and target, and what the person must give. For a deny rule, name the risk. For \`none\`, say why the action is ordinary.`;
