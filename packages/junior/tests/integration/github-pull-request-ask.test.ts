@@ -49,6 +49,31 @@ const PULL_ID = "1592000";
 const BOT = "sentry-junior[bot]";
 const person = slackSpawnInput.actor;
 
+/** The pull request as a `PullRequestCards` query reads it. */
+function cardNode(fields: Record<string, unknown>) {
+  return {
+    additions: 1,
+    assignees: { nodes: [] },
+    author: { login: BOT },
+    baseRefName: "main",
+    body: "",
+    changedFiles: 1,
+    commits: { nodes: [] },
+    deletions: 1,
+    headRefName: "fix/check",
+    headRefOid: "head-1",
+    isDraft: false,
+    mergeable: "MERGEABLE",
+    merged: false,
+    number: 1592,
+    reviewRequests: { nodes: [] },
+    state: "OPEN",
+    updatedAt: "2026-07-02T12:00:00Z",
+    url: PULL_URL,
+    ...fields,
+  };
+}
+
 let app: Awaited<ReturnType<typeof createApp>>;
 
 /** Send a signed GitHub webhook through the app route. */
@@ -356,27 +381,7 @@ describe("the ask of a Junior pull request", () => {
             return HttpResponse.json({
               data: {
                 p0: {
-                  pullRequest: {
-                    additions: 1,
-                    author: { login: BOT },
-                    baseRefName: "main",
-                    body: "",
-                    changedFiles: 1,
-                    commits: { nodes: [] },
-                    deletions: 1,
-                    headRefName: "fix/check",
-                    headRefOid: "head-1",
-                    isDraft: false,
-                    mergeable: "MERGEABLE",
-                    merged: false,
-                    number: 1592,
-                    reviewDecision,
-                    reviewRequests: { nodes: [] },
-                    state: "OPEN",
-                    title,
-                    updatedAt: "2026-07-02T12:00:00Z",
-                    url: PULL_URL,
-                  },
+                  pullRequest: cardNode({ reviewDecision, title }),
                 },
               },
             });
@@ -823,20 +828,7 @@ describe("the ask of a Junior pull request", () => {
             return HttpResponse.json({
               data: {
                 p0: {
-                  pullRequest: {
-                    additions: 1,
-                    author: { login: BOT },
-                    baseRefName: "main",
-                    body: "",
-                    changedFiles: 1,
-                    commits: { nodes: [] },
-                    deletions: 1,
-                    headRefName: "fix/check",
-                    headRefOid: "head-1",
-                    isDraft: false,
-                    mergeable: "MERGEABLE",
-                    merged: false,
-                    number: 1592,
+                  pullRequest: cardNode({
                     reviewDecision: null,
                     // More reviewers than the card keeps, so Out is not
                     // among the five that it lists.
@@ -852,11 +844,8 @@ describe("the ask of a Junior pull request", () => {
                         requestedReviewer: { __typename: "User", login },
                       })),
                     },
-                    state: "OPEN",
                     title: "fix: Check",
-                    updatedAt: "2026-07-02T12:00:00Z",
-                    url: PULL_URL,
-                  },
+                  }),
                 },
               },
             });

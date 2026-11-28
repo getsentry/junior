@@ -1703,9 +1703,12 @@ function longConversation(nowMs: number): ConversationDetailReport {
         facts: {
           type: "code_change",
           additions: 48,
+          approvers: ["avery"],
+          assignees: ["morgan"],
           author: "junior",
           changedFiles: 3,
           deletions: 9,
+          reviewers: ["riley"],
           sourceBranch: "release/pin-payments-4.2",
           targetBranch: "main",
         },

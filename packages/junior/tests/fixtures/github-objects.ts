@@ -279,6 +279,7 @@ export function patchQueries(queries: GraphqlQuery[]): GraphqlQuery[] {
 export function cardNode(number: number) {
   return {
     additions: number,
+    assignees: { nodes: [] },
     author: { login: "junior-test[bot]" },
     baseRefName: "main",
     body: "Cache GitHub objects.",

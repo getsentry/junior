@@ -1,3 +1,8 @@
+import {
+  checkRunCounts,
+  pullRequestCardsResponse,
+} from "./github-pull-request-cards";
+
 // The watch event and every read of its PR must describe the same failed run.
 const repo = "getsentry/junior";
 const sha = "abcdef1234567890abcdef1234567890abcdef12";
@@ -53,6 +58,30 @@ const reviewers = new Map([
   [9_004, "octo-requester"],
   [9_005, "octo-requester"],
 ]);
+// The cache card of the PR, which a check event reads when it has none.
+const card = {
+  additions: 12,
+  author: { login: pullRequest.user.login },
+  baseRefName: pullRequest.base.ref,
+  body: "",
+  changedFiles: 1,
+  commits: checkRunCounts(["FAILURE"]),
+  databaseId: pullRequest.id,
+  deletions: 3,
+  headRefName: pullRequest.head.ref,
+  headRefOid: sha,
+  isDraft: false,
+  latestOpinionatedReviews: { nodes: [] },
+  mergeable: "MERGEABLE",
+  merged: false,
+  number: pullRequest.number,
+  reviewDecision: "REVIEW_REQUIRED",
+  reviewRequests: { nodes: [] },
+  state: "OPEN",
+  title: pullRequest.title,
+  updatedAt: "2026-05-27T00:05:00Z",
+  url: pullRequest.html_url,
+};
 const job = {
   ...check,
   run_id: 1,
@@ -101,6 +130,10 @@ export async function interceptTestGitHubChecksHttp(
         subjectId?: string;
       };
     };
+    const cards = pullRequestCardsResponse(body, (number) =>
+      number === pullRequest.number ? card : undefined,
+    );
+    if (cards) return cards;
     const query = body.query ?? "";
     // A review body has no REST reactions endpoint, so its reactions go
     // through GraphQL on the review's node id.

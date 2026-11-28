@@ -117,7 +117,16 @@ export const pullRequestHeadFactsNodeSchema = z.object({
   databaseId: z.number().int().positive().nullish(),
   headRefOid: z.string(),
   latestOpinionatedReviews: z
-    .object({ nodes: z.array(z.object({ state: z.string() }).nullable()) })
+    .object({
+      nodes: z.array(
+        z
+          .object({
+            author: z.object({ login: z.string() }).nullish(),
+            state: z.string(),
+          })
+          .nullable(),
+      ),
+    })
     .nullish(),
   mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
   reviewDecision: reviewDecisionSchema,
@@ -144,6 +153,9 @@ type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 /** One pull request of `pullRequestCards`. */
 export const pullRequestCardNodeSchema = pullRequestHeadFactsNodeSchema.extend({
   additions: z.number().int().nonnegative(),
+  assignees: z.object({
+    nodes: z.array(z.object({ login: z.string() }).nullable()).nullable(),
+  }),
   author: z.object({ login: z.string() }).nullable(),
   baseRefName: z.string(),
   body: z.string(),
@@ -196,6 +208,14 @@ export function githubRequestedReviewers(
   });
 }
 
+/** The logins of the writers whose latest review approves. */
+export function githubApprovers(node: HeadFactsNode): Array<{ login: string }> {
+  return (node.latestOpinionatedReviews?.nodes ?? []).flatMap((review) => {
+    const login = review?.author?.login;
+    return review?.state === "APPROVED" && login ? [{ login }] : [];
+  });
+}
+
 const PASSED_CHECK_RUNS = new Set(["NEUTRAL", "SKIPPED", "SUCCESS"]);
 const PENDING_CHECK_RUNS = new Set([
   "IN_PROGRESS",
@@ -232,6 +252,10 @@ export function githubPullRequestFieldsFromNode(
 ): GitHubPullRequestFields {
   return {
     additions: node.additions,
+    approved_by: githubApprovers(node),
+    assignees: (node.assignees.nodes ?? []).flatMap((user) =>
+      user ? [{ login: user.login }] : [],
+    ),
     base: { ref: node.baseRefName },
     body: node.body,
     changed_files: node.changedFiles,
