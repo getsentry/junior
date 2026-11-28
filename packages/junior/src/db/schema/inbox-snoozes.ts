@@ -39,8 +39,6 @@ export const juniorInboxSnoozes = pgTable(
       .references(() => juniorInboxItems.id, { onDelete: "cascade" }),
     state: text("state").$type<"snoozed" | "woken" | "cancelled">().notNull(),
     wakeReason: jsonb("wake_reason").$type<InboxSnoozeWakeReason>(),
-    // The timer trigger's time, for the Inbox. Older timed snoozes lack it.
-    wakeAt: timestamptz("wake_at"),
     createdAt: timestamptz("created_at").notNull(),
   },
   (table) => [

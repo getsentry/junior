@@ -127,6 +127,20 @@ export interface InboxSnoozeTriggerInput {
   outcome: "wake" | "resolve";
 }
 
+/**
+ * A new snooze timer id. It ends with the wake time, so a snooze can say
+ * when it wakes without a read of the timer index.
+ */
+export function snoozeTimerId(wakeAtMs: number): string {
+  return `inbox-snooze:${randomUUID()}:${wakeAtMs}`;
+}
+
+/** The wake time in a snooze timer id. Older ids have none. */
+export function snoozeTimerWakeAtMs(timerId: string): number | undefined {
+  const time = /^inbox-snooze:[^:]+:(\d+)$/.exec(timerId)?.[1];
+  return time === undefined ? undefined : Number(time);
+}
+
 /** The trigger of a snooze timer: its `timer.fired` Event wakes the item. */
 export function snoozeTimerTrigger(timerId: string): InboxSnoozeTriggerInput {
   return {
@@ -152,8 +166,6 @@ export async function snoozeInboxItems(
     }[];
     nowMs: number;
     userId: string;
-    /** The time of the timer trigger, when the snoozes have one. */
-    wakeAtMs?: number;
   },
 ): Promise<string[]> {
   return db.transaction(async (tx) => {
@@ -177,7 +189,6 @@ export async function snoozeInboxItems(
       inboxItemId: item.inboxItemId,
       state: "snoozed" as const,
       userId: input.userId,
-      wakeAt: input.wakeAtMs === undefined ? null : new Date(input.wakeAtMs),
     }));
     await tx.insert(juniorInboxSnoozes).values(snoozes);
     const triggers = input.items.flatMap((item, index) =>
@@ -332,8 +343,6 @@ export interface ViewerInboxSnooze {
   createdAt: Date;
   /** None: it lasts until the item closes. */
   triggers: InboxSnoozeTriggerInput[];
-  /** Null without a timer, or on a timed snooze made before it was stored. */
-  wakeAt: Date | null;
 }
 
 /**
@@ -365,7 +374,6 @@ export async function readViewerInboxSnoozes(
         namespace: juniorInboxSnoozeTriggers.namespace,
         outcome: juniorInboxSnoozeTriggers.outcome,
       },
-      wakeAt: juniorInboxSnoozes.wakeAt,
       wakeReason: juniorInboxSnoozes.wakeReason,
     })
     .from(juniorInboxSnoozes)
@@ -394,7 +402,6 @@ export async function readViewerInboxSnoozes(
       const snooze = snoozed.get(row.inboxItemId) ?? {
         createdAt: row.createdAt,
         triggers: [],
-        wakeAt: row.wakeAt,
       };
       if (row.trigger) snooze.triggers.push(row.trigger);
       snoozed.set(row.inboxItemId, snooze);

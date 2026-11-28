@@ -65,6 +65,7 @@ import {
   clearInboxWakeReasons,
   readViewerInboxSnoozes,
   SNOOZE_TIMER_EVENT_TYPE,
+  snoozeTimerWakeAtMs,
   type ViewerInboxSnooze,
 } from "@/chat/inbox-snoozes/store";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
@@ -281,14 +282,16 @@ function viewerSnoozePayload(snooze: ViewerInboxSnooze): InboxViewerSnooze {
         ...(phrase ? { phrase } : undefined),
       };
     });
+  const timer = snooze.triggers.find(isSnoozeTimer);
+  const wakeAtMs = timer && snoozeTimerWakeAtMs(timer.identifier);
   return {
     snoozedAt: snooze.createdAt.toISOString(),
     ...(snooze.triggers.length === 0
       ? { untilClosed: true as const }
       : undefined),
-    ...(snooze.wakeAt
-      ? { wakeAt: snooze.wakeAt.toISOString() }
-      : snooze.triggers.some(isSnoozeTimer)
+    ...(wakeAtMs !== undefined
+      ? { wakeAt: new Date(wakeAtMs).toISOString() }
+      : timer
         ? { untilSetTime: true as const }
         : undefined),
     ...(events.length > 0 ? { events } : undefined),

@@ -10,7 +10,11 @@ import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
-import { juniorInboxSnoozes, juniorInboxItemAssignees } from "@/db/schema";
+import {
+  juniorInboxItemAssignees,
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
+} from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -304,15 +308,21 @@ describe("snoozes", () => {
         wakeAt: new Date(NOW_MS + 60_000).toISOString(),
       },
     });
-    // A timed snooze made before its wake time was stored still says that
-    // it has one.
-    await getDb().update(juniorInboxSnoozes).set({ wakeAt: null });
+    // A timer id made before ids carried the wake time still says that the
+    // snooze has one.
+    const [timer] = await getDb()
+      .select({ identifier: juniorInboxSnoozeTriggers.identifier })
+      .from(juniorInboxSnoozeTriggers);
+    const setTimer = (identifier: string) =>
+      getDb().update(juniorInboxSnoozeTriggers).set({ identifier });
+    await setTimer(timer!.identifier.replace(/:\d+$/, ""));
     expect(await asAna.snoozes()).toEqual({
       "Review acme entry": {
         snoozedAt: new Date(NOW_MS).toISOString(),
         untilSetTime: true,
       },
     });
+    await setTimer(timer!.identifier);
     const asleep = await asAna.versions();
 
     // The timer.fired Event wakes it, and the versions token moves.

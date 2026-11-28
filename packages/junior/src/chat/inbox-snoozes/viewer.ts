@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
@@ -27,6 +26,7 @@ import {
   inboxItemSnoozedBy,
   settleInboxSnoozes,
   snoozeInboxItems,
+  snoozeTimerId,
   snoozeTimerTrigger,
   unsnoozeInboxRow,
   type InboxSnoozeTriggerInput,
@@ -320,8 +320,7 @@ export async function createViewerSnooze(
     triggers,
     await namedResources(user, triggers),
   );
-  const timerId =
-    wakeAtMs === undefined ? undefined : `inbox-snooze:${randomUUID()}`;
+  const timerId = wakeAtMs === undefined ? undefined : snoozeTimerId(wakeAtMs);
   // Add the timer before the snoozes replace the viewer's earlier ones, so
   // a failed add leaves those snoozes and their timers as they were.
   if (timerId && wakeAtMs !== undefined) {
@@ -337,7 +336,6 @@ export async function createViewerSnooze(
     })),
     nowMs,
     userId: user.id,
-    ...(wakeAtMs === undefined ? undefined : { wakeAtMs }),
   });
   // A heartbeat that claims the timer before the snoozes commit finds no
   // snooze and removes it. That can only happen once the wake time has
