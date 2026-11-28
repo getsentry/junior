@@ -5275,9 +5275,9 @@
         "path": "switchable"
       }
     ],
-    "coreFlag": "likely-core-gap",
-    "needsDecision": "design/slack.md says another app's post never starts a Turn; main lets an allowedBotUserIds bot user's mention start one. Which is right?",
-    "note": "The Chat SDK sets author.isBot = !!event.bot_id (node_modules/@chat-adapter/slack dist/index.js:2541). bindSlackAuthorIdentity then skips the Identity, so core's scheduleInboundMessage throws, the webhook returns 503, and Slack retries. The eval sends bot_id (junior-evals/src/fixture/agent.ts:434). The integration case sends no bot_id, so it does not hit this path. Also conflicts with design/slack.md (see the reply)."
+    "coreFlag": "known-core-gap",
+    "note": "The Chat SDK sets author.isBot = !!event.bot_id (node_modules/@chat-adapter/slack dist/index.js:2541). bindSlackAuthorIdentity then skips the Identity, so core's scheduleInboundMessage throws, the webhook returns 503, and Slack retries. The eval sends bot_id (junior-evals/src/fixture/agent.ts:434). The integration case sends no bot_id, so it does not hit this path. Also conflicts with design/slack.md (see the reply).",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main. A mention from a bot in slack.allowedBotUserIds starts a Turn (getsentry/junior#2279); every other app post follows design/slack.md. Cutover blocker: on core the post gets no author Identity, because bindSlackAuthorIdentity skips isBot authors, so turn-steps/ingress.ts throws and Slack retries the 503. Fix it in Slack ingress (chat/ingress/slack-webhook.ts), which owns the allowlist; core and turn-steps/ingress.ts stay Slack-neutral."
   },
   {
     "id": "intake:slack-allowed-domains",
