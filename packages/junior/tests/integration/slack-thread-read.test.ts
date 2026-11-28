@@ -522,9 +522,11 @@ describe("slackThreadRead", () => {
     );
   });
 
-  it("returns an error when neither url nor channel_id+ts are provided", async () => {
+  it("returns an error when neither url nor slack_ts is provided", async () => {
     const tool = createTool();
-    await expect(executeTool(tool, {})).rejects.toThrow("Provide either");
+    await expect(executeTool(tool, {})).rejects.toThrow(
+      "Provide a Slack message `url` or a `slack_ts`",
+    );
   });
 
   it("rejects invalid explicit slack_ts format", async () => {
