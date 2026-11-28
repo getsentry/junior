@@ -7,6 +7,7 @@ import {
   type RouteMatch,
 } from "react-router";
 
+import { RouteErrorBoundary } from "./RouteErrorBoundary";
 import { nameRouteSpan } from "./sentry";
 
 function routePattern(matches: RouteMatch[]): string {
@@ -24,7 +25,7 @@ function routePattern(matches: RouteMatch[]): string {
  * Render `<Route>` children like `<Routes>`, and name the open pageload or
  * navigation span after the route pattern that matched, such as
  * `/conversations/:conversationId`. Lazy pages show `fallback` while their
- * code loads.
+ * code loads, and a page that fails shows an error until the path changes.
  */
 export function TracedRoutes(props: {
   children: ReactNode;
@@ -40,5 +41,9 @@ export function TracedRoutes(props: {
   useLayoutEffect(() => {
     if (pattern) nameRouteSpan(pattern);
   }, [location.key, pattern]);
-  return <Suspense fallback={props.fallback}>{element}</Suspense>;
+  return (
+    <RouteErrorBoundary resetKey={location.pathname}>
+      <Suspense fallback={props.fallback}>{element}</Suspense>
+    </RouteErrorBoundary>
+  );
 }

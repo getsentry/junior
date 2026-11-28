@@ -18,6 +18,13 @@ test.describe("new UI", () => {
     dashboard,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
+    const automationsChunk = /\/chunks\/AutomationsPage-[a-z0-9]+\.js$/;
+    const automationsChunkLoads: string[] = [];
+    page.on("request", (request) => {
+      if (automationsChunk.test(request.url())) {
+        automationsChunkLoads.push(request.url());
+      }
+    });
     await page.goto(`${dashboard.baseURL}/inbox`);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
@@ -44,9 +51,15 @@ test.describe("new UI", () => {
       primary.getByRole("link", { name: /^(Pull requests|Decisions)/ }),
     ).toHaveCount(0);
 
-    // Automations keeps the same pane, with its row marked.
+    // Automations keeps the same pane, with its row marked. Its page code
+    // loads on the first visit, not with the Inbox.
+    expect(automationsChunkLoads).toEqual([]);
     await primary.getByRole("link", { name: /^Automations/ }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+    await expect(
+      page.getByRole("heading", { name: "Automations", exact: true }),
+    ).toBeVisible();
+    expect(automationsChunkLoads).toHaveLength(1);
     await expect(
       primary.getByRole("link", { name: /^Automations/ }),
     ).toHaveAttribute("aria-current", "page");
