@@ -19,7 +19,11 @@ import {
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
 } from "@/chat/conversations/projection";
-import { juniorConversations, juniorInboxItems } from "@/db/schema";
+import {
+  juniorConversations,
+  juniorInboxItems,
+  juniorQuestions,
+} from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
@@ -133,6 +137,16 @@ describe("conversation status", () => {
       ...ACTION_ITEM,
       assignees: ["everyone"],
     });
+    // askUserQuestion stores only `fields`, with no shared `question`.
+    const [item] = await getDb()
+      .select({ subjectId: juniorInboxItems.subjectId })
+      .from(juniorInboxItems)
+      .where(eq(juniorInboxItems.id, everyone));
+    const [asked] = await getDb()
+      .select({ request: juniorQuestions.request })
+      .from(juniorQuestions)
+      .where(eq(juniorQuestions.id, item!.subjectId));
+    expect(Object.keys(asked?.request ?? {})).toEqual(["fields"]);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     // A dismiss with no person, such as an archive's, closes the question too.
     await dismissOpenInboxItems(getDb(), {
