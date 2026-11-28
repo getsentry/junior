@@ -1,5 +1,14 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { stopChildAgentsOf } from "@/chat/child-agents/stop";
@@ -12,16 +21,29 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
 import {
   getConversationStoppedAtMs,
   resumeConversationTree,
-  stopConversationTree,
-} from "@/chat/conversations/session-stop";
+} from "@/chat/conversations/stop-state";
 import { stopConversation } from "@/chat/conversations/stop";
-import { getConversationEventStore } from "@/chat/db";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import { createEngineContext } from "@/turn-steps/engine-context";
+import { turnStepConsumer } from "@/turn-steps/consumer";
+import { getChatConfig } from "@/chat/config";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import { getConversationEventStore, getDb } from "@/chat/db";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { juniorTurns } from "@/db/schema";
+import { getQueueProvider } from "@/chat/queue/provider";
+import {
+  startLocalVercelQueueServer,
+  type LocalVercelQueueServer,
+} from "@/chat/queue/local-server";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import {
   ackMessages,
+  appendAndEnqueueInboundMessage,
   completeConversationWork,
   getConversationWorkState,
   startConversationWork,
@@ -47,6 +69,9 @@ import {
   createConversationWorkHarness,
   deferred,
 } from "../../../fixtures/conversation-work";
+import { patchConfig } from "../../../fixtures/config";
+import { fakeModelClient } from "../../../fixtures/model-stream";
+import { staticTools } from "../../../fixtures/turn-engine";
 import { finishRun } from "../../../fixtures/thread-input";
 import { signedInViewer } from "../../../fixtures/user";
 
@@ -602,5 +627,188 @@ describe("conversation stop API", () => {
     // A person's input to the root ends the stop of that child agent too.
     await resumeConversationTree(created.conversationId, stoppedAtMs + 2_000);
     await expect(getConversationStoppedAtMs(missed)).resolves.toBeUndefined();
+  });
+});
+
+describe("conversation stop API on the core Turn engine", () => {
+  // Core publishes each Turn message to Vercel Queues. The server keeps them
+  // with no consumer, so the Turns stay queued until the stop.
+  let queueServer: LocalVercelQueueServer;
+
+  beforeAll(async () => {
+    queueServer = await startLocalVercelQueueServer({ consumers: [] });
+  });
+
+  afterAll(async () => {
+    await queueServer.close();
+  });
+
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("drops an Event sent after a timed stop's cutoff, so the core Turns stay stopped", async () => {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+    const { actor, conversationStore, queue, state } =
+      await createConversationFixture();
+    const created = await createAndEnqueueConversation(
+      {
+        actor,
+        idempotencyKey: "core-timed-stop",
+        message: "Check the deploy.",
+      },
+      { conversationStore, queue, state },
+    );
+    const stoppedAtMs = Date.now();
+    await appendAndEnqueueInboundMessage({
+      message: createEventInboundMessage({
+        event: {
+          eventKey: "checks-failed-1",
+          eventType: "pull_request.checks.failed",
+          identifier: "getsentry/junior#1563",
+          namespace: "github",
+          occurredAtMs: stoppedAtMs + 1_000,
+          trustedSummary: "The subscribed check failed.",
+        },
+        subscription: { conversationId: created.conversationId, id: "watch-1" },
+        text: "The subscribed check failed.",
+      }),
+      queue,
+      state,
+    });
+
+    await stopConversationTree([created.conversationId], {
+      queue,
+      sentAtOrBeforeMs: stoppedAtMs,
+      state,
+      stoppedAtMs,
+    });
+
+    const turns = await getDb()
+      .select({ state: juniorTurns.state })
+      .from(juniorTurns)
+      .where(eq(juniorTurns.conversationId, created.conversationId));
+    expect(turns.map((turn) => turn.state)).not.toContain("queued");
+    await expect(
+      getConversationStoppedAtMs(created.conversationId),
+    ).resolves.toBe(stoppedAtMs);
+  });
+
+  it("returns the viewer's queued text from the core Turns it stops, and a second stop finds no work", async () => {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+    const fixture = await createConversationFixture();
+    const { actor, conversationStore, queue, state } = fixture;
+    const created = await createAndEnqueueConversation(
+      { actor, idempotencyKey: "core-stop-root", message: "Check the deploy." },
+      { conversationStore, queue, state },
+    );
+    const otherQueued = await appendAndEnqueueWebMessage(
+      {
+        actor: webActorFromUser(await signedInViewer("bob@example.com")),
+        conversationId: created.conversationId,
+        idempotencyKey: "core-stop-other",
+        message: "Bob's queued note.",
+      },
+      { conversationStore, queue, state },
+    );
+    const stop = async () =>
+      stopConversationTurnResponseSchema.parse(
+        await (
+          await stopRequest(fixture, created.conversationId, actor.email)
+        ).json(),
+      );
+
+    await expect(stop()).resolves.toEqual({
+      conversationId: created.conversationId,
+      status: "requested",
+      stoppedInboundMessageIds: [created.messageId, otherQueued.messageId],
+      stoppedMessages: [
+        { inboundMessageId: created.messageId, text: "Check the deploy." },
+      ],
+    });
+    await expect(stop()).resolves.toEqual({
+      conversationId: created.conversationId,
+      status: "no_work",
+      stoppedInboundMessageIds: [],
+      stoppedMessages: [],
+    });
+  });
+
+  it("does not return the input that the running core Turn already shows in the transcript", async () => {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+    const fixture = await createConversationFixture();
+    const { actor, conversationStore, queue, state } = fixture;
+    // The queue server has no consumer, so the test runs the step itself
+    // with the message that core sent.
+    const send = vi.spyOn(getQueueProvider(), "send");
+    const created = await createAndEnqueueConversation(
+      {
+        actor,
+        idempotencyKey: "core-stop-claimed",
+        message: "Check the deploy.",
+      },
+      { conversationStore, queue, state },
+    );
+    const [, stepMessage] = send.mock.calls.find(
+      ([topic]) => topic === TURN_STEP_TOPIC,
+    )!;
+    let queued: Awaited<ReturnType<typeof appendAndEnqueueWebMessage>>;
+    let stopped: unknown;
+    const model = fakeModelClient([{ type: "text", text: "Too late." }]);
+    const step = await turnStepConsumer(createEngineContext(getChatConfig()), {
+      client: {
+        // The step has claimed its input and shown it when the model runs.
+        complete: async (request, signal) => {
+          queued = await appendAndEnqueueWebMessage(
+            {
+              actor,
+              conversationId: created.conversationId,
+              idempotencyKey: "core-stop-queued",
+              message: "Also check the canary.",
+            },
+            { conversationStore, queue, state },
+          );
+          stopped = await (
+            await stopRequest(fixture, created.conversationId, actor.email)
+          ).json();
+          return model.complete(request, signal);
+        },
+      },
+      bot: getChatConfig().bot,
+      tools: staticTools([]),
+    });
+
+    await step.handler(stepMessage, {
+      consumerGroup: "test",
+      createdAt: new Date(),
+      deliveryCount: 1,
+      messageId: "core-stop-claimed-step",
+      topicName: TURN_STEP_TOPIC,
+    });
+
+    expect(
+      projectConversationMessages(
+        await getConversationEventStore().loadMessageHistory(
+          created.conversationId,
+        ),
+      ).map((message) => message.text),
+    ).toEqual(["Check the deploy."]);
+    expect(stopConversationTurnResponseSchema.parse(stopped)).toEqual({
+      conversationId: created.conversationId,
+      status: "requested",
+      stoppedInboundMessageIds: [queued!.messageId],
+      stoppedMessages: [
+        { inboundMessageId: queued!.messageId, text: "Also check the canary." },
+      ],
+    });
   });
 });

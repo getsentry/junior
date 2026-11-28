@@ -16,7 +16,11 @@ import {
   getDispatchIdForConversation,
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
-import { isTopLevel } from "@/chat/conversations/kind-behavior";
+import { isPersonInput, isTopLevel } from "@/chat/conversations/kind-behavior";
+import {
+  getConversationStoppedAtMs,
+  resumeConversationTree,
+} from "@/chat/conversations/stop-state";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
@@ -176,23 +180,53 @@ export async function scheduleInboundMessage(
     throw new Error(`${message.source} input has no author Identity`);
   }
   const engineCtx = createEngineContext(getChatConfig());
-  const { duplicate } = await scheduleInput(engineCtx, {
-    conversationId: message.conversationId,
-    actorIdentityId: facts.actorIdentityId,
-    groupKey: turnGroupKey(facts.actorIdentityId, facts.source),
-    payload: turnInputPayloadSchema.parse({
-      text: facts.text,
-      actor: facts.actor,
-    }),
-    idempotencyKey: message.inboundMessageId,
-    sentAt: new Date(message.createdAtMs),
-    source: facts.source,
-    destination: facts.destination,
-    delivery: message.delivery,
-    ...(message.traceContext
-      ? { traceContext: message.traceContext }
-      : undefined),
-    startDelayMs: options.startDelayMs,
-  });
-  return { status: duplicate ? "duplicate" : "appended" };
+  const scheduled = await scheduleInput(
+    engineCtx,
+    {
+      conversationId: message.conversationId,
+      actorIdentityId: facts.actorIdentityId,
+      groupKey: turnGroupKey(facts.actorIdentityId, facts.source),
+      payload: turnInputPayloadSchema.parse({
+        text: facts.text,
+        actor: facts.actor,
+      }),
+      idempotencyKey: message.inboundMessageId,
+      sentAt: new Date(message.createdAtMs),
+      source: facts.source,
+      destination: facts.destination,
+      delivery: message.delivery,
+      ...(message.traceContext
+        ? { traceContext: message.traceContext }
+        : undefined),
+      startDelayMs: options.startDelayMs,
+    },
+    {
+      // A stop applies by sent time. Person input sent by the stop drops,
+      // also when it arrives later; person input sent after it ends the
+      // stop. Under core's lock, a stop's cancel runs before or after this.
+      admit: async () => {
+        if (!isPersonInput(message.source)) {
+          return true;
+        }
+        const stoppedAtMs = await getConversationStoppedAtMs(
+          message.conversationId,
+        );
+        if (stoppedAtMs === undefined) {
+          return true;
+        }
+        if (message.createdAtMs <= stoppedAtMs) {
+          return false;
+        }
+        await resumeConversationTree(
+          message.conversationId,
+          message.createdAtMs,
+        );
+        return true;
+      },
+    },
+  );
+  if ("refused" in scheduled) {
+    return { status: "appended" };
+  }
+  return { status: scheduled.duplicate ? "duplicate" : "appended" };
 }

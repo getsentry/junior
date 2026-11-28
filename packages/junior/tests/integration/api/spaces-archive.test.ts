@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spaceSchema } from "@/api/schema";
 import { setConversationArchive } from "@/api/conversations/archive";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { getConversationStore } from "@/chat/db";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { closeConversationFixture } from "../../fixtures/conversation";

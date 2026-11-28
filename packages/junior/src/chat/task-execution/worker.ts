@@ -10,10 +10,8 @@ import {
   setSpanAttributes,
   withLogContext,
 } from "@/chat/logging";
-import {
-  getConversationStoppedAtMs,
-  saveHeldInput,
-} from "@/chat/conversations/session-stop";
+import { saveHeldInput } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";

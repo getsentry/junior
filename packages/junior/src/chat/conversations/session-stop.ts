@@ -1,6 +1,6 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
-import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, inArray, isNull, lt, or } from "drizzle-orm";
 import { STOPPED_CONVERSATION_SKIP_REASON } from "@/chat/conversations/held-input";
 import { getChatConfig } from "@/chat/config";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
@@ -23,30 +23,18 @@ import {
 } from "@/chat/task-execution/store";
 import type { StopConversationWorkResult } from "@/chat/task-execution/state";
 import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
-import { stopTurns } from "@/core/turn/state";
+import { stopTurns } from "@/core/turn/schedule";
 import { juniorConversations } from "@/db/schema";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import {
-  conversationSubtree,
-  conversationSubtreeColumns,
-} from "@/chat/conversations/sql/subtree";
+  getConversationStoppedAtMs,
+  resumeConversationTree,
+} from "@/chat/conversations/stop-state";
+import { compat__stoppedMessages } from "@/turn-steps/compat__stopped-input";
 import { createEngineContext } from "@/turn-steps/engine-context";
-
-/** Return when a Conversation stopped, or undefined when it is not stopped. */
-export async function getConversationStoppedAtMs(
-  conversationId: string,
-): Promise<number | undefined> {
-  const [row] = await getSqlExecutor()
-    .db()
-    .select({ stoppedAt: juniorConversations.stoppedAt })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, conversationId))
-    .limit(1);
-  return row?.stoppedAt?.getTime();
-}
 
 /**
  * The hold rule: a Conversation holds automated input only while it is
@@ -198,7 +186,7 @@ export async function stopConversationTree(
       return { status: "no_work" };
     }
     if (getChatConfig().turnEngine === "core") {
-      return await stopCoreTurns(conversationId, options.onStopSaved);
+      return await stopCoreTurns(conversationId, options);
     }
     return await stopConversationWork({
       conversationId,
@@ -212,72 +200,59 @@ export async function stopConversationTree(
 }
 
 /**
- * Cancel the queued and running core Turns of a Conversation. Core keeps no
- * mailbox, so a stop drops no pending messages, and the first stopped Turn
- * stands in for main's run.
+ * Cancel the queued and running core Turns of a Conversation by sent time.
+ * The person input that the stop drops, and no attempt claimed, comes back
+ * as main's pending messages. Person input sent after the stop moved to a
+ * new Turn, so it ends the stop, as it does when it arrives later. The first
+ * stopped Turn stands in for main's run.
  */
 async function stopCoreTurns(
   conversationId: string,
-  onStopSaved: (() => void) | undefined,
+  options: {
+    onStopSaved?: (() => void) | undefined;
+    sentAtOrBeforeMs?: number | undefined;
+    stoppedAtMs: number;
+  },
 ): Promise<StopConversationWorkResult> {
-  const [turnId] = await stopTurns(
+  const { turnIds, dropped, moved } = await stopTurns(
     createEngineContext(getChatConfig()),
     conversationId,
+    {
+      // The stop is saved before this runs, so person input sent after it
+      // can be admitted in between. It keeps running.
+      sentAtOrBeforeMs: options.sentAtOrBeforeMs ?? options.stoppedAtMs,
+      // Automated input sent after the stop drops: it would run while the
+      // Conversation stays stopped.
+      canMove: (input) => isPersonInput(input.source.kind),
+    },
   );
+  const [turnId] = turnIds;
   if (!turnId) {
     return { status: "no_work" };
   }
-  onStopSaved?.();
-  return { status: "requested", runId: turnId, pendingMessages: [] };
-}
-
-/**
- * End the stop of a Conversation and of the child agents below it, for new
- * work sent at `sentAtMs`: a person's input, or new work from its parent.
- * Nothing changes for work sent at or before the stop, so the input that a
- * stop drops does not undo it. Only Conversations that stopped no later than
- * this Conversation change, so a later stop of one child agent stays.
- */
-export async function resumeConversationTree(
-  conversationId: string,
-  sentAtMs: number,
-): Promise<void> {
-  const subtree = sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`;
-  await getSqlExecutor().transaction(async () => {
-    // The executor's transaction nests as a savepoint inside a caller's
-    // lock. A Drizzle transaction would commit the caller's.
-    const tx = getDb();
-    const rows = await tx
-      .select({
-        conversationId: juniorConversations.conversationId,
-        stoppedAt: juniorConversations.stoppedAt,
-      })
-      .from(juniorConversations)
-      .where(inArray(juniorConversations.conversationId, subtree))
-      .orderBy(asc(juniorConversations.conversationId))
-      .for("update");
-    const stoppedAt = rows.find(
-      (row) => row.conversationId === conversationId,
-    )?.stoppedAt;
-    if (!stoppedAt || sentAtMs <= stoppedAt.getTime()) {
-      return;
-    }
-    await tx
-      .update(juniorConversations)
-      .set({ stoppedAt: null, detailVersion: nextDetailVersion })
-      .where(
-        and(
-          inArray(juniorConversations.conversationId, subtree),
-          lte(juniorConversations.stoppedAt, stoppedAt),
-        ),
-      );
-  });
+  options.onStopSaved?.();
+  if (moved.length > 0) {
+    await resumeConversationTree(
+      conversationId,
+      Math.max(...moved.map((input) => input.sentAt.getTime())),
+    );
+  }
+  return {
+    status: "requested",
+    runId: turnId,
+    // A claimed input is in the transcript already, as main's drained one is.
+    pendingMessages: compat__stoppedMessages(
+      conversationId,
+      dropped.filter((input) => input.attemptedAt === null),
+    ),
+  };
 }
 
 /**
  * Resume a stopped Conversation when a person sent input after the stop.
- * Known gap: input sent before the stop but received after it still runs,
- * and the Conversation stays stopped.
+ * Known gap on main's Turn engine: input sent before the stop but received
+ * after it still runs, and the Conversation stays stopped. The core Turn
+ * engine drops that input at intake (`scheduleInboundMessage`).
  */
 export async function resumeForPersonInput(
   conversationId: string,

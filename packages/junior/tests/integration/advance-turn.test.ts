@@ -20,7 +20,8 @@ import {
 import type { AdvanceTurnOptions } from "@/core/turn/advance";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
-import { claimTurn, stopTurns } from "@/core/turn/state";
+import { stopTurns } from "@/core/turn/schedule";
+import { claimTurn } from "@/core/turn/state";
 import { juniorConversations, juniorTurns } from "@/db/schema";
 import { buildTurnPromptLayouts } from "@/turn-steps/prompt";
 import { turnTools } from "@/turn-steps/tools";

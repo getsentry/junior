@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { getWebAuthorization } from "@/chat/conversations/web-authorization";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";

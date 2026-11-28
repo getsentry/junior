@@ -145,13 +145,13 @@ export function inputEventKey(inputId: string): string {
   return `${INPUT_EVENT_KEY_PREFIX}${inputId}`;
 }
 
-/** Finds the inputs of a Turn that the history has not read, oldest first. */
-export async function findUnreadInputs(
+// Matches the rows of a Turn that no history event has read.
+function unreadOf(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
-): Promise<UnreadInput[]> {
-  const db = executor.db();
-  const readEvent = db
+) {
+  const readEvent = executor
+    .db()
     .select({ one: sql`1` })
     .from(juniorConversationEvents)
     .where(
@@ -166,18 +166,57 @@ export async function findUnreadInputs(
         ),
       ),
     );
-  return db
+  return and(eq(juniorTurnInbox.turnId, turnId), notExists(readEvent));
+}
+
+const unreadColumns = {
+  inputId: juniorTurnInbox.id,
+  actorIdentityId: juniorTurnInbox.actorIdentityId,
+  groupKey: juniorTurnInbox.groupKey,
+  payload: juniorTurnInbox.payload,
+  sentAt: juniorTurnInbox.sentAt,
+  traceContext: juniorTurnInbox.traceContext,
+  attemptedAt: juniorTurnInbox.attemptedAt,
+};
+
+/** Finds the inputs of a Turn that the history has not read, oldest first. */
+export async function findUnreadInputs(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<UnreadInput[]> {
+  return executor
+    .db()
+    .select(unreadColumns)
+    .from(juniorTurnInbox)
+    .where(unreadOf({ executor }, turnId))
+    .orderBy(asc(juniorTurnInbox.sentAt), asc(juniorTurnInbox.createdAt));
+}
+
+/**
+ * An unread input with where it came from and when it arrived, so the host
+ * can say which input a stop dropped.
+ */
+export type SourcedUnreadInput = UnreadInput &
+  Pick<TurnInput, "idempotencyKey" | "source"> & {
+    /** When the scheduler wrote the input. */
+    receivedAt: Date;
+  };
+
+/** Finds the unread inputs of a Turn, oldest first, with their Source. */
+export async function findSourcedUnreadInputs(
+  { executor }: Pick<EngineContext, "executor">,
+  turnId: string,
+): Promise<SourcedUnreadInput[]> {
+  return executor
+    .db()
     .select({
-      inputId: juniorTurnInbox.id,
-      actorIdentityId: juniorTurnInbox.actorIdentityId,
-      groupKey: juniorTurnInbox.groupKey,
-      payload: juniorTurnInbox.payload,
-      sentAt: juniorTurnInbox.sentAt,
-      traceContext: juniorTurnInbox.traceContext,
-      attemptedAt: juniorTurnInbox.attemptedAt,
+      ...unreadColumns,
+      idempotencyKey: juniorTurnInbox.idempotencyKey,
+      source: juniorTurnInbox.source,
+      receivedAt: juniorTurnInbox.createdAt,
     })
     .from(juniorTurnInbox)
-    .where(and(eq(juniorTurnInbox.turnId, turnId), notExists(readEvent)))
+    .where(unreadOf({ executor }, turnId))
     .orderBy(asc(juniorTurnInbox.sentAt), asc(juniorTurnInbox.createdAt));
 }
 

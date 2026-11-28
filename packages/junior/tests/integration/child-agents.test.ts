@@ -19,10 +19,8 @@ import { eq } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
 import { bindMessageAgent } from "@/chat/child-agents/message";
 import { readRootConversation } from "@/chat/child-agents/root-conversation";
-import {
-  getConversationStoppedAtMs,
-  stopConversationTree,
-} from "@/chat/conversations/session-stop";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";

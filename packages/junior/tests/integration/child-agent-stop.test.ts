@@ -4,7 +4,7 @@ import { getAgentReplyMessageId } from "@/chat/child-agents/ids";
 import { listChildAgents } from "@/chat/child-agents/list";
 import { enqueueStarterUpdate } from "@/chat/child-agents/result";
 import type { AgentRun } from "@/chat/agent/types";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { stopConversation } from "@/chat/conversations/stop";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";

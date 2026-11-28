@@ -4,7 +4,7 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { botConfig, getChatConfig } from "@/chat/config";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config/function-duration";
 import {

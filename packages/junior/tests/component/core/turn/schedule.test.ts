@@ -10,13 +10,14 @@ import {
   endFailedTurn,
   reconcileTurn,
   scheduleInput,
+  stopTurns,
 } from "@/core/turn/schedule";
 import {
   claimTurn,
   commitStep,
   failTurn,
+  findStalledTurns,
   releaseTurn,
-  stopTurns,
 } from "@/core/turn/state";
 import {
   juniorConversations,
@@ -659,7 +660,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     );
     publishes = [];
 
-    const stopped = await stopTurns(engineCtx, CONVERSATION_ID);
+    const { turnIds: stopped } = await stopTurns(engineCtx, CONVERSATION_ID);
     await reconcileTurn(engineCtx, running.turnId);
 
     expect([...stopped].sort()).toEqual([running.turnId, queued.turnId].sort());
@@ -674,6 +675,105 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     );
     // reconcileTurn found no Turn to start.
     expect(publishes).toEqual([]);
+  });
+
+  it("stops by sent time: drops the inputs sent by the cutoff and moves later ones to new Turns, which it publishes", async () => {
+    const at = (minute: number) => new Date(`2026-11-21T08:0${minute}:00.000Z`);
+    const running = await schedule("event-1");
+    await claim(running.turnId);
+    await scheduleInput(
+      engineCtx,
+      keyed({ ...input("event-2"), sentAt: at(2) }),
+    );
+    const queued = await scheduleInput(
+      engineCtx,
+      keyed({
+        ...input("event-3"),
+        actorIdentityId: "identity:other",
+        sentAt: at(3),
+        delivery: "defer",
+      }),
+    );
+    publishes = [];
+
+    const stopped = await stopTurns(engineCtx, CONVERSATION_ID, {
+      sentAtOrBeforeMs: at(1).getTime(),
+    });
+
+    expect(stopped.turnIds).toEqual([running.turnId, queued.turnId]);
+    expect(stopped.dropped).toEqual([
+      expect.objectContaining({
+        idempotencyKey: "event-1",
+        source: LOCAL_SOURCE,
+        sentAt: at(0),
+      }),
+    ]);
+    expect(stopped.moved.map((moved) => moved.idempotencyKey)).toEqual([
+      "event-2",
+      "event-3",
+    ]);
+    const inputs = await readInputs();
+    expect(inputs[0]).toEqual({
+      turnId: running.turnId,
+      idempotencyKey: "event-1",
+    });
+    // Inputs of two group keys cannot share a Turn, so each gets its own.
+    const [next, after] = [inputs[1]!.turnId, inputs[2]!.turnId];
+    expect(new Set([running.turnId, queued.turnId, next, after]).size).toBe(4);
+    await expect(readEnd(next)).resolves.toMatchObject({ state: "queued" });
+    await expect(readEnd(after)).resolves.toMatchObject({ state: "queued" });
+    expect(ended).toEqual([running.turnId, queued.turnId]);
+    // The new Turns share a commit, and so a created_at, so either can be
+    // next. Each stopped Turn's reconcile publishes that one.
+    const [published] = publishes;
+    expect([next, after]).toContain(published?.turnId);
+    expect(publishes).toEqual([published, published]);
+    expect(published?.committed).toBe(true);
+  });
+
+  it("returns what a stop dropped and moved when its sends fail, and the sweep finds the new Turn", async () => {
+    const at = (minute: number) => new Date(`2026-11-21T08:0${minute}:00.000Z`);
+    const running = await schedule("event-1");
+    await claim(running.turnId);
+    await scheduleInput(
+      engineCtx,
+      keyed({ ...input("event-2"), sentAt: at(2) }),
+    );
+    vi.mocked(getQueueProvider().send).mockRejectedValue(
+      new Error("queue unavailable"),
+    );
+
+    const stopped = await stopTurns(engineCtx, CONVERSATION_ID, {
+      sentAtOrBeforeMs: at(1).getTime(),
+    });
+
+    expect(stopped.dropped.map((input) => input.idempotencyKey)).toEqual([
+      "event-1",
+    ]);
+    expect(stopped.moved.map((input) => input.idempotencyKey)).toEqual([
+      "event-2",
+    ]);
+    const next = (await readInputs())[1]!.turnId;
+    await expect(
+      findStalledTurns(engineCtx, { staleMs: 0, limit: 10 }),
+    ).resolves.toEqual([
+      expect.objectContaining({ turnId: next, reason: "queued_lost" }),
+    ]);
+  });
+
+  it("drops every unread input of a stop with no cutoff", async () => {
+    const running = await schedule("event-1");
+    await claim(running.turnId);
+    await schedule("event-2");
+
+    const stopped = await stopTurns(engineCtx, CONVERSATION_ID);
+
+    expect(stopped.dropped.map((input) => input.idempotencyKey)).toEqual([
+      "event-1",
+      "event-2",
+    ]);
+    expect(stopped.moved).toEqual([]);
+    await expect(readTurns()).resolves.toHaveLength(1);
   });
 
   it("keeps the first attempt time of an input", async () => {

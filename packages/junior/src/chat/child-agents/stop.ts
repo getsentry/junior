@@ -1,10 +1,8 @@
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
-import {
-  getConversationStoppedAtMs,
-  stopConversationTree,
-} from "@/chat/conversations/session-stop";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";

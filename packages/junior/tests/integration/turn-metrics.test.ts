@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationRunMetrics } from "@/chat/conversations/metrics";
 import { publishTurnEnded } from "@/core/turn/ended";
-import { createTurn, stopTurns, TURN_PRIORITY } from "@/core/turn/state";
+import { stopTurns } from "@/core/turn/schedule";
+import { createTurn, TURN_PRIORITY } from "@/core/turn/state";
 import { juniorConversationMetrics, juniorTurnInbox } from "@/db/schema";
 import {
   replyCutOff,

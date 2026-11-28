@@ -1,6 +1,14 @@
 import type { StateAdapter } from "chat";
 import { and, eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { getChatConfig } from "@/chat/config";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -8,11 +16,15 @@ import {
   getConversationEventStore,
   getConversationStore,
   getDb,
+  getSqlExecutor,
 } from "@/chat/db";
 import {
   startLocalVercelQueueServer,
   type LocalVercelQueueServer,
 } from "@/chat/queue/local-server";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { claimTurn } from "@/core/turn/state";
 import { juniorIdentities, juniorTurnInbox, juniorTurns } from "@/db/schema";
@@ -29,6 +41,7 @@ import {
   createConversationWorkQueueTestAdapter,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
+  deferred,
   handleSlackWebhookAndFlush,
   slackEnvelope,
   slackWebhookRequest,
@@ -653,5 +666,164 @@ describe("Slack webhook Turn engine switch", () => {
       turns: [{ id: turn!.id, state: "cancelled" }],
     });
     expect(queue.queuedMessages()).toEqual([]);
+  });
+
+  it("stops core Turns by sent time on the core Turn engine, and drops a mention sent before the stop", async () => {
+    useCoreEngine();
+    const threadMessage = (text: string, ts: string) =>
+      slackEnvelope({
+        text: `<@${SLACK_BOT_USER_ID}> ${text}`,
+        threadTs: "1712345.0001",
+        ts,
+      });
+    const inputTurns = async () =>
+      Object.fromEntries(
+        (await coreRows(conversationId)).inputs.map((input) => [
+          input.idempotencyKey.split(":").at(-1),
+          input.turnId,
+        ]),
+      );
+    const stateOf = async (turnId: string | undefined) =>
+      (await coreRows(conversationId)).turns.find((turn) => turn.id === turnId)
+        ?.state;
+    const { queue } = await sendSlack(mention);
+    const [first] = (await coreRows(conversationId)).turns;
+    await claimTurn(createEngineContext(getChatConfig()), first!.id);
+    await sendSlack(threadMessage("and the canary", "1712345.0030"), queue);
+
+    // Slack delivers the stop, sent between the two mentions, after both.
+    await sendSlack(threadMessage("stop", "1712345.0020"), queue);
+
+    // The mention sent before the stop drops with its Turn. The later one
+    // waits in a new Turn and ends the stop.
+    let turns = await inputTurns();
+    expect(turns["1712345.0001"]).toBe(first!.id);
+    await expect(stateOf(first!.id)).resolves.toBe("cancelled");
+    expect(turns["1712345.0030"]).not.toBe(first!.id);
+    await expect(stateOf(turns["1712345.0030"])).resolves.toBe("queued");
+    await expect(
+      getConversationStoppedAtMs(conversationId),
+    ).resolves.toBeUndefined();
+
+    await sendSlack(threadMessage("stop", "1712345.0040"), queue);
+    await expect(stateOf(turns["1712345.0030"])).resolves.toBe("cancelled");
+    // A mention sent before this stop but delivered after it starts no Turn
+    // and leaves the Conversation stopped.
+    await sendSlack(threadMessage("check the deploy", "1712345.0035"), queue);
+    expect(Object.keys(await inputTurns())).not.toContain("1712345.0035");
+    expect(
+      (await coreRows(conversationId)).turns.filter(
+        (turn) => turn.state === "queued",
+      ),
+    ).toEqual([]);
+    await expect(getConversationStoppedAtMs(conversationId)).resolves.toBe(
+      1_712_345_004,
+    );
+
+    // A mention sent after the stop runs and ends it.
+    await sendSlack(
+      threadMessage("check the next deploy", "1712345.0050"),
+      queue,
+    );
+    turns = await inputTurns();
+    await expect(stateOf(turns["1712345.0050"])).resolves.toBe("queued");
+    await expect(
+      getConversationStoppedAtMs(conversationId),
+    ).resolves.toBeUndefined();
+  });
+
+  it("drops a mention sent before a stop that saves while core intake waits for the Conversation lock", async () => {
+    useCoreEngine();
+    const { queue } = await sendSlack(mention);
+    const stopping = deferred();
+    const locked = deferred();
+    // The test holds the lock that core intake waits for, and stops the
+    // Conversation under it. So the stop saves after intake starts, and
+    // before intake schedules.
+    const stop = withConversationEventLock(
+      getSqlExecutor(),
+      conversationId,
+      async () => {
+        locked.resolve();
+        await stopping.promise;
+        await stopConversationTree([conversationId], {
+          sentAtOrBeforeMs: 1_712_345_002,
+          stoppedAtMs: 1_712_345_002,
+        });
+      },
+    );
+    await locked.promise;
+    const sending = sendSlack(
+      slackEnvelope({
+        text: `<@${SLACK_BOT_USER_ID}> check the deploy`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0015",
+      }),
+      queue,
+    );
+    // Time for intake to reach the lock. A read of the stop before the lock
+    // would miss it then.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    stopping.resolve();
+    await stop;
+    await sending;
+
+    const { turns, inputs } = await coreRows(conversationId);
+    expect(inputs.map((input) => input.idempotencyKey)).not.toContainEqual(
+      expect.stringContaining("1712345.0015"),
+    );
+    expect(turns.map((turn) => turn.state)).toEqual(["cancelled"]);
+    await expect(getConversationStoppedAtMs(conversationId)).resolves.toBe(
+      1_712_345_002,
+    );
+  });
+
+  it("keeps a mention that core intake admits after a stop with no cutoff saves", async () => {
+    useCoreEngine();
+    const { queue } = await sendSlack(mention);
+    const locked = deferred();
+    const release = deferred();
+    // The test holds the Conversation lock. Intake waits for it first, then
+    // the stop saves and waits behind intake to cancel the Turns.
+    const holder = withConversationEventLock(
+      getSqlExecutor(),
+      conversationId,
+      async () => {
+        locked.resolve();
+        await release.promise;
+      },
+    );
+    await locked.promise;
+    const sending = sendSlack(
+      slackEnvelope({
+        text: `<@${SLACK_BOT_USER_ID}> check the canary`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0030",
+      }),
+      queue,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const stopping = stopConversationTree([conversationId], {
+      stoppedAtMs: 1_712_345_002,
+    });
+    await vi.waitFor(async () => {
+      expect(await getConversationStoppedAtMs(conversationId)).toBe(
+        1_712_345_002,
+      );
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    release.resolve();
+    await Promise.all([holder, sending, stopping]);
+
+    const { turns, inputs } = await coreRows(conversationId);
+    const later = inputs.find((input) =>
+      input.idempotencyKey.endsWith("1712345.0030"),
+    );
+    expect(turns.find((turn) => turn.id === later?.turnId)?.state).toBe(
+      "queued",
+    );
+    await expect(
+      getConversationStoppedAtMs(conversationId),
+    ).resolves.toBeUndefined();
   });
 });
