@@ -16,6 +16,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type {
   Conversation,
+  ConversationSource,
   ConversationStore,
   TopLevelConversationKind,
 } from "@/chat/conversations/store";
@@ -35,7 +36,11 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
-import { isThread, isTopLevel } from "@/chat/conversations/kind-behavior";
+import {
+  isThread,
+  isTopLevel,
+  startedOnDashboard,
+} from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
@@ -150,15 +155,13 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
 export function acceptsWebMessages(
   conversation: Pick<
     Conversation,
-    "conversationId" | "destination" | "kind" | "parentConversationId"
+    "destination" | "kind" | "parentConversationId" | "source"
   >,
 ): boolean {
   if (!isTopLevel(conversation)) return isThread(conversation);
-  const { conversationId, destination } = conversation;
+  const { destination } = conversation;
   if (destination?.platform === "slack") return true;
-  return (
-    destination?.platform === "local" && conversationId.startsWith("local:web:")
-  );
+  return destination?.platform === "local" && startedOnDashboard(conversation);
 }
 
 /**
@@ -262,6 +265,11 @@ export async function recordWebConversationActivity(args: {
   /** Applied only when this call creates the Conversation root. */
   rootSpaceId?: string;
   /**
+   * Applied only when this call creates the Conversation root. Default
+   * `web`, a dashboard Conversation. An API client, such as ACP, sets `api`.
+   */
+  rootSource?: Extract<ConversationSource, "api" | "web">;
+  /**
    * Applied only when this call creates the Conversation: it starts as a
    * child of this Lead, in the Lead's Space, with the Lead's Location.
    */
@@ -300,7 +308,7 @@ export async function recordWebConversationActivity(args: {
     // A dashboard continuation does not replace the root Source.
     // TODO(dcramer): Remove the Conversation source and sessionSource writes
     // after every Turn stores Source and all resume readers use that Turn fact.
-    ...(isNewRoot ? { source: "web" as const } : undefined),
+    ...(isNewRoot ? { source: args.rootSource ?? "web" } : undefined),
     ...(source ? { sessionSource: source } : undefined),
     ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),

@@ -5,7 +5,7 @@ import {
   formatSlackConversationTypeLabel,
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
-  resolveSlackConversationContextFromThreadId,
+  resolveStoredSlackConversationContext,
   slackChannelTypeFromConversationInfo,
 } from "@/chat/slack/conversation-context";
 
@@ -203,14 +203,14 @@ describe("Slack conversation prompt context", () => {
 
   it("uses confirmed persisted visibility when resolving stored threads", () => {
     expect(
-      resolveSlackConversationContextFromThreadId({
-        threadId: "slack:C123:1700000000.000100",
+      resolveStoredSlackConversationContext({
+        channelId: "C123",
         visibility: "private",
       }),
     ).toMatchObject({ type: "private_channel", visibility: "private" });
     expect(
-      resolveSlackConversationContextFromThreadId({
-        threadId: "slack:D123:1700000000.000100",
+      resolveStoredSlackConversationContext({
+        channelId: "D123",
         visibility: "private",
       }),
     ).toMatchObject({ type: "direct_message", visibility: "private" });

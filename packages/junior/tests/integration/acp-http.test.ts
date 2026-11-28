@@ -281,7 +281,8 @@ describe("remote ACP HTTP", () => {
       harness.conversationStore.get({ conversationId: sessionId }),
     ).resolves.toMatchObject({
       conversationId: sessionId,
-      source: "web",
+      // An ACP session is an API Conversation, not a dashboard one.
+      source: "api",
       visibility: "private",
     });
     await vi.waitFor(() => {

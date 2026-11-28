@@ -33,6 +33,7 @@ export async function recordEventAutomationRunStarted(
       automationId: args.automation.id,
       automationVersion: automationVersionOf(args.automation),
       conversationId: existingConversationId(conversationId),
+      dispatchId: args.dispatchId,
       // The dispatch can write usage before this row exists.
       costMicroUsd: conversationCostOf(conversationId),
       startedAtMs: args.nowMs,

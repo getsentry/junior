@@ -777,6 +777,7 @@ describe("durable queue contract", () => {
               meta: { replied: true },
             },
             {
+              // Saved before Messages stored their Turn: only the id names it.
               id: `${turnId}:assistant:1`,
               role: "assistant",
               text: "Deploy checked.",

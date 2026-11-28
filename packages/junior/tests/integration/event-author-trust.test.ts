@@ -278,7 +278,8 @@ describe("Event author trust", () => {
     // neither batches with other authors nor joins a paused system Turn.
     expect(byBot!.input.authorId).toBe(`${EVENT_AUTHOR_ID}:demo:cursor[bot]`);
     expect(byBot!.input.authorIdentityId).toBeUndefined();
-    // Resume still reads the bot's Message as an Event.
+    // A Message saved without `eventType` still reads as an Event by this
+    // author id on resume.
     expect(
       isEventConversationMessage({ author: { userId: byBot!.input.authorId } }),
     ).toBe(true);

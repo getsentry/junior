@@ -47,7 +47,6 @@ import {
   readUserAvatarUrls,
 } from "@/chat/identities/avatar";
 import {
-  getDispatchIdForConversation,
   getDispatchInputMessageId,
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
@@ -890,7 +889,7 @@ export async function readConversationSourceTask(args: {
     conversationId: args.conversationId,
   });
   if (!execution) return undefined;
-  const dispatchId = getDispatchIdForConversation(args.conversationId);
+  const dispatchId = execution.dispatchId ?? undefined;
   const base = {
     kind: execution.kind,
     ...(dispatchId

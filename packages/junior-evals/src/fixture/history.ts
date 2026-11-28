@@ -605,6 +605,7 @@ export async function loadHistory(args: {
           replied: true,
           source: conversation.surface,
           ...(slackTs ? { slackTs } : undefined),
+          turnId,
         },
         role: "assistant",
         text: historyReply.text,

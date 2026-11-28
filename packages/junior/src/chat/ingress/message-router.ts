@@ -27,10 +27,6 @@ export function normalizeIncomingSlackThreadId(
   threadId: string,
   message: unknown,
 ): string {
-  if (!threadId.startsWith("slack:")) {
-    return threadId;
-  }
-
   if (!message || typeof message !== "object") {
     return threadId;
   }

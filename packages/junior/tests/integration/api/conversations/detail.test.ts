@@ -760,6 +760,7 @@ describe("conversation detail API", () => {
       ).resolves.toMatchObject({ displayTitle: "Automation run" });
       await recordAutomationExecution("sched_source_task", {
         conversationId,
+        dispatchId: dispatch.id,
         executionId: "run_source_task",
         nowMs: nowMs + 1,
         status: "completed",

@@ -5,6 +5,8 @@ import { readConversationRoot } from "@/chat/conversations/root";
 export interface ConversationAutomationRun {
   automationId: string;
   automationRunId?: string;
+  /** The run's dispatch, once the run dispatched. */
+  dispatchId?: string;
   kind: "scheduled" | "event";
 }
 
@@ -23,6 +25,7 @@ export async function readConversationAutomationRun(
     ? {
         automationId: run.automationId,
         automationRunId: run.runId,
+        ...(run.dispatchId ? { dispatchId: run.dispatchId } : undefined),
         kind: run.kind,
       }
     : undefined;

@@ -205,11 +205,30 @@ export function getDispatchInputMessageId(dispatchId: string): string {
   return `${DISPATCH_ID_PREFIX}${dispatchId}`;
 }
 
+function dispatchConversationKey(conversationId: string): string {
+  return `${DISPATCH_PREFIX}:conversation:${conversationId}`;
+}
+
 /**
- * Return the dispatch id of a dispatch Conversation, such as an Automation
- * run. Other Conversations have no dispatch.
+ * Return the dispatch of a dispatch Conversation, such as an Automation run,
+ * while its record lasts. Other Conversations have no dispatch.
  */
-export function getDispatchIdForConversation(
+export async function getDispatchIdForConversation(
+  conversationId: string,
+): Promise<string | undefined> {
+  const state = getStateAdapter();
+  await state.connect();
+  const stored = await state.get(dispatchConversationKey(conversationId));
+  if (typeof stored === "string" && stored) return stored;
+  return legacyDispatchIdFromConversationId(conversationId);
+}
+
+/**
+ * Read the dispatch id out of the Conversation id of a record that was saved
+ * before records stored their Conversation. Remove it once those records
+ * expire, `JUNIOR_THREAD_STATE_TTL_MS` after the release that stores them.
+ */
+function legacyDispatchIdFromConversationId(
   conversationId: string,
 ): string | undefined {
   if (!conversationId.startsWith(DISPATCH_ID_PREFIX)) return undefined;
@@ -274,6 +293,13 @@ async function putRecord(
   await state.set(
     getDispatchStorageKey(next.id),
     next,
+    JUNIOR_THREAD_STATE_TTL_MS,
+  );
+  // The Conversation id carries no meaning, so its dispatch is stored. It
+  // lasts as long as the record.
+  await state.set(
+    dispatchConversationKey(getDispatchConversationId(next)),
+    next.id,
     JUNIOR_THREAD_STATE_TTL_MS,
   );
 }
@@ -436,6 +462,7 @@ async function recordEventAutomationExecution(
   if (!eventAutomationId) return;
   await recordAutomationExecution(eventAutomationId, {
     conversationId: getDispatchConversationId(next),
+    dispatchId: next.id,
     errorMessage: next.errorMessage,
     executionId: next.id,
     nowMs: next.updatedAtMs,

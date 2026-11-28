@@ -96,6 +96,8 @@ describe("reporting support", () => {
       channelName: "reporting-support-stealth-project",
       title: "Reporting support stealth planning",
       visibility: "private" as const,
+      // Confirmed private, so its stored channel names only its type.
+      label: "Private Channel",
     },
     {
       name: "a C-prefixed conversation without confirmed public visibility",
@@ -133,11 +135,12 @@ describe("reporting support", () => {
 
     expect(serialized).not.toContain(testCase.channelName);
     expect(serialized).not.toContain(testCase.title);
+    const label = testCase.label ?? "Private Conversation";
     expect(summary).toMatchObject({
       conversationId: testCase.conversationId,
-      channelName: "Private Conversation",
+      channelName: label,
       channelNameRedacted: true,
-      displayTitle: "Private Conversation",
+      displayTitle: label,
     });
   });
 });
