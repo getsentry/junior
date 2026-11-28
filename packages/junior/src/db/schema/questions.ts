@@ -32,15 +32,15 @@ export function questionFuzzyTitle(table: { title: AnyPgColumn }): SQL {
 }
 
 /**
- * SQL: the question waits for an answer. It asks something, which a notice
- * does not, and it is not closed. Its Conversation needs input, the same for
- * every viewer. `junior_questions_waiting_idx` has this predicate.
+ * SQL: the question waits for an answer. It has a form, which a notice does
+ * not, and it is not closed. Its Conversation needs input, the same for
+ * every viewer. `junior_questions_open_form_idx` has this predicate.
  */
 export function questionWaits(table: {
   closedAt: AnyPgColumn;
   request: AnyPgColumn;
 }): SQL {
-  return sql`(${table.closedAt} is null and ${table.request} ? 'question')`;
+  return sql`(${table.closedAt} is null and ${table.request} ? 'fields')`;
 }
 
 /**
@@ -79,7 +79,7 @@ export const juniorQuestions = pgTable(
   },
   (table) => [
     index("junior_questions_conversation_idx").on(table.conversationId),
-    index("junior_questions_waiting_idx")
+    index("junior_questions_open_form_idx")
       .on(table.conversationId)
       .where(questionWaits(table)),
     index("junior_questions_search_idx").using(

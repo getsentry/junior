@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../fixtures/questions";
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -35,11 +36,7 @@ import {
   seedConversation,
   seedDestination,
 } from "../../fixtures/conversation-retention";
-import {
-  dismissOpenInboxItems,
-  getInboxItem,
-  insertInboxItem,
-} from "@/chat/inbox-items/store";
+import { dismissOpenInboxItems, getInboxItem } from "@/chat/inbox-items/store";
 import {
   snoozeInboxItems,
   snoozeTimerTrigger,
@@ -166,7 +163,7 @@ describe("retention purge job", () => {
       lastActivityAtMs: BASE_MS,
     });
     const addItem = async (conversationId: string, automationId?: string) =>
-      (await insertInboxItem(fixture.sql.db(), {
+      (await insertTestInboxItem(fixture.sql.db(), {
         subject: {
           id: `rollout:${conversationId}:${automationId ?? "chat"}`,
           kind: "question",
@@ -321,7 +318,7 @@ describe("retention purge job", () => {
         primaryEmailNormalized: "snoozer@example.com",
         updatedAt: new Date(BASE_MS),
       });
-    const item = await insertInboxItem(fixture.sql.db(), {
+    const item = await insertTestInboxItem(fixture.sql.db(), {
       subject: { id: "rollout:snoozed", kind: "question" },
       owner: { id: "snoozed", kind: "conversation" },
       assignedToEveryone: false,
@@ -811,7 +808,7 @@ describe("retention purge job", () => {
     // Conversation.
     const itemIds: Record<string, string> = {};
     for (const conversationId of ["pub", "priv"]) {
-      itemIds[conversationId] = (await insertInboxItem(fixture.sql.db(), {
+      itemIds[conversationId] = (await insertTestInboxItem(fixture.sql.db(), {
         assignedToEveryone: false,
         assigneeUserIds: [],
         body: `${conversationId} body`,

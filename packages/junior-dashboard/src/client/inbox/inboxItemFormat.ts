@@ -75,6 +75,9 @@ export function inboxItemTitleText(
 }
 
 const executeToolInputSchema = z.object({ tool_name: z.string() });
+const askedQuestionSchema = z.object({
+  question: z.object({ id: z.string().min(1) }),
+});
 const addedItemSchema = z.object({
   item: z.object({
     id: z.string().min(1),
@@ -85,7 +88,7 @@ const addedItemSchema = z.object({
 /** The Inbox item that a tool call added, and the question it shows. */
 export type InboxItemAsk = { itemId: string; questionId: string };
 
-/** Read the added item from a tool result, which can be JSON text. */
+/** Read the asked question from a tool result, which can be JSON text. */
 function addedItemAsk(output: unknown): InboxItemAsk | undefined {
   let value = output;
   if (typeof output === "string") {
@@ -95,9 +98,12 @@ function addedItemAsk(output: unknown): InboxItemAsk | undefined {
       return undefined;
     }
   }
+  // The Inbox gives a question's item the question's id.
+  const question = askedQuestionSchema.safeParse(value).data?.question;
+  if (question) return { itemId: question.id, questionId: question.id };
+  // An older result names the item that the tool added. One from before
+  // items had subjects names none, and its question took the item's id.
   const item = addedItemSchema.safeParse(value).data?.item;
-  // A result from before items had subjects names none. Its question took
-  // the item's id.
   return item && { itemId: item.id, questionId: item.subject?.id ?? item.id };
 }
 

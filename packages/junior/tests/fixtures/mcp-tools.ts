@@ -1,7 +1,8 @@
+import { insertTestInboxItem } from "./questions";
 import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { insertInboxItem, type InboxItem } from "@/chat/inbox-items/store";
+import { type InboxItem } from "@/chat/inbox-items/store";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { juniorConversationParticipants } from "@/db/schema";
 
@@ -72,7 +73,7 @@ export async function seedMcpInboxItem(args: {
   title: string;
 }): Promise<InboxItem> {
   const viewer = await requireViewer(args.email);
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     subject: { id: args.title, kind: "question" },
     owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,

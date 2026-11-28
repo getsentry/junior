@@ -491,7 +491,8 @@ export async function insertInboxItem(
         addedByTurnId: input.addedByTurnId ?? null,
         createdAt: now,
         // A question's item has the question's id, so the answer that a
-        // message records names the question too (`chat/questions/answer-input.ts`).
+        // message records names the question too
+        // (`chat/questions/answer-input.ts`).
         id: isQuestion(input.subject) ? input.subject.id : randomUUID(),
         status: "open",
         updatedAt: now,

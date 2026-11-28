@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../fixtures/questions";
 import {
   claimDueScheduledRun,
   advanceScheduledAutomationAfterRun,
@@ -10,7 +11,7 @@ import {
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { getInboxItem } from "@/chat/inbox-items/store";
 import { setupAutomationEditApi as setup } from "../../fixtures/automation-edit-api";
 
 describe("Automation lifecycle API", () => {
@@ -100,7 +101,7 @@ describe("Automation lifecycle API", () => {
           conversationId: runConversationId,
           executionId: "asked",
         });
-        const item = await insertInboxItem(getDb(), {
+        const item = await insertTestInboxItem(getDb(), {
           owner: { id: runConversationId, kind: "conversation" },
           assignedToEveryone: false,
           assigneeUserIds: [],

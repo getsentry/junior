@@ -28,6 +28,8 @@ import {
   insertInboxItem as insertStoredInboxItem,
   type InboxItemContent,
 } from "@/chat/inbox-items/store";
+import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
+import { insertQuestion } from "@/chat/questions/store";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import {
   SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
@@ -267,6 +269,24 @@ export async function insertEventAutomation(args: {
   return { id };
 }
 
+// The app stores a question in its Conversation first, and the Inbox then
+// adds its item with the question's id.
+async function insertItem(input: Parameters<typeof insertStoredInboxItem>[1]) {
+  if (input.subject.kind === INBOX_SUBJECT_KINDS.question) {
+    await insertQuestion(getDb(), {
+      content: {
+        body: input.body,
+        request: input.request ?? null,
+        title: input.title,
+      },
+      conversationId: input.owner.id,
+      id: input.subject.id,
+      nowMs: input.nowMs,
+    });
+  }
+  return await insertStoredInboxItem(getDb(), input);
+}
+
 /**
  * Store an open Inbox item that an earlier run added in a public thread of
  * `destination`. It is assigned to the Slack person `assignee`. With
@@ -299,7 +319,7 @@ export async function insertInboxItem(args: {
         status: "completed",
       });
   }
-  const item = await insertStoredInboxItem(getDb(), {
+  const item = await insertItem({
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [identity.userId],
@@ -326,7 +346,7 @@ export async function insertWebInboxItem(args: {
 }): Promise<{ id: string }> {
   const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
   if (!user) throw new Error(`No User for ${args.viewerEmail}`);
-  const item = await insertStoredInboxItem(getDb(), {
+  const item = await insertItem({
     owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [user.id],

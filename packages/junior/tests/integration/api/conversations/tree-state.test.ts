@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../../fixtures/questions";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { setConversationArchive } from "@/api/conversations/archive";
@@ -18,7 +19,7 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { closeInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import {
@@ -105,7 +106,7 @@ describe("conversation tree state", () => {
     fixture.queue.takeMessageFor(asking.childConversationId);
     // An item for another person is not shown to the viewer.
     const other = await resolveViewerUser("bob@example.com");
-    const forOther = await insertInboxItem(getDb(), {
+    const forOther = await insertTestInboxItem(getDb(), {
       subject: { id: "for-other", kind: "question" },
       owner: { id: asking.childConversationId, kind: "conversation" },
       assignedToEveryone: false,

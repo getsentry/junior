@@ -1,0 +1,8 @@
+id: tool-composition-inbox-tools-only
+valid:
+  - 'import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";'
+  - 'import { createSlackInboxItemTools } from "@/chat/slack/inbox-item-tools";'
+invalid:
+  - 'import { insertInboxItem } from "@/chat/inbox-items/store";'
+  - 'import { inboxItemCard } from "@/chat/slack/inbox-item-card";'
+  - 'const inbox = await import("@/chat/inbox-items/store");'

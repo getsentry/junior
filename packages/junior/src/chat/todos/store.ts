@@ -20,7 +20,7 @@ import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import { reactToConversationChange } from "@/chat/conversations/change-reactions";
+import { syncTodoInboxItems } from "@/chat/inbox-items/todo-items";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { renderTodosSnapshot } from "./prompt";
 import { todoRef } from "./tool-output";
@@ -131,8 +131,8 @@ export async function lockTodos(
 
 // A Drizzle transaction, not `executor.transaction`, so callers can nest
 // Drizzle writes as savepoints. Call it outside an executor transaction.
-// `changed` marks a change that a person can see. Features such as the
-// Inbox react to it after the commit.
+// `changed` marks a change that a person can see: after the commit, the
+// Inbox syncs the To-do items of the Conversation.
 async function withTodosLock<T>(
   executor: JuniorSqlDatabase,
   conversationId: string,
@@ -149,9 +149,8 @@ async function withTodosLock<T>(
     });
   });
   if (changedAtMs !== undefined) {
-    await reactToConversationChange({
+    await syncTodoInboxItems(executor.db(), {
       conversationId,
-      kind: "todos_changed",
       nowMs: changedAtMs,
     });
   }

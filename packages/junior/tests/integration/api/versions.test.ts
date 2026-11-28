@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../fixtures/questions";
 import { and, eq, max } from "drizzle-orm";
 import { expectSqlBudget } from "../../fixtures/sql-budget";
 import { Hono } from "hono";
@@ -24,11 +25,7 @@ import { conversationFeedVersionQuery } from "@/api/conversations/list";
 import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import {
-  closeInboxItem,
-  insertInboxItem,
-  takeInboxItem,
-} from "@/chat/inbox-items/store";
+import { closeInboxItem, takeInboxItem } from "@/chat/inbox-items/store";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
   appendVisibleHistory,
@@ -222,7 +219,7 @@ describe("versions API", () => {
     expect(feedMoved(withInput, withPin)).toEqual(["pin"]);
     expect(await detailVersion()).toBe(withPin.conversation);
 
-    const item = await insertInboxItem(getDb(), {
+    const item = await insertTestInboxItem(getDb(), {
       subject: { id: "versions:approve", kind: "question" },
       owner: { id: OWN, kind: "conversation" },
       assignedToEveryone: false,
@@ -461,7 +458,7 @@ describe("versions API", () => {
     // A take changes whom a running Task's item up for grabs waits on. That
     // is the Inbox's fact; the question still waits, so the feed stays. The
     // Conversation is private, so the item has no assignees.
-    const everyone = await insertInboxItem(getDb(), {
+    const everyone = await insertTestInboxItem(getDb(), {
       owner: { id: `${OWN}:child`, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],

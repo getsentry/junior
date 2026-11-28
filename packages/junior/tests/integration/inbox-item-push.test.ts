@@ -30,7 +30,7 @@ import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { upsertReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
-import { ask } from "../fixtures/questions";
+import { ask, askedItem } from "../fixtures/questions";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import {
   saveNotificationSchedule,
@@ -98,7 +98,10 @@ const heartbeat = () =>
 
 // Parse the input first, as the agent runtime does.
 async function execute(tool: any, input: unknown): Promise<any> {
-  return await tool.execute(tool.prepareArguments(input), {} as any);
+  const result = await tool.execute(tool.prepareArguments(input), {} as any);
+  return result?.question
+    ? { ...result, item: await askedItem(result) }
+    : result;
 }
 
 /** One phone of the user, with real P-256 keys, so the test can decrypt. */
@@ -295,7 +298,7 @@ describe("inbox item push", () => {
         body: "Approve the deploy of api? Which regions get it first?",
         tag: added.item.id,
         title: "Decision · Regions",
-        url: `https://junior.example.com/inbox?item=${added.item.id}`,
+        url: `https://junior.example.com/inbox?item=${encodeURIComponent(added.item.id)}`,
       },
     ]);
 
@@ -514,7 +517,7 @@ describe("inbox item push", () => {
         body: "Check the deploy calendar.",
         tag: itemId,
         title: "Confirm the rollback window",
-        url: `https://junior.example.com/inbox?item=${itemId}`,
+        url: `https://junior.example.com/inbox?item=${encodeURIComponent(itemId)}`,
       },
     ]);
     // A change of the same To-do does not push again.
@@ -541,7 +544,7 @@ describe("inbox item push", () => {
       body: "Check the deploy calendar.",
       tag: itemId,
       title: "Confirm the rollback week",
-      url: `https://junior.example.com/inbox?item=${itemId}`,
+      url: `https://junior.example.com/inbox?item=${encodeURIComponent(itemId)}`,
     });
     await execute((await turnTools(ana)).add, {
       ...ASK,
@@ -730,7 +733,7 @@ describe("inbox item push", () => {
       body: "",
       tag: id,
       title: "Review acme entry",
-      url: `https://junior.example.com/inbox?item=${id}`,
+      url: `https://junior.example.com/inbox?item=${encodeURIComponent(id)}`,
     });
     const wakeDelivery = async (id: string) =>
       (

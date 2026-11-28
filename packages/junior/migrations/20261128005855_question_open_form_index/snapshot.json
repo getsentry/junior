@@ -1,0 +1,79 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "f2fe4bb7-c8c4-4f8d-b42c-7b38764cf8b1",
+  "prevIds": ["a19a65e9-5896-4e6d-9df0-6945546c6640"],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_questions",
+        "junior_questions_waiting_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_questions_waiting_idx",
+        "n|idx|public.junior_questions_waiting_idx",
+        "e|idx|public.junior_questions_waiting_idx",
+        "n|rel|public.junior_questions_waiting_idx"
+      ],
+      "reads": [
+        "e|tbl|public.junior_questions",
+        "n|sch|public",
+        "e|col|public.junior_questions.conversation_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_questions",
+        "junior_questions_open_form_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_questions_open_form_idx",
+        "n|idx|public.junior_questions_open_form_idx",
+        "e|idx|public.junior_questions_open_form_idx",
+        "n|rel|public.junior_questions_open_form_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_questions",
+        "n|sch|public",
+        "n|col|public.junior_questions.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "junior_questions_open_form_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "(\"closed_at\" is null and \"request\" ? 'fields')",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_questions_waiting_idx\"]"
+    }
+  ]
+}

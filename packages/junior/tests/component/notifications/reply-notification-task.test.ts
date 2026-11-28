@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../fixtures/questions";
 import { createECDH, randomBytes, randomUUID, type ECDH } from "node:crypto";
 import { createRequire } from "node:module";
 import { and, eq } from "drizzle-orm";
@@ -38,7 +39,7 @@ import {
 } from "@/chat/plugins/task-runner";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
-import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { getInboxItem } from "@/chat/inbox-items/store";
 import { juniorInboxItems } from "@/db/schema";
 import { useConfig } from "../../fixtures/config";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
@@ -153,7 +154,7 @@ async function replyNotices(conversationId: string) {
 
 /** Add an open question for the starter, as the agent's card does. */
 async function addQuestion(conversationId: string, userId: string) {
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     subject: { id: randomUUID(), kind: "question" },
     assignedToEveryone: false,
     assigneeUserIds: [userId],

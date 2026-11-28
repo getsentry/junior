@@ -33,13 +33,13 @@ import {
 const ASKED_NEXT_STEP = `The questions were sent. There is no answer yet. The answer arrives in a later Turn as a \`<question-answer>\` with the id of this call; a dismiss comes as a note. Do not guess the answer. If your next step needs it, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Otherwise, finish the work that does not need it, then end the Turn.`;
 
 /** The Turn context that the ask tool reads. */
-export type AskUserQuestionToolContext = Pick<
+type AskUserQuestionToolContext = Pick<
   ToolRuntimeContext,
   "actorIsApp" | "conversationId" | "resolveActorIdentity" | "source" | "turnId"
 >;
 
 /** What app setup gives the ask tool. */
-export interface AskUserQuestionToolServices extends ConversationChangeServices {
+interface AskUserQuestionToolServices extends ConversationChangeServices {
   findMentionedUserId: FindMentionedUserId;
 }
 

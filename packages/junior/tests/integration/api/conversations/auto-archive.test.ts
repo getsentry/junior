@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../../fixtures/questions";
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
@@ -30,7 +31,7 @@ import { getSpaceLead } from "@/chat/lead/conversation";
 import { createSpace } from "@/chat/spaces/store";
 import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { closeInboxItem } from "@/chat/inbox-items/store";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -368,7 +369,7 @@ describe("conversation auto-archive API", () => {
         });
     }
     // An open action item for the viewer keeps the conversation in the feed.
-    await insertInboxItem(getDb(), {
+    await insertTestInboxItem(getDb(), {
       subject: { id: "archive-done:waiting", kind: "question" },
       owner: { id: waitingId, kind: "conversation" },
       assignedToEveryone: false,
@@ -660,7 +661,7 @@ describe("conversation auto-archive API", () => {
 
     // An action item for Everyone waits on a person too, until it closes.
     for (const conversationId of [childItemId, childItemClosedId]) {
-      const item = await insertInboxItem(getDb(), {
+      const item = await insertTestInboxItem(getDb(), {
         subject: { id: `archive-needs:${conversationId}`, kind: "question" },
         owner: { id: `${conversationId}:child`, kind: "conversation" },
         assignedToEveryone: true,
@@ -680,7 +681,7 @@ describe("conversation auto-archive API", () => {
         });
       }
     }
-    await insertInboxItem(getDb(), {
+    await insertTestInboxItem(getDb(), {
       subject: { id: "archive-needs:linked", kind: "question" },
       owner: { id: `${childItemId}:child`, kind: "conversation" },
       assignedToEveryone: true,

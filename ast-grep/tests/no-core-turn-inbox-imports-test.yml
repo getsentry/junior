@@ -1,0 +1,13 @@
+id: no-core-turn-inbox-imports
+valid:
+  - 'import { insertQuestion } from "@/chat/questions/store";'
+  - 'import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";'
+  - 'import { reactToConversationChange } from "@/chat/conversations/change-reactions";'
+invalid:
+  - 'import { insertInboxItem } from "@/chat/inbox-items/store";'
+  - 'import { inboxItemSnoozed } from "@/chat/inbox-snoozes/store";'
+  - 'import { pushInboxItem } from "@/chat/notifications/inbox-item-push";'
+  - 'import { inboxItemCard } from "@/chat/slack/inbox-item-card";'
+  - 'import { getInboxItem } from "../inbox-items/store";'
+  - 'export { getInboxItem } from "@/chat/inbox-items/store";'
+  - 'const inbox = await import("@/chat/inbox-items/store");'

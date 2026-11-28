@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "./questions";
 import { generateKeyPairSync } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
@@ -8,7 +9,7 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { insertInboxItem } from "@/chat/inbox-items/store";
+
 import { mswServer } from "../msw/server";
 import type { ConversationFixture } from "./conversation";
 
@@ -55,7 +56,7 @@ export async function addItem(
   ownerConversationId = conversationId,
   linkedConversationIds: string[] = [],
 ): Promise<string> {
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     subject: { id: title, kind: "question" },
     owner: { id: ownerConversationId, kind: "conversation" },
     assignedToEveryone: false,
@@ -152,7 +153,7 @@ export async function addPullRequestItem(
   title: string,
   url = PULL_REQUEST.url,
 ): Promise<string> {
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -184,7 +185,7 @@ export async function addEveryoneItem(
   conversationId: string,
   title: string,
 ): Promise<string> {
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     subject: { id: title, kind: "question" },
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: true,
@@ -215,7 +216,7 @@ export async function addNotice(
   assignees: User[],
   title: string,
 ): Promise<string> {
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     subject: { id: title, kind: "question" },
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
@@ -303,11 +304,14 @@ export function api(fixture: ConversationFixture, viewer: User) {
       }),
     /** Take, answer, or dismiss an item. */
     act: (inboxItemId: string, body: unknown) =>
-      app.request(`http://localhost/api/inbox-items/${inboxItemId}/actions`, {
-        body: JSON.stringify(body),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      }),
+      app.request(
+        `http://localhost/api/inbox-items/${encodeURIComponent(inboxItemId)}/actions`,
+        {
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      ),
     /** What Snoozed shows: its count and its item titles. */
     snoozed: async () => ({
       count: (

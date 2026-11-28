@@ -54,7 +54,13 @@ export const updateInboxItemToolDefinition = zodToolDefinition({
   },
   inputSchema: z
     .object({
-      id: z.string().trim().min(1),
+      id: z
+        .string()
+        .trim()
+        .min(1)
+        .describe(
+          "The item's id. The item of a question has the question id that `askUserQuestion` returned.",
+        ),
       questions: questionsSchema
         .nullable()
         .optional()

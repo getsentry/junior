@@ -1,3 +1,4 @@
+import { insertTestInboxItem, askedItem } from "../../../fixtures/questions";
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,7 +10,7 @@ import { getSpaceLead } from "@/chat/lead/conversation";
 import { createSpace } from "@/chat/spaces/store";
 import { leaveConversation } from "@/api/conversations/subscription";
 import { juniorConversationParticipants } from "@/db/schema";
-import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { getInboxItem } from "@/chat/inbox-items/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { buildSlackInboxItemCard } from "@/chat/slack/inbox-item-card";
 import {
@@ -53,7 +54,7 @@ async function addAsk(input: {
   key: string;
   nowMs: number;
 }): Promise<string> {
-  const created = await insertInboxItem(getDb(), {
+  const created = await insertTestInboxItem(getDb(), {
     owner: { id: CONVERSATION_ID, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: input.assigneeUserIds,
@@ -173,23 +174,26 @@ describe("inbox item in a private Conversation", () => {
       },
       createSlackInboxItemToolServices(() => fixture.queue),
     ) as any;
-    const ask = (assignees?: string[]) =>
-      add.execute(
-        add.prepareArguments({
-          ...(assignees ? { assignees } : undefined),
-          questions: [
-            {
-              question: "Which day should the deploy roll out?",
-              header: "Day",
-              options: [
-                { label: "Monday", description: "Start of the week." },
-                { label: "Tuesday", description: "After the sync." },
-              ],
-            },
-          ],
-        }),
-        {} as any,
-      );
+    const ask = async (assignees?: string[]) => ({
+      item: await askedItem(
+        await add.execute(
+          add.prepareArguments({
+            ...(assignees ? { assignees } : undefined),
+            questions: [
+              {
+                question: "Which day should the deploy roll out?",
+                header: "Day",
+                options: [
+                  { label: "Monday", description: "Start of the week." },
+                  { label: "Tuesday", description: "After the sync." },
+                ],
+              },
+            ],
+          }),
+          {} as any,
+        ),
+      ),
+    });
     // The old visibility check stays for the release before this one, so a
     // private item cannot name Everyone yet.
     await expect(ask(["everyone"])).rejects.toThrow(
@@ -244,7 +248,7 @@ describe("inbox item in a private Space", () => {
         })),
       );
     await leaveConversation(ben, privateId);
-    const created = await insertInboxItem(getDb(), {
+    const created = await insertTestInboxItem(getDb(), {
       owner: { id: privateId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],

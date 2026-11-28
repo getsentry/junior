@@ -1,8 +1,8 @@
 /**
  * How the Inbox follows a Conversation's own data after core commits it:
- * a question gets its item, a person's message answers the open questions
- * that it matches, and To-dos sync their items. Core reports each change
- * through `reactToConversationChange` and never calls the Inbox itself.
+ * a question gets its item, and a person's message answers the open
+ * questions that it matches. Core reports each change through
+ * `reactToConversationChange` and never calls the Inbox itself.
  */
 import type { ConversationChange } from "@/chat/conversations/change-reactions";
 import { getDb } from "@/chat/db";
@@ -17,7 +17,6 @@ import {
   getOpenInboxItemBySubject,
   insertInboxItem,
 } from "@/chat/inbox-items/store";
-import { syncTodoInboxItems } from "@/chat/inbox-items/todo-items";
 import { pushConversationInboxItemsNow } from "@/chat/notifications/inbox-item-push";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getQuestion } from "@/chat/questions/store";
@@ -98,7 +97,5 @@ export async function reactInboxToConversationChange(
       return await answerByMessage(change);
     case "delivery_resumed":
       return await pushConversationInboxItemsNow(change.conversationId);
-    case "todos_changed":
-      return await syncTodoInboxItems(getDb(), change);
   }
 }

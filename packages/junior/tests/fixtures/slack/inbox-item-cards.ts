@@ -1,3 +1,4 @@
+import { askedItem } from "../questions";
 import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { type Identity, type User } from "@sentry/junior-plugin-api";
@@ -95,12 +96,11 @@ export async function addItem(
     },
     createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
   );
-  const added = (await (tool as any).execute(
+  const asked = await (tool as any).execute(
     (tool as any).prepareArguments(input),
     {},
-  )) as {
-    item: { assignees: string[]; id: string; subject: { id: string } };
-  };
+  );
+  const added = { ...asked, item: await askedItem(asked) };
   if (conversation_ids) {
     await updateItem(
       user,

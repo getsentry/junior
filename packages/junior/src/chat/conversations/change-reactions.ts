@@ -21,7 +21,7 @@ export interface ConversationChangeServices {
 /** One committed change of a Conversation's own data. */
 export type ConversationChange =
   | {
-      /** A question that an agent asked. A replay of the ask reports it again. */
+      /** A question that an agent asked. A replayed ask reports it again. */
       kind: "question_asked";
       asked: ResolvedAssignees;
       conversationId: string;
@@ -44,8 +44,7 @@ export type ConversationChange =
       viewed?: boolean;
     }
   /** Slack delivery of a detached Conversation started again. */
-  | { kind: "delivery_resumed"; conversationId: string }
-  | { kind: "todos_changed"; conversationId: string; nowMs: number };
+  | { kind: "delivery_resumed"; conversationId: string };
 
 /** A feature's reaction to one committed Conversation change. */
 export type ConversationChangeReaction = (

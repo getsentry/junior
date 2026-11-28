@@ -1,8 +1,9 @@
+import { insertTestInboxItem } from "../../../../fixtures/questions";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { getDb } from "@/chat/db";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
-import { insertInboxItem } from "@/chat/inbox-items/store";
+
 import { juniorConversations } from "@/db/schema";
 import { storeConversationMetadataFixture } from "../../../../fixtures/conversation-metadata";
 import {
@@ -74,7 +75,7 @@ describe("getConversation MCP tool", () => {
       .set({ executionStatus: "running" })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
     // An open action item reads `needs_input` while the Turn runs.
-    await insertInboxItem(getDb(), {
+    await insertTestInboxItem(getDb(), {
       subject: { id: "running-ask", kind: "question" },
       owner: { id: CONVERSATION_ID, kind: "conversation" as const },
       assignedToEveryone: true,
@@ -150,7 +151,7 @@ describe("getConversation MCP tool", () => {
       conversationId: CONVERSATION_ID,
     });
     // A waiting question needs every viewer, whoever it asks.
-    await insertInboxItem(getDb(), {
+    await insertTestInboxItem(getDb(), {
       subject: { id: "other-ask", kind: "question" },
       ...ask,
       assignedToEveryone: false,

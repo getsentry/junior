@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../../fixtures/questions";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -13,7 +14,6 @@ import { createSpace } from "@/chat/spaces/store";
 import {
   closeInboxItem,
   dismissOpenInboxItems,
-  insertInboxItem,
 } from "@/chat/inbox-items/store";
 import {
   recordAuthorizationCompleted,
@@ -80,7 +80,7 @@ describe("conversation status", () => {
       "1700000000.000100",
     );
     // A notice that an agent stored before `askUserQuestion` asks nothing.
-    await insertInboxItem(getDb(), {
+    await insertTestInboxItem(getDb(), {
       subject: { id: "notice", kind: "question" },
       owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
@@ -99,7 +99,7 @@ describe("conversation status", () => {
     // askUserQuestion assigns a Participant by default. A Slack Actor without
     // a User adds an item that no one is assigned to, and anyone in the
     // thread can answer it.
-    const unassigned = await insertInboxItem(getDb(), {
+    const unassigned = await insertTestInboxItem(getDb(), {
       subject: { id: "unassigned", kind: "question" },
       owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,

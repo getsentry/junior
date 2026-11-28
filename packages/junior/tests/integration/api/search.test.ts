@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../fixtures/questions";
 import { randomUUID } from "node:crypto";
 import { githubPlugin } from "@sentry/junior-github";
 import { eq, sql } from "drizzle-orm";
@@ -15,7 +16,7 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import { recordCodeChange } from "@/chat/code/store";
-import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { closeInboxItem } from "@/chat/inbox-items/store";
 import { reembedMemories } from "@/chat/memory/reembed";
 import { memoryDb } from "@/chat/memory/store";
 import { createPluginEmbedder } from "@/chat/plugins/model";
@@ -88,6 +89,8 @@ async function inboxItem(args: {
   assigneeUserIds?: string[];
   body?: string;
   nowMs: number;
+  /** The question's id, which its item also has. Defaults to the title. */
+  questionId?: string;
   title: string;
   visibility?: "private" | "public";
 }) {
@@ -102,12 +105,12 @@ async function inboxItem(args: {
     source: "slack",
     visibility,
   });
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     assignedToEveryone: false,
     assigneeUserIds: args.assigneeUserIds ?? [],
     body: args.body ?? "",
     conversationIds: [],
-    subject: { id: args.title, kind: "question" },
+    subject: { id: args.questionId ?? args.title, kind: "question" },
     kind: "notice",
     nowMs: args.nowMs,
     owner: { id: conversationId, kind: "conversation" },
@@ -563,6 +566,9 @@ describe("search API", () => {
     await inboxItem({
       assigneeUserIds: [viewer.id],
       nowMs: 1_000,
+      // As long as a stored id: a question's id names an agent's
+      // Conversation and the tool call that asked it.
+      questionId: `ask:agent:${"0".repeat(32)}:toolu_${"0".repeat(24)}`,
       title: `Deploy ${"x".repeat(INBOX_ITEM_TITLE_MAX_LENGTH - 7)}`,
     });
     await automation({
@@ -600,7 +606,7 @@ describe("search API", () => {
           statements: 7,
           serialRounds: 1,
         }),
-      { automations: 155, inboxItems: 272, memories: 176, todos: 300 },
+      { automations: 155, inboxItems: 309, memories: 176, todos: 300 },
     );
 
     const found = await report(response);
@@ -643,7 +649,7 @@ describe("search API", () => {
       await getDb().execute(
         sql`insert into junior_github_pull_request_requesters (repository_full_name, number, identity_id, conversation_id, pull_request_id, created_at, updated_at) values ('getsentry/junior', ${number}, 'identity:opener', 'slack:C123:owner', ${id}, now(), now())`,
       );
-      return insertInboxItem(getDb(), {
+      return insertTestInboxItem(getDb(), {
         assignedToEveryone: false,
         assigneeUserIds: [viewer.id],
         body: `GitHub asks you to review #${number}.`,

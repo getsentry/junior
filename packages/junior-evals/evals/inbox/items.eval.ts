@@ -67,6 +67,35 @@ function itemOutput(call: Parameters<typeof toolOutput>[0]) {
 }
 
 describe("Inbox", () => {
+  test("when the person changes an open question that this Conversation asked, update it by the id that askUserQuestion returned instead of asking again", async ({
+    run,
+  }) => {
+    const asked = await run(
+      webMessage(
+        "I'm launching the pricing page on Tuesday or Thursday and haven't picked yet. Ask me which day, then write the two-line launch announcement for that day.",
+      ),
+    );
+    const [ask] = completedToolCalls("askUserQuestion", asked);
+    expect(ask, "No question: this run does not test a change").toBeDefined();
+    const questionId = (toolOutput(ask!) as { question: { id: string } })
+      .question.id;
+
+    const changed = await asked.continue(
+      webMessage(
+        "Friday works too now. Change that question so it offers Tuesday, Thursday, or Friday.",
+      ),
+    );
+
+    // The agent changes the open question in place, with the id it got
+    // when it asked, and asks no second question.
+    expect(completedToolCalls("askUserQuestion", changed)).toHaveLength(1);
+    const updates = completedToolCalls("updateInboxItem", changed);
+    expect(updates).not.toHaveLength(0);
+    for (const call of updates) {
+      expect(call.input).toMatchObject({ id: questionId });
+    }
+  });
+
   test("when a later run gets the open question of an earlier run, change it instead of asking again", async ({
     run,
   }) => {

@@ -1,0 +1,30 @@
+# The tool composition roots build every tool of a Turn. They may import the
+# Inbox's own tools, which a model calls to update or search items, and
+# nothing else of the Inbox. See `no-core-turn-inbox-imports`.
+id: tool-composition-inbox-tools-only
+language: TypeScript
+severity: error
+message: The tool composition roots may import only the Inbox tools, from chat/inbox-items/tools/ and chat/slack/inbox-item-tools. Keep other Inbox code out of the core Turn flow.
+files:
+  - packages/junior/src/chat/tool-support/create-tools.ts
+  - packages/junior/src/chat/tool-support/registry.ts
+rule:
+  any:
+    - kind: import_statement
+      has:
+        kind: string
+        matches: inbox-module
+    - kind: export_statement
+      has:
+        kind: string
+        matches: inbox-module
+    - pattern: import($MODULE)
+constraints:
+  MODULE:
+    matches: inbox-module
+utils:
+  inbox-module:
+    all:
+      - regex: ^["'](@/chat/(inbox-items|inbox-snoozes)(/|["'])|@/chat/(notifications|slack)/inbox-item|(\.\.?/)+(inbox-items|inbox-snoozes)(/|["']))
+      - not:
+          regex: ^["']@/chat/(inbox-items/tools/[a-z-]+|slack/inbox-item-tools)["']$

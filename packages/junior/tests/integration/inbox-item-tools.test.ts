@@ -5,11 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
-import {
-  closeInboxItem,
-  getInboxItem,
-  insertInboxItem,
-} from "@/chat/inbox-items/store";
+import { closeInboxItem, getInboxItem } from "@/chat/inbox-items/store";
 import {
   juniorAutomations,
   juniorConversationParticipants,
@@ -24,7 +20,7 @@ import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools"
 import { getConversation } from "@/chat/task-execution/store";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
-import { ask } from "../fixtures/questions";
+import { ask, askedItem, insertTestInboxItem } from "../fixtures/questions";
 
 type Context = Pick<
   ToolRuntimeContext,
@@ -37,10 +33,13 @@ async function execute(
   input: unknown,
   toolCallId?: string,
 ): Promise<any> {
-  return await tool.execute(
+  const result = await tool.execute(
     tool.prepareArguments(input),
     (toolCallId ? { toolCallId } : {}) as any,
   );
+  return result?.question
+    ? { ...result, item: await askedItem(result) }
+    : result;
 }
 
 const queue = createConversationWorkQueueTestAdapter();
@@ -743,7 +742,7 @@ describe("inbox item tools", () => {
         status: "active",
         teamId: "T123",
       });
-    const alert = await insertInboxItem(getDb(), {
+    const alert = await insertTestInboxItem(getDb(), {
       assignedToEveryone: false,
       assigneeUserIds: [ana.id],
       body: "Last run failed.",

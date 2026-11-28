@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../../../fixtures/questions";
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
@@ -21,7 +22,6 @@ import { sendInboxItemMessages } from "@/chat/inbox-items/messages";
 import {
   closeInboxItem,
   getInboxItem,
-  insertInboxItem,
   takeInboxItem,
 } from "@/chat/inbox-items/store";
 import { juniorIdentities, juniorQuestions } from "@/db/schema";
@@ -96,7 +96,7 @@ async function addItem(input: {
       .filter((assignee) => assignee !== "everyone")
       .map(async (email) => (await user(email)).id),
   );
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     assignedToEveryone: everyone,
     assigneeUserIds,
     body: input.body,
@@ -188,7 +188,7 @@ describe("inbox item actions API", () => {
       nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
       parentConversationId: "slack:CPUB:1.000004",
     });
-    await insertInboxItem(getDb(), {
+    await insertTestInboxItem(getDb(), {
       subject: { id: "fair-source:entry:initech", kind: "question" },
       owner: { id: "agent:child-of-4", kind: "conversation" },
       assignedToEveryone: false,
@@ -540,7 +540,7 @@ describe("inbox item actions API", () => {
       title: "Rotate the private key",
     });
     const add = async (conversationId: string, title: string) => {
-      const created = await insertInboxItem(getDb(), {
+      const created = await insertTestInboxItem(getDb(), {
         subject: { id: `roll-up:${conversationId}`, kind: "question" },
         owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
@@ -617,7 +617,7 @@ describe("inbox item actions API", () => {
       kind: "action" | "notice",
       nowMs: number,
     ) => {
-      const created = await insertInboxItem(getDb(), {
+      const created = await insertTestInboxItem(getDb(), {
         subject: { id: `waiting-sort:${index}`, kind: "question" },
         owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
@@ -721,7 +721,7 @@ describe("inbox item actions API", () => {
           sql`insert into junior_github_pull_request_requesters (repository_full_name, number, identity_id, conversation_id, pull_request_id, created_at, updated_at) values ('getsentry/junior', ${index}, 'identity:opener', 'slack:CPUB:1.000001', ${pr.id}, now(), now())`,
         );
       }
-      const created = await insertInboxItem(getDb(), {
+      const created = await insertTestInboxItem(getDb(), {
         owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [(input.assignee ?? ana).id],

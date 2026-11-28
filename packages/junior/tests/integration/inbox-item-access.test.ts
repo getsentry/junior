@@ -1,3 +1,4 @@
+import { insertTestInboxItem } from "../fixtures/questions";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
@@ -7,7 +8,6 @@ import {
 } from "@/chat/inbox-items/access";
 import {
   getInboxItem,
-  insertInboxItem,
   searchInboxItems,
   type InboxItemVisibility,
 } from "@/chat/inbox-items/store";
@@ -63,7 +63,7 @@ async function addItem(input: {
       executionId: `run-${input.key}`,
     });
   }
-  const item = await insertInboxItem(getDb(), {
+  const item = await insertTestInboxItem(getDb(), {
     subject: { id: input.key, kind: "question" },
     owner: { id: ownerId, kind: "conversation" },
     assignedToEveryone: false,

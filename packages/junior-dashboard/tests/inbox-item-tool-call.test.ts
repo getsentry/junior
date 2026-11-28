@@ -5,7 +5,10 @@ import {
   inboxItemIdFromToolCall,
 } from "../src/client/inbox/inboxItemFormat";
 
-const output = JSON.stringify({ created: true, item: { id: "item-1" } });
+const output = JSON.stringify({
+  question: { id: "item-1", title: "Ship it?" },
+  next_step: "End the Turn.",
+});
 
 describe("inboxItemIdFromToolCall", () => {
   it("finds the item that askUserQuestion added, directly or through executeTool", () => {
@@ -33,6 +36,15 @@ describe("inboxItemIdFromToolCall", () => {
   });
 
   it("names the question of the item, or the item's id for an old result", () => {
+    // The question's item has the question's id.
+    expect(
+      inboxItemAskFromToolCall({
+        name: "askUserQuestion",
+        output,
+        status: "completed",
+      }),
+    ).toEqual({ itemId: "item-1", questionId: "item-1" });
+    // A result from before core stored questions names the added item.
     expect(
       inboxItemAskFromToolCall({
         name: "addInboxItem",
@@ -50,7 +62,7 @@ describe("inboxItemIdFromToolCall", () => {
     expect(
       inboxItemAskFromToolCall({
         name: "addInboxItem",
-        output,
+        output: { created: true, item: { id: "item-1" } },
         status: "completed",
       }),
     ).toEqual({ itemId: "item-1", questionId: "item-1" });

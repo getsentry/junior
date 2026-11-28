@@ -275,7 +275,7 @@ export async function addItem(
     (tool as any).prepareArguments(input),
     {},
   );
-  return result.item.id;
+  return result.question.id;
 }
 
 /** Start a Watch on a deployment for `conversationId`. */

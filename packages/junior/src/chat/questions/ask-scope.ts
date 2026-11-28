@@ -66,15 +66,10 @@ export async function readAskScope(
 }
 
 /**
- * Check who a private question asks. It cannot ask Everyone yet: the old
- * visibility check stays for the release before this one (migration
- * `20261126154025_inbox_item_owners`), and a later release lets it go to the
- * people who can see its owner (`inboxItemForEveryoneOfOwner`). Each User
- * must be the current Actor, a Participant of one of the given
- * Conversations (the current one and, for an existing question, the one
- * that asked it), or the creator of the Automation that asked it. An
- * Automation run often has no Actor and no people yet, and its creator wrote
- * the work. A public question can ask anyone.
+ * Check who a private question asks: not Everyone yet (migration
+ * `20261126154025_inbox_item_owners`), and each User is the Actor, a
+ * Participant of the given Conversations, or the creator of the Automation
+ * that asked it, who wrote the work. A public question can ask anyone.
  */
 export async function requireAskedPeople(args: {
   assignees: ResolvedAssignees;

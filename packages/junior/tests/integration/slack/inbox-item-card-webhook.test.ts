@@ -1,3 +1,4 @@
+import { askedItem, insertTestInboxItem } from "../../fixtures/questions";
 import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
@@ -13,7 +14,6 @@ import {
   closeInboxItem,
   getInboxItem,
   INBOX_ITEM_REPLIED_REASON,
-  insertInboxItem,
 } from "@/chat/inbox-items/store";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { juniorInboxItems } from "@/db/schema";
@@ -499,7 +499,7 @@ describe("Slack webhook: Inbox item cards", () => {
       },
     ];
     for (const [index, item] of stored.entries()) {
-      const added = await insertInboxItem(getDb(), {
+      const added = await insertTestInboxItem(getDb(), {
         ...item,
         assignedToEveryone: true,
         assigneeUserIds: [],
@@ -673,10 +673,14 @@ describe("Slack webhook: Inbox item cards", () => {
       },
       createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
     ) as any;
-    const unassigned = await unassignedTool.execute(
-      unassignedTool.prepareArguments({ questions: [SHIP_QUESTION] }),
-      {},
-    );
+    const unassigned = {
+      item: await askedItem(
+        await unassignedTool.execute(
+          unassignedTool.prepareArguments({ questions: [SHIP_QUESTION] }),
+          {},
+        ),
+      ),
+    };
     expect(unassigned.item.assignees).toEqual([]);
     // Junior follows the thread, so a reply needs no mention to start a Turn.
     await state.subscribe(THREAD);

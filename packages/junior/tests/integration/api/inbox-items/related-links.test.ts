@@ -7,14 +7,18 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { insertInboxItem } from "@/chat/inbox-items/store";
+
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import type {
   InboxItemNoticeRequest,
   InboxItemRequest,
 } from "@/chat/questions/request";
-import { ask as questions } from "../../../fixtures/questions";
+import {
+  ask as questions,
+  insertTestInboxItem,
+  askedItem,
+} from "../../../fixtures/questions";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import {
   closeConversationFixture,
@@ -103,13 +107,14 @@ async function ask(
   input: { assignees: string[]; conversation_ids?: string[] },
 ) {
   const tool = createAskUserQuestionTool(context(conversationId), services);
-  const added = await (tool as any).execute(
+  const asked = await (tool as any).execute(
     (tool as any).prepareArguments({
       assignees: input.assignees,
       questions: questions(question),
     }),
     {},
   );
+  const added = { item: await askedItem(asked) };
   if (input.conversation_ids) {
     await update(conversationId, {
       id: added.item.id,
@@ -134,7 +139,7 @@ async function legacyItem(
   },
 ) {
   legacyCount += 1;
-  return (await insertInboxItem(getDb(), {
+  return (await insertTestInboxItem(getDb(), {
     assignedToEveryone: false,
     assigneeUserIds: [assignee.id],
     body: "Stored before askUserQuestion.",
@@ -319,7 +324,7 @@ describe("inbox item related links", () => {
     });
     const start = Date.now();
     for (let index = 1; index <= 210; index += 1) {
-      await insertInboxItem(getDb(), {
+      await insertTestInboxItem(getDb(), {
         owner: { id: BUSY_ID, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],

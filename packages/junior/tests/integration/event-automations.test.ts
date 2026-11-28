@@ -1,8 +1,9 @@
+import { insertTestInboxItem } from "../fixtures/questions";
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
 import { createSearchAutomationsTool } from "@/chat/automations/tools/search";
 import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
-import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { getInboxItem } from "@/chat/inbox-items/store";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import {
   context,
@@ -287,7 +288,7 @@ describe("event automations", () => {
     ]);
     // The run asks a person something, then its Automation is deleted
     // while the run still goes.
-    const item = await insertInboxItem(db, {
+    const item = await insertTestInboxItem(db, {
       owner: { id: runConversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],

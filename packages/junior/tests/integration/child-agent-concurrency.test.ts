@@ -725,8 +725,8 @@ describe("child agent identity and concurrency", () => {
           ],
         }),
         { toolCallId: "toolu_owner" },
-      )) as { item: { id: string } };
-      const id = added.item.id;
+      )) as { question: { id: string } };
+      const id = added.question.id;
       await actOnInboxItem({
         action: "submit",
         answer: { requestId: id, values: { q1: ["Bob"] } },
