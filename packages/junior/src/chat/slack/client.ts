@@ -7,6 +7,7 @@ import {
   type SlackChannelId,
 } from "@/chat/slack/ids";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
+import { untilAborted } from "@sentry/junior-plugin-api";
 import { sleep } from "@/chat/sleep";
 
 // Slack canvas/list methods are not exposed by the current chat adapter public API,
@@ -86,6 +87,11 @@ interface SlackRetryContext {
    * post).
    */
   idempotent?: boolean;
+  /**
+   * Ends the wait for the action, with no more retries. An attempt that is
+   * already sent goes on.
+   */
+  signal?: AbortSignal | undefined;
   /**
    * Error codes that the caller handles as success, such as `already_reacted`.
    * They still throw, but they do not log `slack.action.failed`.
@@ -494,7 +500,7 @@ export async function withSlackRetries<T>(
         {},
         async () => {
           try {
-            return await task();
+            return await untilAborted(task(), context.signal);
           } catch (error) {
             const mapped = mapSlackError(error);
             const errorAttrs: Record<string, string | number | boolean> = {
@@ -564,7 +570,8 @@ export async function withSlackRetries<T>(
       if (
         !isRetryable ||
         attempt >= maxAttempts ||
-        remainingDelayBudgetMs <= 0
+        remainingDelayBudgetMs <= 0 ||
+        context.signal?.aborted
       ) {
         if (context.expectedErrorCodes?.includes(mapped.code)) {
           throw mapped;
@@ -597,7 +604,10 @@ export async function withSlackRetries<T>(
         remainingDelayBudgetMs,
       );
       totalDelayMs += delayMs;
-      await sleep(delayMs);
+      // The wait ended before the retry, so the caller gets this failure.
+      await sleep(delayMs, context.signal).catch(() => {
+        throw mapped;
+      });
     }
   }
   /* oxlint-enable no-await-in-loop */

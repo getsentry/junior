@@ -1,7 +1,9 @@
 import { mapBounded } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import {
+  CACHE_LOAD_TIMEOUT_MS,
   type CacheEntry,
+  untilAborted,
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
   type ObjectLinkContext,
@@ -62,22 +64,46 @@ const DEFAULT_HTTP_CACHE = { staleIfError: true, ttlMs: OBJECT_LINK_TTL_MS };
 // after this, body included. Egress also has its own, longer deadline.
 const CARD_READ_DEADLINE_MS = 10_000;
 
-const cardReadFetch: typeof fetch = async (input, init) => {
+function cardReadFetch(read: AbortSignal | undefined): typeof fetch {
+  return async (input, init) => {
+    const deadline = new AbortController();
+    const timer = setTimeout(
+      () => deadline.abort(new Error("The card read ran out of time")),
+      CARD_READ_DEADLINE_MS,
+    );
+    // A finished read must not keep the process alive until the deadline.
+    timer.unref?.();
+    return await fetch(input, {
+      ...init,
+      signal: AbortSignal.any([
+        ...(init?.signal ? [init.signal] : []),
+        ...(read ? [read] : []),
+        deadline.signal,
+      ]),
+    });
+  };
+}
+
+/**
+ * Run one card read, its access check included, within the cache load
+ * timeout. The read loads cache entries that other card reads wait for, so
+ * it ends before they give up on it, also when a step ignores the signal.
+ */
+async function withCardReadDeadline<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const deadline = new AbortController();
   const timer = setTimeout(
     () => deadline.abort(new Error("The card read ran out of time")),
-    CARD_READ_DEADLINE_MS,
+    CACHE_LOAD_TIMEOUT_MS,
   );
-  // A finished read must not keep the process alive until the deadline.
   timer.unref?.();
-  return await fetch(input, {
-    ...init,
-    signal: AbortSignal.any([
-      ...(init?.signal ? [init.signal] : []),
-      deadline.signal,
-    ]),
-  });
-};
+  try {
+    return await untilAborted(run(deadline.signal), deadline.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const OBJECT_LINK_SYSTEM_ACTOR = {
   platform: "system",
@@ -213,7 +239,7 @@ function objectLinkContext(
     db: getDb(),
     egress: createPluginEgress({
       credentialContext: credentialContextForActor(OBJECT_LINK_SYSTEM_ACTOR),
-      fetch: cardReadFetch,
+      fetch: cardReadFetch(read.signal),
       httpCache,
       // A card is optional. It must never ask anyone to authorize.
       pluginAuth: { async handleAuthRequired() {} },
@@ -228,12 +254,12 @@ function objectLinkContext(
     // Only that subject's own OAuth token is used.
     viewerEgress: createPluginEgress({
       credentialContext: credentialContextForActor(webActorFromUser(viewer)),
-      fetch: cardReadFetch,
+      fetch: cardReadFetch(read.signal),
       httpCache,
       pluginAuth: { async handleAuthRequired() {} },
       userOAuthOnly: true,
     }),
-    viewerMcp: createViewerMcp(name, viewer.id),
+    viewerMcp: createViewerMcp(name, viewer.id, read.signal),
     replaceSubjectId: (subject) =>
       replaceAnnotationSubjectId(getDb(), { ...subject, plugin: name }),
     ...(read.cacheOnly
@@ -315,7 +341,7 @@ async function resolveWithLinkType(
   viewer: User,
   url: URL,
   prefetched?: ObjectLinkPrefetchOutcome,
-  read: Pick<ObjectLinkRead, "cacheOnly" | "now"> = {},
+  read: Pick<ObjectLinkRead, "cacheOnly" | "now" | "signal"> = {},
 ): Promise<ResolvedObjectLink | null> {
   if (!(await linkType.canView(viewer, url, prefetched, read))) {
     // The web page card reads only what anyone can read signed out. A
@@ -364,9 +390,12 @@ export async function resolveObjectLinkNow(
   const linkType = findObjectLinkType(readObjectLinkTypes(), url);
   if (!linkType) return undefined;
   return (
-    (await resolveWithLinkType(linkType, viewer, url, undefined, {
-      now: true,
-    })) ?? undefined
+    (await withCardReadDeadline((signal) =>
+      resolveWithLinkType(linkType, viewer, url, undefined, {
+        now: true,
+        signal,
+      }),
+    )) ?? undefined
   );
 }
 
@@ -382,12 +411,14 @@ export async function viewerCanViewPluginLink(
   plugin: string,
 ): Promise<boolean> {
   const linkType = findObjectLinkType(readObjectLinkTypes(), url);
-  const read = { now: true } as const;
-  return (
-    linkType?.owner === plugin &&
-    (await linkType.canView(viewer, url, undefined, read)) &&
-    Boolean(await linkType.resolve(viewer, url, undefined, read))
-  );
+  if (linkType?.owner !== plugin) return false;
+  return await withCardReadDeadline(async (signal) => {
+    const read = { now: true, signal } as const;
+    return (
+      (await linkType.canView(viewer, url, undefined, read)) &&
+      Boolean(await linkType.resolve(viewer, url, undefined, read))
+    );
+  });
 }
 
 // Each link type loads its URLs in one call, so a page of cards does not
@@ -450,12 +481,14 @@ export async function resolveObjectLinks(
     const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
     const resolve = async () =>
       (
-        await resolveWithLinkType(
-          linkType,
-          viewer,
-          parsed,
-          prefetched.get(linkType)?.get(parsed.href),
-          read,
+        await withCardReadDeadline((signal) =>
+          resolveWithLinkType(
+            linkType,
+            viewer,
+            parsed,
+            prefetched.get(linkType)?.get(parsed.href),
+            { ...read, signal },
+          ),
         )
       )?.object ?? null;
     try {

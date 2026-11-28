@@ -49,7 +49,7 @@ interface GitHubRequestParams {
   method?: string;
   /** Saved GET responses, as in `installationResponses`. */
   responses?: GitHubResponses | undefined;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   token: string;
 }
 
@@ -94,6 +94,8 @@ interface InstallationCredentialBaseOptions {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
+  /** Ends the wait for the token. A shared mint goes on for others. */
+  signal?: AbortSignal | undefined;
   /** Tokens to reuse, as in `reuseInstallationToken`. */
   tokens?: InstallationTokens | undefined;
 }
@@ -854,7 +856,7 @@ export async function issueInstallationToken(
     return await mintInstallationToken(options);
   }
   return await reuseInstallationToken(options.tokens, options, () =>
-    mintInstallationToken(options),
+    mintInstallationToken({ ...options, signal: undefined }),
   );
 }
 
@@ -889,6 +891,7 @@ async function mintInstallationToken(
     `/app/installations/${installationId}/access_tokens`,
     {
       method: "POST",
+      signal: options.signal,
       token: appJwt,
       body,
     },

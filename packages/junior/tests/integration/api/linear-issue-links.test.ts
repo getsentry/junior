@@ -1,5 +1,5 @@
 import { linearPlugin } from "../../../../junior-linear/src/index.js";
-import type { User } from "@sentry/junior-plugin-api";
+import { CACHE_LOAD_TIMEOUT_MS, type User } from "@sentry/junior-plugin-api";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
@@ -56,8 +56,9 @@ const ISSUES: Record<string, Record<string, unknown>> = {
  */
 function fakeLinearMcp(access: Record<string, string[]>) {
   const calls: string[] = [];
-  // While Linear is down, every MCP request fails.
-  const linear = { down: false };
+  // While Linear is down, every MCP request fails. While `stall` is set,
+  // a tool call never answers, and `stall` hears that it came.
+  const linear: { down: boolean; stall?: () => void } = { down: false };
   mswServer.use(
     http.get(MCP_URL, () => new HttpResponse(null, { status: 405 })),
     http.post(MCP_URL, async ({ request }) => {
@@ -100,6 +101,10 @@ function fakeLinearMcp(access: Record<string, string[]>) {
             ],
           });
         case "tools/call": {
+          if (linear.stall) {
+            linear.stall();
+            return new Promise<never>(() => {});
+          }
           const id = message.params?.arguments?.id ?? "";
           calls.push(`${person} ${message.params?.name} ${id}`);
           const issue = ISSUES[id];
@@ -312,6 +317,31 @@ describe("Linear issue link cards", () => {
       vi.setSystemTime(start + 10 * 60_000);
       expect(await pageLoad()).toEqual([]);
       expect(linear.calls).toEqual(["alice get_issue ENG-123"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends a card read within the cache load timeout when Linear stalls", async () => {
+    const { connect, linear } = fakeLinearMcp({ alice: ["ENG-123"] });
+    const alice = testViewer("alice@example.com");
+    await connect(alice, "alice");
+    const stalled = new Promise<void>((resolve) => {
+      linear.stall = resolve;
+    });
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let settled = false;
+      const pending = readCards(alice, [ISSUE_URL]).finally(() => {
+        settled = true;
+      });
+      await stalled;
+      await vi.advanceTimersByTimeAsync(CACHE_LOAD_TIMEOUT_MS - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
+      expect((await pending).objects).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
