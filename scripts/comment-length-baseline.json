@@ -4,7 +4,6 @@
     "packages/junior-dashboard/e2e/inbox/conversations-read-position.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/inbox-fixture.ts": 1,
     "packages/junior-dashboard/e2e/long-transcript-fixture.ts": 1,
-    "packages/junior-dashboard/e2e/screenshot.ts": 2,
     "packages/junior-dashboard/oxlint/px-geometry.ts": 1,
     "packages/junior-dashboard/src/client/components/ImageAttachment.tsx": 1,
     "packages/junior-dashboard/src/client/components/PersonReference.tsx": 1,
