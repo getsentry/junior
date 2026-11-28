@@ -1,4 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
+import type { ObjectLinkRead } from "@/api/objects/link-types";
 import {
   resolveObjectCards,
   type ObjectCardView,
@@ -19,11 +20,13 @@ export type InboxSubjectView = ObjectCardView;
 export async function resolveInboxItemSubjects(
   viewer: User,
   items: readonly Pick<InboxItem, "subject">[],
+  mode: Pick<ObjectLinkRead, "cacheOnly"> = {},
 ): Promise<Map<string, InboxSubjectView>> {
   // Pass only the subject: an item's own `owner` is its Conversation.
   const views = await resolveObjectCards(
     viewer,
     items.map(({ subject }) => ({ subject })),
+    mode,
   );
   return new Map(
     items.flatMap((item, index) => {

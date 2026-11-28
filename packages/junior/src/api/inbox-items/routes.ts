@@ -352,7 +352,7 @@ async function inboxItemPayloads(
         .map((item) => item.id),
       userId: viewer.id,
     }),
-    resolveInboxItemSubjects(viewer, items),
+    resolveInboxItemSubjects(viewer, items, { cacheOnly: true }),
   ]);
   return items.map((item, index) => {
     const payload = inboxItemPayload(

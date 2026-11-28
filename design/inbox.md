@@ -85,9 +85,9 @@ groups and acts on its rows.
 - A Slack thread that its Conversation detached from gets no new item card.
 - An Inbox item stores only its subject, a `{ kind, id }` pair, and the
   fields that every item uses: assignees, status, and who closed it and
-  when. Owner, visibility, title, state, and links come from the subject,
-  live. An item can appear or disappear when its owner's visibility
-  changes.
+  when. Owner, visibility, title, state, and links come from the subject's
+  stored data. The Inbox list calls no provider. An item can appear or
+  disappear when its owner's visibility changes.
 - A subject kind and id name one open item, across all workspaces. There
   is no dedupe key. A plugin kind starts with the plugin name. When the ask
   about the same object changes, such as from review to merge, the same

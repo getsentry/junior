@@ -11,6 +11,7 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { annotationSubject } from "@/chat/plugins/annotations";
+import type { ObjectLinkRead } from "./link-types";
 import { readObjectLinkTypes } from "./resolve";
 import {
   ownerLinkLabel,
@@ -23,7 +24,7 @@ import {
  * - `label`: only the label and the link, for a viewer who cannot read the
  *   object or when its provider is down.
  * - `title`: the stored title with the label and the link, for a card that
- *   Junior posts once.
+ *   Junior posts once, and for a page load.
  */
 export type AnnotationFallback = "label" | "title";
 
@@ -103,12 +104,14 @@ function liveAnnotation(
 /**
  * Return the Annotations with the live card of each object for one viewer,
  * in the same order. Reads every Annotation in one call, so pass a whole
- * page at once.
+ * page at once. A page load passes `cacheOnly`, so it makes no provider
+ * call and shows what the caches hold.
  */
 export async function readLiveAnnotations(
   viewer: User | undefined,
   annotations: readonly ConversationAnnotation[],
   fallback: AnnotationFallback = "label",
+  mode: Pick<ObjectLinkRead, "cacheOnly"> = {},
 ): Promise<LiveAnnotation[]> {
   const views = await resolveObjectCards(
     viewer,
@@ -122,6 +125,7 @@ export async function readLiveAnnotations(
         url: annotation.url,
       };
     }),
+    mode,
   );
   return annotations.map((annotation, index) =>
     liveAnnotation(annotation, views[index], fallback),
@@ -129,8 +133,9 @@ export async function readLiveAnnotations(
 }
 
 /**
- * Return the live Annotations of each Conversation, as `readLiveAnnotations`
- * does, with one read for every Conversation.
+ * Return the Annotations of each Conversation for a page load, as
+ * `readLiveAnnotations` does with `cacheOnly`, with one read for every
+ * Conversation.
  */
 export async function readLiveAnnotationsById(
   viewer: User | undefined,
@@ -140,6 +145,8 @@ export async function readLiveAnnotationsById(
   const live = await readLiveAnnotations(
     viewer,
     entries.flatMap(([, annotations]) => annotations),
+    "title",
+    { cacheOnly: true },
   );
   let offset = 0;
   return new Map(

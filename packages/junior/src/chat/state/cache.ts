@@ -76,7 +76,8 @@ export function cacheKeyPrefix(namespace: string): string {
  * Create a cache in the state adapter under `junior:cache:{namespace}:`.
  * Entries are wrapped, so `null` and `false` values are cache hits. A stale
  * `staleIfError` entry is returned when its reload throws, unless the caller
- * asked for `refresh`. `onStale` then gets the time that it was stored.
+ * asked for `refresh`, or to a `stale` get. `onStale` then gets the time
+ * that it was stored.
  */
 export function createCache(
   state: StateAdapter,
@@ -91,11 +92,18 @@ export function createCache(
     return `${cacheKeyPrefix(namespace)}${key}`;
   };
   return {
-    async get<T>(key: string): Promise<T | undefined> {
+    async get<T>(
+      key: string,
+      options?: { stale?: boolean },
+    ): Promise<T | undefined> {
       const cacheKey = stateKey(key);
       await state.connect();
       const hit = await state.get<StoredEntry<T>>(cacheKey);
-      return hit && isFresh(hit) ? hit.value : undefined;
+      if (!hit) return undefined;
+      if (isFresh(hit)) return hit.value;
+      if (!options?.stale) return undefined;
+      if (hit.storedAtMs !== undefined) hooks.onStale?.(hit.storedAtMs);
+      return hit.value;
     },
     async getOrLoad<T>(
       key: string,

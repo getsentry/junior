@@ -60,7 +60,8 @@ const contentsSchema = z.object({
 const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/;
 const REPO_PATTERN = /^[\w.-]{1,100}$/;
 const NUMBER_PATTERN = /^[1-9]\d{0,9}$/;
-// The load of a card that the page read ran out of time for.
+// The load of a card that the page read ran out of time for, or that a
+// cache-only read did not find.
 const OUT_OF_TIME = new Error("The page read ran out of time for this card");
 
 interface GitHubObjectLink {
@@ -171,9 +172,9 @@ function releaseConfigKey(link: Pick<GitHubObjectLink, "name" | "owner">) {
 
 /**
  * Read the text of a repository's `.github/release.yml` with the App, or
- * an empty text when it has none. A failed read is not cached. A card whose
- * page read ran out of time reads only the cache, and a miss rejects with
- * `OUT_OF_TIME`.
+ * an empty text when it has none. A failed read is not cached. A
+ * cache-only read, and a card whose page read ran out of time, read only
+ * the cache, and a miss rejects with `OUT_OF_TIME`.
  */
 async function readReleaseConfig(
   ctx: ObjectLinkContext,
@@ -199,12 +200,12 @@ async function readReleaseConfig(
       ttlMs: RELEASE_CONFIG_TTL_MS,
     };
   };
-  return await ctx.cache.getOrLoad<string>(
-    releaseConfigKey(link),
-    ctx.prefetchOutcome === "out_of_time"
-      ? () => Promise.reject(OUT_OF_TIME)
-      : load,
-  );
+  if (ctx.cacheOnly || ctx.prefetchOutcome === "out_of_time") {
+    const cached = await ctx.cache.get<string>(releaseConfigKey(link));
+    if (cached === undefined) throw OUT_OF_TIME;
+    return cached;
+  }
+  return await ctx.cache.getOrLoad<string>(releaseConfigKey(link), load);
 }
 
 /**
@@ -263,15 +264,14 @@ async function readFields<T>(
     }
     return entry(schema.parse(response.body));
   };
-  // The page read ran out of time for this card, so it shows its stale
-  // entry, or no card yet, and does not wait for one more read.
-  if (collection === "pulls" && ctx.prefetchOutcome === "out_of_time") {
-    const stale = await ctx.cache
-      .getOrLoad(key, () => Promise.reject(OUT_OF_TIME))
-      .catch((error: unknown) => {
-        if (error === OUT_OF_TIME) return undefined;
-        throw error;
-      });
+  // The page read ran out of time for this card, or reads only the cache,
+  // so it shows its stale entry, or no card yet, and does not wait for one
+  // more read.
+  if (
+    ctx.cacheOnly ||
+    (collection === "pulls" && ctx.prefetchOutcome === "out_of_time")
+  ) {
+    const stale = await ctx.cache.get(key, { stale: true });
     return schema.nullable().safeParse(stale).data ?? null;
   }
   const cached = schema
@@ -309,7 +309,13 @@ async function readObject(
     githubIssueFieldsSchema,
     (value) => ({ ...GITHUB_ISSUE_CACHE, value }),
   );
-  if (!issue) return null;
+  // A cache-only read of a pull request at its issue URL can find only the
+  // pulls entry, such as one that a webhook keeps.
+  if (!issue) {
+    return ctx.cacheOnly
+      ? await readObject(ctx, { ...link, kind: "pull_request" })
+      : null;
+  }
   // GitHub opens a pull request at its issue URL too, such as a linked
   // `owner/repo#12`. Only the pulls API has its draft and merge state.
   return issue.pull_request === undefined
@@ -319,7 +325,11 @@ async function readObject(
 
 async function canViewLink(ctx: ObjectLinkContext, url: URL): Promise<boolean> {
   const link = parseLink(url);
-  if (!link || !(await viewerCanSeeRepository(ctx, link))) return false;
+  if (!link) return false;
+  // A page load shows the stored card to anyone who can read the
+  // Conversation, so it checks no viewer access.
+  if (ctx.cacheOnly) return true;
+  if (!(await viewerCanSeeRepository(ctx, link))) return false;
   const card = await readObject(ctx, link);
   if (!card) return true;
   // A transferred issue or a renamed repository redirects, so the card can
@@ -347,6 +357,7 @@ async function resolveLink(
  * A pull request at its issue URL shows the pull request card.
  */
 export const githubIssueLinks: PluginObjectLinkDefinition = {
+  cacheOnlyReads: true,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],
   httpCache: OBJECT_CACHE_READS,
@@ -393,6 +404,7 @@ async function prefetchLinks(
 
 /** GitHub pull request links, such as `https://github.com/owner/repo/pull/12`. */
 export const githubPullRequestLinks: PluginObjectLinkDefinition = {
+  cacheOnlyReads: true,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
   httpCache: OBJECT_CACHE_READS,

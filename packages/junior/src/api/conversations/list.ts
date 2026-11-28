@@ -769,7 +769,7 @@ export async function readConversationFeedFromSql(
         ),
         tenantByConversation,
       ),
-      // The chips show each object as the viewer can read it now.
+      // The chips show each object as the caches hold it for the viewer.
       readLiveAnnotationsById(
         options.viewer,
         visibleAnnotationsByConversation,

@@ -237,10 +237,12 @@ async function readConversationDetailFromSql(
       readAccess,
     ),
     // Only a viewer who can see private content gets the annotations, so
-    // only they read the objects.
+    // only they read the objects. A page load reads only the caches.
     (canExposePayload
       ? listConversationAnnotations(getDb(), conversationId).then((saved) =>
-          readLiveAnnotations(options.viewer, saved),
+          readLiveAnnotations(options.viewer, saved, "title", {
+            cacheOnly: true,
+          }),
         )
       : Promise.resolve([])
     ).then((live) =>
