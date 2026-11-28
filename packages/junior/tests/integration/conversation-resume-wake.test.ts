@@ -15,6 +15,10 @@ import {
   startConversationWork,
   stopConversationWork,
 } from "@/chat/task-execution/store";
+import { getSpaceLead } from "@/chat/lead/conversation";
+import { setConversationSpace } from "@/chat/spaces/conversations";
+import { createSpace } from "@/chat/spaces/store";
+import type { StateAdapter } from "chat";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   closeConversationFixture,
@@ -24,7 +28,46 @@ import {
 import {
   createConversationWorkHarness,
   inboundMessage,
+  type ConversationWorkQueueTestAdapter,
 } from "../fixtures/conversation-work";
+import { signedInViewer } from "../fixtures/user";
+
+/**
+ * Consume the pending input of `conversationId`, then leave the wake that a
+ * run which saw its stop late leaves: no input and no open Turn.
+ */
+async function leaveEmptyWake(
+  conversationId: string,
+  queue: ConversationWorkQueueTestAdapter,
+  state: StateAdapter,
+): Promise<void> {
+  const work = await getConversationWorkState({ conversationId, state });
+  const lease = await startConversationWork({ conversationId, state });
+  if (lease.status !== "acquired") throw new Error("Expected work lease");
+  await ackMessages({
+    conversationId,
+    inboundMessageIds: work!.messages.map(
+      (message) => message.inboundMessageId,
+    ),
+    leaseToken: lease.leaseToken,
+    state,
+  });
+  await stopConversationWork({ conversationId, state });
+  await expect(
+    completeConversationWork({
+      conversationId,
+      leaseToken: lease.leaseToken,
+      resumeIfStopped: true,
+      state,
+    }),
+  ).resolves.toBe("pending");
+  await ensureConversationWake({
+    conversationId,
+    idempotencyKey: `${conversationId}:empty-wake`,
+    queue,
+    state,
+  });
+}
 
 describe("Conversation resume wake routing", () => {
   afterEach(async () => {
@@ -122,36 +165,13 @@ describe("Conversation resume wake routing", () => {
       neverRunAgentRunner(),
     );
     const conversationId = "agent-dispatch:no_destination";
-    // Work with no Conversation record, so no Destination, whose run saw a
-    // stop late.
+    // Work with no Conversation record, so no Destination.
     const input = inboundMessage("no-destination-input", {
       conversationId,
       destination: undefined,
     });
     await appendInboundMessage({ message: input, state });
-    const lease = await startConversationWork({ conversationId, state });
-    if (lease.status !== "acquired") throw new Error("Expected work lease");
-    await ackMessages({
-      conversationId,
-      inboundMessageIds: [input.inboundMessageId],
-      leaseToken: lease.leaseToken,
-      state,
-    });
-    await stopConversationWork({ conversationId, state });
-    await expect(
-      completeConversationWork({
-        conversationId,
-        leaseToken: lease.leaseToken,
-        resumeIfStopped: true,
-        state,
-      }),
-    ).resolves.toBe("pending");
-    await ensureConversationWake({
-      conversationId,
-      idempotencyKey: "no-destination-wake",
-      queue,
-      state,
-    });
+    await leaveEmptyWake(conversationId, queue, state);
 
     // The wake has no input, no open Turn, and no Destination to run.
     await expect(
@@ -160,5 +180,56 @@ describe("Conversation resume wake routing", () => {
     await expect(
       getConversationWorkState({ conversationId, state }),
     ).resolves.toMatchObject({ execution: { status: "idle" } });
+  });
+
+  it("completes an empty wake on a web root and on a child that kept its root's Destination", async () => {
+    const { actor } = await createConversationFixture();
+    const { process, queue, state } = await createConversationWorkHarness(
+      neverRunAgentRunner(),
+    );
+    const space = await createSpace({
+      creator: await signedInViewer(actor.email),
+      description: null,
+      name: "Deploys",
+      visibility: "public",
+    });
+    const lead = await getSpaceLead(space.id);
+    // The work of a web root stores its local Destination.
+    const [root, child] = await Promise.all(
+      ["empty-wake-root", "empty-wake-child"].map(
+        async (idempotencyKey) =>
+          (
+            await createAndEnqueueConversation(
+              {
+                actor,
+                idempotencyKey,
+                message: "Check the deploy.",
+                visibility: "public",
+              },
+              { queue, state },
+            )
+          ).conversationId,
+      ),
+    );
+    // In a Space it is a child of the Lead, and its work keeps that
+    // Destination.
+    await setConversationSpace(
+      child!,
+      { leadConversationId: lead.conversationId, spaceId: space.id },
+      null,
+    );
+
+    for (const conversationId of [root!, child!]) {
+      await expect(
+        getConversationWorkState({ conversationId, state }),
+      ).resolves.toMatchObject({ destination: { platform: "local" } });
+      await leaveEmptyWake(conversationId, queue, state);
+      await expect(
+        process(queue.takeMessageFor(conversationId)),
+      ).resolves.toMatchObject({ status: "completed" });
+      await expect(
+        getConversationWorkState({ conversationId, state }),
+      ).resolves.toMatchObject({ execution: { status: "idle" } });
+    }
   });
 });
