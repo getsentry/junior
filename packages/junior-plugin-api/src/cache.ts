@@ -30,8 +30,8 @@ export interface PluginCache {
    * Concurrent callers share one load. A load that throws is not cached,
    * and it throws to the caller unless a `staleIfError` value is kept.
    * A caller that waits too long for another load gets that kept value, or
-   * an error, and does not load. `refresh` ignores the cached value and
-   * replaces it.
+   * loads the value itself when there is none. `refresh` ignores the cached
+   * value and replaces it.
    */
   getOrLoad<T>(
     key: string,
