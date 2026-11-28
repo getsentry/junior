@@ -147,8 +147,8 @@ function conversationTopLevelIdSql(
   // Status runs for each row of a tree. Each member stores the tree's root,
   // and only a Space's root is a Lead, so outside a Space the root is the
   // Top-level Conversation. Other rows walk up to the root, or to the top
-  // with no stored root, and read a Lead only for the rows that they pass.
-  // UNION, not UNION ALL, so that bad parent links cannot loop forever.
+  // with no stored root, and pick a Lead's child before a row with no
+  // parent. UNION, not UNION ALL, so that bad parent links cannot loop.
   const { conversationId, parentConversationId, rootConversationId } =
     conversation;
   const ancestorParent = sql`status_ancestor.parent_conversation_id`;
@@ -167,6 +167,7 @@ function conversationTopLevelIdSql(
     )
     select conversation_id from status_ancestor
     where ${ancestorParent} is null or ${isLeadSql(ancestorParent)}
+    order by ${ancestorParent} is null
     limit 1
   ) end)`;
 }
