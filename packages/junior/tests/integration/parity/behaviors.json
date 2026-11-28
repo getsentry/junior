@@ -17470,7 +17470,8 @@
         "path": "main-only"
       }
     ],
-    "needsDecision": "Docs say a stop applies to messages sent before it; main still runs input sent before the stop but received after it (durable-queue.test.ts:655). Which rule should both engines keep?",
+    "coreFlag": "intended-difference",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): a stop applies by sent time, as the docs say. Core drops person input sent at or before the stop, however late it arrives. Main still runs it and is not changed.",
     "note": "Conflicts with packages/docs/src/content/docs/start-here/using-junior.md:72; main documents it as a known gap."
   },
   {
