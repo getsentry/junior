@@ -299,19 +299,29 @@ describe("conversation detail annotations", () => {
 
       await readLiveCards(alice, [issueUrl]);
       outbound.urls.length = 0;
-      // A reader without a Sentry account sees the cached issue too.
-      const outsider = await readConversationDetail(conversationId, {
-        viewer: await signedInViewer("bob@example.com"),
-      });
-      expect(outsider?.annotations).toEqual([
+      const cached = [
         expect.objectContaining({
           label: "JUNIOR-3ZK",
           status: "resolved",
           title: "TypeError: cart.total is undefined",
         }),
-      ]);
+      ];
+      // A reader without a Sentry account sees the cached issue too.
+      const bob = await signedInViewer("bob@example.com");
+      const outsider = await readConversationDetail(conversationId, {
+        viewer: bob,
+      });
+      expect(outsider?.annotations).toEqual(cached);
+      // After the live read's minute, the page shows the last good issue.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 61_000);
+      const later = await readConversationDetail(conversationId, {
+        viewer: bob,
+      });
+      expect(later?.annotations).toEqual(cached);
       expect(outbound.urls).toEqual([]);
     } finally {
+      vi.useRealTimers();
       outbound.stop();
       vi.unstubAllEnvs();
     }

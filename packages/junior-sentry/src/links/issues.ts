@@ -26,7 +26,9 @@ import {
   type SentryIssueLink,
 } from "./urls.js";
 
-// The same time as the card cache, so a changed issue shows within a minute.
+// The same time as the card cache, so a changed issue shows within a minute
+// on a live read. A page load reads only the cache, so the entry stays as
+// the last good card after it.
 const ISSUE_CACHE_TTL_MS = 60_000;
 
 const issueSchema = z.object({
@@ -254,6 +256,7 @@ async function readCachedIssue(
   const origin = await sentryRegionOrigin(ctx, link.org);
   if (!origin) return null;
   return await ctx.cache.getOrLoad(key, async () => ({
+    staleIfError: true,
     value: await readIssue(ctx, origin, link),
     ttlMs: ISSUE_CACHE_TTL_MS,
   }));

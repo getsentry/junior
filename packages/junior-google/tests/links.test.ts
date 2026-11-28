@@ -129,14 +129,31 @@ function linkType(objectType: string): PluginObjectLinkDefinition {
 
 // A plugin cache in memory, the same for every call of one test.
 function memoryCache() {
-  const entries = new Map<string, unknown>();
+  const entries = new Map<
+    string,
+    { fresh: boolean; staleIfError?: boolean; value: unknown }
+  >();
   return {
-    async get<T>(key: string) {
-      return entries.get(key) as T | undefined;
+    /** Make every entry stale, as when its TTL passes. */
+    expire() {
+      for (const entry of entries.values()) entry.fresh = false;
     },
-    async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
-      if (!entries.has(key)) entries.set(key, (await load()).value);
-      return entries.get(key) as T;
+    async get<T>(key: string, options?: { stale?: boolean }) {
+      const entry = entries.get(key);
+      return entry && (entry.fresh || (options?.stale && entry.staleIfError))
+        ? (entry.value as T)
+        : undefined;
+    },
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<{ staleIfError?: boolean; value: T }>,
+      options?: { refresh?: boolean },
+    ) {
+      const entry = entries.get(key);
+      if (entry?.fresh && !options?.refresh) return entry.value as T;
+      const { staleIfError, value } = await load();
+      entries.set(key, { fresh: true, staleIfError, value });
+      return value;
     },
   };
 }
@@ -352,13 +369,29 @@ describe("Google link cards", () => {
       await expect(pageLoad("alice@example.com")).resolves.toBeUndefined();
       await resolveAs("alice@example.com", google, "document", DOC_URL);
       const reads = google.fetch.mock.calls.length;
-      // A reader who can read the Conversation sees the stored file. The
+      google.cache.expire();
+      // A reader who can read the Conversation sees the last good file. The
       // Doc summary is not cached, so it is left out.
       await expect(pageLoad("bob@example.com")).resolves.toMatchObject({
         facts: { summary: undefined },
         title: TITLE,
       });
       expect(google.fetch).toHaveBeenCalledTimes(reads);
+    });
+
+    it("shows no trashed file on a page load", async () => {
+      const google = fakeGoogle({
+        file: { ...DOC, trashed: true },
+        finds: [NAMED],
+      });
+
+      await resolveAs("alice@example.com", google, "document", DOC_URL);
+      google.cache.expire();
+      await expect(
+        resolveAs("alice@example.com", google, "document", DOC_URL, {
+          cacheOnly: true,
+        }),
+      ).resolves.toBeUndefined();
     });
 
     it("reads the file once for the access check and the card", async () => {
@@ -690,6 +723,7 @@ describe("Google link cards", () => {
       expect(linkType("calendar_event").cacheOnlyReads).toBe(true);
       await expect(pageLoad()).resolves.toBeUndefined();
       await resolveAs("alice@example.com", google, "calendar_event", EVENT_URL);
+      google.cache.expire();
       await expect(pageLoad()).resolves.toMatchObject({
         title: "Launch review",
       });

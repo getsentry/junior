@@ -141,8 +141,10 @@ function parseFileLink(url: URL): FileLink | undefined {
     : undefined;
 }
 
-// Long enough that the access check and the card share one Drive read. The
-// access queries check `trashed` again, so a trashed file never shows.
+// Long enough that the access check and the card of a live read share one
+// Drive read. A page load reads only the cache, so the entry stays as the
+// last good file after it. Every read checks `trashed`, so a trashed file
+// never shows.
 const FILE_READ_TTL_MS = 10_000;
 
 async function fetchFile(
@@ -185,6 +187,7 @@ async function readLinkedFile(
   const file = ctx.cacheOnly
     ? ((await ctx.cache.get<LinkedFile | null>(key, { stale: true })) ?? null)
     : await ctx.cache.getOrLoad(key, async () => ({
+        staleIfError: true,
         value: await fetchFile(ctx, link.file),
         ttlMs: FILE_READ_TTL_MS,
       }));
