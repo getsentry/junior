@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { createConversationRoutes } from "@/api/conversations/routes";
@@ -8,10 +8,19 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@/api/schema";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import { getChatConfig } from "@/chat/config";
 import { createAndEnqueueConversation } from "@/chat/conversations/web-input";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
+import {
+  startLocalVercelQueueServer,
+  type LocalVercelQueueServer,
+} from "@/chat/queue/local-server";
+import {
+  juniorConversationParticipants,
+  juniorIdentities,
+  juniorTurnInbox,
+} from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -20,6 +29,7 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../../fixtures/conversation-work";
+import { patchConfig } from "../../../fixtures/config";
 import { signedInViewer } from "../../../fixtures/user";
 
 function apiFor(email: string): Hono<JuniorApiEnv> {
@@ -208,5 +218,57 @@ describe("conversation messages API", () => {
         slackUserId: "UCLEO1234",
       }),
     ]);
+  });
+});
+
+describe("conversation messages on the core Turn engine", () => {
+  // Core publishes each Turn message to Vercel Queues. The server keeps them
+  // with no consumer, so a test reads only the stored input.
+  let queueServer: LocalVercelQueueServer;
+
+  beforeAll(async () => {
+    queueServer = await startLocalVercelQueueServer({ consumers: [] });
+  });
+
+  afterAll(async () => {
+    await queueServer.close();
+  });
+
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("gives a core input the privacy of its dashboard conversation", async () => {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+    const { actor, conversationStore, queue, state } =
+      await createConversationFixture();
+    const sourceOf = async (visibility: "private" | "public") => {
+      const { conversationId } = await createAndEnqueueConversation(
+        {
+          actor,
+          idempotencyKey: `core-${visibility}`,
+          message: "hello",
+          visibility,
+        },
+        { conversationStore, queue, state },
+      );
+      const [input] = await getDb()
+        .select({ source: juniorTurnInbox.source })
+        .from(juniorTurnInbox)
+        .where(eq(juniorTurnInbox.conversationId, conversationId));
+      return input?.source;
+    };
+
+    await expect(sourceOf("private")).resolves.toMatchObject({
+      kind: "web",
+      visibility: "private",
+    });
+    await expect(sourceOf("public")).resolves.toMatchObject({
+      kind: "web",
+      visibility: "public",
+    });
   });
 });

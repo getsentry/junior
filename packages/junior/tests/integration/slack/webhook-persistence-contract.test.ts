@@ -1,6 +1,7 @@
 import type { StateAdapter } from "chat";
 import { and, eq } from "drizzle-orm";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { getChatConfig } from "@/chat/config";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   closeDb,
@@ -8,8 +9,14 @@ import {
   getConversationStore,
   getDb,
 } from "@/chat/db";
+import {
+  startLocalVercelQueueServer,
+  type LocalVercelQueueServer,
+} from "@/chat/queue/local-server";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { juniorIdentities } from "@/db/schema";
+import { claimTurn } from "@/core/turn/state";
+import { juniorIdentities, juniorTurnInbox, juniorTurns } from "@/db/schema";
+import { createEngineContext } from "@/turn-steps/engine-context";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { authTestOk } from "../../fixtures/slack/factories/api";
 import {
@@ -498,5 +505,153 @@ describe("Slack webhook persistence contract", () => {
 
     expect(retriedResponse.status).toBe(200);
     expect(queue.queuedMessages()).toHaveLength(1);
+  });
+});
+
+/** Read the core Turns and inputs of a Conversation. */
+async function coreRows(conversationId: string) {
+  const [turns, inputs] = await Promise.all([
+    getDb()
+      .select({ id: juniorTurns.id, state: juniorTurns.state })
+      .from(juniorTurns)
+      .where(eq(juniorTurns.conversationId, conversationId)),
+    getDb()
+      .select()
+      .from(juniorTurnInbox)
+      .where(eq(juniorTurnInbox.conversationId, conversationId)),
+  ]);
+  return { turns, inputs };
+}
+
+describe("Slack webhook Turn engine switch", () => {
+  const conversationId = "slack:C123:1712345.0001";
+  const mention = slackEnvelope({
+    text: `<@${SLACK_BOT_USER_ID}> deploy status`,
+  });
+  // Core publishes each Turn message to Vercel Queues. The server keeps them
+  // with no consumer, so a test reads only the stored Turn.
+  let queueServer: LocalVercelQueueServer;
+
+  beforeAll(async () => {
+    queueServer = await startLocalVercelQueueServer({ consumers: [] });
+  });
+
+  afterAll(async () => {
+    await queueServer.close();
+  });
+
+  afterEach(async () => {
+    await disconnectStateAdapter();
+    await closeDb();
+  });
+
+  async function sendSlack(
+    envelope: unknown,
+    queue = createConversationWorkQueueTestAdapter(),
+  ) {
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const response = await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(envelope),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+    expect(response.status).toBe(200);
+    return { queue, state };
+  }
+
+  function useCoreEngine() {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+  }
+
+  it("sends a mention to main's mailbox by default", async () => {
+    const { queue, state } = await sendSlack(mention);
+
+    expect(queue.queuedMessages()).toEqual([
+      expect.objectContaining({ conversationId }),
+    ]);
+    const work = await getConversationWorkState({ conversationId, state });
+    expect(work?.execution.pendingMessages).toEqual([
+      expect.objectContaining({
+        input: expect.objectContaining({
+          text: expect.stringContaining("deploy status"),
+        }),
+      }),
+    ]);
+    await expect(coreRows(conversationId)).resolves.toEqual({
+      turns: [],
+      inputs: [],
+    });
+  });
+
+  it("schedules a mention as one core input on the core Turn engine", async () => {
+    useCoreEngine();
+
+    const { queue, state } = await sendSlack(mention);
+    // Slack sends the event again.
+    await sendSlack(mention, queue);
+
+    expect(queue.queuedMessages()).toEqual([]);
+    await expect(
+      getConversationWorkState({ conversationId, state }),
+    ).resolves.toBeUndefined();
+    const { turns, inputs } = await coreRows(conversationId);
+    expect(turns).toEqual([{ id: expect.any(String), state: "queued" }]);
+    expect(inputs).toEqual([
+      expect.objectContaining({
+        turnId: turns[0]!.id,
+        actorIdentityId: await slackIdentityId("U123"),
+        idempotencyKey: `slack:T123:${conversationId}:1712345.0001`,
+        payload: {
+          text: `@${SLACK_BOT_USER_ID} deploy status`,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1712345.0001",
+        },
+        source: {
+          kind: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          messageTs: "1712345.0001",
+          threadTs: "1712345.0001",
+          visibility: "private",
+        },
+        // The Slack ts, in seconds.
+        sentAt: new Date(1_712_345_000),
+      }),
+    ]);
+  });
+
+  it("cancels the running core Turn when the thread stops on the core Turn engine", async () => {
+    useCoreEngine();
+    const { queue } = await sendSlack(mention);
+    const [turn] = (await coreRows(conversationId)).turns;
+    await claimTurn(createEngineContext(getChatConfig()), turn!.id);
+
+    await sendSlack(
+      slackEnvelope({
+        text: `<@${SLACK_BOT_USER_ID}> stop`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0002",
+      }),
+      queue,
+    );
+
+    await expect(coreRows(conversationId)).resolves.toMatchObject({
+      turns: [{ id: turn!.id, state: "cancelled" }],
+    });
+    expect(queue.queuedMessages()).toEqual([]);
   });
 });

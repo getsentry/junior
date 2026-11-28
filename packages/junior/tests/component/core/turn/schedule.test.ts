@@ -207,7 +207,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   it("starts a Turn with the first input and publishes it after the commit", async () => {
     const scheduled = await schedule("event-1");
 
-    expect(scheduled).toEqual({ turnId: expect.any(String), created: true });
+    expect(scheduled).toEqual({
+      turnId: expect.any(String),
+      created: true,
+      duplicate: false,
+    });
     await expect(readTurns()).resolves.toEqual([
       {
         id: scheduled.turnId,
@@ -233,6 +237,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-2")).resolves.toEqual({
       turnId: first.turnId,
       created: false,
+      duplicate: false,
     });
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toEqual([
@@ -242,6 +247,33 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
+  it("holds a new Turn for its start delay, also on a redelivery, so an input in that time joins it", async () => {
+    const first = await scheduleInput(engineCtx, {
+      ...keyed(input("event-1")),
+      startDelayMs: 30_000,
+    });
+    const second = await scheduleInput(engineCtx, {
+      ...keyed(input("event-2")),
+      startDelayMs: 30_000,
+    });
+    // The source sends the first input again while the Turn waits.
+    await scheduleInput(engineCtx, {
+      ...keyed(input("event-1")),
+      startDelayMs: 30_000,
+    });
+
+    expect(second).toMatchObject({ turnId: first.turnId, created: false });
+    const delayedStep = [
+      TURN_STEP_TOPIC,
+      expect.anything(),
+      expect.objectContaining({ delaySeconds: 30 }),
+    ];
+    expect(vi.mocked(getQueueProvider().send).mock.calls).toEqual([
+      delayedStep,
+      delayedStep,
+    ]);
+  });
+
   it("joins an interrupt from the same Actor and Source to the started Turn", async () => {
     const first = await schedule("event-1");
     await claim(first.turnId);
@@ -249,6 +281,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-2")).resolves.toEqual({
       turnId: first.turnId,
       created: false,
+      duplicate: false,
     });
     expect(publishes).toHaveLength(1);
   });
@@ -270,9 +303,17 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         engineCtx,
         keyed({ ...input("event-3"), delivery: "defer" }),
       ),
-    ).resolves.toEqual({ turnId: deferred.turnId, created: false });
+    ).resolves.toEqual({
+      turnId: deferred.turnId,
+      created: false,
+      duplicate: false,
+    });
 
-    expect(deferred).toEqual({ turnId: expect.any(String), created: true });
+    expect(deferred).toEqual({
+      turnId: expect.any(String),
+      created: true,
+      duplicate: false,
+    });
     expect(deferred.turnId).not.toBe(first.turnId);
     expect(publishes).toEqual([]);
   });
@@ -307,7 +348,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       groupKey: "host:other-group",
     });
 
-    expect(other).toEqual({ turnId: expect.any(String), created: true });
+    expect(other).toEqual({
+      turnId: expect.any(String),
+      created: true,
+      duplicate: false,
+    });
     expect(other.turnId).not.toBe(first.turnId);
   });
 
@@ -472,7 +517,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   it("writes nothing for a duplicate input, and publishes its Turn again only while it is queued", async () => {
     const first = await schedule("event-1");
-    const duplicate = { turnId: first.turnId, created: false };
+    const duplicate = {
+      turnId: first.turnId,
+      created: false,
+      duplicate: true,
+    };
 
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
     expect(publishes).toHaveLength(2);
@@ -505,6 +554,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-1")).resolves.toEqual({
       turnId: turn!.id,
       created: false,
+      duplicate: true,
     });
     expect(publishes).toEqual([{ turnId: turn!.id, committed: true }]);
   });

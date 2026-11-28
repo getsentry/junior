@@ -37,8 +37,8 @@ import {
 } from "@/core/turn/state";
 import { juniorTurnInbox } from "@/db/schema";
 
-/** The Turn that an input went to, and whether the input created it. */
-type ScheduleResult = { turnId: string; created: boolean };
+/** The Turn an input went to, and whether it created the Turn or was known. */
+type ScheduleResult = { turnId: string; created: boolean; duplicate: boolean };
 
 type Placement = ScheduleResult & {
   publish: boolean;
@@ -105,6 +105,7 @@ async function placeInput(
     return {
       turnId: existing.turnId,
       created: false,
+      duplicate: true,
       publish: existing.state === "queued",
     };
   }
@@ -113,7 +114,7 @@ async function placeInput(
   if ("join" in choice) {
     const { turnId } = choice.join;
     await addInput({ executor }, { ...input, turnId });
-    return { turnId, created: false, publish: false };
+    return { turnId, created: false, duplicate: false, publish: false };
   }
   const ended =
     choice.supersede &&
@@ -134,6 +135,7 @@ async function placeInput(
   return {
     turnId: turn.turnId,
     created: true,
+    duplicate: false,
     publish: openTurns.length === 0 || choice.supersede !== undefined,
     ended,
   };
@@ -144,10 +146,17 @@ async function placeInput(
  * the placement calls for, such as the end of a Turn it superseded. A known
  * idempotency key writes nothing. Call it outside a transaction: it publishes
  * after its own commit, so a publish error leaves the input stored.
+ * `startDelayMs` holds the Turn that this publishes, so later inputs join it.
  */
 export async function scheduleInput(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
-  input: TurnInput & { delivery: MailboxDelivery },
+  {
+    startDelayMs,
+    ...input
+  }: TurnInput & {
+    delivery: MailboxDelivery;
+    startDelayMs?: number | undefined;
+  },
 ): Promise<ScheduleResult> {
   const placement = await withConversationEventLock(
     executor,
@@ -161,9 +170,17 @@ export async function scheduleInput(
     );
   }
   if (placement.publish) {
-    await publishTurnStep({ queue }, placement.turnId);
+    await publishTurnStep(
+      { queue },
+      placement.turnId,
+      startDelayMs ? { delayMs: startDelayMs } : {},
+    );
   }
-  return { turnId: placement.turnId, created: placement.created };
+  return {
+    turnId: placement.turnId,
+    created: placement.created,
+    duplicate: placement.duplicate,
+  };
 }
 
 // Not exported, like addInput: only endFailedTurn moves inputs, under the
