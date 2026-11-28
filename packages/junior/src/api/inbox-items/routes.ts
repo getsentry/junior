@@ -64,12 +64,18 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   clearInboxWakeReasons,
   readViewerInboxSnoozes,
+  SNOOZE_TIMER_EVENT_TYPE,
+  snoozeTimerWakeAtMs,
+  type ViewerInboxSnooze,
 } from "@/chat/inbox-snoozes/store";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
-import type { InboxSnoozeWake } from "@/api/schema/inbox-snooze";
+import type {
+  InboxSnoozeWake,
+  InboxViewerSnooze,
+} from "@/api/schema/inbox-snooze";
 import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
 import { readHiddenOwners, readItemRoots } from "./item-roots";
 import { readInboxItemMentions } from "./mentions";
@@ -243,15 +249,52 @@ function subjectPayload(
 
 // The Event's source says how it reads after the resource's name, such as
 // "is merged" from the GitHub plugin.
+function eventPhrase(namespace: string, eventType: string) {
+  return getEventCatalog()[namespace]?.events[eventType]?.phrase;
+}
+
 function wakePayload(reason: InboxSnoozeWakeReason): InboxSnoozeWake {
   if (reason.kind === "time") return reason;
-  const phrase =
-    getEventCatalog()[reason.namespace]?.events[reason.eventType]?.phrase;
+  const phrase = eventPhrase(reason.namespace, reason.eventType);
   return {
     eventType: reason.eventType,
     kind: "event",
     resource: reason.identifier,
     ...(phrase ? { phrase } : undefined),
+  };
+}
+
+// A snooze's wake time is a timer trigger.
+function isSnoozeTimer(trigger: ViewerInboxSnooze["triggers"][number]) {
+  return trigger.eventType === SNOOZE_TIMER_EVENT_TYPE;
+}
+
+/** What ends the viewer's snooze of an item, as its row says it. */
+function viewerSnoozePayload(snooze: ViewerInboxSnooze): InboxViewerSnooze {
+  const events = snooze.triggers
+    .filter((trigger) => !isSnoozeTimer(trigger))
+    .map((trigger) => {
+      const phrase = eventPhrase(trigger.namespace, trigger.eventType);
+      return {
+        eventType: trigger.eventType,
+        outcome: trigger.outcome,
+        resource: trigger.identifier,
+        ...(phrase ? { phrase } : undefined),
+      };
+    });
+  const timer = snooze.triggers.find(isSnoozeTimer);
+  const wakeAtMs = timer && snoozeTimerWakeAtMs(timer.identifier);
+  return {
+    snoozedAt: snooze.createdAt.toISOString(),
+    ...(snooze.triggers.length === 0
+      ? { untilClosed: true as const }
+      : undefined),
+    ...(wakeAtMs !== undefined
+      ? { wakeAt: new Date(wakeAtMs).toISOString() }
+      : timer
+        ? { untilSetTime: true as const }
+        : undefined),
+    ...(events.length > 0 ? { events } : undefined),
   };
 }
 
@@ -365,8 +408,9 @@ async function inboxItemPayloads(
       views,
       hidden,
     );
-    return snoozes.snoozed.has(item.id)
-      ? { ...payload, snoozedByViewer: true }
+    const snooze = snoozes.snoozed.get(item.id);
+    return snooze
+      ? { ...payload, snoozedByViewer: viewerSnoozePayload(snooze) }
       : payload;
   });
 }

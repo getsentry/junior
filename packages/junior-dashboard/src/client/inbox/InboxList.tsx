@@ -425,6 +425,8 @@ export function InboxList(props: {
         (expanded || !snoozes.wakeOpened(item)) &&
         item.wake,
     )?.wake;
+    // A row in Snoozed is one item, and says what ends its snooze.
+    const snooze = options.snoozed ? row.newest.snoozedByViewer : undefined;
     const snoozeRow = options.snoozed
       ? undefined
       : (end: SnoozeEnd) => {
@@ -491,6 +493,7 @@ export function InboxList(props: {
         rowKey={key}
         selected={false}
         showThreads={!options.itemRow}
+        snooze={snooze}
         snoozeMenuOpen={snoozeKey === key}
         take={options.take}
         time={options.time ?? row.waitingSince}

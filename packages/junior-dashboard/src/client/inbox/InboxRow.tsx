@@ -5,6 +5,7 @@ import type {
   InboxItemActionBody,
   InboxItemPayload,
   InboxSnoozeWake,
+  InboxViewerSnooze,
 } from "@sentry/junior/api/schema";
 
 import { ToggleSheet } from "../components/BottomSheet";
@@ -89,7 +90,7 @@ import {
 } from "./RowOwnerLink";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
-import { wakeReasonText } from "./snoozeSentences";
+import { snoozeText, wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -176,6 +177,8 @@ type InboxRowProps = {
   /** The row's Threads show the action bar on their last line instead. */
   actionsBelow?: boolean;
   snoozeMenuOpen: boolean;
+  /** The viewer's snooze of the row's item, on a row in Snoozed. */
+  snooze?: InboxViewerSnooze | undefined;
   /** Label of each ask's take button. Only Up for grabs offers one. */
   take?: string;
   time: string;
@@ -495,6 +498,13 @@ function InboxRowBody(
   const regionId = rowRegionId(props.rowKey);
   // An open Conversation row's cards each say why their item woke.
   const wake = props.expanded && !props.itemTitle ? undefined : props.wake;
+  // A muted line under the title: why the item woke, or in Snoozed, what
+  // ends its snooze.
+  const statusLine = wake
+    ? wakeReasonText(wake)
+    : props.snooze
+      ? snoozeText(props.snooze)
+      : undefined;
   // A closed row fits its title and subtitle to one line each. An open one
   // shows them in full, so its detail never needs to say them again.
   const lineClass = props.expanded ? "min-w-0 break-words" : fadeOverflowClass;
@@ -713,16 +723,16 @@ function InboxRowBody(
                 ) : null}
               </Link>
             </RowTitle>
-            {wake ? (
+            {statusLine ? (
               <span
                 className={cn(
                   lineClass,
                   "col-span-2 text-xs text-dashboard-text-muted",
                 )}
-                data-inbox-slot="wake"
+                data-inbox-slot={wake ? "wake" : "snooze"}
                 ref={fadeWhenOverflowing}
               >
-                {wakeReasonText(wake)}
+                {statusLine}
               </span>
             ) : null}
             {/* Who is in it and what it asks, in one small line under the

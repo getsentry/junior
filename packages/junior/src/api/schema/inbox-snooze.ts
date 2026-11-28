@@ -113,6 +113,39 @@ export const inboxSnoozeWakeSchema = z.discriminatedUnion("kind", [
 ]);
 
 /**
+ * The viewer's snooze of an open item, and what ends it: `wakeAt` or one
+ * of `events`, whichever is first, or with `untilClosed`, the item's close.
+ * An Event on `resource`, such as `getsentry/junior#12`, reads as `phrase`
+ * after its name, where its source says. A `resolve` Event closes the
+ * item.
+ */
+export const inboxViewerSnoozeSchema = z
+  .object({
+    events: z
+      .array(
+        z
+          .object({
+            eventType: z.string().min(1),
+            outcome: z.enum(["wake", "resolve"]),
+            phrase: z.string().min(1).optional(),
+            resource: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1)
+      .optional(),
+    snoozedAt: z.string().datetime(),
+    untilClosed: z.literal(true).optional(),
+    /**
+     * A timed snooze made before its wake time was stored: it has a time,
+     * but no `wakeAt`. No new snooze sets it.
+     */
+    untilSetTime: z.literal(true).optional(),
+    wakeAt: z.string().datetime().optional(),
+  })
+  .strict();
+
+/**
  * `DELETE /api/inbox/snoozes/wakes` body: the viewer opened these items, so
  * they no longer show why their snoozes woke.
  */
@@ -125,3 +158,4 @@ export type InboxSnoozeSubjectBody = z.input<typeof inboxSnoozeSubjectSchema>;
 export type InboxSnoozeTrigger = z.output<typeof inboxSnoozeTriggerSchema>;
 export type InboxSnoozeResource = z.output<typeof inboxSnoozeResourceSchema>;
 export type InboxSnoozeWake = z.output<typeof inboxSnoozeWakeSchema>;
+export type InboxViewerSnooze = z.output<typeof inboxViewerSnoozeSchema>;
