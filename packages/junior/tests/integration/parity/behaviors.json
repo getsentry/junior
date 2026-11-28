@@ -465,8 +465,8 @@
       }
     ],
     "coreFlag": "likely-core-gap",
-    "needsDecision": "design/lead.md says a child's done update starts no Lead Turn; main starts one for every result (lead-conversation.test.ts:450). Which is right?",
-    "note": "No agent update on core: grep for publishAgentUpdate/enqueueStarterUpdate/getTurnLifecycle in src/core, src/turn-steps, src/delivery finds nothing; core's Turn end (src/turn-steps/turn-ended.ts turnEndedConsumer -> deliverTurn + compat__writeTurnEnded) never calls ConversationTurnLifecycleService.complete/fail (src/chat/conversations/turn-lifecycle.ts publishTerminal). Code matches the design Gap, not the Rule."
+    "note": "No agent update on core: grep for publishAgentUpdate/enqueueStarterUpdate/getTurnLifecycle in src/core, src/turn-steps, src/delivery finds nothing; core's Turn end (src/turn-steps/turn-ended.ts turnEndedConsumer -> deliverTurn + compat__writeTurnEnded) never calls ConversationTurnLifecycleService.complete/fail (src/chat/conversations/turn-lifecycle.ts publishTerminal). Code matches the design Gap, not the Rule.",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main. Every child update, done included, starts a Lead Turn, and the Lead acts on a done result (getsentry/junior#4413, getsentry/junior#4623). The design/lead.md rule that done is only a note is stale."
   },
   {
     "id": "agent-teams:lead-final-text-posts-on-runtime-turn",
