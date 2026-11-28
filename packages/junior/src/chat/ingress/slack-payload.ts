@@ -43,7 +43,7 @@ type MessageFields = Partial<
 // Validate fields read by ingress and the adapter's parseMessage/extractLinks.
 // Preserve other fields, including nested blocks and files, for content projection.
 // Membership is checked separately so invalid author fields cannot fall back.
-const slackEventSchema = z.looseObject({
+export const slackEventSchema = z.looseObject({
   type: z.string(),
   attachments: z
     .array(
