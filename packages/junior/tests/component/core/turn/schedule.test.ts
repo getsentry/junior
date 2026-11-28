@@ -16,6 +16,7 @@ import {
   claimTurn,
   commitStep,
   failTurn,
+  findStalledTurns,
   releaseTurn,
 } from "@/core/turn/state";
 import {
@@ -728,6 +729,36 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect([next, after]).toContain(published?.turnId);
     expect(publishes).toEqual([published, published]);
     expect(published?.committed).toBe(true);
+  });
+
+  it("returns what a stop dropped and moved when its sends fail, and the sweep finds the new Turn", async () => {
+    const at = (minute: number) => new Date(`2026-11-21T08:0${minute}:00.000Z`);
+    const running = await schedule("event-1");
+    await claim(running.turnId);
+    await scheduleInput(
+      engineCtx,
+      keyed({ ...input("event-2"), sentAt: at(2) }),
+    );
+    vi.mocked(getQueueProvider().send).mockRejectedValue(
+      new Error("queue unavailable"),
+    );
+
+    const stopped = await stopTurns(engineCtx, CONVERSATION_ID, {
+      sentAtOrBeforeMs: at(1).getTime(),
+    });
+
+    expect(stopped.dropped.map((input) => input.idempotencyKey)).toEqual([
+      "event-1",
+    ]);
+    expect(stopped.moved.map((input) => input.idempotencyKey)).toEqual([
+      "event-2",
+    ]);
+    const next = (await readInputs())[1]!.turnId;
+    await expect(
+      findStalledTurns(engineCtx, { staleMs: 0, limit: 10 }),
+    ).resolves.toEqual([
+      expect.objectContaining({ turnId: next, reason: "queued_lost" }),
+    ]);
   });
 
   it("drops every unread input of a stop with no cutoff", async () => {

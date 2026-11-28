@@ -12,6 +12,7 @@
 // `advanceTurn` runs it, and a redelivered message runs it again.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
+import { logException } from "@/chat/logging";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { withConversationEventLock } from "@/conversation-events/lock";
 import { publishTurnEnded } from "@/core/turn/ended";
@@ -334,8 +335,18 @@ export async function stopTurns(
     }),
   );
   for (const turnId of stopped.turnIds) {
-    // oxlint-disable-next-line no-await-in-loop -- Few Turns stop at once, and a failed send fails the stop.
-    await reconcileTurn({ executor, queue }, turnId);
+    // The stop is committed, so a failed send does not fail it, and the
+    // caller still gets the input it dropped. The sweep (`sweep.ts`) sends
+    // the message of the queued Turn again.
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- Few Turns stop at once.
+      await reconcileTurn({ executor, queue }, turnId);
+    } catch (error) {
+      logException(error, "turn.stop.reconcile.failed", {
+        "app.turn.id": turnId,
+        "gen_ai.conversation.id": conversationId,
+      });
+    }
   }
   return stopped;
 }
