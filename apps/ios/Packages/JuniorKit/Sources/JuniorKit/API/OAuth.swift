@@ -64,7 +64,7 @@ public struct OAuthClient: Sendable {
     var token_endpoint: URL
   }
 
-  /// Start a sign-in that returns to `redirectURI` (a loopback URL).
+  /// Start a sign-in that returns to `redirectURI`.
   public func begin(redirectURI: String) async throws -> OAuthSignIn {
     let metadataURL = server.page("/.well-known/oauth-authorization-server")!
     let (data, response) = try await load(URLRequest(url: metadataURL))
