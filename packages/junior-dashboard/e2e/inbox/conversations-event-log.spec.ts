@@ -883,6 +883,10 @@ test.describe("new UI", () => {
         dismissed = true;
         return route.fulfill({ json: current() });
       });
+      // The Inbox and the Conversation's Details list the open item.
+      await page.route(`**/api/inbox-items?*`, (route) =>
+        route.fulfill({ json: { items: dismissed ? [] : [item] } }),
+      );
       // The transcript reads the question, which waits until the dismiss
       // closes it.
       await page.route(`**${api}/questions`, (route) =>
