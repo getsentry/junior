@@ -44,7 +44,7 @@
           }
         ],
         "isUnique": false,
-        "where": "(\"closed_at\" is null and \"request\" ? 'question')",
+        "where": "(\"closed_at\" is null and \"request\" ? 'fields')",
         "with": "",
         "method": "btree",
         "entityType": "indexes"

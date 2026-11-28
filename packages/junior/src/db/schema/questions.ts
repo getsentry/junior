@@ -40,7 +40,7 @@ export function questionWaits(table: {
   closedAt: AnyPgColumn;
   request: AnyPgColumn;
 }): SQL {
-  return sql`(${table.closedAt} is null and ${table.request} ? 'question')`;
+  return sql`(${table.closedAt} is null and ${table.request} ? 'fields')`;
 }
 
 /**
