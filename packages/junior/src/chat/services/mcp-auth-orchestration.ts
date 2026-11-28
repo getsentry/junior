@@ -74,6 +74,10 @@ export interface McpAuthOrchestrationInput {
     | undefined;
   /** When false, required auth hard-fails instead of pausing for an OAuth link. */
   interactiveAuthEnabled?: boolean;
+  /** Ends the run when required auth hard-fails. */
+  onAuthorizationFlowDisabled?:
+    | ((error: AuthorizationFlowDisabledError) => void)
+    | undefined;
   authorization?: OAuthAuthorization | undefined;
 }
 
@@ -188,7 +192,9 @@ export function createMcpAuthOrchestration(
     }
     if (input.interactiveAuthEnabled === false) {
       await deleteMcpAuthSession(authSessionId);
-      throw new AuthorizationFlowDisabledError("mcp", provider);
+      const error = new AuthorizationFlowDisabledError("mcp", provider);
+      input.onAuthorizationFlowDisabled?.(error);
+      throw error;
     }
     const recordPendingAuth = input.recordPendingAuth;
     if (!recordPendingAuth) {
