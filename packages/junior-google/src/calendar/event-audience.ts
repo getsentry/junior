@@ -12,14 +12,16 @@ import { googleApiRequest } from "../google-api";
 import { parseEventId } from "./events";
 
 const attendeesSchema = z.object({
-  attendees: z.array(z.object({ email: z.string() })).optional(),
+  attendees: z
+    .array(z.object({ email: z.string(), resource: z.boolean().optional() }))
+    .optional(),
 });
 
 /**
  * Google emails a change to every attendee, and guests can invite others,
  * so the event is `internal` only when Google lists no attendee outside the
- * company's Workspace domains. A bad reference or a failed read counts as
- * `world`.
+ * company's Workspace domains. A room is not a reader. A bad reference or a
+ * failed read counts as `world`.
  */
 export async function eventGuardian(
   eventIdOrLink: string,
@@ -33,11 +35,12 @@ export async function eventGuardian(
     const response = await googleApiRequest(ctx, {
       operation: "google.calendar.event.get",
       path: `/calendar/v3/calendars/primary/events/${eventId}`,
-      query: { fields: "attendees(email)" },
+      query: { fields: "attendees(email,resource)" },
     });
     if (response.status !== 200) return { target, audience: "world" };
     const { attendees = [] } = attendeesSchema.parse(response.body);
-    const outside = attendees.some(({ email }) => {
+    const outside = attendees.some(({ email, resource }) => {
+      if (resource) return false;
       const domain = emailDomain(email);
       return !domain || !allowedDomains.includes(domain);
     });

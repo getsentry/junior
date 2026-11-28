@@ -984,5 +984,15 @@ describe("Calendar changes for Guardian", () => {
       "world",
     );
     expect(await audience(new Response("nope", { status: 500 }))).toBe("world");
+    // A booked room reads nothing.
+    const room = {
+      email: "c_188@resource.calendar.google.com",
+      resource: true,
+    };
+    expect(
+      await audience(
+        Response.json({ attendees: [{ email: REQUESTER }, room] }),
+      ),
+    ).toBe("internal");
   });
 });
