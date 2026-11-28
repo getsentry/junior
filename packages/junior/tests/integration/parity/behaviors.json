@@ -6780,8 +6780,8 @@
         "path": "switchable"
       }
     ],
-    "needsDecision": "Docs say a person's new message steers active work, and verify-junior composer#queue says a message waits as Queued until Steer; main lets only the Turn's author steer, and sends every dashboard message as an interrupt. Which is right?",
-    "note": "The composer's queue, steer, and stop controls belong to turn-lifecycle (handoff)."
+    "note": "The composer's queue, steer, and stop controls belong to turn-lifecycle (handoff).",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main. The same person's Slack mention, `!!` or dashboard message joins the running Turn. A plain Slack thread reply and MCP sendMessage wait. Another person's Slack mention ends the running Turn at its next step (agreed intended difference). Another person's dashboard message waits for its own Turn; core needs a `steer` delivery for this."
   },
   {
     "id": "intake:web-reply-answers-inbox-and-marks-read",
@@ -15908,8 +15908,8 @@
     "entryPoints": ["POST /api/conversations/:id/messages"],
     "mainCases": [],
     "coreFlag": "likely-core-gap",
-    "needsDecision": "Docs say a person's new message steers active work, and verify-junior composer#queue says a message waits as Queued until Steer; main lets only the Turn's author steer, and sends every dashboard message as an interrupt. Which is right?",
-    "note": "Core supersedes a started Turn for an interrupt with another group key (src/core/turn/schedule.ts:assignTurn), so the running Turn ends early. Case: two web participants; B sends during A's multi-step Turn; assert A's Turn completes with its reply, then B's Turn runs."
+    "note": "Core supersedes a started Turn for an interrupt with another group key (src/core/turn/schedule.ts:assignTurn), so the running Turn ends early. Case: two web participants; B sends during A's multi-step Turn; assert A's Turn completes with its reply, then B's Turn runs.",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main. The same person's Slack mention, `!!` or dashboard message joins the running Turn. A plain Slack thread reply and MCP sendMessage wait. Another person's Slack mention ends the running Turn at its next step (agreed intended difference). Another person's dashboard message waits for its own Turn; core needs a `steer` delivery for this."
   },
   {
     "id": "turn-lifecycle:dashboard-stop-returns-queued-text",
@@ -16642,8 +16642,8 @@
       }
     ],
     "coreFlag": "likely-core-gap",
-    "needsDecision": "Docs say a person's new message steers active work, and verify-junior composer#queue says a message waits as Queued until Steer; main lets only the Turn's author steer, and sends every dashboard message as an interrupt. Which is right?",
-    "note": "Reads main's mailbox only; core inputs live in junior_turn_inbox, so the list is empty on core."
+    "note": "Reads main's mailbox only; core inputs live in junior_turn_inbox, so the list is empty on core.",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main. The same person's Slack mention, `!!` or dashboard message joins the running Turn. A plain Slack thread reply and MCP sendMessage wait. Another person's Slack mention ends the running Turn at its next step (agreed intended difference). Another person's dashboard message waits for its own Turn; core needs a `steer` delivery for this."
   },
   {
     "id": "turn-lifecycle:person-input-before-events",
