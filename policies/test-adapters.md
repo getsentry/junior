@@ -23,13 +23,13 @@ overrides, observable outboxes, and tools that find leakage.
   `Request` objects in every test.
 - Model background work with collectors that follow production scheduling.
   Tests must flush that work explicitly.
-- Put temporary env or config overrides in helpers that restore state for you.
-- Make isolation explicit. Tests that use shared resources, fake clocks,
-  singleton state, or process-global config must reset them locally or opt into
-  an isolated or serial harness.
-- Keep test-only helpers out of production singletons. Prefer injected
-  interfaces, local factories, and test adapters over `setForTests` globals or
-  module mocks.
+- Put temporary env overrides in helpers that restore state for you. Put
+  config in the app context that the test builds.
+- Each test builds the app context and the resources that it uses, and closes
+  them. Do not use per-file isolation or a serial harness to reset singleton
+  state or process-global config. Remove the global.
+- Keep test-only helpers out of production code. Do not add `setForTests`
+  globals. Mocks: `testing.md`.
 - Do not add broad adapter hooks only to unlock a low-level test when an
   existing integration harness can run the real path.
 - Add adapter behavior only for a real repeated test need. Name it after the
@@ -41,8 +41,9 @@ overrides, observable outboxes, and tools that find leakage.
 
 - A local stub is fine for one-off pure unit logic when the edge is not shared
   and the behavior is fixed.
-- Module mocks are fine at the one allowed edge for a test layer, such as the
-  fixed fake agent edge in integration tests.
+- In component tests, a module mock is fine for an external package edge,
+  such as `@vercel/sandbox` or a provider SDK, when no shared harness covers
+  it.
 - A route harness may delay `waitUntil` work when the contract under test is the
   response or ack edge before background work. Make that delayed flush explicit.
 - Very low-level adapter contract tests may inspect raw captured payloads when

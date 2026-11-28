@@ -46,6 +46,8 @@ Prefer high-fidelity behavior coverage when it is stable.
 ### Mocks and fixtures
 
 - Mock one edge per test, and only the edge the layer allows.
+- Do not mock Junior-owned modules in any layer. Build a real app context.
+  Fake only external edges.
 - Prefer shared harnesses, fixtures, memory adapters, MSW handlers, and
   outboxes over ad hoc mocks or local payload schemas.
 - Database tests use `tests/fixtures/sql` and `createJuniorSqlFixture`. Only
