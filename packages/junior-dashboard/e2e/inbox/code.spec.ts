@@ -45,6 +45,22 @@ test.describe("new UI", () => {
     await expect(code).toHaveAttribute("aria-current", "true");
     await page.getByRole("link", { name: "Back to Code" }).click();
     await expect(page).toHaveURL(/\/code\/[^/]+\/conversations$/);
+
+    // From another row, Code reopens that Conversation and owns it, so the
+    // next press goes back to its top level.
+    await list
+      .getByRole("link", { name: /^Open / })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/conversations\//);
+    const inbox = primary.getByRole("link", { name: /^Inbox/ });
+    await inbox.click();
+    await expect(inbox).toHaveAttribute("aria-current", "page");
+    await code.click();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await expect(code).toHaveAttribute("aria-current", "true");
+    await code.click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
   });
 
   test("Code · All lists every repository first, then every stat and the activity chart", async ({
