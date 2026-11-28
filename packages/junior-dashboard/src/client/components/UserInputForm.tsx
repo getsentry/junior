@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import {
-  useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -308,7 +308,9 @@ export function UserInputForm(props: {
   // An action sends on click, so only the form can hold unsent input.
   const unsent = !actionField && !sending && !empty;
   const onUnsentChange = props.onUnsentChange;
-  useEffect(() => {
+  // A layout effect reports the change before the next event, such as Enter
+  // in the message box right after Send. A passive effect can run after it.
+  useLayoutEffect(() => {
     onUnsentChange?.(unsent);
   }, [onUnsentChange, unsent]);
   function submit(event: FormEvent) {
