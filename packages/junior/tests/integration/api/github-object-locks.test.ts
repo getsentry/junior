@@ -124,7 +124,7 @@ describe("GitHub webhooks and card reads during a slow card read", () => {
     }
   });
 
-  it("shows the last card, or no card, to a read that could not wait for a slow card read, with no second GitHub call", async () => {
+  it("shows the last card to a read that could not wait for a slow card read, and reads GitHub only when there is none", async () => {
     stubGitHubApp();
     const issue = (number: number) => ({
       closed_at: null,
@@ -206,15 +206,11 @@ describe("GitHub webhooks and card reads during a slow card read", () => {
       });
       expect(kept.waiterReads).toBe(0);
 
-      // Issue 18 has no card yet, so the read that gave up shows none.
-      const none = await readDuringSlowRead(read, 18);
-      expect(none.card).toBeUndefined();
-      expect(none.waiterReads).toBe(0);
-      expect(
-        (await read(`${GITHUB_REPO}/issues/18`)).objects.get(
-          `${GITHUB_REPO}/issues/18`,
-        ),
-      ).toMatchObject({ title: "Issue 18" });
+      // Issue 18 has no card yet, so the read that gave up reads GitHub.
+      const loaded = await readDuringSlowRead(read, 18);
+      expect(loaded.card).toMatchObject({ title: "Issue 18" });
+      expect(loaded.card).not.toHaveProperty("fetchedAt");
+      expect(loaded.waiterReads).toBeGreaterThan(0);
     } finally {
       vi.unstubAllEnvs();
     }

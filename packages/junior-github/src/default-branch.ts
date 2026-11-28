@@ -16,6 +16,9 @@ import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js"
 
 // Default branches change rarely. A rename takes effect within this window.
 const DEFAULT_BRANCH_TTL_MS = 10 * 60 * 1000;
+// Under the cache's 10 s load wait, so the push waiters of a slow read get
+// its answer or its error instead of each reading GitHub again.
+const DEFAULT_BRANCH_TIMEOUT_MS = 5000;
 
 const repositorySchema = z.object({ default_branch: z.string().min(1) });
 
@@ -41,7 +44,10 @@ export async function loadDefaultBranch(
         await githubRequest(
           "https://api.github.com",
           `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
-          { token: token.token },
+          {
+            signal: AbortSignal.timeout(DEFAULT_BRANCH_TIMEOUT_MS),
+            token: token.token,
+          },
         ),
       );
       return { value: response.default_branch, ttlMs: DEFAULT_BRANCH_TTL_MS };

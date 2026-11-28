@@ -5,7 +5,7 @@ import { withLock } from "@/chat/state/locks";
 
 const MAX_CACHE_KEY_LENGTH = 512;
 // A caller that waits longer than this for another load gets the stale
-// entry, or `CacheLoadBusyError`.
+// entry, or loads the value itself.
 const LOAD_WAIT_MS = 10_000;
 // How long a `staleIfError` entry outlives its TTL as the last good value.
 const LAST_GOOD_MS = 24 * 60 * 60 * 1000;
@@ -68,15 +68,6 @@ async function writeUnderLoadLock(
   await state.delete(cacheKey);
 }
 
-/** Another caller still loads the key, and the cache keeps no stale value. */
-class CacheLoadBusyError extends Error {
-  constructor(namespace: string) {
-    // The key can name a person, so only the namespace goes in the message.
-    super(`Another load of this ${namespace} cache key is still running`);
-    this.name = "CacheLoadBusyError";
-  }
-}
-
 /** The prefix of every state key of one cache namespace. */
 export function cacheKeyPrefix(namespace: string): string {
   return `junior:cache:${namespace}:`;
@@ -126,6 +117,12 @@ export function createCache(
           ? undefined
           : ((await state.get<StoredEntry<T>>(cacheKey)) ?? undefined);
 
+      // Only a stale `staleIfError` entry is still here after its TTL.
+      const stale = (entry: StoredEntry<T>) => {
+        if (entry.storedAtMs !== undefined) hooks.onStale?.(entry.storedAtMs);
+        return entry.value;
+      };
+
       await state.connect();
       const hit = await cached();
       if (hit && isFresh(hit)) return hit.value;
@@ -160,14 +157,13 @@ export function createCache(
         );
         if (attempt.acquired) return attempt.value;
         // A slow load makes every waiter time out together. Loading here too
-        // would send them all to the slow provider at once, so the catch
-        // gives each one the stale entry, or this error.
-        throw new CacheLoadBusyError(namespace);
+        // would send them all to the slow provider at once, so a waiter with
+        // a stale entry takes it. Without one, the cache only saves work, so
+        // a stuck load must not block this caller.
+        return hit ? stale(hit) : (await load()).value;
       } catch (error) {
-        // Only a stale `staleIfError` entry is still here after its TTL.
         if (!hit) throw error;
-        if (hit.storedAtMs !== undefined) hooks.onStale?.(hit.storedAtMs);
-        return hit.value;
+        return stale(hit);
       }
     },
     async update<T>(
