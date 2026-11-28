@@ -124,7 +124,12 @@ jobs:
           VITEST_EVALS_REPORT_LEVEL: info
           # The write token of Roach. With it, the run records new requests.
           ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
-        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian
+          ROACH_MODE: "off"
+          BASELINE_USAGE_FILE: ${{ github.workspace }}/packages/junior-evals/guardian-usage.jsonl
+        # Temporary fair baseline: both arms fully live, 3 samples per case.
+        # With Roach off, model calls go direct, which the network jail
+        # blocks, so this step runs outside it.
+        run: node packages/junior-evals/scripts/baseline-live.mjs
       - name: Require Guardian eval results
         id: results
         if: steps.run.conclusion != 'skipped'
@@ -148,7 +153,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: guardian-evals-${{ matrix.arm }}
-          path: packages/junior-evals/guardian-results.json
+          path: |
+            packages/junior-evals/guardian-results*.json
+            packages/junior-evals/guardian-usage.jsonl
           if-no-files-found: error
           retention-days: 7
       - name: Report evals to Sentry Evals

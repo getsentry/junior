@@ -74,6 +74,7 @@ export default defineConfig({
       path.resolve(__dirname, "src/guardian-slack-setup.ts"),
       "@sentry/roach/vitest/setup",
       path.resolve(__dirname, "src/fetch-setup.ts"),
+      path.resolve(__dirname, "src/baseline-usage-setup.ts"),
     ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],
