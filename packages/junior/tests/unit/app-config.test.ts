@@ -72,7 +72,7 @@ afterEach(async () => {
 
 describe("createApp plugin config", () => {
   it("routes Slack webhooks through the production Slack handler", async () => {
-    const app = await createApp({
+    const { app } = await createApp({
       plugins: defineJuniorPlugins([]),
     });
     const slackWebhookClient = createSlackWebhookTestClient({
@@ -92,7 +92,7 @@ describe("createApp plugin config", () => {
   });
 
   it("leaves GitHub webhook ownership to the configured plugin", async () => {
-    const app = await createApp({
+    const { app } = await createApp({
       plugins: defineJuniorPlugins([]),
     });
 
@@ -106,7 +106,7 @@ describe("createApp plugin config", () => {
     expect(response.status).toBe(404);
     await expect(response.text()).resolves.toBe("Unknown platform: github");
 
-    const githubApp = await createApp({
+    const { app: githubApp } = await createApp({
       plugins: defineJuniorPlugins([githubPlugin()]),
     });
     const pluginResponse = await githubApp.fetch(
@@ -580,7 +580,7 @@ describe("createApp plugin config", () => {
       },
       hooks: {},
     });
-    useAppContext({
+    const context = useAppContext({
       pluginConfig: {
         inlineManifests: [
           {
@@ -595,7 +595,9 @@ describe("createApp plugin config", () => {
       },
     });
 
-    expect(() => validatePluginRegistrations([registration])).toThrow(
+    expect(() =>
+      validatePluginRegistrations(context.catalog, [registration]),
+    ).toThrow(
       'Plugin registration "hooked" manifest does not match the loaded plugin manifest. Use one canonical manifest source for runtime hook plugins.',
     );
   });
@@ -866,7 +868,7 @@ describe("createApp plugin config", () => {
     }));
     mockBuiltSystemPrompts();
 
-    const app = await createApp();
+    const { app } = await createApp();
 
     const response = await app.fetch(
       new Request("http://localhost/api/plugins/notes"),

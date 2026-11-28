@@ -1,64 +1,69 @@
-// The long-lived app state that `createApp` builds from its plugin wiring.
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
+import type { AppContext, AppPaths } from "@/app/context-types";
+import type { ChatConfig } from "@/chat/config";
+import { createAppSql, createAppStores } from "@/chat/db";
 import { validatePlugins } from "@/chat/plugins/hooks/registry";
-import {
-  createPluginCatalogRuntime,
-  type PluginCatalogRuntime,
-} from "@/chat/plugins/registry";
+import { createPluginCatalogRuntime } from "@/chat/plugins/registry";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
-import type { QueueProviderState } from "@/chat/queue/provider";
-import type { SlackTeamDomainCache } from "@/chat/slack/team-domain";
-import type { SlackUserCache } from "@/chat/slack/user";
+import { createQueueProvider } from "@/chat/queue/provider";
+import { createAppState } from "@/chat/state/adapter";
+import type { Env } from "@/config/fields";
 
-export interface AppContext {
-  /** App plugins, validated and sorted by manifest name. */
-  plugins: PluginRegistration[];
-  /** The plugin catalog, built from the app plugin config. */
-  catalog: PluginCatalogRuntime;
-  /** What the queue provider keeps, such as clients built on first use. */
-  queueProvider: QueueProviderState;
-  /** Slack workspace domains that this instance looked up. */
-  slackTeamDomains: SlackTeamDomainCache;
-  /** The Slack team id of each bot token, looked up once per token. */
-  slackBotTeamIds: Map<string, Promise<string>>;
-  /** Slack profiles that this instance looked up. */
-  slackUsers: SlackUserCache;
-  /** Title generation in flight, by Conversation id. */
-  conversationTitles: Map<string, Promise<string | undefined>>;
+export type { AppContext, AppPaths } from "@/app/context-types";
+
+/** What the composition root resolves before it builds the app context. */
+export interface AppContextInput {
+  config: ChatConfig;
+  env: Env;
+  paths: AppPaths;
+  plugins?: PluginRegistration[] | undefined;
+  pluginConfig?: PluginCatalogConfig | undefined;
 }
 
-/** Build the long-lived app state from resolved plugin wiring. */
-export function createAppContext(
-  input: {
-    plugins?: PluginRegistration[] | undefined;
-    pluginConfig?: PluginCatalogConfig | undefined;
-  } = {},
-): AppContext {
+/**
+ * Build the app services from resolved config and plugin wiring. The SQL
+ * pool and the state connection open on first use. `close()` releases them.
+ */
+export function createAppContext(input: AppContextInput): AppContext {
   const plugins = input.plugins ?? [];
   validatePlugins(plugins);
   const catalog = createPluginCatalogRuntime();
   // setConfig normalizes the config, as it did on the shared catalog.
   catalog.setConfig(input.pluginConfig);
+  const sql = createAppSql(input.config.sql);
+  const state = createAppState(input.config);
   return {
+    config: input.config,
+    env: input.env,
+    paths: input.paths,
+    sql,
+    stores: createAppStores(sql),
+    state,
+    queue: createQueueProvider(input.config),
     plugins: [...plugins].sort((left, right) =>
       left.manifest.name.localeCompare(right.manifest.name),
     ),
     catalog,
-    queueProvider: {},
+    clock: { now: () => Date.now() },
     slackTeamDomains: { entries: new Map(), inflight: new Map() },
     slackBotTeamIds: new Map(),
     slackUsers: new Map(),
     conversationTitles: new Map(),
+    close: async () => {
+      await Promise.all([state.close(), sql.close()]);
+    },
   };
 }
 
-// Temporary bridge for code that cannot get the context passed in yet.
-// getsentry/junior#4494 tracks deleting it.
+// Temporary bridge for module getters that cannot get the context passed in
+// yet. getsentry/junior#4494 tracks deleting it.
 let installed: AppContext | undefined;
 
-/** Return the installed app context, or an empty one with no plugins. */
+/** Return the app context that the composition root installed. */
 export function getAppContext(): AppContext {
-  installed ??= createAppContext();
+  if (!installed) {
+    throw new Error("No app context is installed");
+  }
   return installed;
 }
 

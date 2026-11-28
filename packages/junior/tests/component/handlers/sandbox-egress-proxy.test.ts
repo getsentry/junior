@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   continueTraceMock,
-  getDefinitionMock,
-  getOAuthConfigMock,
-  getProvidersMock,
   issueProviderCredentialLeaseMock,
   loggerMock,
   startSpanMock,
@@ -12,9 +9,6 @@ const {
     async (_context: unknown, callback: () => Promise<unknown>) =>
       await callback(),
   ),
-  getDefinitionMock: vi.fn(),
-  getOAuthConfigMock: vi.fn(),
-  getProvidersMock: vi.fn(),
   issueProviderCredentialLeaseMock: vi.fn(),
   loggerMock: {
     debug: vi.fn(),
@@ -41,15 +35,6 @@ vi.mock("@/chat/config", async (importOriginal) => {
     botConfig: memoryConfig.bot,
     getChatConfig: vi.fn(() => memoryConfig),
   };
-});
-
-vi.mock("@/app/context", () => {
-  const catalog = {
-    getDefinition: getDefinitionMock,
-    getOAuthConfig: getOAuthConfigMock,
-    getProviders: getProvidersMock,
-  };
-  return { getAppContext: () => ({ plugins: [], catalog }) };
 });
 
 vi.mock("@/chat/capabilities/factory", () => ({
@@ -85,6 +70,8 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import { ALL } from "@/handlers/sandbox-egress-proxy";
+import type { InlinePluginManifestDefinition } from "@/chat/plugins/types";
+import { useAppContext } from "../../fixtures/app-context";
 
 const EGRESS_ID = "junior-sbx";
 const ACTOR_ID = "U123";
@@ -99,17 +86,24 @@ function sentryPlugin() {
       description: "Sentry",
       configKeys: [],
       envVars: {
-        SENTRY_BOT_EMAIL: {},
+        SENTRY_BOT_EMAIL: { exposeToCommandEnv: true },
       },
       commandEnv: {
         SENTRY_AUTHOR_EMAIL: "${SENTRY_BOT_EMAIL}",
         SENTRY_READ_ONLY: "1",
       },
       credentials: {
-        type: "oauth-bearer",
+        type: "oauth-bearer" as const,
         domains: ["sentry.io", "us.sentry.io"],
         authTokenEnv: "SENTRY_AUTH_TOKEN",
         authTokenPlaceholder: "host_managed_credential",
+      },
+      oauth: {
+        clientIdEnv: "SENTRY_CLIENT_ID",
+        clientSecretEnv: "SENTRY_CLIENT_SECRET",
+        authorizeEndpoint: "https://sentry.io/oauth/authorize/",
+        tokenEndpoint: "https://sentry.io/oauth/token/",
+        scope: "project:read",
       },
     },
   };
@@ -146,6 +140,11 @@ function headerOnlyPlugin() {
       domains: ["api.example.com"],
     },
   };
+}
+
+// Install an app whose plugins are the given manifests.
+function installPlugins(...plugins: InlinePluginManifestDefinition[]): void {
+  useAppContext({ pluginConfig: { inlineManifests: plugins } });
 }
 
 function setSandboxEgressUserActor(userId = ACTOR_ID): void {
@@ -251,17 +250,7 @@ describe("sandbox egress proxy composition", () => {
     process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     process.env["JUNIOR_SECRET"] = "test-secret";
     activeCredentialToken = undefined;
-    getProvidersMock.mockReturnValue([sentryPlugin()]);
-    getDefinitionMock.mockReset();
-    getDefinitionMock.mockImplementation((provider: string) =>
-      [sentryPlugin(), githubPlugin()].find(
-        (plugin) => plugin.manifest.name === provider,
-      ),
-    );
-    getOAuthConfigMock.mockReset();
-    getOAuthConfigMock.mockImplementation((provider: string) =>
-      provider === "sentry" ? { provider, scope: "project:read" } : undefined,
-    );
+    installPlugins(sentryPlugin());
     issueProviderCredentialLeaseMock.mockReset();
     continueTraceMock.mockClear();
     continueTraceMock.mockImplementation(
@@ -312,7 +301,7 @@ describe("sandbox egress proxy composition", () => {
   });
 
   it("adds trace headers only for configured trace domains", () => {
-    getProvidersMock.mockReturnValue([sentryPlugin(), githubPlugin()]);
+    installPlugins(sentryPlugin(), githubPlugin());
 
     expect(
       buildSandboxEgressNetworkPolicy({
@@ -360,7 +349,7 @@ describe("sandbox egress proxy composition", () => {
   });
 
   it("resolves command env for every registered sandbox provider", async () => {
-    getProvidersMock.mockReturnValue([githubPlugin(), sentryPlugin()]);
+    installPlugins(githubPlugin(), sentryPlugin());
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
       GITHUB_READ_ONLY: "1",
@@ -371,7 +360,7 @@ describe("sandbox egress proxy composition", () => {
   });
 
   it("does not invent token env placeholders for domain-only providers", async () => {
-    getProvidersMock.mockReturnValue([headerOnlyPlugin()]);
+    installPlugins(headerOnlyPlugin());
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
       HEADER_ONLY_READ_ONLY: "1",

@@ -57,7 +57,7 @@ export default defineConfig({
     path.join(root, "server.ts"),
     `import { createApp, defineJuniorPlugins } from "@sentry/junior";
 
-const app = await createApp({
+const { app } = await createApp({
   dashboard: {
     authRequired: false,
     allowedDomains: ["sentry.io"],

@@ -24,9 +24,13 @@ async function runInit(dir: string): Promise<void> {
   await mod.runInit(dir);
 }
 
-async function runSnapshotCreate(): Promise<void> {
+async function runSnapshotCreate(
+  pluginSet: JuniorPluginSet | null | undefined,
+): Promise<void> {
   const mod = await import("./snapshot-create");
-  await mod.runSnapshotCreate();
+  await mod.runSnapshotCreate(undefined, {
+    pluginSet: pluginSet ?? undefined,
+  });
 }
 
 async function runCheck(dir?: string): Promise<void> {
@@ -52,9 +56,14 @@ async function runAdmin(argv: string[]): Promise<number> {
   return await mod.runAdmin(argv);
 }
 
-async function runServiceAccount(argv: string[]): Promise<number> {
+async function runServiceAccount(
+  argv: string[],
+  pluginSet: JuniorPluginSet | null | undefined,
+): Promise<number> {
   const mod = await import("./service-account");
-  return await mod.runServiceAccount(argv);
+  return await mod.runServiceAccount(argv, {
+    pluginSet: pluginSet ?? undefined,
+  });
 }
 
 function topLevelCommand(argv: string[]): string | undefined {
@@ -90,10 +99,11 @@ export async function runMain(
     : undefined;
   const exitCode = await runCli(argv, {
     runAdmin,
-    runServiceAccount,
+    runServiceAccount: async (serviceAccountArgv) =>
+      await runServiceAccount(serviceAccountArgv, pluginSet),
     runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
     runInit,
-    runSnapshotCreate,
+    runSnapshotCreate: async () => await runSnapshotCreate(pluginSet),
     runCheck,
     runUpgrade: async () => await runUpgrade(pluginSet),
     ...(pluginCommands ? { runPluginCommand: pluginCommands.run } : undefined),

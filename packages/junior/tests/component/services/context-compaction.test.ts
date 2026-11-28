@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import { loadConfig } from "@/config";
+import { useAppContext } from "../../fixtures/app-context";
 import {
   AGENTS_REPLACEMENT_NOTICE,
   buildAgentsInstructionsMessage,
 } from "@/chat/repository-instructions";
-
-const ORIGINAL_ENV = { ...process.env };
 
 function user(text: string, timestamp = 1): PiMessage {
   return {
@@ -37,21 +37,13 @@ function textOf(message: PiMessage): string {
 }
 
 describe("context compaction projection reset", () => {
-  beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      JUNIOR_STATE_ADAPTER: "memory",
-    };
-    vi.resetModules();
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
-    vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
+  beforeEach(() => {
+    useAppContext({
+      config: loadConfig({
+        env: process.env,
+        options: { state: { adapter: "memory" } },
+      }),
+    });
   });
 
   it("compares repeated commits in their durable JSON form", async () => {

@@ -3,7 +3,6 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Context } from "@earendil-works/pi-ai/compat";
 import { loadSnapshot, saveSnapshot } from "@/chat/cache-warming/snapshot";
 import {
-  disconnectStateAdapter,
   getStateAdapter,
   getStateValues,
   setStateValues,
@@ -25,14 +24,10 @@ const previousEnv = vi.hoisted(() => {
 });
 
 // Later files in the same worker must not run on this file's Redis state.
-afterAll(async () => {
-  try {
-    await disconnectStateAdapter();
-  } finally {
-    for (const [key, value] of Object.entries(previousEnv)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
+afterAll(() => {
+  for (const [key, value] of Object.entries(previousEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
 });
 

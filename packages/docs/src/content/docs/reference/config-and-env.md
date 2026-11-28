@@ -189,7 +189,7 @@ This needs no provider call and is always on.
 To also match by meaning, enable event embeddings:
 
 ```ts
-const app = await createApp({
+const { app } = await createApp({
   eventEmbeddings: { enabled: true },
 });
 ```
@@ -208,7 +208,7 @@ are deliberately dogfooding them. There is no environment-variable opt-in.
 ```ts
 import { createApp } from "@sentry/junior";
 
-const app = await createApp({
+const { app } = await createApp({
   experimental: {
     // Reply to non-mention messages in Slack threads Junior already joined.
     // Off by default. Without this, Junior only replies to explicit @mentions
@@ -286,10 +286,12 @@ comma-separated or JSON array of domains. It is optional, but we recommend it.
 Junior logs a warning at startup when it is empty.
 
 ```ts title="server.ts"
-export default await createApp({
+const { app } = await createApp({
   allowedDomains: ["example.com"],
   plugins,
 });
+
+export default app;
 ```
 
 - **Slack:** Junior starts work from a mention or DM only when the email of the
@@ -320,7 +322,7 @@ on an isolated deployment whose database is a disposable copy, and choose that
 deployment in app code, for example:
 
 ```ts
-const app = await createApp({
+const { app } = await createApp({
   experimental: {
     "operator-tools":
       process.env.VERCEL_ENV === "preview" &&
@@ -336,7 +338,7 @@ Without overrides, Junior runs every agent Turn on Claude Opus 5.5 with high rea
 To override it, pass `modelId` to `createApp()`, or set `AI_MODEL`. Set `AI_REASONING_LEVEL` to change the reasoning level. Pass auxiliary model ids on the same `createApp()` options object. App config overrides the model env settings.
 
 ```ts
-const app = await createApp({
+const { app } = await createApp({
   modelId: "anthropic/claude-opus-5.5",
   decisionModelId: "typesafe-ai/jev",
   fastModelId: "openai/gpt-6-luna",
@@ -444,7 +446,7 @@ Pass `configDefaults` to `createApp()` to set provider defaults across all conve
 ```ts
 import { createApp } from "@sentry/junior";
 
-const app = await createApp({
+const { app } = await createApp({
   configDefaults: {
     "sentry.org": "sentry",
     "github.org": "myorg",
@@ -462,7 +464,7 @@ Pass sandbox sizing to `createApp()`. Each vCPU provides 2 GB of memory, so this
 ```ts
 import { createApp } from "@sentry/junior";
 
-const app = await createApp({
+const { app } = await createApp({
   sandbox: {
     vcpus: 4,
   },
@@ -476,7 +478,7 @@ Pass `sandbox.egressTracePropagationDomains` when sandboxed commands should keep
 ```ts
 import { createApp } from "@sentry/junior";
 
-const app = await createApp({
+const { app } = await createApp({
   sandbox: {
     egressTracePropagationDomains: ["sentry.io", "*.sentry.io"],
   },

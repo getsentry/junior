@@ -1,11 +1,10 @@
-import {
-  vercelQueueProvider,
-  type VercelQueueClientCache,
-} from "@/chat/queue/vercel";
+import { getAppContext } from "@/app/context";
+import type { ChatConfig } from "@/chat/config";
+import { createVercelQueueProvider } from "@/chat/queue/vercel";
 
 // Module overview: the one place that names the queue provider.
 //
-// Queue code calls `getQueueProvider()` and uses only this contract.
+// Queue code uses only this contract. The app context builds the provider.
 // Provider modules, such as `vercel.ts`, implement it. Only this module
 // imports a provider module.
 
@@ -69,10 +68,17 @@ export interface QueueProvider {
   ): (request: Request) => Promise<Response>;
 }
 
-/** What the queue provider keeps for one app, such as its clients. */
-export type QueueProviderState = VercelQueueClientCache;
+/** Build the queue provider of an app context from its config. */
+export function createQueueProvider(
+  config: Pick<ChatConfig, "deployment" | "queue">,
+): QueueProvider {
+  return createVercelQueueProvider({
+    apiUrl: config.queue.apiUrl,
+    deploymentId: config.deployment.id,
+  });
+}
 
-/** Return the queue provider for this deployment. */
+/** Return the queue provider of the app context. */
 export function getQueueProvider(): QueueProvider {
-  return vercelQueueProvider;
+  return getAppContext().queue;
 }

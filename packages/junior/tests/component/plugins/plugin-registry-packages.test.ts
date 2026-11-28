@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
+import { useFreshAppContext } from "../../fixtures/app-context";
 
 const originalCwd = process.cwd();
 let configuredPackageNames: string[] = [];
@@ -12,11 +13,13 @@ async function setPackages(packageNames: string[]): Promise<void> {
   await setConfig({ packages: packageNames });
 }
 
+// Tests reset modules and mock discovery first, so build the context then.
 async function setConfig(config: PluginCatalogConfig): Promise<void> {
-  const { getAppContext } = await import("@/app/context");
-  getAppContext().catalog.setConfig({
-    ...config,
-    packages: config.packages ?? configuredPackageNames,
+  await useFreshAppContext({
+    pluginConfig: {
+      ...config,
+      packages: config.packages ?? configuredPackageNames,
+    },
   });
 }
 

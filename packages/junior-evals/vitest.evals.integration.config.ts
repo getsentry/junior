@@ -74,6 +74,7 @@ const projectTest = {
   sequence: { setupFiles: "list", hooks: "stack" },
   setupFiles: [
     path.resolve(__dirname, "src/stable-setup.ts"),
+    path.resolve(juniorPackageRoot, "tests/fixtures/app-context-setup.ts"),
     path.resolve(__dirname, "src/setup.ts"),
     path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
     path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),

@@ -260,12 +260,10 @@ describe("conversation work Vercel queue integration", () => {
   });
 
   it("acks disabled conversation work before sign checks", async () => {
-    process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] = "false";
-    delete process.env["JUNIOR_SECRET"];
-    // Config reads the kill switch when it loads, so load a fresh copy.
-    vi.resetModules();
-    const { createVercelConversationWorkCallback } =
-      await import("@/chat/task-execution/vercel-callback");
+    useConfig(
+      {},
+      { JUNIOR_CONVERSATION_WORK_ENABLED: "false", JUNIOR_SECRET: undefined },
+    );
     const run = vi.fn();
     createVercelConversationWorkCallback({ run });
     const { handler } = lastPushCallback();

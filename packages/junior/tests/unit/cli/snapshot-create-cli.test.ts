@@ -1,25 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  getProvidersMock,
-  getRuntimeDependenciesMock,
-  getRuntimePostinstallMock,
-  resolveMock,
-} = vi.hoisted(() => ({
-  getProvidersMock: vi.fn(),
-  getRuntimeDependenciesMock: vi.fn(),
-  getRuntimePostinstallMock: vi.fn(),
+const { resolveMock } = vi.hoisted(() => ({
   resolveMock: vi.fn(),
 }));
-
-vi.mock("@/app/context", () => {
-  const catalog = {
-    getProviders: getProvidersMock,
-    getRuntimeDependencies: getRuntimeDependenciesMock,
-    getRuntimePostinstall: getRuntimePostinstallMock,
-  };
-  return { getAppContext: () => ({ plugins: [], catalog }) };
-});
 
 vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   resolve: resolveMock,
@@ -30,18 +13,13 @@ vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_POSTINSTALL: [],
 }));
 
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { runSnapshotCreate } from "@/cli/snapshot-create";
+import { defineJuniorPlugins } from "@/plugins";
 
 describe("snapshot create cli", () => {
   beforeEach(() => {
-    getProvidersMock.mockReset();
-    getRuntimeDependenciesMock.mockReset();
-    getRuntimePostinstallMock.mockReset();
     resolveMock.mockReset();
-
-    getProvidersMock.mockReturnValue([]);
-    getRuntimeDependenciesMock.mockReturnValue([]);
-    getRuntimePostinstallMock.mockReturnValue([]);
   });
 
   it("uses default runtime and timeout", async () => {
@@ -72,31 +50,26 @@ describe("snapshot create cli", () => {
   });
 
   it("logs plugin and dependency inputs before snapshot resolution", async () => {
-    getProvidersMock.mockReturnValue([
-      {
+    const pluginSet = defineJuniorPlugins([
+      defineJuniorPlugin({
         manifest: {
           name: "agent-browser",
           displayName: "Agent Browser",
+          description: "Browser automation",
           runtimeDependencies: [
             { type: "npm", package: "agent-browser", version: "latest" },
             { type: "system", package: "gtk3" },
           ],
           runtimePostinstall: [{ cmd: "agent-browser", args: ["install"] }],
         },
-      },
-      {
+      }),
+      defineJuniorPlugin({
         manifest: {
           name: "notion",
           displayName: "Notion",
+          description: "Notion pages",
         },
-      },
-    ]);
-    getRuntimeDependenciesMock.mockReturnValue([
-      { type: "system", package: "gtk3" },
-      { type: "npm", package: "agent-browser", version: "latest" },
-    ]);
-    getRuntimePostinstallMock.mockReturnValue([
-      { cmd: "agent-browser", args: ["install"] },
+      }),
     ]);
     resolveMock.mockResolvedValue({
       snapshotId: "snap_123",
@@ -108,7 +81,7 @@ describe("snapshot create cli", () => {
     });
     const logs: string[] = [];
 
-    await runSnapshotCreate((line) => logs.push(line));
+    await runSnapshotCreate((line) => logs.push(line), { pluginSet });
 
     expect(logs).toContain("Loaded plugins (2): agent-browser, notion");
     expect(logs).toContain(

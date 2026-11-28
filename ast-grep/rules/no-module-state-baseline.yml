@@ -22,7 +22,6 @@ ignores:
   - packages/junior/src/chat/app/production.ts
   - packages/junior/src/chat/capabilities/factory.ts
   - packages/junior/src/chat/config.ts
-  - packages/junior/src/chat/db.ts
   - packages/junior/src/chat/gateway-providers/routing.ts
   - packages/junior/src/chat/inbox-items/message-change.ts
   - packages/junior/src/chat/logging.ts
@@ -34,7 +33,6 @@ ignores:
   - packages/junior/src/chat/slack/adapter-context.ts
   - packages/junior/src/chat/slack/assistant-thread/title.ts
   - packages/junior/src/chat/slack/client.ts
-  - packages/junior/src/chat/state/adapter.ts
   - packages/junior/src/chat/task-execution/vercel-queue.ts
   - packages/junior/src/core/prompt/layout.ts
 metadata:
@@ -44,7 +42,6 @@ metadata:
     packages/junior/src/chat/app/production.ts: 1
     packages/junior/src/chat/capabilities/factory.ts: 1
     packages/junior/src/chat/config.ts: 1
-    packages/junior/src/chat/db.ts: 1
     packages/junior/src/chat/gateway-providers/routing.ts: 1
     packages/junior/src/chat/inbox-items/message-change.ts: 1
     packages/junior/src/chat/logging.ts: 4
@@ -56,7 +53,6 @@ metadata:
     packages/junior/src/chat/slack/adapter-context.ts: 1
     packages/junior/src/chat/slack/assistant-thread/title.ts: 1
     packages/junior/src/chat/slack/client.ts: 1
-    packages/junior/src/chat/state/adapter.ts: 2
     packages/junior/src/chat/task-execution/vercel-queue.ts: 1
     packages/junior/src/core/prompt/layout.ts: 1
 rule:

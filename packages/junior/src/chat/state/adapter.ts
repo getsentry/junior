@@ -2,7 +2,8 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { createRedisState } from "@chat-adapter/state-redis";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { Lock, QueueEntry, StateAdapter } from "chat";
-import { getChatConfig } from "@/chat/config";
+import { getAppContext } from "@/app/context";
+import { getChatConfig, type ChatConfig } from "@/chat/config";
 import { mapBounded } from "@/chat/fan-out";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
@@ -11,40 +12,57 @@ const ACTIVE_LOCK_HEARTBEAT_MS = 30_000;
 // `{prefix}:cache:{key}`. The batch reads and writes below use the same keys.
 const REDIS_STATE_KEY_PREFIX = "chat-sdk";
 
-let stateAdapter: StateAdapter | undefined;
-let redisStateAdapter: RedisStateAdapter | undefined;
-
-/** Lazily connect state operations, including queued-adapter lock heartbeats. */
-function createConnectingStateAdapter(base: StateAdapter): StateAdapter {
-  const connected = async <T>(operation: () => Promise<T>): Promise<T> => {
-    await base.connect();
-    return await operation();
+/**
+ * Open the base adapter on first use and connect before each operation,
+ * including queued-adapter lock heartbeats. After `drop`, the next use opens
+ * a new base.
+ */
+function createConnectingStateAdapter(
+  open: () => StateAdapter,
+): StateAdapter & { drop(): void } {
+  let current: StateAdapter | undefined;
+  const base = (): StateAdapter => (current ??= open());
+  const connected = async <T>(
+    operation: (adapter: StateAdapter) => Promise<T>,
+  ): Promise<T> => {
+    const adapter = base();
+    await adapter.connect();
+    return await operation(adapter);
   };
 
   return {
     appendToList: (key, value, options) =>
-      connected(() => base.appendToList(key, value, options)),
-    connect: () => base.connect(),
-    disconnect: () => base.disconnect(),
-    subscribe: (threadId) => connected(() => base.subscribe(threadId)),
-    unsubscribe: (threadId) => connected(() => base.unsubscribe(threadId)),
-    isSubscribed: (threadId) => connected(() => base.isSubscribed(threadId)),
+      connected((adapter) => adapter.appendToList(key, value, options)),
+    connect: () => base().connect(),
+    disconnect: async () => await current?.disconnect(),
+    drop: () => {
+      current = undefined;
+    },
+    subscribe: (threadId) =>
+      connected((adapter) => adapter.subscribe(threadId)),
+    unsubscribe: (threadId) =>
+      connected((adapter) => adapter.unsubscribe(threadId)),
+    isSubscribed: (threadId) =>
+      connected((adapter) => adapter.isSubscribed(threadId)),
     acquireLock: (threadId, ttlMs) =>
-      connected(() => base.acquireLock(threadId, ttlMs)),
-    releaseLock: (lock) => connected(() => base.releaseLock(lock)),
-    extendLock: (lock, ttlMs) => connected(() => base.extendLock(lock, ttlMs)),
+      connected((adapter) => adapter.acquireLock(threadId, ttlMs)),
+    releaseLock: (lock) => connected((adapter) => adapter.releaseLock(lock)),
+    extendLock: (lock, ttlMs) =>
+      connected((adapter) => adapter.extendLock(lock, ttlMs)),
     forceReleaseLock: (threadId) =>
-      connected(() => base.forceReleaseLock(threadId)),
+      connected((adapter) => adapter.forceReleaseLock(threadId)),
     enqueue: (threadId, entry, maxSize) =>
-      connected(() => base.enqueue(threadId, entry, maxSize)),
-    dequeue: (threadId) => connected(() => base.dequeue(threadId)),
-    queueDepth: (threadId) => connected(() => base.queueDepth(threadId)),
-    get: (key) => connected(() => base.get(key)),
-    getList: (key) => connected(() => base.getList(key)),
-    set: (key, value, ttlMs) => connected(() => base.set(key, value, ttlMs)),
+      connected((adapter) => adapter.enqueue(threadId, entry, maxSize)),
+    dequeue: (threadId) => connected((adapter) => adapter.dequeue(threadId)),
+    queueDepth: (threadId) =>
+      connected((adapter) => adapter.queueDepth(threadId)),
+    get: (key) => connected((adapter) => adapter.get(key)),
+    getList: (key) => connected((adapter) => adapter.getList(key)),
+    set: (key, value, ttlMs) =>
+      connected((adapter) => adapter.set(key, value, ttlMs)),
     setIfNotExists: (key, value, ttlMs) =>
-      connected(() => base.setIfNotExists(key, value, ttlMs)),
-    delete: (key) => connected(() => base.delete(key)),
+      connected((adapter) => adapter.setIfNotExists(key, value, ttlMs)),
+    delete: (key) => connected((adapter) => adapter.delete(key)),
   };
 }
 
@@ -259,40 +277,48 @@ function withOptionalPrefix(base: StateAdapter, prefix: string | undefined) {
   return prefix ? createPrefixedStateAdapter(base, prefix) : base;
 }
 
-function createStateAdapter(): StateAdapter {
-  const config = getChatConfig();
-  const activeLockMaxAgeMs = config.bot.turnTimeoutMs + ACTIVE_LOCK_TTL_MS;
-
-  if (config.state.adapter === "memory") {
-    redisStateAdapter = undefined;
-    return createQueuedStateAdapter(
-      createConnectingStateAdapter(
-        withOptionalPrefix(createMemoryState(), config.state.keyPrefix),
-      ),
-      { activeLockMaxAgeMs },
-    );
-  }
-
-  if (!config.state.redisUrl) {
-    throw new Error("REDIS_URL is required for durable Slack thread state");
-  }
-
-  const redisState = createRedisState({
-    keyPrefix: REDIS_STATE_KEY_PREFIX,
-    url: config.state.redisUrl,
-  });
-  redisStateAdapter = redisState;
-  return createQueuedStateAdapter(
-    createConnectingStateAdapter(
-      withOptionalPrefix(redisState, config.state.keyPrefix),
-    ),
-    { activeLockMaxAgeMs },
-  );
+/** The state adapter of an app context. */
+export interface AppState extends StateAdapter {
+  /** The Redis adapter under this state, when config selects Redis. */
+  redis(): RedisStateAdapter | undefined;
+  /** Disconnect and drop the adapter. The next use opens a new one. */
+  close(): Promise<void>;
 }
 
-function getOptionalRedisStateAdapter(): RedisStateAdapter | undefined {
-  getStateAdapter();
-  return redisStateAdapter;
+/**
+ * Build the state adapter that config selects. It connects on first use.
+ * After `close`, the next use opens a new adapter: an empty memory store or a
+ * new Redis client.
+ */
+export function createAppState(
+  config: Pick<ChatConfig, "bot" | "state">,
+): AppState {
+  const activeLockMaxAgeMs = config.bot.turnTimeoutMs + ACTIVE_LOCK_TTL_MS;
+  let redis: RedisStateAdapter | undefined;
+  const open = (): StateAdapter => {
+    if (config.state.adapter === "memory") {
+      redis = undefined;
+      return withOptionalPrefix(createMemoryState(), config.state.keyPrefix);
+    }
+    if (!config.state.redisUrl) {
+      throw new Error("REDIS_URL is required for durable Slack thread state");
+    }
+    redis = createRedisState({
+      keyPrefix: REDIS_STATE_KEY_PREFIX,
+      url: config.state.redisUrl,
+    });
+    return withOptionalPrefix(redis, config.state.keyPrefix);
+  };
+  const connecting = createConnectingStateAdapter(open);
+  const queued = createQueuedStateAdapter(connecting, { activeLockMaxAgeMs });
+  return {
+    ...queued,
+    redis: () => redis,
+    close: async () => {
+      await queued.disconnect();
+      connecting.drop();
+    },
+  };
 }
 
 export async function getConnectedStateContext(): Promise<{
@@ -302,7 +328,7 @@ export async function getConnectedStateContext(): Promise<{
   const adapter = getStateAdapter();
   await adapter.connect();
   return {
-    redisStateAdapter: getOptionalRedisStateAdapter(),
+    redisStateAdapter: adapter.redis(),
     stateAdapter: adapter,
   };
 }
@@ -311,13 +337,11 @@ export async function getConnectedStateContext(): Promise<{
 export async function getDefaultRedisStateAdapterFor(
   adapter: StateAdapter,
 ): Promise<RedisStateAdapter | undefined> {
-  if (adapter !== stateAdapter) {
+  if (adapter !== getStateAdapter()) {
     return undefined;
   }
   const context = await getConnectedStateContext();
-  return context.stateAdapter === adapter
-    ? context.redisStateAdapter
-    : undefined;
+  return context.redisStateAdapter;
 }
 
 /** The Redis key that the default Redis adapter uses for one state value key. */
@@ -367,22 +391,12 @@ export async function setStateValues(
   await pipeline.execAsPipeline();
 }
 
-export function getStateAdapter(): StateAdapter {
-  if (!stateAdapter) {
-    stateAdapter = createStateAdapter();
-  }
-  return stateAdapter;
+/** Return the state adapter of the app context. */
+export function getStateAdapter(): AppState {
+  return getAppContext().state;
 }
 
+/** Close the app state. The next use opens a new adapter. */
 export async function disconnectStateAdapter(): Promise<void> {
-  if (!stateAdapter) {
-    return;
-  }
-
-  try {
-    await stateAdapter.disconnect();
-  } finally {
-    stateAdapter = undefined;
-    redisStateAdapter = undefined;
-  }
+  await getStateAdapter().close();
 }

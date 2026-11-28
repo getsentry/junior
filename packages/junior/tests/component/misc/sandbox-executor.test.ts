@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAppContext } from "../../fixtures/app-context";
 import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
@@ -69,31 +70,6 @@ vi.mock("@vercel/sandbox", () => ({
     create: sandboxCreateMock,
   },
 }));
-
-vi.mock("@/app/context", () => {
-  const catalog = {
-    getProviders: () => [
-      {
-        manifest: {
-          name: "sentry",
-          displayName: "Sentry",
-          description: "Sentry",
-          configKeys: [],
-          commandEnv: {
-            SENTRY_READ_ONLY: "1",
-          },
-          credentials: {
-            type: "oauth-bearer",
-            domains: ["sentry.io"],
-            authTokenEnv: "SENTRY_AUTH_TOKEN",
-            authTokenPlaceholder: "host_managed_credential",
-          },
-        },
-      },
-    ],
-  };
-  return { getAppContext: () => ({ plugins: [], catalog }) };
-});
 
 const {
   resolveMock,
@@ -585,6 +561,27 @@ async function expectWorkspaceToDelegate(
 
 describe("createTestSandbox", () => {
   beforeEach(() => {
+    useAppContext({
+      pluginConfig: {
+        inlineManifests: [
+          {
+            manifest: {
+              name: "sentry",
+              displayName: "Sentry",
+              description: "Sentry",
+              configKeys: [],
+              commandEnv: { SENTRY_READ_ONLY: "1" },
+              credentials: {
+                type: "oauth-bearer",
+                domains: ["sentry.io"],
+                authTokenEnv: "SENTRY_AUTH_TOKEN",
+                authTokenPlaceholder: "host_managed_credential",
+              },
+            },
+          },
+        ],
+      },
+    });
     recordedSpans.length = 0;
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();

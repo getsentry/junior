@@ -87,10 +87,12 @@ Slack shows a stop button on a working thread only when the app subscribes to `a
 To make Junior join each new public channel, subscribe to `channel_created` and turn on the option. Junior does not join channels that existed before. The app needs `channels:join`.
 
 ```ts title="server.ts"
-export default await createApp({
+const { app } = await createApp({
   plugins,
   slack: { autoJoinNewChannels: true },
 });
+
+export default app;
 ```
 
 For object previews, enable **Work Object Previews → Item and Task** in the Slack app settings. Existing apps must also add `entity_details_requested` to their bot event subscriptions; deploying Junior does not update Slack app settings.

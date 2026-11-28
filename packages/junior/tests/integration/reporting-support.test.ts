@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../fixtures/app-context";
 import { resetTestEnv } from "../fixtures/stub-env";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -15,6 +16,7 @@ describe("reporting support", () => {
       JUNIOR_STATE_ADAPTER: "memory",
     });
     vi.resetModules();
+    await useFreshAppContext();
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });

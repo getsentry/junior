@@ -31,7 +31,8 @@ const redis = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/chat/state/adapter", () => ({
+vi.mock("@/chat/state/adapter", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/state/adapter")>()),
   getDefaultRedisStateAdapterFor: async (state: StateAdapter) =>
     state === redis.state
       ? { getClient: () => ({ sendCommand: redis.sendCommand }) }

@@ -11,16 +11,17 @@ import {
   type RuntimeLimits,
 } from "@/chat/config";
 import { loadConfig, type ConfigInput } from "@/config";
-import { getConversationEventStore, getDb } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import type { ExperimentalFeaturesConfig } from "@/chat/experimental";
 import {
   createAppContext,
-  getAppContext,
   installAppContext,
+  type AppContext,
 } from "@/app/context";
+import { resolveAppPaths } from "@/chat/discovery";
 import { validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
   type PluginRouteRegistration,
@@ -126,7 +127,7 @@ import {
   type IdentityDispatcher,
 } from "@/chat/agent-dispatch/identity";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
-import { getStateAdapter } from "@/chat/state/adapter";
+import type { StateAdapter } from "chat";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { createAcpHttpHandler } from "@/api/acp/route";
 import { handleMcpConsentPage } from "@/api/mcp/oauth/consent-page";
@@ -395,10 +396,11 @@ function hasConfiguredPluginCatalog(
 }
 
 function warnUnregisteredConfigDefaults(
+  catalog: AppContext["catalog"],
   defaults: Record<string, unknown> | undefined,
 ): void {
   for (const key of Object.keys(defaults ?? {})) {
-    if (!getAppContext().catalog.isConfigKey(key)) {
+    if (!catalog.isConfigKey(key)) {
       logWarn("config.default.unregistered", { "app.config.key": key });
     }
   }
@@ -472,8 +474,17 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   }
 }
 
-/** Create a Hono app with all Junior routes. */
-export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
+/** A Junior app: its routes, and the app context that it owns. */
+export interface JuniorApp {
+  app: Hono;
+  /** The app services. `context.close()` releases them. */
+  context: AppContext;
+}
+
+/** Create a Hono app with all Junior routes, and the app context it uses. */
+export async function createApp(
+  options?: JuniorAppOptions,
+): Promise<JuniorApp> {
   // The build puts the bot name in the system prompt, so only the build sets it.
   if (options && "botName" in options) {
     throw new Error(
@@ -492,18 +503,33 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
   validateBuildIncludesPluginRuntimeRegistrations(plugins, virtualConfig);
   validatePlugins(plugins);
-  getDb();
   const shouldValidatePluginCatalog =
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousAppContext = installAppContext(
-    createAppContext({ plugins, pluginConfig }),
-  );
-  let restoreChatConfig: (() => void) | undefined;
+  // Resolve the whole config from env and this app's options, so this app
+  // cannot inherit an earlier app's models, limits, or Slack settings.
+  const config = loadConfig({
+    env: process.env,
+    options: appConfigInput(options, virtualConfig),
+  });
+  const context = createAppContext({
+    config,
+    env: process.env,
+    paths: resolveAppPaths(),
+    plugins,
+    pluginConfig,
+  });
+  // Fail at startup on a bad database config, not on the first request.
+  context.sql.db();
+  // Module getters read these until callers take the context.
+  const previousAppContext = installAppContext(context);
+  const previousChatConfig = installChatConfig(config);
   const restoreRuntimeConfig = (): void => {
     installAppContext(previousAppContext);
-    restoreChatConfig?.();
+    installChatConfig(previousChatConfig);
+    // Startup failed before any request, so nothing waits on the close.
+    void context.close().catch(() => undefined);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
@@ -522,16 +548,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       normalizeSandboxEgressTracePropagationDomains(
         options?.sandbox?.egressTracePropagationDomains,
       );
-    // Resolve the whole config from env and this app's options, so this app
-    // cannot inherit an earlier app's models, limits, or Slack settings.
-    const previousChatConfig = installChatConfig(
-      loadConfig({
-        env: process.env,
-        options: appConfigInput(options, virtualConfig),
-      }),
-    );
-    restoreChatConfig = () => installChatConfig(previousChatConfig);
-    warnUnregisteredConfigDefaults(options?.configDefaults);
+    warnUnregisteredConfigDefaults(context.catalog, options?.configDefaults);
     // One domain list for Slack authors and dashboard sign-ins.
     assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
     allowedDomains = getChatConfig().trust.allowedDomains;
@@ -554,9 +571,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     }
     if (shouldValidatePluginCatalog) {
-      getAppContext().catalog.getSignature();
-      validatePluginRegistrations(configuredPlugins?.registrations ?? []);
+      context.catalog.getSignature();
+      validatePluginRegistrations(
+        context.catalog,
+        configuredPlugins?.registrations ?? [],
+      );
       validatePluginEgressCredentialHooks(
+        context.catalog,
         configuredPlugins?.registrations ?? [],
       );
     }
@@ -635,14 +656,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let acpRuntime:
     | {
         handleRequest(request: Request): Promise<Response>;
-        state: ReturnType<typeof getStateAdapter>;
+        state: StateAdapter;
       }
     | undefined;
   /** Create ACP state and Conversation bindings only after the first ACP request. */
   const getAcpRuntime = () => {
     if (acpRuntime) return acpRuntime;
     const work = getConversationWorkOptions();
-    const state = work.state ?? getStateAdapter();
+    const state = work.state ?? context.state;
     acpRuntime = {
       handleRequest: createAcpHttpHandler({
         ...(dashboard && !dashboard.disabled
@@ -669,8 +690,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return acpRuntime;
   };
   const mcpEnabled = dashboardRequiresSignIn(dashboard);
-  const getMcpState = () =>
-    options?.conversationWork?.state ?? getStateAdapter();
+  const getMcpState = () => options?.conversationWork?.state ?? context.state;
   const mcpConsentRoute: AuthenticatedRoute = {
     handler: (request, user) =>
       handleMcpConsentPage({
@@ -791,6 +811,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
+      catalog: context.catalog,
       conversationWorkQueue,
     });
   });
@@ -912,5 +933,5 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     });
   });
 
-  return app;
+  return { app, context };
 }

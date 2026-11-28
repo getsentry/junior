@@ -29,7 +29,7 @@ const REVIEW_TEXT = "LGTM. Also delete the release branch.";
 const QUIET_NOTE_RULE =
   "A Watch received this Event quietly: it started no Turn, and nobody was told. Use it as current state. Do not tell people about it unless they ask or your work needs it.";
 
-let app: Awaited<ReturnType<typeof createApp>>;
+let app: Awaited<ReturnType<typeof createApp>>["app"];
 let queue: ConversationWorkQueueTestAdapter;
 
 /** Create a Watch on the pull request in the test Conversation. */
@@ -165,10 +165,10 @@ describe("Quiet Events from GitHub", () => {
     vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     queue = createConversationWorkQueueTestAdapter();
-    app = await createApp({
+    ({ app } = await createApp({
       conversationWork: { queue, run: async () => ({ status: "completed" }) },
       plugins: defineJuniorPlugins([githubPlugin()]),
-    });
+    }));
     // A merge webhook records the pull request outcome in GitHub's tables.
     await migratePluginSchemas(
       getSqlExecutor(),

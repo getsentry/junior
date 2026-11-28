@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 import { PollingQueueClient, QueueClient } from "@vercel/queue";
-import { getAppContext } from "@/app/context";
-import { getChatConfig } from "@/chat/config";
 import type {
   QueueConsumer,
   QueueProvider,
@@ -34,15 +32,6 @@ interface VercelQueueClients {
   send: QueueClient["send"];
 }
 
-/** The Vercel Queues clients of an app, and the config they were built from. */
-export interface VercelQueueClientCache {
-  current?: {
-    apiUrl: string | undefined;
-    deploymentId: string | undefined;
-    clients: VercelQueueClients;
-  };
-}
-
 function vercelQueueClients(
   apiUrl: string | undefined,
   deploymentId: string | undefined,
@@ -60,25 +49,6 @@ function vercelQueueClients(
     callbacks: client,
     send: new PollingQueueClient({ ...options, region: "iad1" }).send,
   };
-}
-
-// Build on first use, not at import, so env is read when the app runs.
-// Build again when the config they were built from changes.
-function getVercelQueueClients(): VercelQueueClients {
-  const { apiUrl } = getChatConfig().queue;
-  const deploymentId = getChatConfig().deployment.id;
-  const cache = getAppContext().queueProvider;
-  const { current } = cache;
-  if (
-    current &&
-    current.apiUrl === apiUrl &&
-    current.deploymentId === deploymentId
-  ) {
-    return current.clients;
-  }
-  const clients = vercelQueueClients(apiUrl, deploymentId);
-  cache.current = { apiUrl, deploymentId, clients };
-  return clients;
 }
 
 function visibility(consumer: QueueConsumer) {
@@ -105,23 +75,35 @@ function withBoundedIdempotencyKey(
   return { ...options, idempotencyKey: `${prefix}:${digest}` };
 }
 
-/** Queue provider backed by Vercel Queues. */
-export const vercelQueueProvider: QueueProvider = {
-  // OpenTelemetry has no well-known `messaging.system` value for Vercel Queues.
-  messagingSystem: "vercel_queue",
-  send: async (topic, payload, options) => {
-    const { messageId } = await getVercelQueueClients().send(
-      topic,
-      payload,
-      withBoundedIdempotencyKey(options),
-    );
-    return messageId ? { messageId } : {};
-  },
-  // Use a client with the options above. The SDK's top-level
-  // `handleCallback` uses a default client that ignores them.
-  createCallback: (consumer) =>
-    getVercelQueueClients().callbacks.handleCallback(consumer.handler, {
-      retry: consumer.retry,
-      ...visibility(consumer),
-    }),
-};
+/**
+ * Build a queue provider backed by Vercel Queues. It builds its clients on the
+ * first send or callback.
+ */
+export function createVercelQueueProvider(options: {
+  apiUrl: string | undefined;
+  deploymentId: string | undefined;
+}): QueueProvider {
+  let clients: VercelQueueClients | undefined;
+  const getClients = (): VercelQueueClients =>
+    (clients ??= vercelQueueClients(options.apiUrl, options.deploymentId));
+  return {
+    // OpenTelemetry has no well-known `messaging.system` value for Vercel
+    // Queues.
+    messagingSystem: "vercel_queue",
+    send: async (topic, payload, sendOptions) => {
+      const { messageId } = await getClients().send(
+        topic,
+        payload,
+        withBoundedIdempotencyKey(sendOptions),
+      );
+      return messageId ? { messageId } : {};
+    },
+    // Use a client with the options above. The SDK's top-level
+    // `handleCallback` uses a default client that ignores them.
+    createCallback: (consumer) =>
+      getClients().callbacks.handleCallback(consumer.handler, {
+        retry: consumer.retry,
+        ...visibility(consumer),
+      }),
+  };
+}

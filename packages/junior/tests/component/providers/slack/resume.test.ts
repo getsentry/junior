@@ -1,16 +1,16 @@
 import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { loadConfig } from "@/config";
 import {
   deliverAssistantMessagesForTest,
   createTestTurnExecution,
   neverRunAgentRunner,
 } from "../../../fixtures/agent-runner";
+import { useAppContext } from "../../../fixtures/app-context";
 import { getCapturedSlackApiCalls } from "../../../msw/handlers/slack-api";
 
-const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
 const TEST_SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -56,19 +56,13 @@ function successfulAgentRun(text: string) {
 }
 
 describe("Slack resume result handling", () => {
-  beforeEach(async () => {
-    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
-    vi.resetModules();
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    await disconnectStateAdapter();
-    if (ORIGINAL_STATE_ADAPTER === undefined) {
-      delete process.env["JUNIOR_STATE_ADAPTER"];
-    } else {
-      process.env["JUNIOR_STATE_ADAPTER"] = ORIGINAL_STATE_ADAPTER;
-    }
+  beforeEach(() => {
+    useAppContext({
+      config: loadConfig({
+        env: process.env,
+        options: { state: { adapter: "memory" } },
+      }),
+    });
   });
 
   it("posts the safe fallback when failure-state persistence fails", async () => {

@@ -52,6 +52,7 @@ export default defineConfig({
     sequence: { setupFiles: "list" },
     setupFiles: [
       path.resolve(__dirname, "src/stable-setup.ts"),
+      path.resolve(juniorPackageRoot, "tests/fixtures/app-context-setup.ts"),
       "@sentry/roach/vitest/setup",
       path.resolve(__dirname, "src/fetch-setup.ts"),
     ],

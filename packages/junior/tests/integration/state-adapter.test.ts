@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../fixtures/app-context";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 import { createTestMessage } from "../fixtures/slack-harness";
 import { resetTestEnv } from "../fixtures/stub-env";
@@ -15,6 +16,7 @@ async function loadMemoryStateAdapter(
     ...env,
   });
   vi.resetModules();
+  await useFreshAppContext();
   stateAdapterModule = await import("@/chat/state/adapter");
   return stateAdapterModule;
 }

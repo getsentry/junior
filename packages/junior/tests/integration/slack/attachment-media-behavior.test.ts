@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../../fixtures/app-context";
 import type { Message } from "chat";
 import type { AgentAttachment } from "@/chat/agent/types";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
@@ -39,6 +40,7 @@ async function createRuntime(
     ...env,
   });
   vi.resetModules();
+  await useFreshAppContext();
   const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
   return createTestChatRuntime(args);
 }

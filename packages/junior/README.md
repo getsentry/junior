@@ -27,7 +27,7 @@ initSentry();
 import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins.ts";
 
-const app = await createApp({
+const { app } = await createApp({
   plugins,
 });
 

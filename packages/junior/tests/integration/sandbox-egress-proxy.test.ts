@@ -14,6 +14,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../fixtures/app-context";
 import * as z from "zod";
 import {
   createPluginAppFixture,
@@ -69,6 +70,7 @@ interface LoadedModules {
 
 async function loadModules(): Promise<LoadedModules> {
   vi.resetModules();
+  await useFreshAppContext();
   const [logging, policy, vercel, session, state] = await Promise.all([
     import("@/chat/logging"),
     import("@/chat/sandbox/egress/policy"),

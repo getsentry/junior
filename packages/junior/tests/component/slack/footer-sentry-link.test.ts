@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type MockDsn = {
   host: string;
@@ -8,30 +8,39 @@ type MockDsn = {
   protocol: "http" | "https";
 };
 
-function mockSentryClient(args: { dsn?: MockDsn; orgId?: number | string }) {
-  vi.doMock("@/chat/sentry", () => ({
-    getClient: () => ({
-      getDsn: () => args.dsn,
-      getOptions: () => ({
-        orgId: args.orgId,
-      }),
+type MockSentryClient = { dsn?: MockDsn; orgId?: number | string };
+
+const { sentryClient } = vi.hoisted(() => ({
+  sentryClient: { current: {} as MockSentryClient },
+}));
+
+vi.mock("@/chat/sentry", () => ({
+  getClient: () => ({
+    getDsn: () => sentryClient.current.dsn,
+    getOptions: () => ({
+      orgId: sentryClient.current.orgId,
     }),
-  }));
+  }),
+}));
+
+import {
+  buildSlackReplyBlocks,
+  buildSlackReplyFooter,
+} from "@/chat/slack/footer";
+import { useConfig } from "../../fixtures/config";
+
+function mockSentryClient(args: MockSentryClient) {
+  sentryClient.current = args;
 }
 
-async function loadFooter() {
-  return await import("@/chat/slack/footer");
-}
-
-afterEach(() => {
-  delete process.env["SENTRY_ORG_SLUG"];
-  vi.doUnmock("@/chat/sentry");
-  vi.resetModules();
+beforeEach(() => {
+  sentryClient.current = {};
+  useConfig({}, { SENTRY_ORG_SLUG: undefined });
 });
 
 describe("Slack footer Sentry links", () => {
-  it("links to the conversations page using org slug subdomain for SaaS", async () => {
-    process.env["SENTRY_ORG_SLUG"] = "my-org";
+  it("links to the conversations page using org slug subdomain for SaaS", () => {
+    useConfig({}, { SENTRY_ORG_SLUG: "my-org" });
     mockSentryClient({
       dsn: {
         protocol: "https",
@@ -40,7 +49,6 @@ describe("Slack footer Sentry links", () => {
       },
     });
 
-    const { buildSlackReplyBlocks, buildSlackReplyFooter } = await loadFooter();
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",
     });
@@ -62,7 +70,7 @@ describe("Slack footer Sentry links", () => {
     ]);
   });
 
-  it("leaves the ID plain when SENTRY_ORG_SLUG is not set even with numeric org data", async () => {
+  it("leaves the ID plain when SENTRY_ORG_SLUG is not set even with numeric org data", () => {
     mockSentryClient({
       dsn: {
         protocol: "https",
@@ -71,8 +79,6 @@ describe("Slack footer Sentry links", () => {
       },
       orgId: 456,
     });
-
-    const { buildSlackReplyFooter } = await loadFooter();
 
     expect(buildSlackReplyFooter({ conversationId: "conversation-1" })).toEqual(
       {
@@ -86,8 +92,8 @@ describe("Slack footer Sentry links", () => {
     );
   });
 
-  it("uses /organizations/{slug}/ for self-hosted DSN", async () => {
-    process.env["SENTRY_ORG_SLUG"] = "my-org";
+  it("uses /organizations/{slug}/ for self-hosted DSN", () => {
+    useConfig({}, { SENTRY_ORG_SLUG: "my-org" });
     mockSentryClient({
       dsn: {
         protocol: "https",
@@ -95,8 +101,6 @@ describe("Slack footer Sentry links", () => {
         projectId: "4501",
       },
     });
-
-    const { buildSlackReplyFooter } = await loadFooter();
 
     expect(buildSlackReplyFooter({ conversationId: "conversation-1" })).toEqual(
       {
@@ -111,7 +115,7 @@ describe("Slack footer Sentry links", () => {
     );
   });
 
-  it("leaves the ID plain when the active DSN has no organization target", async () => {
+  it("leaves the ID plain when the active DSN has no organization target", () => {
     mockSentryClient({
       dsn: {
         protocol: "https",
@@ -119,8 +123,6 @@ describe("Slack footer Sentry links", () => {
         projectId: "4501",
       },
     });
-
-    const { buildSlackReplyFooter } = await loadFooter();
 
     expect(buildSlackReplyFooter({ conversationId: "conversation-1" })).toEqual(
       {

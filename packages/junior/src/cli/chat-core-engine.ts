@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { localDestinationSchema } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
-import { getChatConfig } from "@/chat/config";
+import type { ChatConfig } from "@/chat/config";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { getConversationStore } from "@/chat/db";
 import { startLocalVercelQueueServer } from "@/chat/queue/local-server";
@@ -114,11 +114,13 @@ async function lastAssistantText(
  * Sends one message to a new local Conversation through the core Turn
  * engine, and returns the reply when its Turn ends.
  */
-export async function runCoreEnginePrompt(args: {
-  conversationId: string;
-  message: string;
-}): Promise<CoreEngineResult> {
-  const config = getChatConfig();
+export async function runCoreEnginePrompt(
+  config: ChatConfig,
+  args: {
+    conversationId: string;
+    message: string;
+  },
+): Promise<CoreEngineResult> {
   const engineCtx = createEngineContext(config);
   const { apiUrl } = config.queue;
   const port = apiUrl ? Number(new URL(apiUrl).port) : 0;

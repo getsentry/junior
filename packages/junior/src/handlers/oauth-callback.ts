@@ -22,7 +22,7 @@ import { logWarn, runBestEffort } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 
-import { getAppContext } from "@/app/context";
+import type { AppContext } from "@/app/context-types";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
@@ -64,6 +64,8 @@ import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
 import { botConfig, getChatConfig } from "@/chat/config";
 
 interface OAuthCallbackOptions {
+  /** Plugin catalog that owns the provider's OAuth config. */
+  catalog: AppContext["catalog"];
   /** Queue used to wake parked turns after authorization completes. */
   conversationWorkQueue?: ConversationWorkQueue;
 }
@@ -212,7 +214,7 @@ export async function GET(
   if (localRelay) {
     return localRelay;
   }
-  const providerConfig = getAppContext().catalog.getOAuthConfig(provider);
+  const providerConfig = options.catalog.getOAuthConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse(
       "Unknown provider",

@@ -266,8 +266,7 @@ describe("cache warming gap segments", () => {
   });
 
   it("warms a segment with no gaps of its own with the gaps of its parent", async () => {
-    const state = getStateAdapter();
-    await createApp({
+    const { context } = await createApp({
       dashboard: { disabled: true },
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -286,6 +285,7 @@ describe("cache warming gap segments", () => {
         }),
       ]),
     });
+    const { state } = context;
     await getConversationStore().recordActivity({
       conversationId: openWorkConversationId,
       destination: {

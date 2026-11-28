@@ -9,7 +9,9 @@ import path from "node:path";
 import { serve } from "@hono/node-server";
 import { createApp } from "@/app";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { getSqlExecutor } from "@/chat/db";
+import { createAppContext, installAppContext } from "@/app/context";
+import { resolveAppPaths } from "@/chat/discovery";
+import { loadConfig } from "@/config";
 import {
   closeConversationFixture,
   createConversationWebHarness,
@@ -30,7 +32,14 @@ function localPort(): number {
   return port;
 }
 
-await migrateSchema(getSqlExecutor());
+// The harness reads its stores before createApp builds the app's context.
+const harnessContext = createAppContext({
+  config: loadConfig({ env: process.env }),
+  env: process.env,
+  paths: resolveAppPaths(),
+});
+installAppContext(harnessContext);
+await migrateSchema(harnessContext.sql);
 const harness = await createConversationWebHarness(
   streamScript(process.env["JUNIOR_ACP_LOCAL_REPLY"]?.trim() || DEFAULT_REPLY),
 );
@@ -38,7 +47,7 @@ const harness = await createConversationWebHarness(
 delete process.env["JUNIOR_BASE_URL"];
 delete process.env["VERCEL_PROJECT_PRODUCTION_URL"];
 delete process.env["VERCEL_URL"];
-const app = await createApp({
+const { app } = await createApp({
   conversationWork: harness.conversationWork,
   dashboard: { authRequired: false },
 });

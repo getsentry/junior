@@ -1,4 +1,5 @@
 import path from "node:path";
+import { getAppContext } from "@/app/context";
 import { describe, expect, it, vi } from "vitest";
 import {
   defineJuniorPlugin,
@@ -240,7 +241,9 @@ describe("local agent runner", () => {
           { type: "text", text: "Eval Auth is connected." },
         ]);
       });
-      oauthCallback = await startLocalOAuthCallbackServer();
+      oauthCallback = await startLocalOAuthCallbackServer(
+        getAppContext().catalog,
+      );
       const completeAuthorization = async (authorizationUrl: string) => {
         const providerResponse = await fetch(authorizationUrl, {
           redirect: "manual",

@@ -63,7 +63,9 @@ describe("remote MCP HTTP", () => {
   });
 
   it("connects a CIMD client and lists only the signed-in user's Conversations", async () => {
-    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const { app } = await createApp({
+      allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+    });
     const pkce = createPkce();
     await seedMcpConversation({
       conversationId: "slack:C123:1700000000.000100",
@@ -201,7 +203,9 @@ describe("remote MCP HTTP", () => {
   });
 
   it("signs in Junior's iOS app with no client document and its URL scheme redirect", async () => {
-    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const { app } = await createApp({
+      allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+    });
     const pkce = createPkce();
     const [redirectUri] = JUNIOR_IOS_CLIENT.redirectUris;
 
@@ -247,7 +251,9 @@ describe("remote MCP HTTP", () => {
   });
 
   it("sends a denial to the client callback through the redirect page", async () => {
-    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const { app } = await createApp({
+      allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+    });
     const authorize = await app.request(
       mcpAuthorizeUrl({
         client_id: MCP_CLIENT_ID,
@@ -281,7 +287,9 @@ describe("remote MCP HTTP", () => {
   });
 
   it("rejects a personal token and a token for a domain that is no longer allowed", async () => {
-    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const { app } = await createApp({
+      allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+    });
     const personal = await createPersonalToken({
       email: MCP_TEST_VIEWER,
       name: "MCP rejected token",
@@ -292,7 +300,7 @@ describe("remote MCP HTTP", () => {
 
     const response = await listTools(app, personal.token);
     const removedDomain = await listTools(
-      await createApp({ allowedDomains: ["other.example"] }),
+      (await createApp({ allowedDomains: ["other.example"] })).app,
       tokens.access_token,
     );
 
@@ -304,7 +312,9 @@ describe("remote MCP HTTP", () => {
   });
 
   it("ends a grant 30 days after consent even when it is refreshed", async () => {
-    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const { app } = await createApp({
+      allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+    });
     const day = 24 * 60 * 60 * 1000;
     const startMs = Date.now();
     const tokens = (await (
@@ -326,7 +336,9 @@ describe("remote MCP HTTP", () => {
   });
 
   it("revokes the grant when a code or a rotated refresh token is reused", async () => {
-    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const { app } = await createApp({
+      allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+    });
     const approval = await approveMcpClient(app, MCP_TEST_VIEWER);
     const first = (await (
       await exchangeMcpCode(app, approval)
@@ -380,7 +392,9 @@ describe("remote MCP HTTP", () => {
   ])(
     "shows an error without redirecting for %s",
     async (_, clientId, redirectUri) => {
-      const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+      const { app } = await createApp({
+        allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+      });
 
       const response = await app.request(
         mcpAuthorizeUrl({
@@ -399,7 +413,9 @@ describe("remote MCP HTTP", () => {
   );
 
   it("shows the requested scopes and lists only their tools", async () => {
-    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const { app } = await createApp({
+      allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+    });
     // An empty scope asks for every scope.
     const everyScope = await approveMcpClient(app, MCP_TEST_VIEWER, "");
     const everyTokens = (await (
@@ -472,7 +488,9 @@ describe("remote MCP HTTP", () => {
   });
 
   it("reads the old review_items:read scope as inbox_items:read", async () => {
-    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const { app } = await createApp({
+      allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
+    });
     const tokens = (await (
       await exchangeMcpCode(
         app,
@@ -501,7 +519,7 @@ describe("remote MCP HTTP", () => {
   });
 
   it("does not mount when dashboard sign-in is not required", async () => {
-    const app = await createApp({
+    const { app } = await createApp({
       dashboard: { authRequired: false, baseURL: MCP_TEST_ORIGIN },
     });
 

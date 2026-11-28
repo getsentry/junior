@@ -1,6 +1,6 @@
 import { searchCatalogTools } from "@/chat/tool-support/catalog-search";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   createWebSource,
   defineJuniorPlugin,
@@ -10,7 +10,6 @@ import {
 import * as z from "zod";
 import { githubPlugin } from "@sentry/junior-github";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
@@ -239,10 +238,6 @@ describe("tool search ranking", () => {
     });
     tools = catalogTools();
     catalog = planToolExposure(catalogToolDefinitions()).catalogTools;
-  });
-
-  afterAll(async () => {
-    await closeDb();
   });
 
   // Compare whole tables so one run shows every ranking regression.

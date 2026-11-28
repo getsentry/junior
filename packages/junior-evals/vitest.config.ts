@@ -45,6 +45,7 @@ export default defineConfig({
       path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
+      path.resolve(juniorPackageRoot, "tests/fixtures/app-context-setup.ts"),
     ],
   },
 });

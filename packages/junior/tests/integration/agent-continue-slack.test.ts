@@ -1,5 +1,6 @@
 import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../fixtures/app-context";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   SLACK_DESTINATION,
@@ -108,6 +109,7 @@ describe("paused turn Slack integration", () => {
     });
 
     vi.resetModules();
+    await useFreshAppContext();
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
     pausedTurnModule = await import("@/chat/task-execution/paused-turn");

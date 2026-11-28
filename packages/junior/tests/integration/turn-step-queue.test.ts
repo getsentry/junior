@@ -15,7 +15,7 @@ import {
   type LocalVercelQueueServer,
 } from "@/chat/queue/local-server";
 import {
-  getQueueProvider,
+  createQueueProvider,
   type QueueConsumer,
   type QueueMessageMetadata,
 } from "@/chat/queue/provider";
@@ -24,6 +24,7 @@ import * as Sentry from "@/chat/sentry";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { publishTurnStep, createTurnStepConsumer } from "@/core/turn/queue";
+import { loadConfig } from "@/config";
 import { useConfig } from "../fixtures/config";
 
 // Chat config reads the queue API URL when it loads, so pick the port first.
@@ -98,7 +99,8 @@ afterEach(async () => {
 
 // The queue and lease parts of the engine context. The consumer only records
 // its runs, so it needs no database.
-const engineCtx = { queue: getQueueProvider(), leaseMs: LEASE_MS };
+const queue = createQueueProvider(loadConfig({ env: process.env }));
+const engineCtx = { queue, leaseMs: LEASE_MS };
 
 /** The step runner that the runner PR adds. It only records its runs. */
 const turnStep = createTurnStepConsumer(
@@ -119,7 +121,7 @@ const turnStep = createTurnStepConsumer(
  * sooner.
  */
 async function startConsumer(consumer: QueueConsumer): Promise<void> {
-  const callback = getQueueProvider().createCallback(consumer);
+  const callback = queue.createCallback(consumer);
   server = await startLocalVercelQueueServer({
     consumers: [
       {
@@ -291,11 +293,11 @@ describe("turn step queue on the local Vercel Queues server", () => {
 
     // Change the signed Turn id, then send the real message after it.
     const otherTurnId = `turn_${randomUUID()}`;
-    await getQueueProvider().send(TURN_STEP_TOPIC, {
+    await queue.send(TURN_STEP_TOPIC, {
       ...payloads[0],
       turnId: otherTurnId,
     });
-    await getQueueProvider().send(TURN_STEP_TOPIC, payloads[0]);
+    await queue.send(TURN_STEP_TOPIC, payloads[0]);
     await waitFor(() => runsOfThisTurn().length > 0);
     await new Promise((resolve) => setTimeout(resolve, 500));
 

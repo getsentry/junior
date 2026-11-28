@@ -273,7 +273,6 @@ ignores:
   - packages/junior/src/chat/plugins/unfinished-work.ts
   - packages/junior/src/chat/plugins/user-pages.ts
   - packages/junior/src/chat/plugins/user-search-hooks.ts
-  - packages/junior/src/chat/plugins/validation.ts
   - packages/junior/src/chat/plugins/viewer.ts
   - packages/junior/src/chat/providers/slack/input.ts
   - packages/junior/src/chat/providers/slack/processing-reaction.ts
@@ -283,7 +282,6 @@ ignores:
   - packages/junior/src/chat/queue/callback.ts
   - packages/junior/src/chat/queue/provider.ts
   - packages/junior/src/chat/queue/sign.ts
-  - packages/junior/src/chat/queue/vercel.ts
   - packages/junior/src/chat/related-conversations/find.ts
   - packages/junior/src/chat/runtime/dev-agent-trace.ts
   - packages/junior/src/chat/runtime/request-deadline.ts
@@ -393,13 +391,9 @@ ignores:
   - packages/junior/src/chat/workspaces/tool-support.ts
   - packages/junior/src/chat/workspaces/tools/list.ts
   - packages/junior/src/chat/workspaces/tools/switch.ts
-  - packages/junior/src/cli/admin.ts
   - packages/junior/src/cli/chat-core-engine.ts
   - packages/junior/src/cli/chat.ts
-  - packages/junior/src/cli/plugins.ts
-  - packages/junior/src/cli/service-account.ts
-  - packages/junior/src/cli/snapshot-create.ts
-  - packages/junior/src/cli/upgrade.ts
+  - packages/junior/src/cli/context.ts
   - packages/junior/src/dashboard-routes.ts
   - packages/junior/src/delivery/compat__turn-ended.ts
   - packages/junior/src/deployment.ts
@@ -494,7 +488,7 @@ metadata:
     packages/junior/src/api/user-settings.ts: 3
     packages/junior/src/api/versions.ts: 2
     packages/junior/src/api/workspaces/routes.ts: 3
-    packages/junior/src/app.ts: 38
+    packages/junior/src/app.ts: 29
     packages/junior/src/app/context.ts: 2
     packages/junior/src/chat/agent-dispatch/context.ts: 3
     packages/junior/src/chat/agent-dispatch/heartbeat.ts: 10
@@ -583,7 +577,7 @@ metadata:
     packages/junior/src/chat/credentials/subject.ts: 9
     packages/junior/src/chat/credentials/unlink-provider.ts: 2
     packages/junior/src/chat/dashboard-link.ts: 3
-    packages/junior/src/chat/db.ts: 11
+    packages/junior/src/chat/db.ts: 12
     packages/junior/src/chat/egress/credentialed.ts: 2
     packages/junior/src/chat/egress/http-cache.ts: 2
     packages/junior/src/chat/encryption/secret.ts: 3
@@ -679,7 +673,6 @@ metadata:
     packages/junior/src/chat/plugins/unfinished-work.ts: 5
     packages/junior/src/chat/plugins/user-pages.ts: 5
     packages/junior/src/chat/plugins/user-search-hooks.ts: 3
-    packages/junior/src/chat/plugins/validation.ts: 4
     packages/junior/src/chat/plugins/viewer.ts: 8
     packages/junior/src/chat/providers/slack/input.ts: 2
     packages/junior/src/chat/providers/slack/processing-reaction.ts: 5
@@ -687,9 +680,8 @@ metadata:
     packages/junior/src/chat/providers/slack/runtime.ts: 4
     packages/junior/src/chat/providers/slack/turn.ts: 15
     packages/junior/src/chat/queue/callback.ts: 2
-    packages/junior/src/chat/queue/provider.ts: 1
+    packages/junior/src/chat/queue/provider.ts: 3
     packages/junior/src/chat/queue/sign.ts: 3
-    packages/junior/src/chat/queue/vercel.ts: 5
     packages/junior/src/chat/related-conversations/find.ts: 8
     packages/junior/src/chat/runtime/dev-agent-trace.ts: 3
     packages/junior/src/chat/runtime/request-deadline.ts: 2
@@ -760,7 +752,7 @@ metadata:
     packages/junior/src/chat/spaces/conversations.ts: 2
     packages/junior/src/chat/spaces/store.ts: 8
     packages/junior/src/chat/spaces/tree-space.ts: 2
-    packages/junior/src/chat/state/adapter.ts: 11
+    packages/junior/src/chat/state/adapter.ts: 13
     packages/junior/src/chat/system-prompt.ts: 4
     packages/junior/src/chat/task-execution/authorized-turn.ts: 3
     packages/junior/src/chat/task-execution/checkpoint.ts: 4
@@ -799,19 +791,15 @@ metadata:
     packages/junior/src/chat/workspaces/tool-support.ts: 2
     packages/junior/src/chat/workspaces/tools/list.ts: 2
     packages/junior/src/chat/workspaces/tools/switch.ts: 2
-    packages/junior/src/cli/admin.ts: 3
-    packages/junior/src/cli/chat-core-engine.ts: 4
-    packages/junior/src/cli/chat.ts: 6
-    packages/junior/src/cli/plugins.ts: 5
-    packages/junior/src/cli/service-account.ts: 3
-    packages/junior/src/cli/snapshot-create.ts: 4
-    packages/junior/src/cli/upgrade.ts: 2
+    packages/junior/src/cli/chat-core-engine.ts: 2
+    packages/junior/src/cli/chat.ts: 3
+    packages/junior/src/cli/context.ts: 3
     packages/junior/src/dashboard-routes.ts: 4
     packages/junior/src/delivery/compat__turn-ended.ts: 2
     packages/junior/src/deployment.ts: 2
     packages/junior/src/handlers/artifacts.ts: 4
     packages/junior/src/handlers/mcp-oauth-callback.ts: 4
-    packages/junior/src/handlers/oauth-callback.ts: 12
+    packages/junior/src/handlers/oauth-callback.ts: 10
     packages/junior/src/handlers/oauth-html.ts: 3
     packages/junior/src/handlers/retention.ts: 4
     packages/junior/src/handlers/sandbox-egress-signals.ts: 2

@@ -14,7 +14,7 @@ const [
   import("./live-preview.ts"),
 ]);
 
-const app = await createApp({
+const { app } = await createApp({
   allowedDomains: ["sentry.io"],
   dashboard: {
     authRequired: exampleDashboardAuthRequired(),
