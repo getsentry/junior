@@ -99,7 +99,7 @@ function lastPushCallback() {
 }
 
 describe("Vercel queue provider", () => {
-  it("sends a key over 256 characters as a stable shorter key", async () => {
+  it("sends a key over 256 characters as its start and a stable hash", async () => {
     const send = (idempotencyKey: string) =>
       getQueueProvider().send("topic", {}, { idempotencyKey });
     const sentKey = () => mocks.send.mock.lastCall?.[2]?.idempotencyKey;
@@ -109,7 +109,8 @@ describe("Vercel queue provider", () => {
     const first = sentKey();
     await send(longKey);
     expect(sentKey()).toBe(first);
-    expect(first?.length).toBeLessThanOrEqual(256);
+    expect(first).toHaveLength(256);
+    expect(first?.startsWith(longKey.slice(0, 191))).toBe(true);
 
     await send(`${longKey}b`);
     expect(sentKey()).not.toBe(first);
