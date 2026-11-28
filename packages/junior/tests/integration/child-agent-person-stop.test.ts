@@ -1,8 +1,13 @@
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AgentRun } from "@/chat/agent/types";
+import { bindMessageAgent } from "@/chat/child-agents/message";
 import { readParentMessage } from "@/chat/child-agents/parent-message-input";
 import { resultAuthorId } from "@/chat/child-agents/sender-actors";
+import { bindSpawnAgent } from "@/chat/child-agents/spawn";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
+import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getSqlExecutor } from "@/chat/db";
@@ -12,7 +17,10 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { changeTodos, listTodos } from "@/chat/todos/store";
+import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { slackParentConversationId } from "../fixtures/child-agents";
+import { webTestActor } from "../fixtures/conversation";
 import { mailboxTexts, message, spawn } from "../fixtures/parent-agent-tools";
 import { readProxyProperty } from "../fixtures/proxy-property";
 import {
@@ -73,6 +81,129 @@ describe("a person's stop of a child agent", () => {
       }
     },
   );
+
+  it("lets a person's Turn in a stopped Thread give work to its child agents, but not a Turn from before the stop", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    // The `startAgent` and `messageAgent` tools that a Turn of the Thread
+    // gets.
+    const agentTools = (run: AgentRun) => ({
+      startAgent: createStartAgentTool(
+        bindSpawnAgent(run, {
+          conversationStore: harness.conversationStore,
+          queue: harness.queue,
+          state: harness.state,
+        })!,
+        { owner: "none" },
+      ),
+      messageAgent: createMessageAgentTool(
+        bindMessageAgent(run, { queue: harness.queue, state: harness.state })!,
+      ),
+    });
+    const giveWork = async (run: AgentRun, helperId: string, key: string) => {
+      const { startAgent, messageAgent } = agentTools(run);
+      return await Promise.allSettled([
+        startAgent.execute!(
+          startAgent.prepareArguments({
+            task: "Check the metrics.",
+            title: "Metrics",
+          }),
+          { toolCallId: `${key}:start` },
+        ),
+        messageAgent.execute!(
+          { text: "Check the logs again.", to: helperId },
+          { toolCallId: `${key}:message` },
+        ),
+      ]);
+    };
+    try {
+      const threadId = await spawn(harness, "call-1", { kind: "thread" });
+      // The Thread's task Turn starts a helper.
+      let taskRun: AgentRun | undefined;
+      let helperId = "";
+      harness.onRun(async (run) => {
+        taskRun = run;
+        await commitRunInput(run);
+        const { startAgent } = agentTools(run);
+        ({ conversation_id: helperId } = await startAgent.execute!(
+          startAgent.prepareArguments({
+            task: "Check the logs.",
+            title: "Logs",
+          }),
+          { toolCallId: "task:start" },
+        ));
+        return await finishRun(run);
+      });
+      await harness.drain(threadId);
+
+      const stoppedAtMs = 1_800_000_002_000;
+      vi.setSystemTime(stoppedAtMs);
+      await stopConversation({
+        conversationId: threadId,
+        conversationStore: harness.conversationStore,
+        queue: harness.queue,
+        state: harness.state,
+      });
+
+      // The task Turn started before the stop, so it gives no work.
+      await expect(giveWork(taskRun!, helperId, "late")).resolves.toEqual([
+        {
+          status: "rejected",
+          reason: expect.objectContaining({
+            message: expect.stringContaining("is stopped"),
+          }),
+        },
+        {
+          status: "fulfilled",
+          value: expect.objectContaining({ delivery: "noted" }),
+        },
+      ]);
+
+      // A person's message that was sent before the stop arrives after it.
+      // It runs, and the Thread stays stopped.
+      vi.setSystemTime(1_800_000_003_000);
+      await appendAndEnqueueWebMessage(
+        {
+          actor: webTestActor,
+          conversationId: threadId,
+          idempotencyKey: "person-1",
+          message: "What did you find?",
+        },
+        {
+          conversationStore: harness.conversationStore,
+          nowMs: 1_800_000_001_000,
+          queue: harness.queue,
+          state: harness.state,
+        },
+      );
+      let personWork: Awaited<ReturnType<typeof giveWork>> | undefined;
+      harness.onRun(async (run) => {
+        await commitRunInput(run);
+        personWork = await giveWork(run, helperId, "person");
+        return await finishRun(run);
+      });
+      await harness.drain(threadId);
+
+      expect(harness.runs.at(-1)).toMatchObject({ source: { kind: "web" } });
+      await expect(getConversationStoppedAtMs(threadId)).resolves.toBe(
+        stoppedAtMs,
+      );
+      expect(personWork).toEqual([
+        {
+          status: "fulfilled",
+          value: expect.objectContaining({
+            conversation_id: expect.any(String),
+          }),
+        },
+        {
+          status: "fulfilled",
+          value: expect.objectContaining({ delivery: "started" }),
+        },
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
 
   it.each([
     { kind: "task", when: "waits" },

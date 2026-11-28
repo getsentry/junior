@@ -240,6 +240,8 @@ export async function reportPersonStopToParent(
     stoppedAtMs: number;
   },
 ): Promise<void> {
+  // Only a child agent stores an agent config. Advisor histories from before
+  // child agents also have a parent edge, but they are not child agents.
   if (!(await readAgentConfig(conversationId))) {
     return;
   }

@@ -44,22 +44,6 @@ export const MAX_ACTIVE_CHILD_AGENTS = 8;
 type SpawnInput = ReturnType<typeof spawnChildAgentInputSchema.parse>;
 
 /**
- * A stopped child agent cannot start or give work to child agents until its
- * parent gives it new work, which ends the stop. A root Conversation has no
- * agent config, so it always passes.
- */
-async function assertCanGiveChildWork(
-  parentConversationId: string,
-): Promise<void> {
-  if (
-    (await readAgentConfig(parentConversationId)) !== undefined &&
-    (await getConversationStoppedAtMs(parentConversationId)) !== undefined
-  ) {
-    throw new AgentStoppedError();
-  }
-}
-
-/**
  * Throw when giving work to one child agent would put its parent over
  * `MAX_ACTIVE_CHILD_AGENTS`. A child agent is active while its listing shows
  * open work, so a busy child already counts and messages queued for it do not
@@ -82,16 +66,15 @@ function assertChildAgentCapacity(
 
 /**
  * Create the Conversation of one new child agent and bind its name, after
- * the checks that every new child passes: its parent can give work, the name
- * is free, and the parent has room. Call it under the parent lock, in the
- * same transaction, so no other create can take this name or room first.
+ * the checks that every new child passes: the name is free, and the parent
+ * has room. Call it under the parent lock, in the same transaction, after
+ * `isStoppedInTurn`, so no other create can take this name or room first.
  */
 async function createChildAgentConversation(
   input: SpawnInput,
   childConversationId: string,
   nowMs: number,
 ): Promise<void> {
-  await assertCanGiveChildWork(input.parentConversationId);
   if (
     input.agentName &&
     (await getAgentBinding({
@@ -205,11 +188,16 @@ function spawnAgentConfig(input: SpawnInput): AgentConfig {
 
 /**
  * Return whether a Conversation's current Turn is stopped: its run has a stop
- * request, or the stop came after the Turn started. A stop's time is when its
- * message was sent, so a Turn that started before the stop arrived still has
- * the stop request. Any other stop from before the Turn does not count: a
- * later Turn runs past it, such as one for the reply of a Thread that a
- * person resumed. With no record of the Turn's start, any stop counts.
+ * request, or the stop came after the Turn started. This is the only check
+ * that keeps a stopped parent, a root or a child agent, from giving work.
+ * `stopChildAgentsOf` stops a child that a spawn created after the stop but
+ * before this check saw it.
+ *
+ * A stop's time is when its message was sent, so a Turn that started before
+ * the stop arrived still has the stop request. Any other stop from before
+ * the Turn does not count: a later Turn runs past it, such as one for the
+ * reply of a Thread that a person resumed. With no record of the Turn's
+ * start, any stop counts.
  */
 async function isStoppedInTurn(
   conversationId: string,
@@ -367,7 +355,6 @@ export async function messageChildAgent(
         });
         return { delivery: "noted", value: "noted" as const };
       }
-      await assertCanGiveChildWork(input.parentConversationId);
       const active = await listOpenChildAgents(input.parentConversationId);
       assertChildAgentCapacity(active, input.childConversationId);
       const queued = active.includes(input.childConversationId);
