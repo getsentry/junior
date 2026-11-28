@@ -5,7 +5,10 @@
  * cannot read GitHub through host egress. This file calls GitHub directly,
  * with a metadata-only installation token.
  */
-import type { PluginCache } from "@sentry/junior-plugin-api";
+import {
+  CACHE_LOAD_TIMEOUT_MS,
+  type PluginCache,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   githubRequest,
@@ -16,9 +19,6 @@ import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js"
 
 // Default branches change rarely. A rename takes effect within this window.
 const DEFAULT_BRANCH_TTL_MS = 10 * 60 * 1000;
-// Under the cache's 10 s load wait, so the push waiters of a slow read get
-// its answer or its error instead of each reading GitHub again.
-const DEFAULT_BRANCH_TIMEOUT_MS = 5000;
 
 const repositorySchema = z.object({ default_branch: z.string().min(1) });
 
@@ -35,19 +35,18 @@ export async function loadDefaultBranch(
   return await cache.getOrLoad(
     `default-branch:${owner}/${name}`.toLowerCase(),
     async () => {
+      const signal = AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS);
       const token = await issueInstallationToken({
         ...env,
         permissions: { metadata: "read" },
         repositories: [name],
+        signal,
       });
       const response = repositorySchema.parse(
         await githubRequest(
           "https://api.github.com",
           `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
-          {
-            signal: AbortSignal.timeout(DEFAULT_BRANCH_TIMEOUT_MS),
-            token: token.token,
-          },
+          { signal, token: token.token },
         ),
       );
       return { value: response.default_branch, ttlMs: DEFAULT_BRANCH_TTL_MS };

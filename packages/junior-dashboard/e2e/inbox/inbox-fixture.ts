@@ -2,7 +2,11 @@
 import type { Locator, Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
-import { PULL_REQUEST_RESOURCE } from "../../src/mock-reporting/snooze-resources";
+import type { InboxSnoozeTrigger } from "@sentry/junior/api/schema";
+import {
+  mockViewerSnooze,
+  PULL_REQUEST_RESOURCE,
+} from "../../src/mock-reporting/snooze-resources";
 import { mockSearchRows } from "../search-fixture";
 import { mockObjectLinks, mockPeopleCode } from "../mock-reports";
 
@@ -476,8 +480,18 @@ export async function mockInboxItems(
     now?: () => number | Promise<number>;
     open?: unknown[];
     pageSize?: number;
-    /** Snoozes that exist before the page loads. */
-    snoozes?: ({ untilMs: number } & (
+    /**
+     * Snoozes that exist before the page loads, made at the page's pinned
+     * clock. One without `untilMs` waits for its triggers, or with
+     * `untilClosed`, for its items to close. One with `untilSetTime` reads
+     * like a timed snooze made before the server stored its time.
+     */
+    snoozes?: ({
+      triggers?: InboxSnoozeTrigger[];
+      untilClosed?: true;
+      untilMs?: number;
+      untilSetTime?: true;
+    } & (
       | { conversationId: string; inboxItemId?: string }
       | { inboxItemId: string }
     ))[];
@@ -517,21 +531,62 @@ export async function mockInboxItems(
       )
       .map((i) => i.id);
   /**
-   * When each snoozed item wakes, by item id: as on the server, a snooze
-   * holds the open items of its subject, and a later item is not snoozed.
+   * Each snoozed item's snooze and when it wakes, by item id: as on the
+   * server, a snooze holds the open items of its subject, and a later item
+   * is not snoozed. A snooze with no time waits for its Event.
    */
-  const snoozes = new Map(
-    (options.snoozes ?? []).flatMap((snooze) =>
-      itemsOf(snooze).map((id) => [id, snooze.untilMs] as const),
-    ),
-  );
+  const snoozes = new Map<
+    string,
+    { snooze: ReturnType<typeof mockViewerSnooze>; untilMs: number }
+  >();
+  const snooze = (
+    subject: { conversationId?: string; inboxItemId?: string },
+    body: Parameters<typeof mockViewerSnooze>[0],
+    nowMs: number,
+  ) => {
+    const inboxItemIds = itemsOf(subject);
+    for (const id of inboxItemIds) {
+      const item = open.find((i) => i.id === id) as
+        | { subject?: { url?: string } }
+        | undefined;
+      snoozes.set(id, {
+        snooze: mockViewerSnooze(body, item?.subject?.url, nowMs),
+        untilMs: body.wakeAt ? Date.parse(body.wakeAt) : Infinity,
+      });
+    }
+    return inboxItemIds;
+  };
+  for (const {
+    triggers,
+    untilClosed,
+    untilMs,
+    untilSetTime,
+    ...subject
+  } of options.snoozes ?? []) {
+    const ids = snooze(
+      subject,
+      {
+        triggers,
+        untilClosed,
+        wakeAt: untilMs ? new Date(untilMs).toISOString() : undefined,
+      },
+      NOW_MS,
+    );
+    for (const id of untilSetTime ? ids : []) {
+      const { snooze: made, untilMs: at } = snoozes.get(id)!;
+      const { wakeAt: _wakeAt, ...rest } = made;
+      snoozes.set(id, { snooze: { ...rest, untilSetTime }, untilMs: at });
+    }
+  }
   /** Snoozes made or undone, which move the versions token as on the server. */
   let snoozeChanges = 0;
   /** The items that a snooze hides now. */
   const snoozedRows = async () => {
     const nowMs = await (options.now ?? (() => NOW_MS))();
     return new Set(
-      [...snoozes].flatMap(([id, untilMs]) => (untilMs > nowMs ? [id] : [])),
+      [...snoozes].flatMap(([id, { untilMs }]) =>
+        untilMs > nowMs ? [id] : [],
+      ),
     );
   };
   const asleep = (sleeping: Set<string>, item: { id: string }) =>
@@ -541,10 +596,11 @@ export async function mockInboxItems(
     const body = request.postDataJSON();
     if (request.method() === "POST") {
       // One snooze per open item that it hides; it replaces the last one.
-      const inboxItemIds = itemsOf(body);
-      // A snooze with no time waits for its Event.
-      const untilMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
-      for (const id of inboxItemIds) snoozes.set(id, untilMs);
+      const inboxItemIds = snooze(
+        body,
+        body,
+        await (options.now ?? (() => NOW_MS))(),
+      );
       snoozeChanges++;
       return route.fulfill({ json: { inboxItemIds }, status: 201 });
     }
@@ -671,9 +727,14 @@ export async function mockInboxItems(
       // The cursor is the index of the first item of the page.
       const start = Number(url.searchParams.get("cursor") ?? 0);
       const end = start + (options.pageSize ?? list.length);
+      // Each item that the viewer snoozed says what ends its snooze.
+      const withSnooze = (i: (typeof list)[number]) =>
+        asleep(sleeping, i)
+          ? { ...i, snoozedByViewer: snoozes.get(i.id)!.snooze }
+          : i;
       return route.fulfill({
         json: {
-          items: list.slice(start, end),
+          items: list.slice(start, end).map(withSnooze),
           ...(end < list.length ? { nextCursor: String(end) } : undefined),
         },
       });

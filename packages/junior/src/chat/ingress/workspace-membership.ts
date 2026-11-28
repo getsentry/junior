@@ -1,4 +1,5 @@
 import type { AppMentionEvent, GenericMessageEvent } from "@slack/types";
+import { CACHE_LOAD_TIMEOUT_MS } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import * as z from "zod";
 import type { SlackChannelScope } from "@/chat/ingress/slack-payload";
@@ -82,7 +83,10 @@ async function isCachedWorkspaceUser(
     async () => {
       // External users in shared channels can have is_stranger: false.
       // https://docs.slack.dev/apis/slack-connect/#members
-      const user = await lookupSlackUserProfile(userId);
+      const user = await lookupSlackUserProfile(
+        userId,
+        AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS),
+      );
       const authorTeam = parseSlackTeamId(user.team_id);
       // Do not cache failures or incomplete/mismatched user responses.
       if (user.id !== userId || !authorTeam) return { value: false };
@@ -155,7 +159,10 @@ export async function slackWorkspaceBotId(
   const bot = await cache.getOrLoad<SlackBotRecord>(
     `slack:bot:${workspaceTeamId}:${botId}`,
     async () => {
-      const bot = await lookupSlackBot(botId);
+      const bot = await lookupSlackBot(
+        botId,
+        AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS),
+      );
       if (!bot || bot.deleted) {
         return { value: { kind: "none" }, ttlMs: NON_MEMBER_TTL_MS };
       }

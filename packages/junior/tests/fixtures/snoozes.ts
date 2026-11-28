@@ -321,6 +321,15 @@ export function api(fixture: ConversationFixture, viewer: User) {
         }
       ).items.map((item) => item.title),
     }),
+    /** What ends each snooze in Snoozed, by item title. */
+    snoozes: async () =>
+      Object.fromEntries(
+        (
+          (await json("/inbox-items?for=viewer&snoozed=true")) as {
+            items: { snoozedByViewer?: unknown; title: string }[];
+          }
+        ).items.map((item) => [item.title, item.snoozedByViewer]),
+      ),
     /** Every Inbox number: the badge, the waiting list and the Inbox list. */
     inbox: async () => ({
       count: ((await json("/inbox-items/count")) as { needsViewer: number })

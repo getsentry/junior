@@ -8,9 +8,10 @@
  * and that the provider marks read-only.
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import type {
-  PluginMcpContent,
-  PluginViewerMcp,
+import {
+  type PluginMcpContent,
+  type PluginViewerMcp,
+  untilAborted,
 } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { getAppContext } from "@/app/context";
@@ -93,68 +94,77 @@ function providerContent(
 
 /**
  * Create read-only MCP access to one plugin's provider as one viewer. The
- * viewer's User id is the subject of their stored MCP login.
+ * viewer's User id is the subject of their stored MCP login. A call stops
+ * waiting when `signal` aborts.
  */
 export function createViewerMcp(
   provider: string,
   userId: string,
+  signal?: AbortSignal,
 ): PluginViewerMcp {
   return {
-    async callTool(input) {
-      const plugin = getAppContext().catalog.getDefinition(provider);
-      if (!plugin?.manifest.mcp) {
-        throw new Error(`Plugin "${provider}" does not support MCP`);
-      }
-      if (!plugin.manifest.mcp.viewerTools?.includes(input.name)) {
-        throw new Error(
-          `Plugin ${provider} does not allow MCP tool ${input.name} for viewer reads`,
-        );
-      }
-      if (!(await getMcpStoredOAuthCredentials(userId, provider))?.tokens) {
-        return { status: "not_connected" };
-      }
-      const client = new PluginMcpClient(plugin, {
-        authProvider: viewerAuthProvider(plugin, userId),
-      });
-      try {
-        const tool = (await client.listTools()).find(
-          (candidate) => candidate.name === input.name,
-        );
-        if (tool?.annotations?.readOnlyHint !== true) {
-          throw new Error(
-            `MCP tool ${provider}/${input.name} is not read-only`,
-          );
-        }
-        const result = await client.callTool(input.name, input.arguments ?? {});
-        // A legacy `toolResult` has no content parts.
-        const content = Array.isArray(result.content)
-          ? providerContent(result.content)
-          : [];
-        if (result.isError) {
-          const message = content
-            .flatMap((part) => (part.type === "text" ? [part.text] : []))
-            .join("\n")
-            .trim();
-          return {
-            status: "error",
-            message: message || "MCP tool call failed",
-          };
-        }
-        return {
-          status: "success",
-          content,
-          ...(result.structuredContent !== undefined
-            ? { structuredContent: result.structuredContent }
-            : undefined),
-        };
-      } catch (error) {
-        if (error instanceof McpAuthorizationRequiredError) {
-          return { status: "not_connected" };
-        }
-        throw error;
-      } finally {
-        await client.close().catch(() => undefined);
-      }
-    },
+    // The call goes on after an abort: cutting off a login refresh could
+    // lose the provider's new refresh token.
+    callTool: async (input) =>
+      await untilAborted(callViewerTool(provider, userId, input), signal),
   };
+}
+
+async function callViewerTool(
+  provider: string,
+  userId: string,
+  input: Parameters<PluginViewerMcp["callTool"]>[0],
+): ReturnType<PluginViewerMcp["callTool"]> {
+  const plugin = getAppContext().catalog.getDefinition(provider);
+  if (!plugin?.manifest.mcp) {
+    throw new Error(`Plugin "${provider}" does not support MCP`);
+  }
+  if (!plugin.manifest.mcp.viewerTools?.includes(input.name)) {
+    throw new Error(
+      `Plugin ${provider} does not allow MCP tool ${input.name} for viewer reads`,
+    );
+  }
+  if (!(await getMcpStoredOAuthCredentials(userId, provider))?.tokens) {
+    return { status: "not_connected" };
+  }
+  const client = new PluginMcpClient(plugin, {
+    authProvider: viewerAuthProvider(plugin, userId),
+  });
+  try {
+    const tool = (await client.listTools()).find(
+      (candidate) => candidate.name === input.name,
+    );
+    if (tool?.annotations?.readOnlyHint !== true) {
+      throw new Error(`MCP tool ${provider}/${input.name} is not read-only`);
+    }
+    const result = await client.callTool(input.name, input.arguments ?? {});
+    // A legacy `toolResult` has no content parts.
+    const content = Array.isArray(result.content)
+      ? providerContent(result.content)
+      : [];
+    if (result.isError) {
+      const message = content
+        .flatMap((part) => (part.type === "text" ? [part.text] : []))
+        .join("\n")
+        .trim();
+      return {
+        status: "error",
+        message: message || "MCP tool call failed",
+      };
+    }
+    return {
+      status: "success",
+      content,
+      ...(result.structuredContent !== undefined
+        ? { structuredContent: result.structuredContent }
+        : undefined),
+    };
+  } catch (error) {
+    if (error instanceof McpAuthorizationRequiredError) {
+      return { status: "not_connected" };
+    }
+    throw error;
+  } finally {
+    await client.close().catch(() => undefined);
+  }
 }

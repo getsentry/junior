@@ -10,7 +10,11 @@ import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { listWaitingConversations } from "@/chat/inbox-items/waiting";
-import { juniorInboxSnoozes, juniorInboxItemAssignees } from "@/db/schema";
+import {
+  juniorInboxItemAssignees,
+  juniorInboxSnoozes,
+  juniorInboxSnoozeTriggers,
+} from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -200,18 +204,26 @@ describe("snoozes", () => {
       count: 2,
       items: ["Review acme entry", "Review globex entry"],
     });
+    const untilClosed = {
+      snoozedAt: new Date(NOW_MS + 1).toISOString(),
+      untilClosed: true,
+    };
+    expect(await asAna.snoozes()).toEqual({
+      "Review acme entry": untilClosed,
+      "Review globex entry": untilClosed,
+    });
     expect(await feedWaitingIds(ana.id)).toEqual([]);
     // The Conversation's own list still shows both, marked for Ana only.
     const conversationList = `/inbox-items?conversationId=${encodeURIComponent(ROOT)}`;
     const marks = async (as: typeof asAna) =>
       (
         (await as.json(conversationList)) as {
-          items: { snoozedByViewer?: true; title: string }[];
+          items: { snoozedByViewer?: unknown; title: string }[];
         }
       ).items.map((item) => [item.title, item.snoozedByViewer ?? null]);
     expect(await marks(asAna)).toEqual([
-      ["Review acme entry", true],
-      ["Review globex entry", true],
+      ["Review acme entry", untilClosed],
+      ["Review globex entry", untilClosed],
     ]);
     expect(await marks(asBob)).toEqual([
       ["Review acme entry", null],
@@ -290,6 +302,27 @@ describe("snoozes", () => {
     vi.setSystemTime(NOW_MS + 59_000);
     await heartbeat();
     expect((await asAna.inbox()).count).toBe(0);
+    expect(await asAna.snoozes()).toEqual({
+      "Review acme entry": {
+        snoozedAt: new Date(NOW_MS).toISOString(),
+        wakeAt: new Date(NOW_MS + 60_000).toISOString(),
+      },
+    });
+    // A timer id made before ids carried the wake time still says that the
+    // snooze has one.
+    const [timer] = await getDb()
+      .select({ identifier: juniorInboxSnoozeTriggers.identifier })
+      .from(juniorInboxSnoozeTriggers);
+    const setTimer = (identifier: string) =>
+      getDb().update(juniorInboxSnoozeTriggers).set({ identifier });
+    await setTimer(timer!.identifier.replace(/:\d+$/, ""));
+    expect(await asAna.snoozes()).toEqual({
+      "Review acme entry": {
+        snoozedAt: new Date(NOW_MS).toISOString(),
+        untilSetTime: true,
+      },
+    });
+    await setTimer(timer!.identifier);
     const asleep = await asAna.versions();
 
     // The timer.fired Event wakes it, and the versions token moves.
@@ -409,6 +442,21 @@ describe("snoozes", () => {
       },
     ]);
     expect(snoozed.status).toBe(201);
+    const untilMerged = {
+      events: [
+        {
+          eventType: "pull_request.merged",
+          outcome: "wake",
+          phrase: "is merged",
+          resource: OTHER_PULL_REQUEST.identifier,
+        },
+      ],
+      snoozedAt: new Date(NOW_MS).toISOString(),
+    };
+    expect(await asAna.snoozes()).toEqual({
+      "Review acme entry": untilMerged,
+      "Review globex entry": untilMerged,
+    });
     // The same Event on the item's own pull request does not wake it.
     await publisher().publish(pullRequestEvent("pull_request.merged"));
     expect((await asAna.inbox()).count).toBe(0);

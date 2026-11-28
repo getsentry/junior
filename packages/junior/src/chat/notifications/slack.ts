@@ -3,6 +3,7 @@ import { linkedSlackUser } from "@/chat/identities/sql";
 import { isSlackDndActive } from "@/chat/slack/dnd";
 import { isSlackUserActive } from "@/chat/slack/presence";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { CACHE_LOAD_TIMEOUT_MS } from "@sentry/junior-plugin-api";
 import { createCache } from "@/chat/state/cache";
 
 // Every caller in the same minute shares one answer per user, so a burst of
@@ -25,7 +26,13 @@ export async function isPausedBySlack(
     `notifications:slack-paused:${userId}:${bucket}`,
     async () => {
       const slack = await linkedSlackUser(db, userId);
-      const value = slack ? await isSlackDndActive(slack.userId, nowMs) : null;
+      const value = slack
+        ? await isSlackDndActive(
+            slack.userId,
+            nowMs,
+            AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS),
+          )
+        : null;
       return { value: value ?? null, ttlMs: SLACK_PAUSE_BUCKET_MS };
     },
   );

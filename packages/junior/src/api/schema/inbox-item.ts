@@ -12,6 +12,7 @@ import { actorIdentitySchema } from "./conversation";
 import {
   inboxSnoozeResourceSchema,
   inboxSnoozeWakeSchema,
+  inboxViewerSnoozeSchema,
 } from "./inbox-snooze";
 
 /** The answer that a person gave to a question. */
@@ -73,7 +74,7 @@ export const inboxItemSchema = z
      * Set when the viewer snoozed the open item, and the snooze has not
      * woken. It stays open for the other people it is for.
      */
-    snoozedByViewer: z.literal(true).optional(),
+    snoozedByViewer: inboxViewerSnoozeSchema.optional(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
     /** People that the title, body, and question mention. */
