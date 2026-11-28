@@ -1,3 +1,8 @@
+import {
+  checkRunCounts,
+  pullRequestCardsResponse,
+} from "./github-pull-request-cards";
+
 // Draft pull requests whose check suite just passed. Each draft has the same
 // passing suite; they differ in other required checks and in the body.
 // #695's checks are not required, like a suite that reports before the
@@ -157,6 +162,39 @@ function graphqlPullRequest(draft: DraftFixture) {
   };
 }
 
+// The cache card of a draft, which a check event reads when it has none.
+function cardPullRequest(draft: DraftFixture) {
+  return {
+    additions: 12,
+    author: { login: "junior-eval[bot]" },
+    baseRefName: "main",
+    body: draft.body,
+    changedFiles: 1,
+    commits: checkRunCounts(
+      checkRuns(draft).map((check) => check.conclusion.toUpperCase()),
+    ),
+    databaseId: 30_000 + draft.number,
+    deletions: 3,
+    headRefName: `feat/cache-warmup-${draft.number}`,
+    headRefOid: draft.sha,
+    isDraft: !readied.has(draft.number),
+    latestOpinionatedReviews: { nodes: [] },
+    mergeable: "MERGEABLE",
+    merged: false,
+    number: draft.number,
+    reviewDecision: null,
+    reviewRequests: {
+      nodes: (reviewers.get(draft.number) ?? []).map((login) => ({
+        requestedReviewer: { login },
+      })),
+    },
+    state: "OPEN",
+    title: draftTitle,
+    updatedAt: "2026-05-27T00:05:00Z",
+    url: `${web}/pull/${draft.number}`,
+  };
+}
+
 function draftFromGraphql(body: {
   query?: string;
   variables?: Record<string, unknown>;
@@ -181,9 +219,15 @@ export async function interceptTestGitHubDraftsHttp(
   if (url.hostname !== "api.github.com") return undefined;
   if (request.method === "POST" && url.pathname === "/graphql") {
     const body = (await request.clone().json()) as {
+      operationName?: string;
       query?: string;
       variables?: Record<string, unknown>;
     };
+    const cards = pullRequestCardsResponse(body, (number) => {
+      const draft = drafts.find((candidate) => candidate.number === number);
+      return draft ? cardPullRequest(draft) : undefined;
+    });
+    if (cards) return cards;
     const draft = draftFromGraphql(body);
     if (!draft) return undefined;
     if (/markPullRequestReadyForReview/.test(body.query ?? "")) {
