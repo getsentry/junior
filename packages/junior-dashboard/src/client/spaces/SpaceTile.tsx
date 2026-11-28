@@ -25,7 +25,7 @@ const GLYPH_SIZES = {
 } as const;
 
 // The lock sits on the bottom-right corner. The top-right corner and the
-// row's trailing column stay free for activity and needs-you marks.
+// row's trailing column stay free for activity and needs-input marks.
 // Important, so that a parent's `[&_svg]:size-*`, such as a command item's,
 // does not grow the lock over the tile.
 const LOCK_SIZES = {

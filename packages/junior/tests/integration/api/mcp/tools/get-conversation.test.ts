@@ -169,11 +169,11 @@ describe("getConversation MCP tool", () => {
       },
     });
     expect(asked.structuredContent).toMatchObject({
-      conversation: { status: "needs_input", treeState: "needs_you" },
+      conversation: { status: "needs_input", treeState: "needs_input" },
     });
     expect(list.structuredContent).toMatchObject({
       conversations: [
-        { conversationId: CONVERSATION_ID, treeState: "needs_you" },
+        { conversationId: CONVERSATION_ID, treeState: "needs_input" },
       ],
     });
   });

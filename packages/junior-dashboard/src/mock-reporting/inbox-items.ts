@@ -441,7 +441,7 @@ export function withMockQuestionWaits(
       ? { status: "needs_input" as const }
       : undefined),
     ...(treeIds.has(row.conversationId)
-      ? { treeState: "needs_you" as const }
+      ? { treeState: "needs_input" as const }
       : undefined),
     ...(row.threads ? { threads: row.threads.map(mark) } : undefined),
   });

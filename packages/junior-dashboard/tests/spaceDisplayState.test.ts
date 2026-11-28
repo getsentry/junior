@@ -7,10 +7,10 @@ import {
 } from "../src/client/spaces/SpaceStateIcon";
 
 describe("spaceDisplayState", () => {
-  it("orders needs_you, failed, then working, and shows nothing when idle", () => {
+  it("orders needs_input, failed, then working, and shows nothing when idle", () => {
     expect(
-      spaceDisplayState({ latestTurnFailed: true, treeState: "needs_you" }),
-    ).toBe("needs_you");
+      spaceDisplayState({ latestTurnFailed: true, treeState: "needs_input" }),
+    ).toBe("needs_input");
     expect(
       spaceDisplayState({ latestTurnFailed: true, treeState: "working" }),
     ).toBe("failed");

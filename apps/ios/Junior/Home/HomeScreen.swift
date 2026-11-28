@@ -268,7 +268,7 @@ struct ConversationCard: View {
   // tree, so a working child agent also counts.
   private var stateLabel: String? {
     switch row.treeState {
-    case .needsYou: return "Waiting for an answer"
+    case .needsInput: return "Needs input"
     case .working: return "Working"
     default: return nil
     }

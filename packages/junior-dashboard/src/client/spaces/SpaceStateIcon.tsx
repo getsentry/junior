@@ -5,17 +5,17 @@ import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
 
 /** What a Space row shows for the Threads in the Space. */
-export type SpaceDisplayState = "needs_you" | "failed" | "working";
+export type SpaceDisplayState = "needs_input" | "failed" | "working";
 
 /**
  * Pick one state for a Space row from the roll-up of its Threads.
- * When more than one applies: `needs_you` > `failed` > `working`. An idle
+ * When more than one applies: `needs_input` > `failed` > `working`. An idle
  * Space shows nothing.
  */
 export function spaceDisplayState(
   space: Pick<SpaceReport, "latestTurnFailed" | "treeState">,
 ): SpaceDisplayState | undefined {
-  if (space.treeState === "needs_you") return "needs_you";
+  if (space.treeState === "needs_input") return "needs_input";
   if (space.latestTurnFailed) return "failed";
   if (space.treeState === "working") return "working";
   return undefined;
@@ -23,7 +23,7 @@ export function spaceDisplayState(
 
 const STATE_LABELS: Record<SpaceDisplayState, string> = {
   failed: "A Thread failed",
-  needs_you: "Needs input",
+  needs_input: "Needs input",
   working: "Working",
 };
 
@@ -53,7 +53,7 @@ export function SpaceStateIcon(props: {
 function stateIcon(state: SpaceDisplayState, label: string) {
   const className = "size-full";
   switch (state) {
-    case "needs_you":
+    case "needs_input":
       return (
         <CircleHelp
           aria-label={label}

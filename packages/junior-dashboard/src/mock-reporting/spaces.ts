@@ -226,7 +226,7 @@ export function mockTreeState(row: ConversationFeed["conversations"][number]) {
   return (
     row.treeState ??
     (row.status === "needs_input"
-      ? "needs_you"
+      ? "needs_input"
       : row.turnActive || row.status === "working"
         ? "working"
         : "done")
@@ -521,7 +521,7 @@ function createMockLeads(viewer: User): void {
   }
 }
 
-const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
+const TREE_STATE_ORDER = ["needs_input", "working", "done"] as const;
 
 /**
  * Roll up the state of a Space's active feed rows, as the API's Space list

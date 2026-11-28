@@ -6,14 +6,14 @@ import type { Conversation } from "../types";
 
 /** What a row shows for a Conversation: its tree state, else its pin. */
 export type ConversationDisplayState =
-  | "needs_you"
+  | "needs_input"
   | "working"
   | "watching"
   | "pinned";
 
 /**
  * Pick one state for a Conversation row. When more than one applies:
- * `needs_you` > `working` > `watching` > `pinned`. A `done` tree shows
+ * `needs_input` > `working` > `watching` > `pinned`. A `done` tree shows
  * nothing. A row without a tree state works while
  * its own Turn is queued or running.
  */
@@ -24,7 +24,7 @@ export function conversationDisplayState(
   >,
 ): ConversationDisplayState | undefined {
   const tree = conversation.treeState;
-  if (tree === "needs_you") return "needs_you";
+  if (tree === "needs_input") return "needs_input";
   if (tree === "working") return "working";
   if (!tree && conversation.turnActive) return "working";
   if (conversation.watching) return "watching";
@@ -32,7 +32,7 @@ export function conversationDisplayState(
 }
 
 const STATE_LABELS: Record<ConversationDisplayState, string> = {
-  needs_you: "Needs input",
+  needs_input: "Needs input",
   pinned: "Pinned",
   watching: "Watching for an event",
   working: "Working",
@@ -65,7 +65,7 @@ export function ConversationStateIcon(props: {
 function stateIcon(state: ConversationDisplayState, label: string) {
   const className = "size-full";
   switch (state) {
-    case "needs_you":
+    case "needs_input":
       return (
         <CircleHelp
           aria-label={label}

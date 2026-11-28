@@ -12,7 +12,7 @@ test.describe("new UI", () => {
     const release = "slack:CQA456:1770021600.000600";
     const treeStates: Record<string, object> = {
       [release]: { treeState: "working", watching: true },
-      "slack:CQA456:1770025200.000700": { treeState: "needs_you" },
+      "slack:CQA456:1770025200.000700": { treeState: "needs_input" },
       "internal:dashboard-qa": { treeState: "done", watching: true },
       // Their mock questions wait, but here their trees are done.
       "internal:question-qa": { treeState: "done" },

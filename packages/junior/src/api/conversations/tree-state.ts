@@ -82,7 +82,7 @@ export async function readConversationTreeStates(
       row.conversationId,
       {
         treeState: row.needsViewer
-          ? "needs_you"
+          ? "needs_input"
           : row.working
             ? "working"
             : "done",

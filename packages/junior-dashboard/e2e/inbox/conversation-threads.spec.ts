@@ -524,9 +524,9 @@ test.describe("new UI", () => {
     await expect(
       breadcrumb.getByRole("heading", { name: "Recheck pin order in Safari" }),
     ).toBeVisible();
-    // Its own Inbox item waits on a person.
+    // It has no open question, so it does not need input.
     await expect(
-      header.getByText("Needs input").filter({ visible: true }),
+      header.getByText("Done").filter({ visible: true }),
     ).toBeVisible();
     await breadcrumb
       .getByRole("link", { name: "Check pinned row order" })

@@ -35,7 +35,7 @@ export const mcpConversationSchema = z
     treeState: conversationTreeStateSchema
       .optional()
       .describe(
-        "Your viewer state, over this Conversation and all its child agents. `needs_you` when one of them waits on you to sign in or to read its answer. Inbox items are not part of it: `searchInboxItems` lists them. `working` while a Turn runs or waits to start in any of them. `done` otherwise. Show this in a list, not `status`.",
+        "Your viewer state, over this Conversation and all its child agents. `needs_input` when one of them has an open question, or waits on you to sign in or to read its answer. Inbox items are not part of it: `searchInboxItems` lists them. `working` while a Turn runs or waits to start in any of them. `done` otherwise. Show this in a list, not `status`.",
       ),
     watching: z
       .boolean()

@@ -146,7 +146,7 @@ test.describe("new UI", () => {
 
       // Needs input lists only the rows that need input.
       await filter("Needs input").click();
-      await expect(page).toHaveURL(/[?&]state=needs_you/);
+      await expect(page).toHaveURL(/[?&]state=needs_input/);
       await expect(asking).toBeVisible();
       await expect(working).toHaveCount(0);
       await expect.poll(() => rows.count()).toBeGreaterThan(0);

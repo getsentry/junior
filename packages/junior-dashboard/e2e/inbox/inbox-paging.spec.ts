@@ -449,7 +449,7 @@ test.describe("new UI", () => {
         (conversation) =>
           !conversation.pinnedAt &&
           !conversation.turnActive &&
-          conversation.treeState !== "needs_you",
+          conversation.treeState !== "needs_input",
       );
       await route.fulfill({
         json: { ...body, conversations: done, nextCursor: "older" },

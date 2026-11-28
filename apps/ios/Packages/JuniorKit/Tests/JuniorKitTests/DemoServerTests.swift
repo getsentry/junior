@@ -33,7 +33,7 @@ final class ManualClock: @unchecked Sendable {
     // The mock data's times move to the demo's start.
     let lastSeen = try #require(active.conversations.first?.lastSeenAt.date)
     #expect(abs(lastSeen.timeIntervalSince(clock.now)) < 3600)
-    #expect(active.conversations.contains { $0.treeState == .needsYou })
+    #expect(active.conversations.contains { $0.treeState == .needsInput })
     // A search reads summaries as well as titles.
     let found = try await client.call("searchConversations", ["q": "serializer"], as: ConversationList.self)
     #expect(!found.conversations.isEmpty)

@@ -407,7 +407,7 @@ describe("conversation status", () => {
     await recordAnswer(dashboard, 1);
     await expect(fixture.status(dashboard)).resolves.toBe("needs_input");
     await expect(fixture.tree(dashboard)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await recordStarterMessage(dashboard);
     await expect(fixture.status(dashboard)).resolves.toBe("done");
@@ -421,7 +421,7 @@ describe("conversation status", () => {
     });
     await recordAnswer(thread, 1);
     await expect(fixture.tree(thread)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
 
     // A Slack thread that moves into the Space drops its Location, so only

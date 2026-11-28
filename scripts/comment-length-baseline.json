@@ -346,7 +346,7 @@
     "packages/junior/src/chat/task-execution/turn-cursor.ts": 1,
     "packages/junior/src/chat/task-execution/turn-membership.ts": 2,
     "packages/junior/src/chat/task-input.ts": 3,
-    "packages/junior/src/chat/todos/inbox-items.ts": 6,
+    "packages/junior/src/chat/todos/inbox-items.ts": 5,
     "packages/junior/src/chat/todos/prompt.ts": 4,
     "packages/junior/src/chat/todos/search.ts": 3,
     "packages/junior/src/chat/todos/store.ts": 2,

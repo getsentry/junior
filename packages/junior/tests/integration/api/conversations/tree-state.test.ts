@@ -63,7 +63,7 @@ describe("conversation tree state", () => {
     await closeConversationFixture();
   });
 
-  it("orders needs_you over working over watching across the whole tree", async () => {
+  it("orders needs_input over working over watching across the whole tree", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
       fixture.conversationStore,
@@ -122,7 +122,7 @@ describe("conversation tree state", () => {
     );
     // A waiting question shows to every viewer, whoever it asks.
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await closeInboxItem(getDb(), {
       id: forOther!.id,
@@ -136,7 +136,7 @@ describe("conversation tree state", () => {
       assignees: ["everyone"],
     });
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await closeInboxItem(getDb(), {
       id: everyone,
@@ -149,13 +149,13 @@ describe("conversation tree state", () => {
 
     const item = await addItem(asking.childConversationId, ACTION_ITEM);
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.tree(asking.childConversationId)).resolves.toEqual({
-      treeState: "needs_you",
+      treeState: "needs_input",
       watching: false,
     });
 
@@ -208,13 +208,13 @@ describe("conversation tree state", () => {
     await addItem(grandchild.childConversationId, ACTION_ITEM);
 
     await expect(fixture.feedTree(rootId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.tree(rootId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.tree(parent.childConversationId)).resolves.toEqual({
-      treeState: "needs_you",
+      treeState: "needs_input",
       watching: false,
     });
     // The sibling's own spawned Turn still waits in the queue.
@@ -252,7 +252,7 @@ describe("conversation tree state", () => {
         ]),
       ),
     ).toEqual({
-      "agent:feed-ask": { treeState: "needs_you", watching: false },
+      "agent:feed-ask": { treeState: "needs_input", watching: false },
       "agent:feed-done": DONE,
     });
   });
@@ -286,7 +286,7 @@ describe("conversation tree state", () => {
     // The request names the viewer by their Slack user id.
     await signIn(SLACK_VIEWER.slackUserId, "tree-sign-in-viewer");
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
   });
 
@@ -306,10 +306,10 @@ describe("conversation tree state", () => {
     // them too, until they read it.
     await recordAnswer(threadId, 1);
     await expect(fixture.tree(threadId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     const read = await fixture.request(
       `${detailPath(threadId)}/read-position`,
@@ -323,7 +323,7 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
     await recordAnswer(conversationId, 1);
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
 
     // An answer that another person has not read is not shown.
@@ -413,7 +413,7 @@ describe("conversation tree state", () => {
     });
     await addItem(grandchildConversationId, ACTION_ITEM);
     await watchDeployment(childConversationId);
-    const needsYou = { treeState: "needs_you", watching: true };
+    const needsYou = { treeState: "needs_input", watching: true };
     await expect(fixture.tree(conversationId)).resolves.toEqual(needsYou);
 
     const [child] = await getDb()
@@ -461,7 +461,7 @@ describe("conversation tree state", () => {
     await recordAnswer(conversationId, 1);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     const waiting = await feedToken(fixture);
     expect(waiting).not.toBe(before);
@@ -534,7 +534,7 @@ describe("conversation tree state", () => {
       "agent:tree-budget-d",
     ]);
     await addItem("agent:tree-budget-d", ACTION_ITEM);
-    await expectBudget({ treeState: "needs_you", watching: true });
+    await expectBudget({ treeState: "needs_input", watching: true });
   });
 
   it("rolls up a Space's Conversations into its Space list row", async () => {
@@ -607,7 +607,7 @@ describe("conversation tree state", () => {
     // sees that it failed.
     await expect(asViewer()).resolves.toEqual({
       latestTurnFailed: true,
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     // The failure starts a Turn of the Lead, which Bob sees as working.
     await expect(asBob()).resolves.toEqual({

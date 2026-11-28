@@ -30,7 +30,7 @@ public struct ConversationStatus: OpenEnum {
 public struct ConversationTreeState: OpenEnum {
   public let rawValue: String
   public init(rawValue: String) { self.rawValue = rawValue }
-  public static let needsYou = Self(rawValue: "needs_you")
+  public static let needsInput = Self(rawValue: "needs_input")
   public static let working = Self(rawValue: "working")
   public static let done = Self(rawValue: "done")
 }

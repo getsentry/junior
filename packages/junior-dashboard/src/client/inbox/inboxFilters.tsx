@@ -40,7 +40,7 @@ export type InboxTypeFilter = AskType | "all";
 export type ConversationStateFilter =
   | "all"
   | "done"
-  | "needs_you"
+  | "needs_input"
   | "watching"
   | "working";
 
@@ -68,7 +68,7 @@ const STATE_FILTERS: readonly Filter<ConversationStateFilter>[] = [
   { icon: Check, key: "done", label: "Done" },
   { icon: Eye, key: "watching", label: "Watching" },
   { icon: LoaderCircle, key: "working", label: "Working" },
-  { icon: CircleHelp, key: "needs_you", label: "Needs input" },
+  { icon: CircleHelp, key: "needs_input", label: "Needs input" },
   { key: "all", label: "All" },
 ];
 
@@ -248,7 +248,7 @@ export function inConversationState(
     ? conversationDisplayState(conversation)
     : undefined;
   const current =
-    shown === "needs_you" || shown === "working" || shown === "watching"
+    shown === "needs_input" || shown === "working" || shown === "watching"
       ? shown
       : "done";
   return current === state;

@@ -79,8 +79,9 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Archived**: a flag on a Conversation, shared by everyone. It is not a
   status, and an archived Conversation keeps its status.
 - **Viewer state**: what a Conversation and its child Conversations need from
-  one viewer. Code and the API call it `treeState`. `needs_you`: the tree's
-  `needs_input` includes the viewer or Everyone. `working`: a Turn is queued
+  one viewer. Code and the API call it `treeState`. `needs_input`: a
+  question in the tree is still open, or a sign-in or an unread answer
+  waits on the viewer. `working`: a Turn is queued
   or running in the tree. `done`: anything else. The first that applies wins.
   A separate `watching` flag says that a Conversation in the tree has an
   active Watch or a pending Timer. It is not a status.

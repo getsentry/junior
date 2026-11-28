@@ -49,7 +49,7 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
     // the old reading of `status`.
     treeState =
       try container.decodeIfPresent(ConversationTreeState.self, forKey: .treeState)
-      ?? (status == .needsInput ? .needsYou : turnActive ? .working : .done)
+      ?? (status == .needsInput ? .needsInput : turnActive ? .working : .done)
     surface = try container.decode(String.self, forKey: .surface)
     channelName = try container.decodeIfPresent(String.self, forKey: .channelName)
     locationUrl = try container.decodeIfPresent(String.self, forKey: .locationUrl)
