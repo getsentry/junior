@@ -5,6 +5,7 @@ import * as z from "zod";
 import {
   isConversationOrigin,
   type ConversationOrigin,
+  type PaneRow,
 } from "../components/layout/paneRows";
 import { isSpacePath } from "../spaces/spaceRoutes";
 
@@ -29,11 +30,28 @@ const STORAGE_KEY = "junior:pane:conversation-origins";
 const MAX_ORIGINS = 100;
 
 /**
+ * The history state of a pane row's link. When the row reopens a
+ * Conversation, that row stays its origin, so the row owns the page and its
+ * next press goes back to its top level.
+ */
+export function paneRowLinkState(row: PaneRow) {
+  return { paneRow: row };
+}
+
+function readPaneRow(state: unknown): string | undefined {
+  return typeof state === "object" &&
+    state !== null &&
+    "paneRow" in state &&
+    typeof state.paneRow === "string"
+    ? state.paneRow
+    : undefined;
+}
+
+/**
  * Name the list or Space page that opened the Conversation in this history
  * entry, so the pane and Back keep it after a reload, Back, or Forward too.
- * An entry that the dashboard did not open itself, such as a direct link,
- * has none. `lastList` is the Inbox view, Code page, or Space page that the
- * reader came from, if it was one.
+ * A pane row that reopens it is its origin; else `lastList`, the list or
+ * Space page the reader came from. A direct link has none.
  */
 export function useConversationOrigin(
   location: Location,
@@ -44,13 +62,16 @@ export function useConversationOrigin(
   // Read on each render, not memoized by key: a fast Back can return to an
   // entry before the render that saved it shows.
   const saved = conversation ? readOrigins()[location.key] : undefined;
+  const paneRow = readPaneRow(location.state);
   const origin = !conversation
     ? undefined
     : isConversationOpener(saved)
       ? saved
-      : navigationType !== NavigationType.Pop
-        ? lastList
-        : undefined;
+      : isConversationOrigin(paneRow)
+        ? paneRow
+        : navigationType !== NavigationType.Pop
+          ? lastList
+          : undefined;
   useEffect(() => {
     if (origin && origin !== saved) saveOrigin(location.key, origin);
   }, [location.key, origin, saved]);

@@ -94,6 +94,7 @@ function Entry(props: {
             : undefined
         }
         className={paneEntryClass(mark, props.phone)}
+        state={link.state}
         to={props.phone ? props.phoneTo : link.to}
       >
         <Icon

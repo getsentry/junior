@@ -29,6 +29,7 @@ import {
   FOCUS_REPLY_STATE,
   COMPOSER_PATH,
 } from "../../conversations/conversationRoutes";
+import { paneRowLinkState } from "../../inbox/conversationOrigin";
 import { useInboxConversationOrigin } from "../../inbox/inboxListState";
 import { cn } from "../../styles";
 import {
@@ -278,6 +279,7 @@ export function usePaneBack(): { label: string; to: string } {
  */
 export function usePaneRowLink(row: PaneRow): {
   mark?: PaneRowMark;
+  state: { paneRow: PaneRow };
   to: string;
 } {
   const pane = usePaneNav();
@@ -286,6 +288,7 @@ export function usePaneRowLink(row: PaneRow): {
   const sameInbox = isInboxView(row) && isInboxView(pane.currentRow);
   return {
     mark: current ? pane.currentMark : undefined,
+    state: paneRowLinkState(row),
     to: current || sameInbox ? root : (pane.rowPaths[row] ?? root),
   };
 }
