@@ -205,6 +205,11 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
       events: ["deploy.stopped"],
       identifier: "api",
       namespace: "deploys",
+      // The Watch serves the person who answered (`follows-instruction`).
+      creator: {
+        actor: { platform: "web", email: ana.user.email, userId: ana.user.id },
+        plugin: "deploys",
+      },
     }),
   ]);
   // The plugin does the work, so the Conversation only records the answer.

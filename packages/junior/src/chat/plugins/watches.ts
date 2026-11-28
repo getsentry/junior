@@ -76,9 +76,10 @@ export function createPluginWatches(
 export function createPluginConversationWatches(
   plugin: PluginRegistration,
   conversationId: string,
+  creator?: WatchCreator,
 ): PluginConversationWatches {
   return {
-    ...createPluginWatches(plugin, conversationId),
+    ...createPluginWatches(plugin, conversationId, creator),
     async watching({ eventType, identifier }) {
       const normalized = normalizeEventIdentifier(plugin.events, identifier);
       const watches = await listWatches({ conversationId });

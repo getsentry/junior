@@ -262,6 +262,7 @@ export async function actOnInboxItem(args: {
       delivery: args.delivery,
       item: closed,
       nowMs,
+      user,
     });
   }
   // Core takes the step that a person picked on an Automation alert. A
