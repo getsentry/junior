@@ -49,6 +49,7 @@ interface GitHubRequestParams {
   method?: string;
   /** Saved GET responses, as in `installationResponses`. */
   responses?: GitHubResponses | undefined;
+  signal?: AbortSignal;
   token: string;
 }
 
@@ -314,6 +315,7 @@ export async function githubRequest(
         ...(params.body ? { "Content-Type": "application/json" } : undefined),
       },
       ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
+      ...(params.signal ? { signal: params.signal } : undefined),
     });
   const response =
     method === "GET" && params.responses

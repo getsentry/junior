@@ -59,6 +59,7 @@ function githubAccountCard(login: string): ObjectAnnotation {
  */
 export const githubAccountLinks: PluginObjectLinkDefinition = {
   filters: [{ host: "github.com", pathPattern: "/*" }],
+  cacheOnlyReads: true,
   // A GitHub profile is public, and the card holds only the login.
   canView: async () => true,
   objectTypes: ["person"],

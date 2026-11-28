@@ -44,7 +44,7 @@ import type { ChildAgent, ChildAgentSender } from "./types";
  * Render the parent agent input for one child agent result as one
  * `<agent-result>`, the agent update that a Watch on the child also gets.
  * The system prompt says what to do for each status. A Lead's done result
- * also reminds it that a status update needs no reply.
+ * also reminds it that only a status update with no news needs no reply.
  */
 function renderResultInput(
   sender: ChildAgentSender,
@@ -68,7 +68,7 @@ function renderResultInput(
     : agentResult;
 }
 
-const NO_REPLY_REMINDER = `If this is only a status update with nothing a member needs, end with \`${NO_REPLY_TOOL_NAME}\`.`;
+const NO_REPLY_REMINDER = `If this is only a status update with no news for a member, end with \`${NO_REPLY_TOOL_NAME}\`. A done signal that is now true is news.`;
 
 // A blocked, failed, or stopped child needs the parent to act, so only a
 // child's done result and its messages get the reminder.

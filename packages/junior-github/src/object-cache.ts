@@ -104,10 +104,10 @@ export const githubPullRequestFieldsSchema = z.object({
     .optional(),
   merged: z.boolean().optional(),
   requested_reviewers: z.array(person).optional(),
-  // GitHub's review decision. Only the GraphQL card read has it, and a
-  // webhook payload does not, so a webhook merge keeps it. `null` is a read
-  // with no decision. Unset is not read yet, or cleared by a review webhook,
-  // so the next page read asks GitHub (`pull-request-prefetch.ts`).
+  // GitHub's review decision. Only GraphQL reads have it, and a webhook
+  // payload does not, so a webhook merge keeps it. `null` is a read with no
+  // decision. Unset is not read yet, or cleared by a review webhook until
+  // its patch reads it again (`pull-request-patches.ts`).
   review: z
     .enum(["approved", "changes_requested", "required"])
     .nullable()
@@ -199,26 +199,105 @@ export function githubObjectCacheKey(
 }
 
 /**
- * Clear a conflict that the pull request entry still knows for `headSha`,
- * after a read that is not the entry's own, such as a webhook or heartbeat
- * merge conflict check, finds it mergeable. Otherwise the next push marks
- * the fixed conflict again from the entry (`webhooks/object-cache.ts`).
+ * Write the merge state that a read which is not the entry's own, such as
+ * a webhook or heartbeat merge conflict check, finds for `headSha`. It
+ * changes only a known merge state of that head commit: a pending one waits
+ * for its patch. Otherwise the next push marks a fixed conflict again from
+ * the entry (`webhooks/object-cache.ts`), and a new conflict shows late.
  */
-export async function clearGitHubCachedConflict(
+export async function writeGitHubCachedMergeable(
   cache: PluginCache,
   ref: { number: number; repositoryFullName: string },
-  headSha: string,
+  read: { headSha: string; mergeable: boolean },
 ): Promise<void> {
   await cache.update<GitHubPullRequestFields | null>(
     githubObjectCacheKey("pulls", ref.repositoryFullName, ref.number),
     (current) =>
-      current?.mergeable === false && current.head?.sha === headSha
+      current?.mergeable === !read.mergeable &&
+      current.head?.sha === read.headSha
         ? {
             ...GITHUB_PULL_REQUEST_CACHE,
-            value: { ...current, mergeable: true },
+            value: { ...current, mergeable: read.mergeable },
           }
         : undefined,
   );
+}
+
+/**
+ * Store the fields of a full pull request read, such as a card query, in
+ * its entry, unless the entry is newer. Then clear a review decision that a
+ * review webhook during the read made stale. Returns whether the entry
+ * took the read and whether it changed.
+ */
+export async function storeGitHubPullRequestFields(
+  cache: PluginCache,
+  key: string,
+  fields: GitHubPullRequestFields,
+  startedAtMs: number,
+): Promise<{ changed: boolean; stored: boolean }> {
+  let stored = false;
+  let changed = false;
+  await cache.update<GitHubPullRequestFields | null>(key, (current) => {
+    if (isOlderGitHubObject(current, fields)) return undefined;
+    stored = true;
+    const entry = githubPullRequestEntry({ ...current, ...fields });
+    changed = JSON.stringify(current) !== JSON.stringify(entry.value);
+    return entry;
+  });
+  // A review webhook during the read changes the decision after GitHub
+  // answered, often with the same `updated_at`.
+  if (stored) {
+    await clearGitHubReviewAfterRead(cache, key, {
+      review: fields.review,
+      startedAtMs,
+    });
+  }
+  return { changed, stored };
+}
+
+/**
+ * Write the review state that another read of GitHub found, such as the
+ * next-action read, into an entry of the same head commit that is not
+ * newer than the read. An unset `review` keeps the entry's decision.
+ * Returns whether the entry changed.
+ */
+export async function writeGitHubPullRequestReviewState(
+  cache: PluginCache,
+  key: string,
+  read: {
+    draft: boolean;
+    headSha: string;
+    requestedReviewers: string[];
+    review?: GitHubPullRequestFields["review"];
+    startedAtMs: number;
+    updatedAt: string;
+  },
+): Promise<boolean> {
+  let changed = false;
+  await cache.update<GitHubPullRequestFields | null>(key, (current) => {
+    if (
+      !current ||
+      current.head?.sha !== read.headSha ||
+      isOlderGitHubObject(current, { updated_at: read.updatedAt })
+    ) {
+      return undefined;
+    }
+    const value: GitHubPullRequestFields = {
+      ...current,
+      draft: read.draft,
+      requested_reviewers: read.requestedReviewers.map((login) => ({ login })),
+      ...(read.review !== undefined && { review: read.review }),
+    };
+    changed = JSON.stringify(current) !== JSON.stringify(value);
+    return changed ? { ...GITHUB_PULL_REQUEST_CACHE, value } : undefined;
+  });
+  if (changed) {
+    await clearGitHubReviewAfterRead(cache, key, {
+      review: read.review,
+      startedAtMs: read.startedAtMs,
+    });
+  }
+  return changed;
 }
 
 /** Whether `next` is older than `current`, so it must not replace it. */

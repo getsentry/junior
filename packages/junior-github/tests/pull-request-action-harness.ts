@@ -615,6 +615,7 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                   ],
                 },
                 title: github.title ?? "Add the Inbox notice",
+                updatedAt: "2026-07-01T12:00:00Z",
                 url: PULL_URL,
               },
             },
@@ -755,6 +756,11 @@ export function route(
   const inboxItems: PluginConversationInboxItems = {
     forConversation(conversationId) {
       return {
+        // Only the merge conflict policy reads the history, and these
+        // webhooks add no merge conflict items.
+        async history() {
+          return [];
+        },
         async upsert(notice) {
           if (!isReady(notice.subject)) return;
           const on = new Set(open?.assigneeIdentityIds);

@@ -113,10 +113,7 @@ function automationRun(conversationId: string, turnId?: string): Context {
 // reads on the item.
 async function legacyCopy(id: string) {
   const [row] = await getDb()
-    .select({
-      answer: juniorInboxItems.answer,
-      title: juniorInboxItems.title,
-    })
+    .select({ title: juniorInboxItems.title })
     .from(juniorInboxItems)
     .where(eq(juniorInboxItems.id, id));
   return row;
@@ -680,9 +677,6 @@ describe("inbox item tools", () => {
         ),
       );
     const answered = await getInboxItem(getDb(), added.item.id);
-    expect(await legacyCopy(added.item.id)).toMatchObject({
-      answer: { values: { decision: ["Approve"] } },
-    });
     const before = await pending();
 
     // Ana answered it, and then the agent closes it, with any status.

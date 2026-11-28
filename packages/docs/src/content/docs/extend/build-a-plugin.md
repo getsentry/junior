@@ -610,11 +610,24 @@ the Destination of that Conversation sets who can see the item. Save the row
 before you add the item. Add a unique index, so that at most one row with a
 Conversation has each subject id.
 
+A kind can set `actions`: buttons that each open item of the kind shows, such
+as `{ id: "resume", label: "Resume" }`, with an optional `icon` such as
+`"wrench"` that the dashboard shows before the label. A click closes the item
+as done and calls your `inboxItemAction` hook with the item and the action id.
+Do the work there. A retry of the same click calls the hook again, so make it
+safe to repeat.
+
+`history(subject)` returns the items of a subject, newest first. Each closed
+item says when and how it closed, and the action that closed it. Read what
+people did, such as a dismiss or an action, from it. Do not copy it into a
+table of your plugin.
+
 ```ts
 inboxSubjects: [
   {
     kind: "deploy_stopped",
     label: "Deploy stopped",
+    actions: [{ id: "retry", label: "Retry" }],
     owner: {
       table: "my_provider_deploys",
       subjectId: "deploy_id",
@@ -856,13 +869,24 @@ defineJuniorPlugin({
   of your subject kind `kind` from `from` to `to`, and changes nothing else.
   When `from` is unique only in one workspace, set `urlPrefix` to the
   workspace's address: only Annotations whose url starts with it move.
-- **Prefetch.** To load a page of links in one provider call, add
-  `prefetch(ctx, urls)`. Junior calls it once per page read with every URL
-  that the link type claims, before `canView` and `resolve` run for each
-  URL. Write the objects to `ctx.cache`, and never return object data. To
-  tell one URL's card read what happened, return a `Map` from `url.href` to
-  an outcome. `out_of_time` means the page's time ran out before the object
-  loaded. That URL's `canView` and `resolve` on the same page get it as
+- **Cache-only reads.** The dashboard's page loads and polls, such as the
+  conversation feed and the Inbox, make no provider call. They read each
+  card with `ctx.cacheOnly` set, and `egress`, `viewerEgress`, and
+  `viewerMcp` throw. A card that scrolls into view or is hovered still
+  reads live. Set `cacheOnlyReads: true` when your `canView` and `resolve`
+  then read only `ctx.cache`, such as objects that your webhooks keep.
+  Anyone who can read the Conversation or Inbox item sees that stored
+  card, so these reads need no viewer access check. Return nothing on a
+  miss. Without `cacheOnlyReads`, these reads show only a card that
+  `cacheCards` kept, or the saved title and link.
+- **Prefetch.** To load many links in one provider call, add
+  `prefetch(ctx, urls)`. Junior calls it once per read of many links with
+  every URL that the link type claims, before `canView` and `resolve` run
+  for each URL. A cache-only read does not call it. Write the objects to
+  `ctx.cache`, and never return object data. To tell one URL's card read
+  what happened, return a `Map` from `url.href` to an outcome.
+  `out_of_time` means the read's time ran out before the object loaded.
+  That URL's `canView` and `resolve` in the same read get it as
   `ctx.prefetchOutcome`, so they can show only what the cache holds. Other
   reads, such as an Attach, get no outcome, so they ask the provider as
   usual.

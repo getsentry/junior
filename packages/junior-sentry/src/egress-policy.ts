@@ -35,7 +35,7 @@ const KNOWN_WRITES: ReadonlyArray<{ methods: string[]; path: string }> = [
   { methods: ["PUT", "DELETE"], path: "organizations/*/alert-rules/*" },
   { methods: ["POST"], path: "projects/*/*/rules" },
   { methods: ["PUT", "DELETE"], path: "projects/*/*/rules/*" },
-  { methods: ["POST"], path: "organizations/*/detectors" },
+  { methods: ["POST"], path: "organizations/*/projects/*/detectors" },
   { methods: ["PUT", "DELETE"], path: "organizations/*/detectors/*" },
   { methods: ["POST"], path: "organizations/*/workflows" },
   { methods: ["PUT", "DELETE"], path: "organizations/*/workflows/*" },

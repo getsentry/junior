@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessageMetadata, QueueClient } from "@vercel/queue";
+import { getQueueProvider } from "@/chat/queue/provider";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
 import { getChatConfig } from "@/chat/config";
 import {
@@ -96,6 +97,28 @@ function lastPushCallback() {
   }
   return { handler, retry };
 }
+
+describe("Vercel queue provider", () => {
+  it("sends a key over 256 characters as a stable shorter key", async () => {
+    const send = (idempotencyKey: string) =>
+      getQueueProvider().send("topic", {}, { idempotencyKey });
+    const sentKey = () => mocks.send.mock.lastCall?.[2]?.idempotencyKey;
+    const longKey = `duplicate:${"a".repeat(260)}`;
+
+    await send(longKey);
+    const first = sentKey();
+    await send(longKey);
+    expect(sentKey()).toBe(first);
+    expect(first?.length).toBeLessThanOrEqual(256);
+
+    await send(`${longKey}b`);
+    expect(sentKey()).not.toBe(first);
+
+    const maxKey = "k".repeat(256);
+    await send(maxKey);
+    expect(sentKey()).toBe(maxKey);
+  });
+});
 
 describe("Workspace snapshot Vercel queue integration", () => {
   it("runs only messages signed by the snapshot queue sender", async () => {

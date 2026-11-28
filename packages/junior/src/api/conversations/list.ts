@@ -92,7 +92,6 @@ import {
 } from "@/chat/conversations/sql/annotation-filter";
 import type { InboxItemSubject } from "@/chat/inbox-items/subjects";
 import { feedMediaSql } from "./feed-media";
-import { feedViewerAnswer, feedViewerAnswerSql } from "./feed-answer";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { readConversationTreeStates } from "./tree-state";
 import { attachActivityPreviewMentions } from "./mentions";
@@ -235,10 +234,6 @@ async function conversationRows(
       latestTurnFailed: conversationTurnFailedSql(juniorConversations),
       links: include.includes("links") ? feedLinksSql(db) : sql<null>`null`,
       media: include.includes("media") ? feedMediaSql(db) : sql<null>`null`,
-      viewerAnswer:
-        filter?.kind === "viewer"
-          ? feedViewerAnswerSql(db, filter.userId)
-          : sql<null>`null`,
     })
     .from(juniorConversations)
     .leftJoin(juniorDestinations, conversationRecordJoins.location)
@@ -774,7 +769,7 @@ export async function readConversationFeedFromSql(
         ),
         tenantByConversation,
       ),
-      // The chips show each object as the viewer can read it now.
+      // The chips show each object as the caches hold it for the viewer.
       readLiveAnnotationsById(
         options.viewer,
         visibleAnnotationsByConversation,
@@ -862,11 +857,6 @@ export async function readConversationFeedFromSql(
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
       const treeRead = treeStateByConversation.get(conversation.conversationId);
-      // The viewer saw the answer as they gave it, but like the summary it
-      // holds private content.
-      const viewerAnswer = access?.canViewPrivateContent
-        ? feedViewerAnswer(row.viewerAnswer)
-        : undefined;
       return {
         ...summary,
         ...work,
@@ -886,7 +876,6 @@ export async function readConversationFeedFromSql(
           ? { participants }
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
-        ...(viewerAnswer ? { viewerAnswer } : undefined),
         ...(media?.length ? { media } : undefined),
         ...(links.length > 0 ? { links } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]

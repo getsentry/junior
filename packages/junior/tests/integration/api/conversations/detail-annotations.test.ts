@@ -1,5 +1,6 @@
 import { githubPlugin } from "@sentry/junior-github";
 import { encodeObjectImageRef } from "@sentry/junior-plugin-api";
+import { sentryPlugin } from "@sentry/junior-sentry";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +13,7 @@ import {
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { decodeImageId } from "@/chat/images/ids";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -29,6 +31,10 @@ import {
   stubGraphql,
   T0,
 } from "../../../fixtures/github-objects";
+import {
+  readLiveCards,
+  recordOutboundRequests,
+} from "../../../fixtures/object-cards";
 import { createPluginTaskQueueTestAdapter } from "../../../fixtures/plugin-task-queue";
 import { signedInViewer } from "../../../fixtures/user";
 import { mswServer } from "../../../msw/server";
@@ -99,7 +105,7 @@ describe("conversation detail annotations", () => {
     });
   });
 
-  it("reads each annotation's object live for the viewer, and shows only its label to a viewer who cannot read it", async () => {
+  it("shows each annotation's stored object to anyone who can read the Conversation, and reads no provider", async () => {
     // createApp installs its plugins; the next test starts without them.
     useAppContext();
     stubGitHubApp();
@@ -147,10 +153,36 @@ describe("conversation detail annotations", () => {
       url: `${GITHUB_REPO}/pull/35`,
     });
 
+    const alice = await signedInViewer("alice@example.com");
+    const outbound = recordOutboundRequests();
     try {
-      const member = await readConversationDetail(conversationId, {
-        viewer: await signedInViewer("alice@example.com"),
+      // Nothing holds the object yet, so the page shows the stored title
+      // and the link, and asks GitHub nothing.
+      const unknown = await readConversationDetail(conversationId, {
+        viewer: alice,
       });
+      expect(unknown?.annotations).toEqual([
+        {
+          createdAt: expect.any(String),
+          key: "getsentry/junior#35",
+          kind: "object",
+          label: "getsentry/junior#35",
+          objectType: "code_change",
+          plugin: "github",
+          title: "Draft title",
+          updatedAt: expect.any(String),
+          url: `${GITHUB_REPO}/pull/35`,
+        },
+      ]);
+      expect(outbound.urls).toEqual([]);
+
+      // A live read keeps the object, as a webhook does.
+      await readLiveCards(alice, [`${GITHUB_REPO}/pull/35`]);
+      outbound.urls.length = 0;
+      const member = await readConversationDetail(conversationId, {
+        viewer: alice,
+      });
+      expect(outbound.urls).toEqual([]);
       expect(member?.annotations).toEqual([
         expect.objectContaining({
           key: "getsentry/junior#35",
@@ -183,27 +215,114 @@ describe("conversation detail annotations", () => {
         source: "github",
       });
 
-      // A reader without access to the repository sees the label that
-      // GitHub makes from the link, and the link.
+      // A reader without access to the repository sees the stored object
+      // too, because they can read the Conversation.
       const outsider = await readConversationDetail(conversationId, {
         viewer: await signedInViewer("bob@example.com"),
       });
       expect(outsider?.annotations).toEqual([
-        {
-          createdAt: expect.any(String),
-          key: "getsentry/junior#35",
-          kind: "resource_link",
-          label: "getsentry/junior#35",
-          objectType: "code_change",
-          plugin: "github",
-          updatedAt: expect.any(String),
-          url: `${GITHUB_REPO}/pull/35`,
-        },
+        expect.objectContaining({
+          kind: "object",
+          status: "merged",
+          title: "Show screenshots on cards",
+        }),
       ]);
-      expect(JSON.stringify(outsider?.sidebarAnnotations)).not.toMatch(
-        /Draft title|Saved label|Show screenshots|merged|open/,
-      );
+      expect(outbound.urls).toEqual([]);
     } finally {
+      outbound.stop();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("shows a Sentry issue that the plugin cache holds, and reads no provider", async () => {
+    useAppContext();
+    vi.stubEnv("SENTRY_READ_TOKEN", "org-read-token");
+    const issueUrl = "https://sentry.sentry.io/issues/4567/";
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/sentry/", () =>
+        HttpResponse.json({
+          links: { regionUrl: "https://us.sentry.io" },
+          slug: "sentry",
+        }),
+      ),
+      http.get(
+        "https://us.sentry.io/api/0/organizations/sentry/issues/4567/",
+        () =>
+          HttpResponse.json({
+            id: "4567",
+            project: { slug: "junior" },
+            shortId: "JUNIOR-3ZK",
+            status: "resolved",
+            title: "TypeError: cart.total is undefined",
+          }),
+      ),
+    );
+    await createApp({ plugins: defineJuniorPlugins([sentryPlugin()]) });
+    const conversationId = "local:test:sentry-annotations";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Checkout crash",
+      visibility: "public",
+    });
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "sentry",
+    }).upsert({
+      kind: "object",
+      objectType: "task",
+      key: "sentry/4567",
+      title: "Stored title",
+      url: issueUrl,
+    });
+    const alice = await signedInViewer("alice@example.com");
+    await createUserTokenStore().set(alice.id, "sentry", {
+      accessToken: "alice-token",
+      expiresAt: Date.now() + 3_600_000,
+      refreshToken: "alice-refresh",
+      scope:
+        "alerts:write event:write member:read org:read project:releases project:write team:write",
+    });
+    const outbound = recordOutboundRequests();
+    try {
+      // Nothing holds the issue yet, so the page shows the stored title.
+      const unknown = await readConversationDetail(conversationId, {
+        viewer: alice,
+      });
+      expect(unknown?.annotations).toEqual([
+        expect.objectContaining({ kind: "object", title: "Stored title" }),
+      ]);
+      expect(outbound.urls).toEqual([]);
+
+      await readLiveCards(alice, [issueUrl]);
+      outbound.urls.length = 0;
+      const cached = [
+        expect.objectContaining({
+          label: "JUNIOR-3ZK",
+          status: "resolved",
+          title: "TypeError: cart.total is undefined",
+        }),
+      ];
+      // A reader without a Sentry account sees the cached issue too.
+      const bob = await signedInViewer("bob@example.com");
+      const outsider = await readConversationDetail(conversationId, {
+        viewer: bob,
+      });
+      expect(outsider?.annotations).toEqual(cached);
+      // After the entry's five minutes, the page shows the last good issue.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 301_000);
+      const later = await readConversationDetail(conversationId, {
+        viewer: bob,
+      });
+      expect(later?.annotations).toEqual(cached);
+      expect(outbound.urls).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+      outbound.stop();
       vi.unstubAllEnvs();
     }
   });
@@ -331,7 +450,7 @@ describe("conversation detail annotations", () => {
 });
 
 // A public Conversation that annotates pull request `number`, and a poll
-// of its detail page as a GitHub-linked viewer.
+// of its detail page as a GitHub-linked viewer whose access is cached.
 async function annotatedPullRequestPage(number: number) {
   await linkGitHubMember();
   const conversationId = `local:test:provider-change-${number}`;
@@ -356,6 +475,8 @@ async function annotatedPullRequestPage(number: number) {
     url: `${GITHUB_REPO}/pull/${number}`,
   });
   const viewer = await signedInViewer("alice@example.com");
+  // A live read, such as an Attach, caches her access and the object.
+  await readLiveCards(viewer, [`${GITHUB_REPO}/pull/${number}`]);
   const api = new Hono<JuniorApiEnv>();
   api.use("*", async (context, next) => {
     context.set("viewer", viewer);

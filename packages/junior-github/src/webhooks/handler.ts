@@ -496,6 +496,8 @@ export function createGitHubWebhookRoute(args: {
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         inboxItems: args.inboxItems,
+        objectChanged: async (subject) =>
+          await args.annotations.objectChanged(subject),
         state: args.state,
         targets: pullRequestActionTargets(eventName, body),
         tasks: args.tasks,

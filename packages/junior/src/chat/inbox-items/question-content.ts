@@ -9,7 +9,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { juniorInboxItems, juniorQuestions } from "@/db/schema";
 import type { InboxItemNoticeRequest, InboxItemRequest } from "./request";
 import { INBOX_SUBJECT_KINDS } from "./subjects";
-import type { UserInputAnswer } from "./user-input-request";
 
 /** SQL: the join of a question item to its question. */
 export const itemQuestion = and(
@@ -27,6 +26,3 @@ export const inboxItemBody = sql<string>`coalesce(${juniorQuestions.body}, ${jun
 export const inboxItemRequest = sql<
   InboxItemRequest | InboxItemNoticeRequest | null
 >`coalesce(${juniorQuestions.request}, ${juniorInboxItems.request})`;
-
-/** SQL: the answer of an item, from its question when it has one. */
-export const inboxItemAnswer = sql<UserInputAnswer | null>`coalesce(${juniorQuestions.answer}, ${juniorInboxItems.answer})`;

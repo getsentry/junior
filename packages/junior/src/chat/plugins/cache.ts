@@ -17,8 +17,8 @@ export function createPluginCache(
       onStale ? { onStale } : undefined,
     );
   return {
-    async get(key) {
-      return await cache().get(key);
+    async get(key, options) {
+      return await cache().get(key, options);
     },
     async getOrLoad(key, load, options) {
       return await cache().getOrLoad(key, load, options);

@@ -133,6 +133,13 @@ export interface InboxItem {
    * owner Conversation. Its later runs can read and change the item.
    */
   addedByAutomationId?: string;
+  /**
+   * Who answered. A question holds it; another kind that takes an answer
+   * reads it from its close.
+   */
+  answeredBy?: InboxItemAssignee;
+  /** The id of the subject kind's action that closed it, such as `resume`. */
+  closeAction?: string;
   closeReason?: string;
   closedAt?: Date;
   closedBy?: InboxItemAssignee;
@@ -295,13 +302,22 @@ async function hydrate(
   const users = await readUsers(db, [
     ...assigneeRows.map((row) => row.userId),
     ...rows.flatMap((row) => (row.closedByUserId ? [row.closedByUserId] : [])),
+    ...owned.flatMap(({ question }) =>
+      question?.answeredByUserId ? [question.answeredByUserId] : [],
+    ),
   ]);
   return rows.map((row, index) => {
     const { addedByAutomationId, owner, question } = owned[index]!;
-    // A question item's content is its question's.
+    // A question item's content and answer are its question's.
     const content = question ?? row;
     const closedBy = row.closedByUserId
       ? users.get(row.closedByUserId)
+      : undefined;
+    const answeredByUserId = question
+      ? question.answeredByUserId
+      : content.answer && row.closedByUserId;
+    const answeredBy = answeredByUserId
+      ? users.get(answeredByUserId)
       : undefined;
     return {
       assignedToEveryone: row.assignedToEveryone,
@@ -324,8 +340,10 @@ async function hydrate(
       updatedAt: row.updatedAt,
       visibility: owner.visibility,
       ...(content.answer ? { answer: content.answer } : undefined),
+      ...(answeredBy ? { answeredBy } : undefined),
       ...(row.addedByTurnId ? { addedByTurnId: row.addedByTurnId } : undefined),
       ...(addedByAutomationId ? { addedByAutomationId } : undefined),
+      ...(row.closeAction ? { closeAction: row.closeAction } : undefined),
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
@@ -453,13 +471,27 @@ export async function getOpenInboxItemBySubject(
   subject: InboxItemSubject,
 ): Promise<InboxItem | undefined> {
   const rows = await selectItemRows(db).where(
-    and(
-      eq(juniorInboxItems.subjectKind, subject.kind),
-      eq(juniorInboxItems.subjectId, subject.id),
-      eq(juniorInboxItems.status, "open"),
-    ),
+    and(subjectIs(subject), eq(juniorInboxItems.status, "open")),
   );
   return (await hydrate(db, rows))[0];
+}
+
+/** Read every Inbox item of one subject, open and closed, newest first. */
+export async function listInboxItemsBySubject(
+  db: JuniorDatabase,
+  subject: InboxItemSubject,
+): Promise<InboxItem[]> {
+  const rows = await selectItemRows(db)
+    .where(subjectIs(subject))
+    .orderBy(desc(juniorInboxItems.createdAt), desc(juniorInboxItems.id));
+  return await hydrate(db, rows);
+}
+
+function subjectIs(subject: InboxItemSubject): SQL | undefined {
+  return and(
+    eq(juniorInboxItems.subjectKind, subject.kind),
+    eq(juniorInboxItems.subjectId, subject.id),
+  );
 }
 
 /**
@@ -612,6 +644,7 @@ export async function updateInboxItemContent(
 export async function closeInboxItem(
   db: JuniorDatabase,
   input: {
+    action?: string;
     answer?: UserInputAnswer;
     closedByUserId?: string;
     id: string;
@@ -625,9 +658,11 @@ export async function closeInboxItem(
     const closed = await tx
       .update(juniorInboxItems)
       .set({
-        // A question item's answer goes to its question. The item keeps a
-        // copy, because the release before this one reads it there.
-        answer: input.answer ?? null,
+        // A question holds its own answer, who gave it, and when.
+        answer: input.answer
+          ? sql`case when ${juniorInboxItems.subjectKind} = ${INBOX_SUBJECT_KINDS.question} then null else ${JSON.stringify(input.answer)}::jsonb end`
+          : null,
+        closeAction: input.action ?? null,
         closeReason: input.reason ?? null,
         closedAt: now,
         closedByUserId: input.closedByUserId ?? null,
@@ -649,7 +684,12 @@ export async function closeInboxItem(
     if (input.answer && item?.subjectKind === INBOX_SUBJECT_KINDS.question) {
       await tx
         .update(juniorQuestions)
-        .set({ answer: input.answer, updatedAt: now })
+        .set({
+          answer: input.answer,
+          answeredAt: now,
+          answeredByUserId: input.closedByUserId ?? null,
+          updatedAt: now,
+        })
         .where(eq(juniorQuestions.id, item.subjectId));
     }
     await touchConversationDetail(tx, ownerConversationIds(closed));

@@ -375,20 +375,30 @@ describe("merge conflict check on webhook events", () => {
       vi.useRealTimers();
     });
 
-    it("clears a conflict that the cache entry still knows when the pull request is mergeable", async () => {
-      const key = "pulls:getsentry/junior#947";
-      await h.cache.update(key, () => ({
-        ttlMs: 60 * minute,
-        value: { head: { sha: headSha }, mergeable: false, state: "open" },
-      }));
+    it("writes the merge state that it reads into cache entries of the same head commit", async () => {
+      const entry = (mergeable: boolean) => ({
+        head: { sha: headSha },
+        mergeable,
+        state: "open",
+      });
+      // The entry of #946 says mergeable, and the one of #947 still knows
+      // a fixed conflict.
+      for (const [number, mergeable] of [
+        [946, true],
+        [947, false],
+      ] as const) {
+        await h.cache.update(`pulls:getsentry/junior#${number}`, () => ({
+          ttlMs: 60 * minute,
+          value: entry(mergeable),
+        }));
+      }
       await deliver("push-1", pushRequest("refs/heads/main"));
       await heartbeat(pushedAt + 2 * minute);
 
-      expect(await h.cache.get(key)).toEqual({
-        head: { sha: headSha },
-        mergeable: true,
-        state: "open",
-      });
+      expect([
+        await h.cache.get("pulls:getsentry/junior#946"),
+        await h.cache.get("pulls:getsentry/junior#947"),
+      ]).toEqual([entry(false), entry(true)]);
     });
 
     it("publishes a conflict with one search for a burst of pushes", async () => {
@@ -541,7 +551,7 @@ describe("merge conflict check on webhook events", () => {
     }
 
     const resume = {
-      choice: "Resume",
+      action: "resume",
       conversationId: "slack:C1:1.0",
       itemId: "item-1",
       subject: { id: "9460", kind: "merge_conflict" },
@@ -722,8 +732,7 @@ describe("merge conflict check on webhook events", () => {
           notice: {
             askedIdentityIds: ["identity-jane"],
             assigneeIdentityIds: ["identity-jane"],
-            body: "#946 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
-            choices: [{ label: "Resume" }],
+            body: "#946 conflicts with `main`, and the last fix did not land. Keep fixing tries again. Dismiss stops these asks for this pull request.",
             subject: {
               id: "9460",
               kind: "merge_conflict",
@@ -759,7 +768,7 @@ describe("merge conflict check on webhook events", () => {
       expect(h.notices).toHaveLength(1);
       pullRequest.head.sha = "1".repeat(40);
       h.failures.publish = 1;
-      await expect(h.answer(resume)).rejects.toThrow("The event queue is down");
+      await expect(h.act(resume)).rejects.toThrow("The event queue is down");
       await checkAt(pushedAt + day + hour + 10 * minute, "1");
       expect(h.notices).toHaveLength(2);
     });
@@ -777,7 +786,7 @@ describe("merge conflict check on webhook events", () => {
       // starts the fix, so the fix reaches the Conversation.
       h.watches.ownConflicts = false;
       const publishedBefore = h.published.length;
-      await h.answer(resume);
+      await h.act(resume);
       expect(h.subscribed).toEqual([
         {
           events: expect.arrayContaining(["pull_request.merge_conflict"]),
@@ -820,7 +829,7 @@ describe("merge conflict check on webhook events", () => {
         .update(juniorGitHubPullRequestRequesters)
         .set({ repositoryFullName: "getsentry/junior-old" });
       pullRequest.head.sha = "1".repeat(40);
-      await h.answer(resume);
+      await h.act(resume);
       expect(
         conflicts().filter((event) =>
           event.eventKey.endsWith(":resume:item-1"),
@@ -829,6 +838,33 @@ describe("merge conflict check on webhook events", () => {
         expect.objectContaining({ identifier: "getsentry/junior#946" }),
         expect.objectContaining({ identifier: "getsentry/junior" }),
       ]);
+      // The opener's old name hides the item history from the conflict
+      // check. The fix that Resume started still gets no second publish.
+      const published = conflicts().length;
+      await checkAt(pushedAt + day + hour + 10 * minute, "1");
+      expect(conflicts()).toHaveLength(published);
+    });
+
+    it("adds no fix for a conflict check during Resume after a repository rename", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      // The opener's row keeps the name from when Junior opened it.
+      await fixture
+        .db()
+        .update(juniorGitHubPullRequestRequesters)
+        .set({ repositoryFullName: "getsentry/junior-old" });
+      pullRequest.head.sha = "1".repeat(40);
+      const published = conflicts().length;
+      // The check of a new head runs while Resume reads the pull request.
+      vi.setSystemTime(resume.nowMs);
+      duringPullRequestRead = () => checkAt(resume.nowMs, "2");
+      await h.act(resume);
+      expect(duringPullRequestRead).toBeUndefined();
+      expect(
+        conflicts()
+          .slice(published)
+          .every((event) => event.eventKey.endsWith(":resume:item-1")),
+      ).toBe(true);
     });
 
     it("lets the next conflict ask again when Resume finds no pull request", async () => {
@@ -838,7 +874,7 @@ describe("merge conflict check on webhook events", () => {
       // No pull request with the item's id was opened in this Conversation,
       // so the Resume starts no fix. Core closed the item already.
       const published = conflicts().length;
-      await h.answer({ ...resume, conversationId: "slack:C9:9.0" });
+      await h.act({ ...resume, conversationId: "slack:C9:9.0" });
       expect(conflicts()).toHaveLength(published);
       await checkAt(pushedAt + day + hour + 10 * minute, "1");
       expect(h.notices).toHaveLength(2);
@@ -849,8 +885,10 @@ describe("merge conflict check on webhook events", () => {
       await fixThatDoesNotLand();
       expect(h.notices).toHaveLength(1);
       pullRequest.head.sha = "1".repeat(40);
-      duringPullRequestRead = () => checkAt(pushedAt + day + hour, "1");
-      await h.answer(resume);
+      // The check runs minutes after the click, while Resume reads.
+      vi.setSystemTime(resume.nowMs);
+      duringPullRequestRead = () => checkAt(resume.nowMs, "1");
+      await h.act(resume);
       expect(duringPullRequestRead).toBeUndefined();
       expect(h.notices).toHaveLength(1);
     });
@@ -863,12 +901,12 @@ describe("merge conflict check on webhook events", () => {
       // asks again at once, with no wait for a fix.
       pullRequest.draft = true;
       const published = conflicts().length;
-      await h.answer(resume);
+      await h.act(resume);
       pullRequest.draft = false;
       await checkAt(pushedAt + day + hour + 10 * minute, "1");
       // The same holds when GitHub can merge it by the time of the Resume.
       pullRequest.mergeable = true;
-      await h.answer({ ...resume, itemId: "item-2" });
+      await h.act({ ...resume, itemId: "item-2" });
       await checkAt(pushedAt + day + hour + 20 * minute, "1");
       expect(conflicts()).toHaveLength(published);
       expect(h.notices).toHaveLength(3);
@@ -879,7 +917,7 @@ describe("merge conflict check on webhook events", () => {
       await fixThatDoesNotLand();
       expect(h.notices).toHaveLength(1);
       pullRequest.head.sha = "1".repeat(40);
-      await h.answer(resume);
+      await h.act(resume);
       // The Watch is still active, so Resume adds no second one.
       expect(h.subscribed).toEqual([]);
 
@@ -891,7 +929,7 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + 2 * day + hour, "1");
       await checkAt(pushedAt + 2 * day + 2 * hour, "1");
       expect(h.notices).toHaveLength(2);
-      await h.answer({
+      await h.act({
         ...resume,
         itemId: "item-2",
         nowMs: pushedAt + 2 * day + 3 * hour,

@@ -17,6 +17,7 @@ import {
 } from "@/chat/sandbox/egress/credentials";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import { responseTextWithinLimit } from "@/chat/egress/response-text";
+import { fetchWithDeadline } from "@/chat/egress/upstream-deadline";
 import type { SandboxCredentialRequest } from "@/chat/sandbox/egress/credential-request";
 import { SANDBOX_EGRESS_AUTH_REQUIRED_MARKER } from "@/chat/sandbox/egress/signals";
 import {
@@ -514,7 +515,7 @@ async function forwardWithoutCredential(input: {
   if (intercepted) {
     return intercepted;
   }
-  const upstream = await (deps.fetch ?? fetch)(upstreamUrl, {
+  const upstream = await fetchWithDeadline(deps.fetch ?? fetch, upstreamUrl, {
     method: request.method,
     headers,
     ...(body !== undefined ? { body } : undefined),
@@ -782,7 +783,7 @@ export async function executeCredentialedEgressRequest(input: {
     }
 
     const requestBody = body instanceof ArrayBuffer ? body.slice(0) : body;
-    const upstream = await fetchImpl(upstreamUrl, {
+    const upstream = await fetchWithDeadline(fetchImpl, upstreamUrl, {
       method: request.method,
       headers,
       ...(requestBody !== undefined ? { body: requestBody } : undefined),

@@ -414,6 +414,47 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("fails a stalled upstream at its deadline instead of waiting on it", async () => {
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 600_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      PROVIDER_HOST,
+    );
+    // The upstream never answers. Only the deadline ends the request.
+    const stalledFetch = (_url: URL | string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(init.signal?.reason),
+        );
+      });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const response = modules.vercel
+        .proxyVercelSandboxEgressRequest(proxiedRequest({ forwardURL }), {
+          fetch: stalledFetch as typeof fetch,
+          verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+        })
+        .then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error }),
+        );
+      let settled = false;
+      void response.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(119_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await response).toMatchObject({
+        error: { name: "UpstreamDeadlineExceeded" },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns auth-required via canonical egress credential error when broker has no user token", async () => {
     // Broker-backed provider (sandbox-egress-test fixture) with no stored user OAuth token.
     // Since the fixture has no `oauth` section, the broker throws CredentialUnavailableError
