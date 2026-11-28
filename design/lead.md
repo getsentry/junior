@@ -46,8 +46,9 @@ theirs to decide.
 - When a child, an Event, or an Inbox answer starts a Turn, final text does
   not post. The Lead posts only with an explicit reply, or ends the Turn
   with `noReply`.
-- A child's `done` update reaches the Lead as a Conversation note and starts
-  no Turn. `waiting`, `blocked`, `failed`, and `stopped` start a Turn.
+- Every child update starts a Lead Turn, `done` included. A `done` that is
+  now true is news: the Lead archives the child, then starts the next step
+  the members agreed to or tells them what is done.
 - The Lead sees a child's result as that child's claim, apart from runtime
   facts.
 
@@ -58,7 +59,5 @@ theirs to decide.
   claim. getsentry/junior#4421 tracks it.
 - On a Turn that a child or an Event started, the Lead's final text posts.
   This breaks "quiet by default".
-- Every child update starts a Lead Turn, also `done`. getsentry/junior#4413
-  tracks it.
 - A child's result reaches the Lead as current state, not as a claim. This
   breaks "a child's result is a claim".
