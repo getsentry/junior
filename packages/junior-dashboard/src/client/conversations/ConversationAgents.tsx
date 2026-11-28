@@ -117,7 +117,7 @@ const stateLabels: Record<ChildState, string> = {
   blocked: "Blocked",
   done: "Done",
   failed: "Failed",
-  needs_you: "Waiting for an answer",
+  needs_you: "Needs input",
   paused: "Paused",
   running: "Running",
   stopped: "Stopped",

@@ -400,7 +400,7 @@ export function readMockConversationQuestions(
 /**
  * Mark the mock feed rows whose Conversations have a question that waits
  * for an answer, like `questionWaitsSql`: the asking Conversation needs
- * input, and its tree needs you, for every viewer.
+ * input, and its tree needs input, for every viewer.
  */
 export function withMockQuestionWaits(
   feed: ConversationFeed,

@@ -56,7 +56,7 @@ test.describe("new UI", () => {
     ).toBeVisible();
     await expect(
       flightRow(/Quarterly reliability review/).getByRole("img", {
-        name: "Waiting for an answer",
+        name: "Needs input",
       }),
     ).toBeVisible();
     // A done tree that watches for an Event or a Timer shows an eye.
@@ -95,9 +95,7 @@ test.describe("new UI", () => {
       })
       .first();
     const meta = row.locator('[data-inbox-slot="meta"]').first();
-    await expect(
-      meta.getByRole("img", { name: "Waiting for an answer" }),
-    ).toBeVisible();
+    await expect(meta.getByRole("img", { name: "Needs input" })).toBeVisible();
 
     // So does the Conversation header.
     await flightRow(/Package release and self-update/)

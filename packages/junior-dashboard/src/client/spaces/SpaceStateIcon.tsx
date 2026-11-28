@@ -23,13 +23,13 @@ export function spaceDisplayState(
 
 const STATE_LABELS: Record<SpaceDisplayState, string> = {
   failed: "A Thread failed",
-  needs_you: "Waiting for an answer",
+  needs_you: "Needs input",
   working: "Working",
 };
 
 /**
  * Render the one state icon of a Space row, in the row's text colors: a
- * question mark when a Conversation waits on the viewer, an alert when one
+ * question mark when a Conversation needs input, an alert when one
  * failed, and a spinner while one works. Hover shows the label.
  */
 export function SpaceStateIcon(props: {

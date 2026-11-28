@@ -637,7 +637,7 @@ test.describe("new UI", () => {
       /^Done$/,
       /^Watching$/,
       /^Working$/,
-      /^Needs you$/,
+      /^Needs input$/,
       /^Pinned$/,
       /^All$/,
     ]);

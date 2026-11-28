@@ -32,7 +32,7 @@ export function conversationDisplayState(
 }
 
 const STATE_LABELS: Record<ConversationDisplayState, string> = {
-  needs_you: "Waiting for an answer",
+  needs_you: "Needs input",
   pinned: "Pinned",
   watching: "Watching for an event",
   working: "Working",
@@ -40,7 +40,7 @@ const STATE_LABELS: Record<ConversationDisplayState, string> = {
 
 /**
  * Render the one state icon of a Conversation row: a question mark when it
- * waits on the viewer, a spinner while it works, an eye while it watches for
+ * needs input, a spinner while it works, an eye while it watches for
  * an Event or Timer, and a pin when it is pinned. Nothing otherwise. Hover
  * shows the label, since an icon alone does not say what it means.
  */

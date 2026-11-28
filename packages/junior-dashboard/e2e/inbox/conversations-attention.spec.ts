@@ -116,11 +116,10 @@ test.describe("new UI", () => {
       await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const rows = list.getByRole("listitem");
-      // A row waits on an Inbox ask of the viewer, or an open question.
+      // A row's state icon shows Needs input while a question in its tree is
+      // open. A Thread under it shows its own status, with no title.
       const waiting = rows.filter({
-        has: page.getByRole("img", {
-          name: /^Waiting (on you|for an answer)$/,
-        }),
+        has: page.getByTitle("Needs input", { exact: true }),
       });
       const working = rowLink(list, "Investigate checkout latency");
       const asking = rowLink(list, "Roll out payments-v42");
@@ -137,7 +136,7 @@ test.describe("new UI", () => {
         /^Done$/,
         /^Watching$/,
         /^Working$/,
-        /^Needs you$/,
+        /^Needs input$/,
         /^Pinned$/,
         /^All$/,
       ]);
@@ -145,15 +144,18 @@ test.describe("new UI", () => {
         lightTheme: true,
       });
 
-      // Needs you lists only the rows that wait on the viewer.
-      await filter("Needs you").click();
+      // Needs input lists only the rows that need input.
+      await filter("Needs input").click();
       await expect(page).toHaveURL(/[?&]state=needs_you/);
       await expect(asking).toBeVisible();
       await expect(working).toHaveCount(0);
       await expect.poll(() => rows.count()).toBeGreaterThan(0);
       expect(await waiting.count()).toBe(await rows.count());
       await page.reload();
-      await expect(filter("Needs you")).toHaveAttribute("aria-current", "page");
+      await expect(filter("Needs input")).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
       await expect(asking).toBeVisible();
       await expect(working).toHaveCount(0);
 

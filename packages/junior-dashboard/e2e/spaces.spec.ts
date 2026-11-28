@@ -158,7 +158,7 @@ test("each pane row shows what its Space's Conversations need", async ({
   const expectStates = async () => {
     await expect(
       row("Billing migration").getByRole("img", {
-        name: "Waiting for an answer",
+        name: "Needs input",
       }),
     ).toBeVisible();
     // A failure outranks work that still runs.
