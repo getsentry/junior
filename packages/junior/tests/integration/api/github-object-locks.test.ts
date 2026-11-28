@@ -15,8 +15,9 @@ import { patchConfig } from "../../fixtures/config";
 
 const DASHBOARD = "https://junior.example.com";
 
-// A webhook waits for a card read that loads the same object, then gives up.
-describe("GitHub webhooks during a slow card read", () => {
+// A webhook or a card read waits for a card read that loads the same
+// object, then gives up.
+describe("GitHub webhooks and card reads during a slow card read", () => {
   beforeEach(() => {
     patchConfig({
       dashboard: {
@@ -118,6 +119,98 @@ describe("GitHub webhooks during a slow card read", () => {
       await lateRead;
       await read(`${GITHUB_REPO}/issues/15`);
       expect(reads).toBe(readsBefore + 1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("shows the last card to a read that could not wait for a slow card read, and reads GitHub only when there is none", async () => {
+    stubGitHubApp();
+    const issue = (number: number) => ({
+      closed_at: null,
+      created_at: "2026-01-01T00:00:00Z",
+      html_url: `${GITHUB_REPO}/issues/${number}`,
+      id: number * 1_000,
+      number,
+      state: "open",
+      title: `Issue ${number}`,
+      updated_at: "2026-01-02T03:04:05Z",
+      user: { login: "byk" },
+    });
+    let reachGitHub!: () => void;
+    let answerGitHub!: () => void;
+    let answered = Promise.resolve();
+    // Only the read after `slowNext` answers late.
+    let slowNext = false;
+    let reads = 0;
+    mswServer.use(
+      http.get(`${GITHUB_API}/issues/:number`, async ({ params }) => {
+        reads += 1;
+        if (slowNext) {
+          slowNext = false;
+          reachGitHub();
+          await answered;
+        }
+        return HttpResponse.json(issue(Number(params["number"])));
+      }),
+    );
+    // Start a slow read of the issue, and a second read while it runs. Move
+    // the clock past the second read's wait until it gives up.
+    const readDuringSlowRead = async (
+      read: Awaited<ReturnType<typeof viewerApi>>,
+      number: number,
+    ) => {
+      const reachedGitHub = new Promise<void>((resolve) => {
+        reachGitHub = resolve;
+      });
+      answered = new Promise<void>((resolve) => {
+        answerGitHub = resolve;
+      });
+      slowNext = true;
+      const slowRead = read(`${GITHUB_REPO}/issues/${number}`);
+      await reachedGitHub;
+      const readsBefore = reads;
+      let settled = false;
+      const waiter = read(`${GITHUB_REPO}/issues/${number}`).finally(() => {
+        settled = true;
+      });
+      const start = Date.now();
+      for (let step = 1; !settled && step <= 10; step += 1) {
+        vi.setSystemTime(start + step * 11_000);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      const result = await waiter;
+      const waiterReads = reads - readsBefore;
+      answerGitHub();
+      await slowRead;
+      return {
+        card: result.objects.get(`${GITHUB_REPO}/issues/${number}`),
+        waiterReads,
+      };
+    };
+    try {
+      await createGitHubApp();
+      patchConfig({ dashboard: { baseURL: DASHBOARD } });
+      await linkGitHubMember();
+      const read = await viewerApi("alice@example.com");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const start = Date.now();
+      await read(`${GITHUB_REPO}/issues/17`);
+
+      // Past its TTL, the card of issue 17 is kept as the last good card.
+      vi.setSystemTime(start + 5 * 60_000);
+      const kept = await readDuringSlowRead(read, 17);
+      expect(kept.card).toMatchObject({
+        fetchedAt: new Date(start).toISOString(),
+        title: "Issue 17",
+      });
+      expect(kept.waiterReads).toBe(0);
+
+      // Issue 18 has no card yet, so the read that gave up reads GitHub.
+      const loaded = await readDuringSlowRead(read, 18);
+      expect(loaded.card).toMatchObject({ title: "Issue 18" });
+      expect(loaded.card).not.toHaveProperty("fetchedAt");
+      expect(loaded.waiterReads).toBeGreaterThan(0);
     } finally {
       vi.unstubAllEnvs();
     }
