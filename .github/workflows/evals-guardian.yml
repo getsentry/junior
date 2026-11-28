@@ -99,7 +99,7 @@ jobs:
       fail-fast: false
       matrix:
         # One Guardian arm per job, so each arm gets its own score.
-        arm: [current, agent]
+        arm: [current, agent, agent-one-step]
     permissions:
       contents: read
       pull-requests: read
@@ -126,7 +126,7 @@ jobs:
           ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
           ROACH_MODE: "off"
           BASELINE_USAGE_FILE: ${{ github.workspace }}/packages/junior-evals/guardian-usage.jsonl
-        # Temporary fair baseline: both arms fully live, 3 samples per case.
+        # Temporary fair baseline: all three arms fully live, 3 samples per case.
         # With Roach off, model calls go direct, which the network jail
         # blocks, so this step runs outside it.
         run: node packages/junior-evals/scripts/baseline-live.mjs

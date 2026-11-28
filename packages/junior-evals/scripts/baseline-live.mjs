@@ -6,7 +6,8 @@ import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const SAMPLES = 3;
-const CAP_USD = 12;
+// Three arms stay under $25 together.
+const CAP_USD = 8;
 // openai/gpt-6-luna, from packages/junior/src/chat/pi/gateway-models.ts.
 const INPUT_USD = 0.1e-6;
 const OUTPUT_USD = 0.5e-6;
