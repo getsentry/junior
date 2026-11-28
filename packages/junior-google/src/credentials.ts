@@ -262,14 +262,19 @@ type AccountToken =
   | { unavailable: string };
 
 // Refresh the access token of Junior's Google account. A token that Google
-// rejects disconnects the account.
+// rejects disconnects the account. With `scope`, a grant without that scope
+// gets no token.
 async function refreshAccountToken(
   ctx: Pick<PluginContext, "db" | "log">,
   config: GoogleConfig,
+  scope?: string,
 ): Promise<AccountToken> {
   const db = ctx.db as GoogleDb;
   const record = await getGoogleAccount(db, config.accountEmail);
   if (!record) return { unavailable: NOT_CONNECTED_MESSAGE };
+  if (scope && !record.scope.split(/\s+/).includes(scope)) {
+    return { unavailable: `The connected grant does not include ${scope}.` };
+  }
   const token = await refreshGoogleAccessToken({
     config,
     refreshToken: record.refreshToken,
@@ -287,13 +292,15 @@ async function refreshAccountToken(
 /**
  * Return a fresh access token for Junior's Google account, for a request
  * that cannot go through egress, such as a Drive thumbnail that the image
- * proxy fetches. Return nothing when the account is not connected.
+ * proxy fetches or the inbox read of email requests. Return nothing when the
+ * account is not connected, or when its grant lacks `scope`.
  */
 export async function readGoogleAccessToken(
   ctx: Pick<PluginContext, "db" | "log">,
   config: GoogleConfig,
+  scope?: string,
 ): Promise<string | undefined> {
-  const token = await refreshAccountToken(ctx, config);
+  const token = await refreshAccountToken(ctx, config, scope);
   return "accessToken" in token ? token.accessToken : undefined;
 }
 

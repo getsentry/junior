@@ -93,4 +93,23 @@ artifact that stops serving after 5 minutes, gives Google its URL, and
 unpublishes it when the edit ends. If the install cannot publish artifacts,
 only public image URLs work.
 
+## Email requests
+
+Trial. People email the Junior account, or CC it, to ask for work. Junior
+does the work in a new public Conversation for the sender. It does not send
+email. Enable the Gmail API with the `gmail.readonly` scope, set
+`GOOGLE_WORKSPACE_EMAIL_REQUESTS=true`, and connect the account again.
+
+The plugin drops an email unless Google's `Authentication-Results` header
+shows DMARC pass for the From domain, and the email is not automated mail, a
+calendar reply, or mail from the account. Mail with the account in To is a
+request. Mail that only CCs it is a request only when the decision model
+finds that the sender's own words ask Junior for something. Core starts work
+only for the primary email of a trusted User, as for every Identity dispatch.
+`GOOGLE_WORKSPACE_ALLOWED_DOMAINS` does not apply to senders.
+
+The sender's Message has the subject, the To and Cc addresses, and the
+sender's own words. Quoted and forwarded text is cut, because other people
+wrote it. An email with only forwarded text is dropped.
+
 Plugin setup: https://junior.sentry.dev/extend/

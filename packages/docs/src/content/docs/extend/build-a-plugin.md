@@ -624,6 +624,9 @@ await ctx.conversationChanges.apply({
 });
 ```
 
+Use `ctx.decider.decide(...)` for a choice that depends on meaning, such as
+whether an email asks for work.
+
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 

@@ -1,5 +1,11 @@
 import * as z from "zod";
-import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
+import type {
+  Identity,
+  PluginContext,
+  PluginDecider,
+  PluginEmbedder,
+  User,
+} from "./context";
 import type {
   Dispatch,
   DispatchOptions,
@@ -60,6 +66,8 @@ export interface HeartbeatHookContext extends PluginContext {
   codeChanges: PluginCodeChanges;
   /** Annotation and Inbox item changes in one write, as from a plugin route. */
   conversationChanges: PluginConversationChanges;
+  /** Host decision model, for a classifier choice that depends on meaning. */
+  decider: PluginDecider;
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
   /** Publish events, as from a plugin route. */

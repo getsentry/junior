@@ -352,6 +352,7 @@ export function createPluginHarness(
         inboxItems,
       }),
       db: fixture.db(),
+      decider: { decide: unused },
       embedder: { embedTexts: unused, model: "unused", provider: "unused" },
       events,
       log: {

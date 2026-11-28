@@ -14,7 +14,10 @@ import { getDb } from "@/chat/db";
 import { createPluginConversationAnnotations } from "@/chat/plugins/annotations";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginEmbedder } from "@/chat/plugins/model";
+import {
+  createPluginDecider,
+  createPluginEmbedder,
+} from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import { createPluginUsers } from "@/chat/plugins/viewer";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
@@ -132,6 +135,7 @@ export function createHeartbeatContext(args: {
     }),
     nowMs: args.nowMs,
     db: getDb(),
+    decider: createPluginDecider(pluginName),
     embedder: createPluginEmbedder(pluginName),
     events: args.events,
     inboxItems: {

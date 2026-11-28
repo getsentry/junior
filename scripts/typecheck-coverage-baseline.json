@@ -62,7 +62,6 @@
   "packages/junior-google/tests/credentials.test.ts",
   "packages/junior-google/tests/docs.test.ts",
   "packages/junior-google/tests/files.test.ts",
-  "packages/junior-google/tests/fixture.ts",
   "packages/junior-google/tests/links.test.ts",
   "packages/junior-google/tests/meet.test.ts",
   "packages/junior-google/tests/slides.test.ts",
