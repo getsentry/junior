@@ -866,7 +866,7 @@ function searchConditions(
   filters: Omit<InboxItemFilters, "limit">,
 ): SQL[] {
   const conditions: SQL[] = [
-    inboxItemVisibleTo(reader),
+    inboxItemVisibleTo(reader, filters.statuses),
     inArray(juniorInboxItems.status, [...filters.statuses]),
   ];
   if (filters.after) {
@@ -921,14 +921,14 @@ function searchConditions(
     conditions.push(
       "everyone" in filters.assignee
         ? eq(juniorInboxItems.assignedToEveryone, true)
-        : inboxItemAssignedTo(filters.assignee.userId),
+        : inboxItemAssignedTo(filters.assignee.userId, filters.statuses),
     );
   }
   if (filters.ownerKind) {
     conditions.push(eq(inboxItemOwnerKind(), filters.ownerKind));
   }
   if (filters.forUserId) {
-    conditions.push(inboxItemForUser(filters.forUserId));
+    conditions.push(inboxItemForUser(filters.forUserId, filters.statuses));
   }
   if (filters.awakeForUserId) {
     conditions.push(not(inboxItemSnoozedBy(filters.awakeForUserId)));
