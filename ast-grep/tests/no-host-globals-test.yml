@@ -6,6 +6,8 @@ valid:
   - "const rows = await app.db.select().from(conversations);"
   - "const name = app.config.bot.userName;"
   - "const context = createAppContext({ plugins });"
+  - "const timezone = args.intent.timezone ?? args.defaultTimezone;"
+  - "return { defaultTimezone: timezone };"
 invalid:
   - 'import { getQueueProvider } from "@/chat/queue/provider";'
   - "await getQueueProvider().send(TURN_STEP_TOPIC, payload);"
@@ -24,3 +26,11 @@ invalid:
   - "const redis = await getDefaultRedisStateAdapterFor(adapter);"
   - "await getVercelConversationWorkQueue().send(message);"
   - "const sandbox = getSandboxProvider();"
+  - "const token = getSlackBotToken();"
+  - "const plugins = getPlugins();"
+  - "for (const plugin of getRegistrations()) {}"
+  - "const catalog = getEventCatalog();"
+  - "const version = getRuntimeMetadata().version;"
+  - 'if (isExperimentalFeatureEnabled("x")) {}'
+  - "const timezone = defaultTimezone();"
+  - 'import { defaultTimezone } from "@/chat/identities/timezone";'

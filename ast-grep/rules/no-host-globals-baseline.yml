@@ -84,6 +84,7 @@ ignores:
   - packages/junior/src/api/people/user-search.ts
   - packages/junior/src/api/service-accounts/routes.ts
   - packages/junior/src/api/spaces/space.ts
+  - packages/junior/src/api/user-customization/routes.ts
   - packages/junior/src/api/user-settings.ts
   - packages/junior/src/api/versions.ts
   - packages/junior/src/api/workspaces/routes.ts
@@ -103,10 +104,12 @@ ignores:
   - packages/junior/src/chat/app/services.ts
   - packages/junior/src/chat/attachments/model-input.ts
   - packages/junior/src/chat/attachments/storage.ts
+  - packages/junior/src/chat/automations/alert-items.ts
   - packages/junior/src/chat/automations/block-run.ts
   - packages/junior/src/chat/automations/blocked-notice.ts
   - packages/junior/src/chat/automations/collection.ts
   - packages/junior/src/chat/automations/edit.ts
+  - packages/junior/src/chat/automations/editor.ts
   - packages/junior/src/chat/automations/execution-stats.ts
   - packages/junior/src/chat/automations/read.ts
   - packages/junior/src/chat/automations/search.ts
@@ -135,9 +138,11 @@ ignores:
   - packages/junior/src/chat/child-agents/spawn.ts
   - packages/junior/src/chat/child-agents/stop.ts
   - packages/junior/src/chat/child-agents/top-level-message.ts
+  - packages/junior/src/chat/code/links.ts
   - packages/junior/src/chat/code/plugin-code-changes.ts
   - packages/junior/src/chat/codemode/bridge.ts
   - packages/junior/src/chat/config.ts
+  - packages/junior/src/chat/configuration/conversation.ts
   - packages/junior/src/chat/configuration/defaults.ts
   - packages/junior/src/chat/conversations/agent-config.ts
   - packages/junior/src/chat/conversations/agent-update-delivery.ts
@@ -161,6 +166,7 @@ ignores:
   - packages/junior/src/chat/conversations/projection.ts
   - packages/junior/src/chat/conversations/root.ts
   - packages/junior/src/chat/conversations/session-stop.ts
+  - packages/junior/src/chat/conversations/sql/annotation-filter.ts
   - packages/junior/src/chat/conversations/thread-context.ts
   - packages/junior/src/chat/conversations/tool-replies.ts
   - packages/junior/src/chat/conversations/turn-lifecycle.ts
@@ -172,11 +178,13 @@ ignores:
   - packages/junior/src/chat/credentials/unlink-provider.ts
   - packages/junior/src/chat/dashboard-link.ts
   - packages/junior/src/chat/db.ts
+  - packages/junior/src/chat/egress/credentialed.ts
   - packages/junior/src/chat/egress/http-cache.ts
   - packages/junior/src/chat/encryption/secret.ts
   - packages/junior/src/chat/event-automations/ingest.ts
   - packages/junior/src/chat/event-automations/run-limit.ts
   - packages/junior/src/chat/events/app-publisher.ts
+  - packages/junior/src/chat/events/notification.ts
   - packages/junior/src/chat/events/people.ts
   - packages/junior/src/chat/events/runtime-catalog.ts
   - packages/junior/src/chat/events/store.ts
@@ -191,15 +199,19 @@ ignores:
   - packages/junior/src/chat/identities/user-cache.ts
   - packages/junior/src/chat/identities/user-lookup.ts
   - packages/junior/src/chat/images/ids.ts
+  - packages/junior/src/chat/images/objects.ts
   - packages/junior/src/chat/images/read.ts
   - packages/junior/src/chat/inbox-items/access.ts
   - packages/junior/src/chat/inbox-items/actions.ts
   - packages/junior/src/chat/inbox-items/messages.ts
+  - packages/junior/src/chat/inbox-items/owner.ts
+  - packages/junior/src/chat/inbox-items/plugin-action.ts
   - packages/junior/src/chat/inbox-items/plugin-dismiss.ts
   - packages/junior/src/chat/inbox-items/plugin.ts
   - packages/junior/src/chat/inbox-items/prompt-input.ts
   - packages/junior/src/chat/inbox-items/reply-match.ts
   - packages/junior/src/chat/inbox-items/search.ts
+  - packages/junior/src/chat/inbox-items/subject-links.ts
   - packages/junior/src/chat/inbox-items/tool-support.ts
   - packages/junior/src/chat/inbox-items/tools/ask-user-question.ts
   - packages/junior/src/chat/inbox-items/tools/search.ts
@@ -225,6 +237,7 @@ ignores:
   - packages/junior/src/chat/notifications/inbox-item-push.ts
   - packages/junior/src/chat/notifications/slack.ts
   - packages/junior/src/chat/notifications/task.ts
+  - packages/junior/src/chat/notifications/timezone.ts
   - packages/junior/src/chat/notifications/web-push.ts
   - packages/junior/src/chat/oauth-flow.ts
   - packages/junior/src/chat/pi/sql-model-usage.ts
@@ -232,27 +245,34 @@ ignores:
   - packages/junior/src/chat/plugins/artifacts.ts
   - packages/junior/src/chat/plugins/auth/oauth-service-account.ts
   - packages/junior/src/chat/plugins/cache.ts
+  - packages/junior/src/chat/plugins/compaction-context.ts
   - packages/junior/src/chat/plugins/conversation-changes.ts
   - packages/junior/src/chat/plugins/conversation-event-reader.ts
   - packages/junior/src/chat/plugins/conversation-event-stats.ts
   - packages/junior/src/chat/plugins/conversation-events.ts
   - packages/junior/src/chat/plugins/conversation-sidebar.ts
   - packages/junior/src/chat/plugins/conversation-title-context.ts
+  - packages/junior/src/chat/plugins/core-registrations.ts
   - packages/junior/src/chat/plugins/credential-hooks.ts
   - packages/junior/src/chat/plugins/hook-context.ts
+  - packages/junior/src/chat/plugins/hooks/prompt.ts
   - packages/junior/src/chat/plugins/hooks/registry.ts
+  - packages/junior/src/chat/plugins/hooks/reports.ts
   - packages/junior/src/chat/plugins/hooks/routes.ts
   - packages/junior/src/chat/plugins/hooks/runner.ts
   - packages/junior/src/chat/plugins/hooks/tools.ts
   - packages/junior/src/chat/plugins/model-cost.ts
   - packages/junior/src/chat/plugins/model.ts
+  - packages/junior/src/chat/plugins/parent-agent-fields.ts
   - packages/junior/src/chat/plugins/prompt-history.ts
+  - packages/junior/src/chat/plugins/purge-conversations.ts
   - packages/junior/src/chat/plugins/started-task-runner.ts
   - packages/junior/src/chat/plugins/state.ts
   - packages/junior/src/chat/plugins/task-queue.ts
   - packages/junior/src/chat/plugins/task-runner.ts
   - packages/junior/src/chat/plugins/unfinished-work.ts
   - packages/junior/src/chat/plugins/user-pages.ts
+  - packages/junior/src/chat/plugins/user-search-hooks.ts
   - packages/junior/src/chat/plugins/validation.ts
   - packages/junior/src/chat/plugins/viewer.ts
   - packages/junior/src/chat/providers/slack/input.ts
@@ -270,7 +290,9 @@ ignores:
   - packages/junior/src/chat/runtime/thread-context.ts
   - packages/junior/src/chat/runtime/thread-state.ts
   - packages/junior/src/chat/runtime/turn-execution.ts
+  - packages/junior/src/chat/runtime/turn-preparation.ts
   - packages/junior/src/chat/sandbox/docker/api.ts
+  - packages/junior/src/chat/sandbox/docker/container.ts
   - packages/junior/src/chat/sandbox/docker/settings.ts
   - packages/junior/src/chat/sandbox/egress/credentials.ts
   - packages/junior/src/chat/sandbox/egress/policy.ts
@@ -288,6 +310,7 @@ ignores:
   - packages/junior/src/chat/sandbox/snapshot/store.ts
   - packages/junior/src/chat/sandbox/snapshot/workspace.ts
   - packages/junior/src/chat/sandbox/vercel/credentials.ts
+  - packages/junior/src/chat/scheduled-automations/edit.ts
   - packages/junior/src/chat/scheduled-automations/heartbeat.ts
   - packages/junior/src/chat/sentry-links.ts
   - packages/junior/src/chat/services/automated-turn-limit.ts
@@ -300,6 +323,7 @@ ignores:
   - packages/junior/src/chat/services/conversation-title.ts
   - packages/junior/src/chat/services/plugin-auth-orchestration.ts
   - packages/junior/src/chat/services/short-title.ts
+  - packages/junior/src/chat/services/subscribed-decision.ts
   - packages/junior/src/chat/services/subscribed-reply-policy.ts
   - packages/junior/src/chat/services/turn-session-routing.ts
   - packages/junior/src/chat/sign-in/auth.ts
@@ -311,9 +335,11 @@ ignores:
   - packages/junior/src/chat/slack/assistant-thread/status.ts
   - packages/junior/src/chat/slack/automated-turn-limit-notice.ts
   - packages/junior/src/chat/slack/avatar.ts
+  - packages/junior/src/chat/slack/client.ts
   - packages/junior/src/chat/slack/continue-in-slack.ts
   - packages/junior/src/chat/slack/dispatch-turn.ts
   - packages/junior/src/chat/slack/inbox-item-card-sync.ts
+  - packages/junior/src/chat/slack/inbox-item-card.ts
   - packages/junior/src/chat/slack/inbox-item-tools.ts
   - packages/junior/src/chat/slack/team-domain.ts
   - packages/junior/src/chat/slack/thread-owner.ts
@@ -351,6 +377,8 @@ ignores:
   - packages/junior/src/chat/todos/tools/update.ts
   - packages/junior/src/chat/tool-support/catalog-search-rerank.ts
   - packages/junior/src/chat/tool-support/create-tools.ts
+  - packages/junior/src/chat/tool-support/pi-tool-adapter.ts
+  - packages/junior/src/chat/tool-support/registry.ts
   - packages/junior/src/chat/tools/operator-sql.ts
   - packages/junior/src/chat/tools/publish-image.ts
   - packages/junior/src/chat/tools/read-conversation-event.ts
@@ -362,6 +390,7 @@ ignores:
   - packages/junior/src/chat/tools/watch-events.ts
   - packages/junior/src/chat/tools/web/image-generate.ts
   - packages/junior/src/chat/workspaces/store.ts
+  - packages/junior/src/chat/workspaces/tool-support.ts
   - packages/junior/src/chat/workspaces/tools/list.ts
   - packages/junior/src/chat/workspaces/tools/switch.ts
   - packages/junior/src/cli/admin.ts
@@ -431,10 +460,10 @@ metadata:
     packages/junior/src/api/conversations/stop.ts: 6
     packages/junior/src/api/conversations/subscription.ts: 9
     packages/junior/src/api/conversations/todos.ts: 8
-    packages/junior/src/api/conversations/watches.ts: 5
+    packages/junior/src/api/conversations/watches.ts: 7
     packages/junior/src/api/gateway-providers/routes.ts: 7
-    packages/junior/src/api/inbox-items/routes.ts: 8
-    packages/junior/src/api/inbox-snoozes/routes.ts: 2
+    packages/junior/src/api/inbox-items/routes.ts: 16
+    packages/junior/src/api/inbox-snoozes/routes.ts: 4
     packages/junior/src/api/locations/query.ts: 11
     packages/junior/src/api/mcp/server.ts: 3
     packages/junior/src/api/mcp/tool-context.ts: 2
@@ -446,7 +475,7 @@ metadata:
     packages/junior/src/api/objects/attach.ts: 4
     packages/junior/src/api/objects/conversation.ts: 3
     packages/junior/src/api/objects/person.ts: 3
-    packages/junior/src/api/objects/resolve.ts: 6
+    packages/junior/src/api/objects/resolve.ts: 8
     packages/junior/src/api/objects/slack-message.ts: 2
     packages/junior/src/api/objects/subject-cards.ts: 2
     packages/junior/src/api/objects/web-page/resolve.ts: 2
@@ -461,31 +490,34 @@ metadata:
     packages/junior/src/api/people/user-search.ts: 2
     packages/junior/src/api/service-accounts/routes.ts: 5
     packages/junior/src/api/spaces/space.ts: 2
+    packages/junior/src/api/user-customization/routes.ts: 2
     packages/junior/src/api/user-settings.ts: 3
     packages/junior/src/api/versions.ts: 2
     packages/junior/src/api/workspaces/routes.ts: 3
     packages/junior/src/app.ts: 38
     packages/junior/src/app/context.ts: 2
     packages/junior/src/chat/agent-dispatch/context.ts: 3
-    packages/junior/src/chat/agent-dispatch/heartbeat.ts: 6
+    packages/junior/src/chat/agent-dispatch/heartbeat.ts: 10
     packages/junior/src/chat/agent-dispatch/store.ts: 7
     packages/junior/src/chat/agent-dispatch/work.ts: 4
-    packages/junior/src/chat/agent/index.ts: 16
-    packages/junior/src/chat/agent/prompt.ts: 3
+    packages/junior/src/chat/agent/index.ts: 18
+    packages/junior/src/chat/agent/prompt.ts: 5
     packages/junior/src/chat/agent/resume.ts: 2
     packages/junior/src/chat/agent/skills.ts: 2
     packages/junior/src/chat/agent/tools.ts: 10
     packages/junior/src/chat/app/factory.ts: 3
-    packages/junior/src/chat/app/production.ts: 7
+    packages/junior/src/chat/app/production.ts: 15
     packages/junior/src/chat/app/services.ts: 3
     packages/junior/src/chat/attachments/model-input.ts: 2
     packages/junior/src/chat/attachments/storage.ts: 3
+    packages/junior/src/chat/automations/alert-items.ts: 3
     packages/junior/src/chat/automations/block-run.ts: 3
     packages/junior/src/chat/automations/blocked-notice.ts: 3
-    packages/junior/src/chat/automations/collection.ts: 6
-    packages/junior/src/chat/automations/edit.ts: 8
+    packages/junior/src/chat/automations/collection.ts: 8
+    packages/junior/src/chat/automations/edit.ts: 10
+    packages/junior/src/chat/automations/editor.ts: 2
     packages/junior/src/chat/automations/execution-stats.ts: 10
-    packages/junior/src/chat/automations/read.ts: 10
+    packages/junior/src/chat/automations/read.ts: 13
     packages/junior/src/chat/automations/search.ts: 2
     packages/junior/src/chat/automations/tool-access.ts: 2
     packages/junior/src/chat/automations/tool-destination.ts: 2
@@ -512,20 +544,22 @@ metadata:
     packages/junior/src/chat/child-agents/spawn.ts: 2
     packages/junior/src/chat/child-agents/stop.ts: 8
     packages/junior/src/chat/child-agents/top-level-message.ts: 4
+    packages/junior/src/chat/code/links.ts: 3
     packages/junior/src/chat/code/plugin-code-changes.ts: 7
     packages/junior/src/chat/codemode/bridge.ts: 2
-    packages/junior/src/chat/config.ts: 17
-    packages/junior/src/chat/configuration/defaults.ts: 2
+    packages/junior/src/chat/config.ts: 23
+    packages/junior/src/chat/configuration/conversation.ts: 2
+    packages/junior/src/chat/configuration/defaults.ts: 3
     packages/junior/src/chat/conversations/agent-config.ts: 2
-    packages/junior/src/chat/conversations/agent-update-delivery.ts: 4
-    packages/junior/src/chat/conversations/annotation-results.ts: 2
+    packages/junior/src/chat/conversations/agent-update-delivery.ts: 6
+    packages/junior/src/chat/conversations/annotation-results.ts: 4
     packages/junior/src/chat/conversations/delivery-pause.ts: 4
     packages/junior/src/chat/conversations/destination-visibility.ts: 2
     packages/junior/src/chat/conversations/embedding-backfill.ts: 4
     packages/junior/src/chat/conversations/embedding.ts: 2
     packages/junior/src/chat/conversations/event-access.ts: 4
-    packages/junior/src/chat/conversations/event-embedding-config.ts: 2
-    packages/junior/src/chat/conversations/event-embedding.ts: 5
+    packages/junior/src/chat/conversations/event-embedding-config.ts: 3
+    packages/junior/src/chat/conversations/event-embedding.ts: 7
     packages/junior/src/chat/conversations/event-search-backfill.ts: 5
     packages/junior/src/chat/conversations/fork.ts: 11
     packages/junior/src/chat/conversations/legacy-web-actor-id.ts: 2
@@ -538,6 +572,7 @@ metadata:
     packages/junior/src/chat/conversations/projection.ts: 17
     packages/junior/src/chat/conversations/root.ts: 2
     packages/junior/src/chat/conversations/session-stop.ts: 14
+    packages/junior/src/chat/conversations/sql/annotation-filter.ts: 2
     packages/junior/src/chat/conversations/thread-context.ts: 3
     packages/junior/src/chat/conversations/tool-replies.ts: 2
     packages/junior/src/chat/conversations/turn-lifecycle.ts: 6
@@ -549,44 +584,50 @@ metadata:
     packages/junior/src/chat/credentials/unlink-provider.ts: 2
     packages/junior/src/chat/dashboard-link.ts: 3
     packages/junior/src/chat/db.ts: 11
+    packages/junior/src/chat/egress/credentialed.ts: 2
     packages/junior/src/chat/egress/http-cache.ts: 2
     packages/junior/src/chat/encryption/secret.ts: 3
-    packages/junior/src/chat/event-automations/ingest.ts: 5
+    packages/junior/src/chat/event-automations/ingest.ts: 7
     packages/junior/src/chat/event-automations/run-limit.ts: 10
-    packages/junior/src/chat/events/app-publisher.ts: 8
+    packages/junior/src/chat/events/app-publisher.ts: 11
+    packages/junior/src/chat/events/notification.ts: 2
     packages/junior/src/chat/events/people.ts: 2
-    packages/junior/src/chat/events/runtime-catalog.ts: 2
+    packages/junior/src/chat/events/runtime-catalog.ts: 5
     packages/junior/src/chat/events/store.ts: 11
     packages/junior/src/chat/events/timer-index.ts: 4
-    packages/junior/src/chat/events/workspace.ts: 2
-    packages/junior/src/chat/experimental.ts: 2
+    packages/junior/src/chat/events/workspace.ts: 4
+    packages/junior/src/chat/experimental.ts: 3
     packages/junior/src/chat/gateway-providers/routing.ts: 2
     packages/junior/src/chat/identities/customization.ts: 3
     packages/junior/src/chat/identities/slack-mention-text.ts: 2
-    packages/junior/src/chat/identities/timezone.ts: 2
+    packages/junior/src/chat/identities/timezone.ts: 4
     packages/junior/src/chat/identities/trust.ts: 9
     packages/junior/src/chat/identities/user-cache.ts: 4
     packages/junior/src/chat/identities/user-lookup.ts: 6
     packages/junior/src/chat/images/ids.ts: 2
-    packages/junior/src/chat/images/read.ts: 5
+    packages/junior/src/chat/images/objects.ts: 2
+    packages/junior/src/chat/images/read.ts: 7
     packages/junior/src/chat/inbox-items/access.ts: 12
-    packages/junior/src/chat/inbox-items/actions.ts: 7
-    packages/junior/src/chat/inbox-items/messages.ts: 8
-    packages/junior/src/chat/inbox-items/plugin-dismiss.ts: 4
-    packages/junior/src/chat/inbox-items/plugin.ts: 6
+    packages/junior/src/chat/inbox-items/actions.ts: 9
+    packages/junior/src/chat/inbox-items/messages.ts: 10
+    packages/junior/src/chat/inbox-items/owner.ts: 3
+    packages/junior/src/chat/inbox-items/plugin-action.ts: 2
+    packages/junior/src/chat/inbox-items/plugin-dismiss.ts: 7
+    packages/junior/src/chat/inbox-items/plugin.ts: 10
     packages/junior/src/chat/inbox-items/prompt-input.ts: 2
     packages/junior/src/chat/inbox-items/reply-match.ts: 3
     packages/junior/src/chat/inbox-items/search.ts: 2
+    packages/junior/src/chat/inbox-items/subject-links.ts: 4
     packages/junior/src/chat/inbox-items/tool-support.ts: 2
     packages/junior/src/chat/inbox-items/tools/ask-user-question.ts: 4
     packages/junior/src/chat/inbox-items/tools/search.ts: 2
     packages/junior/src/chat/inbox-items/tools/update.ts: 2
     packages/junior/src/chat/inbox-snoozes/triggers.ts: 5
-    packages/junior/src/chat/inbox-snoozes/viewer.ts: 12
+    packages/junior/src/chat/inbox-snoozes/viewer.ts: 15
     packages/junior/src/chat/ingress/slack-acting-user.ts: 2
     packages/junior/src/chat/ingress/slack-conversation-unfurl.ts: 8
     packages/junior/src/chat/ingress/slack-skipped-message.ts: 2
-    packages/junior/src/chat/ingress/slack-webhook.ts: 10
+    packages/junior/src/chat/ingress/slack-webhook.ts: 12
     packages/junior/src/chat/lead/conversation.ts: 4
     packages/junior/src/chat/local/credential-sync.ts: 4
     packages/junior/src/chat/local/oauth-relay.ts: 2
@@ -597,11 +638,12 @@ metadata:
     packages/junior/src/chat/mcp/service-account.ts: 11
     packages/junior/src/chat/mcp/token-refresh.ts: 2
     packages/junior/src/chat/mcp/viewer.ts: 4
-    packages/junior/src/chat/memory/registration.ts: 2
+    packages/junior/src/chat/memory/registration.ts: 3
     packages/junior/src/chat/memory/search.ts: 4
     packages/junior/src/chat/notifications/inbox-item-push.ts: 7
     packages/junior/src/chat/notifications/slack.ts: 2
     packages/junior/src/chat/notifications/task.ts: 4
+    packages/junior/src/chat/notifications/timezone.ts: 2
     packages/junior/src/chat/notifications/web-push.ts: 3
     packages/junior/src/chat/oauth-flow.ts: 7
     packages/junior/src/chat/pi/sql-model-usage.ts: 2
@@ -609,47 +651,56 @@ metadata:
     packages/junior/src/chat/plugins/artifacts.ts: 5
     packages/junior/src/chat/plugins/auth/oauth-service-account.ts: 8
     packages/junior/src/chat/plugins/cache.ts: 2
+    packages/junior/src/chat/plugins/compaction-context.ts: 2
     packages/junior/src/chat/plugins/conversation-changes.ts: 2
     packages/junior/src/chat/plugins/conversation-event-reader.ts: 3
     packages/junior/src/chat/plugins/conversation-event-stats.ts: 4
-    packages/junior/src/chat/plugins/conversation-events.ts: 2
-    packages/junior/src/chat/plugins/conversation-sidebar.ts: 2
-    packages/junior/src/chat/plugins/conversation-title-context.ts: 2
-    packages/junior/src/chat/plugins/credential-hooks.ts: 2
+    packages/junior/src/chat/plugins/conversation-events.ts: 4
+    packages/junior/src/chat/plugins/conversation-sidebar.ts: 4
+    packages/junior/src/chat/plugins/conversation-title-context.ts: 4
+    packages/junior/src/chat/plugins/core-registrations.ts: 4
+    packages/junior/src/chat/plugins/credential-hooks.ts: 5
     packages/junior/src/chat/plugins/hook-context.ts: 2
-    packages/junior/src/chat/plugins/hooks/registry.ts: 3
-    packages/junior/src/chat/plugins/hooks/routes.ts: 2
-    packages/junior/src/chat/plugins/hooks/runner.ts: 2
-    packages/junior/src/chat/plugins/hooks/tools.ts: 5
+    packages/junior/src/chat/plugins/hooks/prompt.ts: 5
+    packages/junior/src/chat/plugins/hooks/registry.ts: 5
+    packages/junior/src/chat/plugins/hooks/reports.ts: 3
+    packages/junior/src/chat/plugins/hooks/routes.ts: 7
+    packages/junior/src/chat/plugins/hooks/runner.ts: 4
+    packages/junior/src/chat/plugins/hooks/tools.ts: 8
     packages/junior/src/chat/plugins/model-cost.ts: 2
     packages/junior/src/chat/plugins/model.ts: 7
+    packages/junior/src/chat/plugins/parent-agent-fields.ts: 2
     packages/junior/src/chat/plugins/prompt-history.ts: 2
-    packages/junior/src/chat/plugins/started-task-runner.ts: 3
+    packages/junior/src/chat/plugins/purge-conversations.ts: 2
+    packages/junior/src/chat/plugins/started-task-runner.ts: 5
     packages/junior/src/chat/plugins/state.ts: 2
     packages/junior/src/chat/plugins/task-queue.ts: 2
-    packages/junior/src/chat/plugins/task-runner.ts: 6
-    packages/junior/src/chat/plugins/unfinished-work.ts: 3
-    packages/junior/src/chat/plugins/user-pages.ts: 2
+    packages/junior/src/chat/plugins/task-runner.ts: 9
+    packages/junior/src/chat/plugins/unfinished-work.ts: 5
+    packages/junior/src/chat/plugins/user-pages.ts: 5
+    packages/junior/src/chat/plugins/user-search-hooks.ts: 3
     packages/junior/src/chat/plugins/validation.ts: 4
     packages/junior/src/chat/plugins/viewer.ts: 8
     packages/junior/src/chat/providers/slack/input.ts: 2
     packages/junior/src/chat/providers/slack/processing-reaction.ts: 5
     packages/junior/src/chat/providers/slack/resume.ts: 7
-    packages/junior/src/chat/providers/slack/runtime.ts: 2
-    packages/junior/src/chat/providers/slack/turn.ts: 11
+    packages/junior/src/chat/providers/slack/runtime.ts: 4
+    packages/junior/src/chat/providers/slack/turn.ts: 15
     packages/junior/src/chat/queue/callback.ts: 2
     packages/junior/src/chat/queue/provider.ts: 1
     packages/junior/src/chat/queue/sign.ts: 3
     packages/junior/src/chat/queue/vercel.ts: 5
     packages/junior/src/chat/related-conversations/find.ts: 8
-    packages/junior/src/chat/runtime/dev-agent-trace.ts: 2
+    packages/junior/src/chat/runtime/dev-agent-trace.ts: 3
     packages/junior/src/chat/runtime/request-deadline.ts: 2
     packages/junior/src/chat/runtime/thread-context.ts: 3
     packages/junior/src/chat/runtime/thread-state.ts: 6
     packages/junior/src/chat/runtime/turn-execution.ts: 2
+    packages/junior/src/chat/runtime/turn-preparation.ts: 3
     packages/junior/src/chat/sandbox/docker/api.ts: 2
-    packages/junior/src/chat/sandbox/docker/settings.ts: 3
-    packages/junior/src/chat/sandbox/egress/credentials.ts: 6
+    packages/junior/src/chat/sandbox/docker/container.ts: 2
+    packages/junior/src/chat/sandbox/docker/settings.ts: 4
+    packages/junior/src/chat/sandbox/egress/credentials.ts: 8
     packages/junior/src/chat/sandbox/egress/policy.ts: 3
     packages/junior/src/chat/sandbox/egress/proxy.ts: 2
     packages/junior/src/chat/sandbox/egress/session.ts: 11
@@ -665,32 +716,36 @@ metadata:
     packages/junior/src/chat/sandbox/snapshot/store.ts: 4
     packages/junior/src/chat/sandbox/snapshot/workspace.ts: 17
     packages/junior/src/chat/sandbox/vercel/credentials.ts: 2
+    packages/junior/src/chat/scheduled-automations/edit.ts: 2
     packages/junior/src/chat/scheduled-automations/heartbeat.ts: 2
     packages/junior/src/chat/sentry-links.ts: 2
     packages/junior/src/chat/services/automated-turn-limit.ts: 4
     packages/junior/src/chat/services/background-compaction-queue.ts: 2
     packages/junior/src/chat/services/background-compaction.ts: 7
-    packages/junior/src/chat/services/context-budget.ts: 3
+    packages/junior/src/chat/services/context-budget.ts: 4
     packages/junior/src/chat/services/context-compaction-swap.ts: 2
     packages/junior/src/chat/services/context-compaction.ts: 3
-    packages/junior/src/chat/services/conversation-memory.ts: 3
-    packages/junior/src/chat/services/conversation-title.ts: 7
+    packages/junior/src/chat/services/conversation-memory.ts: 5
+    packages/junior/src/chat/services/conversation-title.ts: 9
     packages/junior/src/chat/services/plugin-auth-orchestration.ts: 3
     packages/junior/src/chat/services/short-title.ts: 3
+    packages/junior/src/chat/services/subscribed-decision.ts: 2
     packages/junior/src/chat/services/subscribed-reply-policy.ts: 3
     packages/junior/src/chat/services/turn-session-routing.ts: 1
     packages/junior/src/chat/sign-in/auth.ts: 8
     packages/junior/src/chat/skills.ts: 6
     packages/junior/src/chat/slack/adapter-context.ts: 2
     packages/junior/src/chat/slack/annotation-details.ts: 2
-    packages/junior/src/chat/slack/app-home.ts: 4
+    packages/junior/src/chat/slack/app-home.ts: 6
     packages/junior/src/chat/slack/assistant-thread/lifecycle.ts: 2
     packages/junior/src/chat/slack/assistant-thread/status.ts: 3
     packages/junior/src/chat/slack/automated-turn-limit-notice.ts: 2
     packages/junior/src/chat/slack/avatar.ts: 4
+    packages/junior/src/chat/slack/client.ts: 2
     packages/junior/src/chat/slack/continue-in-slack.ts: 9
     packages/junior/src/chat/slack/dispatch-turn.ts: 2
     packages/junior/src/chat/slack/inbox-item-card-sync.ts: 5
+    packages/junior/src/chat/slack/inbox-item-card.ts: 3
     packages/junior/src/chat/slack/inbox-item-tools.ts: 2
     packages/junior/src/chat/slack/team-domain.ts: 6
     packages/junior/src/chat/slack/thread-owner.ts: 2
@@ -698,15 +753,15 @@ metadata:
     packages/junior/src/chat/slack/tool-support/channel-target.ts: 2
     packages/junior/src/chat/slack/tools/conversation-message-search.ts: 2
     packages/junior/src/chat/slack/tools/thread-read.ts: 2
-    packages/junior/src/chat/slack/user.ts: 5
+    packages/junior/src/chat/slack/user.ts: 7
     packages/junior/src/chat/slack/vision-cache.ts: 3
-    packages/junior/src/chat/slack/vision-context.ts: 9
+    packages/junior/src/chat/slack/vision-context.ts: 13
     packages/junior/src/chat/spaces/configuration.ts: 6
     packages/junior/src/chat/spaces/conversations.ts: 2
     packages/junior/src/chat/spaces/store.ts: 8
     packages/junior/src/chat/spaces/tree-space.ts: 2
     packages/junior/src/chat/state/adapter.ts: 11
-    packages/junior/src/chat/system-prompt.ts: 2
+    packages/junior/src/chat/system-prompt.ts: 4
     packages/junior/src/chat/task-execution/authorized-turn.ts: 3
     packages/junior/src/chat/task-execution/checkpoint.ts: 4
     packages/junior/src/chat/task-execution/conversation-turn.ts: 9
@@ -727,18 +782,21 @@ metadata:
     packages/junior/src/chat/todos/search.ts: 2
     packages/junior/src/chat/todos/tools/update.ts: 5
     packages/junior/src/chat/tool-support/catalog-search-rerank.ts: 3
-    packages/junior/src/chat/tool-support/create-tools.ts: 11
+    packages/junior/src/chat/tool-support/create-tools.ts: 15
+    packages/junior/src/chat/tool-support/pi-tool-adapter.ts: 2
+    packages/junior/src/chat/tool-support/registry.ts: 7
     packages/junior/src/chat/tools/operator-sql.ts: 2
     packages/junior/src/chat/tools/publish-image.ts: 2
     packages/junior/src/chat/tools/read-conversation-event.ts: 2
     packages/junior/src/chat/tools/runtime/archive-agent.ts: 2
     packages/junior/src/chat/tools/runtime/list-agents.ts: 3
     packages/junior/src/chat/tools/search-conversation-events.ts: 4
-    packages/junior/src/chat/tools/set-configuration.ts: 2
+    packages/junior/src/chat/tools/set-configuration.ts: 4
     packages/junior/src/chat/tools/submit-feedback.ts: 2
     packages/junior/src/chat/tools/watch-events.ts: 4
     packages/junior/src/chat/tools/web/image-generate.ts: 2
     packages/junior/src/chat/workspaces/store.ts: 6
+    packages/junior/src/chat/workspaces/tool-support.ts: 2
     packages/junior/src/chat/workspaces/tools/list.ts: 2
     packages/junior/src/chat/workspaces/tools/switch.ts: 2
     packages/junior/src/cli/admin.ts: 3
@@ -768,9 +826,22 @@ metadata:
     packages/junior/src/turn-steps/tools.ts: 4
 rule:
   any:
+    - any:
+        - kind: identifier
+        - kind: property_identifier
+        - kind: shorthand_property_identifier_pattern
+      # Getters and globals that give the app context, the config, or a
+      # process store or client: SQL, state and Redis, queues, sandbox,
+      # attachments, Slack.
+      regex: ^(getAppContext|installAppContext|getChatConfig|installChatConfig|botConfig|getSqlExecutor|getDb|getConversationStore|getConversationEventStore|getConversationMessageSearchStore|getTurnLifecycle|getStateAdapter|getConnectedStateContext|getDefaultRedisStateAdapterFor|getQueueProvider|getVercelConversationWorkQueue|getSandboxProvider|getAttachmentStorage|getProductionSlackAdapter|SERVICE_INSTANCE_ID)$
+    - any:
+        - kind: identifier
+        - kind: property_identifier
+        - kind: shorthand_property_identifier_pattern
+      # Functions that only read one of those globals, so they are the same
+      # global under another name.
+      regex: ^(getPlugins|getRegistrations|getEventCatalog|getSlackBotToken|getSlackSigningSecret|getSlackClientId|getSlackClientSecret|getSlackReactionConfig|getRuntimeMetadata|getConfigDefaults|isExperimentalFeatureEnabled|isEventEmbeddingsEnabled|isVisionEnabled|isWorkloadIdentityProvider|shouldEmitDevAgentTrace|dockerSandboxExtraCaFile|memoryRegistration|getConversationContextCompactionTriggerTokens)$
+    # Other code uses `defaultTimezone` as a field name, so match only the
+    # function itself.
     - kind: identifier
-    - kind: property_identifier
-    - kind: shorthand_property_identifier_pattern
-  # Getters and globals that give the app context, the config, or a process
-  # store or client: SQL, state and Redis, queues, sandbox, attachments, Slack.
-  regex: ^(getAppContext|installAppContext|getChatConfig|installChatConfig|botConfig|getSqlExecutor|getDb|getConversationStore|getConversationEventStore|getConversationMessageSearchStore|getTurnLifecycle|getStateAdapter|getConnectedStateContext|getDefaultRedisStateAdapterFor|getQueueProvider|getVercelConversationWorkQueue|getSandboxProvider|getAttachmentStorage|getProductionSlackAdapter|SERVICE_INSTANCE_ID)$
+      regex: ^defaultTimezone$

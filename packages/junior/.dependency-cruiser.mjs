@@ -1,12 +1,23 @@
 import fs from "node:fs";
 
 // The files outside the composition roots that import the app context today.
-// `baseline-growth:check` lets the list only shrink.
+// `baseline-growth:check` lets the list only shrink, and the
+// `app-context-importers-current` rule fails on a stale entry.
+const APP_CONTEXT_IMPORTERS_PATH =
+  "scripts/app-context-importers-baseline.json";
 const appContextImporters = JSON.parse(
-  fs.readFileSync(
-    new URL("./scripts/app-context-importers-baseline.json", import.meta.url),
-    "utf8",
-  ),
+  fs.readFileSync(new URL(APP_CONTEXT_IMPORTERS_PATH, import.meta.url), "utf8"),
+);
+const missingImporters = appContextImporters.filter(
+  (file) => !fs.existsSync(new URL(file, import.meta.url)),
+);
+if (missingImporters.length > 0) {
+  throw new Error(
+    `${APP_CONTEXT_IMPORTERS_PATH} lists files that do not exist: ${missingImporters.join(", ")}. Delete these entries.`,
+  );
+}
+const appContextImporterPaths = appContextImporters.map(
+  (file) => `^${file.replaceAll(".", "\\.")}$`,
 );
 
 /** @type {import("dependency-cruiser").IConfiguration} */
@@ -22,9 +33,7 @@ export default {
         pathNot: [
           "^src/(app|app/context-types)\\.ts$",
           "^src/cli/",
-          ...appContextImporters.map(
-            (file) => `^${file.replaceAll(".", "\\.")}$`,
-          ),
+          ...appContextImporterPaths,
         ],
       },
       to: {
@@ -165,6 +174,19 @@ export default {
         pathNot:
           "^src/(config/|chat/(optional-string|reasoning-level|slack/emoji|pi/gateway-models|pi/sdk)\\.ts$)",
         reachable: true,
+      },
+    },
+  ],
+  required: [
+    {
+      name: "app-context-importers-current",
+      comment: `Each file in ${APP_CONTEXT_IMPORTERS_PATH} must still import src/app/context.ts. When a file stops, delete its entry, so the list only gets shorter.`,
+      severity: "error",
+      module: {
+        path: appContextImporterPaths,
+      },
+      to: {
+        path: "^src/app/context\\.ts$",
       },
     },
   ],
