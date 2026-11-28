@@ -324,30 +324,52 @@ export async function clearInboxWakeReasons(
     );
 }
 
+/** A snooze that has not woken, as its viewer reads it. */
+export interface ViewerInboxSnooze {
+  createdAt: Date;
+  /** None: it lasts until the item closes. */
+  triggers: InboxSnoozeTriggerInput[];
+}
+
 /**
- * Read this User's snoozes of these items: the items that they snoozed and
- * that have not woken, and why each woken snooze woke. An item whose
- * snooze the User woke, or whose reason they cleared, has no reason. A new
- * snooze clears the last reason, so an item has at most one of either.
+ * Read this User's snoozes of these items: each snooze that has not woken,
+ * with its triggers, and why each woken snooze woke. An item whose snooze
+ * the User woke, or whose reason they cleared, has no reason. A new snooze
+ * clears the last reason, so an item has at most one of either.
  */
 export async function readViewerInboxSnoozes(
   db: Pick<JuniorDatabase, "select">,
   input: { inboxItemIds: readonly string[]; userId: string },
 ): Promise<{
-  snoozed: Set<string>;
+  snoozed: Map<string, ViewerInboxSnooze>;
   wakeReasons: Map<string, InboxSnoozeWakeReason>;
 }> {
-  const snoozed = new Set<string>();
+  const snoozed = new Map<string, ViewerInboxSnooze>();
   const wakeReasons = new Map<string, InboxSnoozeWakeReason>();
   if (input.inboxItemIds.length === 0) return { snoozed, wakeReasons };
-  // One statement: the item lists read this for every page.
+  // One statement: the item lists read this for every page. Only a snooze
+  // that has not woken joins its triggers.
   const rows = await db
     .select({
+      createdAt: juniorInboxSnoozes.createdAt,
       inboxItemId: juniorInboxSnoozes.inboxItemId,
       state: juniorInboxSnoozes.state,
+      trigger: {
+        eventType: juniorInboxSnoozeTriggers.eventType,
+        identifier: juniorInboxSnoozeTriggers.identifier,
+        namespace: juniorInboxSnoozeTriggers.namespace,
+        outcome: juniorInboxSnoozeTriggers.outcome,
+      },
       wakeReason: juniorInboxSnoozes.wakeReason,
     })
     .from(juniorInboxSnoozes)
+    .leftJoin(
+      juniorInboxSnoozeTriggers,
+      and(
+        eq(juniorInboxSnoozeTriggers.snoozeId, juniorInboxSnoozes.id),
+        eq(juniorInboxSnoozes.state, "snoozed"),
+      ),
+    )
     .where(
       and(
         eq(juniorInboxSnoozes.userId, input.userId),
@@ -362,8 +384,14 @@ export async function readViewerInboxSnoozes(
       ),
     );
   for (const row of rows) {
-    if (row.state === "snoozed") snoozed.add(row.inboxItemId);
-    else if (row.wakeReason) wakeReasons.set(row.inboxItemId, row.wakeReason);
+    if (row.state === "snoozed") {
+      const snooze = snoozed.get(row.inboxItemId) ?? {
+        createdAt: row.createdAt,
+        triggers: [],
+      };
+      if (row.trigger) snooze.triggers.push(row.trigger);
+      snoozed.set(row.inboxItemId, snooze);
+    } else if (row.wakeReason) wakeReasons.set(row.inboxItemId, row.wakeReason);
   }
   return { snoozed, wakeReasons };
 }

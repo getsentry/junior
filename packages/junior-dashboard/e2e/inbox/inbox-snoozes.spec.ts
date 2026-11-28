@@ -339,6 +339,41 @@ test.describe("new UI", () => {
     await expect(row).toHaveCount(0);
   });
 
+  test("Snoozed says what ends each snooze, and when it began", async ({
+    dashboard,
+    page,
+  }) => {
+    const other = "https://github.com/getsentry/junior/pull/3842";
+    await mockInboxItems(page, {
+      open: [license, rollout, prReview],
+      snoozes: [
+        { inboxItemId: license.id, untilClosed: true },
+        { inboxItemId: rollout.id, untilMs: NOW_MS + 86_400_000 },
+        {
+          inboxItemId: prReview.id,
+          triggers: [
+            { eventType: "pull_request.merged", outcome: "wake" },
+            {
+              eventType: "pull_request.closed_unmerged",
+              outcome: "resolve",
+              resourceUrl: other,
+            },
+          ],
+        },
+      ],
+    });
+    await page.goto(`${dashboard.baseURL}/inbox?view=snoozed`);
+    // Each row says what ends its snooze, under its title.
+    for (const line of [
+      "Until it closes · snoozed just now",
+      /^Until \w{3}, \w{3} \d{1,2}, \d{2}:\d{2} · snoozed just now$/,
+      "Until getsentry/payments#91 is merged · closes when getsentry/junior#3842 is closed without merging · snoozed just now",
+    ]) {
+      await expect(page.getByText(line, { exact: true })).toBeVisible();
+    }
+    await screenshot(page, "inbox-snoozed-until");
+  });
+
   test("a row snoozed in another browser loads asleep", async ({
     dashboard,
     page,

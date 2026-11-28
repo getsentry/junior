@@ -1,7 +1,11 @@
 /** The Event resources of mock pages, which a mock snooze can wait on. */
+import type {
+  InboxSnoozeCreateBody,
+  InboxViewerSnooze,
+} from "@sentry/junior/api/schema";
 
 // How the GitHub plugin says each Event reads after its page's name.
-const PHRASES = {
+const PHRASES: Record<string, string> = {
   "issue.closed": "is closed",
   "issue.comment.created": "gets a new comment",
   "issue.opened": "is opened",
@@ -79,4 +83,42 @@ export function readMockSnoozeResource(url: string) {
   }
   if (kind === "pull") return PULL_REQUEST_RESOURCE;
   return kind === "issues" ? ISSUE_RESOURCE : undefined;
+}
+
+// A GitHub page's Event resource, such as `getsentry/junior#12`, as the
+// GitHub plugin names it.
+function resourceName(url: string): string {
+  const [owner, repo, , number] =
+    URL.parse(url)?.pathname.split("/").slice(1) ?? [];
+  return owner && repo && number ? `${owner}/${repo}#${number}` : url;
+}
+
+/**
+ * A mock snooze as its viewer reads it, like the API's `snoozedByViewer`.
+ * An Event without a page waits on the item's subject at `subjectUrl`.
+ */
+export function mockViewerSnooze(
+  body: Pick<InboxSnoozeCreateBody, "triggers" | "untilClosed" | "wakeAt">,
+  subjectUrl: string | undefined,
+  nowMs: number,
+): InboxViewerSnooze {
+  const events = (body.triggers ?? []).flatMap((trigger) => {
+    const url = trigger.resourceUrl ?? subjectUrl;
+    if (!url) return [];
+    const phrase = PHRASES[trigger.eventType];
+    return [
+      {
+        eventType: trigger.eventType,
+        outcome: trigger.outcome,
+        resource: resourceName(url),
+        ...(phrase ? { phrase } : undefined),
+      },
+    ];
+  });
+  return {
+    snoozedAt: new Date(nowMs).toISOString(),
+    ...(body.untilClosed ? { untilClosed: true as const } : undefined),
+    ...(body.wakeAt ? { wakeAt: body.wakeAt } : undefined),
+    ...(events.length > 0 ? { events } : undefined),
+  };
 }

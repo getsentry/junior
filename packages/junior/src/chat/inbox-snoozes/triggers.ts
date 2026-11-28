@@ -5,7 +5,11 @@ import {
 } from "@sentry/junior-plugin-api";
 import { and, eq, inArray } from "drizzle-orm";
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
-import { updateTimerIndex, type TimerIndex } from "@/chat/events/timer-index";
+import {
+  readTimerIndex,
+  updateTimerIndex,
+  type TimerIndex,
+} from "@/chat/events/timer-index";
 import { getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import { INBOX_SUBJECT_KINDS, subjectTodo } from "@/chat/inbox-items/subjects";
@@ -227,6 +231,16 @@ export async function scheduleInboxSnoozeTimer(
     id: timerId,
     kind: "add",
   });
+}
+
+/** When each of these pending snooze timers fires, by timer id. */
+export async function readInboxSnoozeTimers(
+  timerIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (timerIds.length === 0) return new Map();
+  const state = getStateAdapter();
+  await state.connect();
+  return await readTimerIndex(state, INBOX_SNOOZE_TIMER_INDEX, timerIds);
 }
 
 /**

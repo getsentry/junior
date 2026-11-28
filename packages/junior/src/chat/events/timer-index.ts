@@ -27,6 +27,11 @@ type Operation =
   | { kind: "remove"; id: string }
   | { kind: "claim"; nowMs: number };
 
+function redisKey(index: TimerIndex): string {
+  const prefix = getChatConfig().state.keyPrefix;
+  return prefix ? `${prefix}:${index.key}` : index.key;
+}
+
 /** Keep timer index operations atomic in Redis and the local memory adapter. */
 export async function updateTimerIndex(
   state: StateAdapter,
@@ -35,8 +40,7 @@ export async function updateTimerIndex(
 ): Promise<string[]> {
   const redis = await getDefaultRedisStateAdapterFor(state);
   if (redis) {
-    const prefix = getChatConfig().state.keyPrefix;
-    const key = prefix ? `${prefix}:${index.key}` : index.key;
+    const key = redisKey(index);
     const client = redis.getClient();
     if (operation.kind === "add") {
       await client.sendCommand([
@@ -95,4 +99,34 @@ export async function updateTimerIndex(
   } finally {
     await state.releaseLock(lock);
   }
+}
+
+/**
+ * Read when each of these timers fires, by id. A claimed timer reads its
+ * claim lease, and a fired or unknown timer is left out.
+ */
+export async function readTimerIndex(
+  state: StateAdapter,
+  index: TimerIndex,
+  ids: readonly string[],
+): Promise<Map<string, number>> {
+  const times = new Map<string, number>();
+  if (ids.length === 0) return times;
+  const redis = await getDefaultRedisStateAdapterFor(state);
+  if (redis) {
+    const key = redisKey(index);
+    const scores = await redis
+      .getClient()
+      .sendCommand<(string | null)[]>(["ZMSCORE", key, ...ids]);
+    for (const [position, id] of ids.entries()) {
+      const score = scores[position];
+      if (score != null) times.set(id, Number(score));
+    }
+    return times;
+  }
+  const wanted = new Set(ids);
+  for (const entry of entriesSchema.parse((await state.get(index.key)) ?? [])) {
+    if (wanted.has(entry.id)) times.set(entry.id, entry.atMs);
+  }
+  return times;
 }

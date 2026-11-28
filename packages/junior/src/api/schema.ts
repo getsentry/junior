@@ -544,6 +544,7 @@ export type {
   InboxSnoozeSubjectBody,
   InboxSnoozeTrigger,
   InboxSnoozeWake,
+  InboxViewerSnooze,
 } from "./schema/inbox-snooze";
 export { searchQuerySchema, searchReportSchema } from "./schema/search";
 export type {
