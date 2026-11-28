@@ -22,7 +22,9 @@ export function createWorkspaceToolDefinition(
     exposure: "deferred",
     source: WORKSPACES_TOOL_SOURCE,
     approvalMode: "review",
-    describeProposal: (input) => describeWorkspaceWrite("Create", input),
+    guardian: (input) => ({
+      summary: describeWorkspaceWrite("Create", input),
+    }),
     executionMode: "sequential",
     annotations: {
       destructiveHint: false,

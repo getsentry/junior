@@ -63,6 +63,7 @@ describe("Pi tool adapter integration", () => {
   it("discovers and executes plugin tools through catalog tool primitives", async () => {
     const onToolCall = vi.fn();
     const actionReview = {
+      mayReview: () => true,
       projectToolResult: <T>(_: string, result: T) => result,
       review: vi.fn<ToolActionReview["review"]>(
         async (actions) =>

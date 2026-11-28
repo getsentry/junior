@@ -145,6 +145,8 @@ export interface SlackConversationInfo {
   isPrivate: boolean;
   isIm: boolean;
   isMpim: boolean;
+  /** Shared with another organization (Slack Connect). */
+  isExtShared: boolean;
   isMember?: boolean;
 }
 
@@ -187,6 +189,7 @@ export async function getConversationInfo(
     isPrivate: channel.is_private === true,
     isIm: channel.is_im === true,
     isMpim: channel.is_mpim === true,
+    isExtShared: channel.is_ext_shared === true,
     ...(typeof channel.is_member === "boolean"
       ? { isMember: channel.is_member }
       : undefined),

@@ -20,6 +20,9 @@ Then it has these H2 sections, in this order:
 3. `Gaps`: only when the product does not meet a goal or a rule yet. Say
    how it falls short, and which goal or rule it breaks.
 
+A file may add an optional `Flows` section after `Rules`: worked examples
+that each follow one request through the rules.
+
 These files state intent. The code shows what the product does, not what it
 should do. Do not change a goal or a rule only to match the code. Name only
 user actions, visible names, required access, and outcomes that a user can

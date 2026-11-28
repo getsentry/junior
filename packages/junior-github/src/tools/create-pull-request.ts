@@ -2,6 +2,7 @@ import pLimit from "p-limit";
 import { githubAnnotatedObject } from "../annotations.js";
 import {
   type AnnotatedObject,
+  type CodeChangeInput,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -17,6 +18,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { repositoryCall } from "../tool-support/guardian-call.js";
 import * as z from "zod";
 import { appendGitHubFooter } from "../conversation-footer.js";
 import {
@@ -291,10 +293,63 @@ function createGitHubPullRequestRequest(
   return { path: `${repoPath(repo)}/pulls`, body: payload };
 }
 
+/** The fields of a new pull request that Junior's code records keep. */
+const createdCodeChangeSchema = z.object({
+  base: z.object({
+    repo: z.object({ full_name: z.string().min(1), id: z.number() }),
+  }),
+  created_at: z.iso.datetime({ offset: true }),
+  id: z.number(),
+  number: z.number(),
+  title: z.string().min(1),
+  updated_at: z.iso.datetime({ offset: true }),
+  // The installation writes as the bot. Only a pull request that the bot
+  // authored becomes a code change.
+  user: z.object({ type: z.literal("Bot") }),
+});
+
+function codeChangeInput(
+  pullRequest: z.infer<typeof createdCodeChangeSchema>,
+): CodeChangeInput {
+  return {
+    number: pullRequest.number,
+    openedAt: new Date(pullRequest.created_at),
+    providerId: String(pullRequest.id),
+    repository: {
+      name: pullRequest.base.repo.full_name,
+      providerId: String(pullRequest.base.repo.id),
+    },
+    state: "open",
+    title: pullRequest.title,
+    updatedAt: new Date(pullRequest.updated_at),
+  };
+}
+
+/**
+ * Record a new pull request in Junior's code records, linked to this
+ * Conversation. A later call of the same Run can come before the `opened`
+ * webhook, and Guardian reads this record for upkeep (`upkeep`). The webhook
+ * records the same change again, and the newer update wins.
+ */
+async function recordCreatedCodeChange(
+  ctx: ToolRegistrationHookContext,
+  codeChange: CodeChangeInput,
+  conversationId: string,
+): Promise<void> {
+  await ctx.codeChanges.record(codeChange);
+  // `record` skips a change that a newer webhook already wrote, so the link
+  // is its own write.
+  await ctx.codeChanges.associateConversations({
+    conversationIds: [conversationId],
+    providerId: codeChange.providerId,
+  });
+}
+
 async function createGitHubPullRequest(
   ctx: ToolRegistrationHookContext,
   request: { body: unknown; path: string },
 ): Promise<{
+  createdPullRequest?: z.infer<typeof createdCodeChangeSchema>;
   pullRequestId?: string;
   result: GitHubPullRequestResult;
   stackTarget?: GitHubStackTarget;
@@ -337,7 +392,9 @@ async function createGitHubPullRequest(
     );
   }
   const stackTarget = stackTargetSchema.safeParse(parsed);
+  const created = createdCodeChangeSchema.safeParse(parsed);
   return {
+    ...(created.success ? { createdPullRequest: created.data } : undefined),
     result: {
       number: pullRequest.number,
       url: pullRequest.html_url,
@@ -659,6 +716,7 @@ export function createGitHubPullRequestTool(
       "Create a GitHub pull request with a runtime-owned conversation footer. By default it assigns the pull request to the requester's linked GitHub account and asks for a review when available. Use this instead of shelling out to gh pr create when creating pull requests.",
     exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
+    guardian: (input, ctx) => repositoryCall(input.repo, ctx),
     outputSchema: gitHubPullRequestOutputSchema,
     async execute(
       input: z.output<typeof createPullRequestToolInputSchema>,
@@ -738,11 +796,14 @@ export function createGitHubPullRequestTool(
             pendingState,
             GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
           );
+          let createdPullRequest:
+            | z.infer<typeof createdCodeChangeSchema>
+            | undefined;
           let result: GitHubPullRequestResult;
           let pullRequestId: string | undefined;
           let stackTarget: GitHubStackTarget | undefined;
           try {
-            ({ pullRequestId, result, stackTarget } =
+            ({ createdPullRequest, pullRequestId, result, stackTarget } =
               await createGitHubPullRequest(ctx, request));
           } catch (error) {
             if (
@@ -773,6 +834,14 @@ export function createGitHubPullRequestTool(
             throw new Error(
               "GitHub pull request was created, but the runtime could not persist the completed pull request state.",
               { cause: error },
+            );
+          }
+          // Before the opener, so its requester credit finds the change.
+          if (createdPullRequest) {
+            await recordCreatedCodeChange(
+              ctx,
+              codeChangeInput(createdPullRequest),
+              conversationId,
             );
           }
           await recordOpener(ctx, parsedInput, completedState, {

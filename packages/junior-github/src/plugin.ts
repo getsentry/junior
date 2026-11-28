@@ -3,6 +3,7 @@
  *
  * This module composes GitHub hooks, events, and credentials.
  */
+import { githubGuardianContext } from "./guardian-context.js";
 import { githubAccountLinks } from "./account-links.js";
 import {
   GITHUB_CONFLICT_RESUME,
@@ -381,6 +382,7 @@ export function githubPlugin(
       ],
     },
     hooks: {
+      guardian: { context: githubGuardianContext },
       async conversationTitleContext(ctx) {
         return await loadGitHubConversationTitleContext({
           config: ctx.config,

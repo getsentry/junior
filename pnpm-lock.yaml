@@ -809,6 +809,12 @@ importers:
       '@sentry/junior-google':
         specifier: workspace:*
         version: link:../junior-google
+      '@sentry/junior-linear':
+        specifier: workspace:*
+        version: link:../junior-linear
+      '@sentry/junior-notion':
+        specifier: workspace:*
+        version: link:../junior-notion
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api

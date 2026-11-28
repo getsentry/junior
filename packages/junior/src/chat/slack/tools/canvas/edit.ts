@@ -62,6 +62,7 @@ export const slackCanvasEditToolDefinition = zodToolDefinition({
     openWorldHint: true,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description:
     "Edit a Slack canvas with exact markdown replacements. Returns a diff.",
   prepareArguments: prepareCanvasEditArguments,

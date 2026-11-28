@@ -16,6 +16,7 @@ import {
   type ObjectSubject,
 } from "./object-annotations";
 import type { WatchResult, SubscribableResource } from "./events";
+import type { PluginCache } from "./cache";
 import type { PluginState } from "./state";
 import * as z from "zod";
 import type { ZodTypeAny } from "zod";
@@ -387,19 +388,6 @@ export type PluginToolExecute<
 }["bivarianceHack"];
 
 /**
- * Tool-declared approval mode.
- *
- * `auto` delegates to core policy, `review` enters Guardian review, and
- * `approve` permits execution without review. Plugin tool helpers normalize
- * omission to `auto`.
- *
- * Core resolves the effective mode immediately before execution.
- */
-export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
-
-export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
-
-/**
  * Reviewer signals describing a tool's side-effect behavior.
  *
  * These hints follow the MCP tool annotation contract. Guardian may use
@@ -434,21 +422,40 @@ export function missingToolAnnotationKeys(
   );
 }
 
+/** Who can read a target. Core counts an unknown audience as `world`. */
+export type Audience = "internal" | "world";
+
 /**
- * Canonical approval metadata declared by core and plugin tools.
+ * What a plugin may read while Guardian reviews one call: its cache,
+ * provider reads as Junior's own system account, and its code changes.
+ * Reads only.
  */
-export interface ToolApprovalMetadata<TInput = unknown> {
-  /** Optional declared approval mode; the owning tool boundary selects defaults. */
-  approvalMode?: ToolApprovalMode | undefined;
-  annotations?: ToolAnnotations;
+export interface GuardianContext {
+  cache: PluginCache;
+  egress: PluginEgress;
+  /** This plugin's code changes in Junior's records. */
+  codeChanges: Pick<PluginCodeChanges, "list">;
+  /** The Conversations of the work that makes the call. */
+  conversationIds(): Promise<string[]>;
+}
+
+/** What a plugin tells Guardian about one call. */
+export interface GuardianResult {
+  /** What the call touches, such as `getsentry/junior#12`. */
+  target: string;
+  /** Who can read the target. */
+  audience: Audience;
   /**
-   * Describe the reviewed semantic action for the review request.
-   *
-   * Core owns authoritative tool, actor, source, destination, conversation,
-   * credential, and input data. This description adds domain-specific context
-   * only and is never an authorization grant.
+   * `deny` and `ask` always hold, and only the person's yes to the exact
+   * action clears an ask. `allow` clears only Guardian's check that nobody
+   * asked for the call. Every other check still applies.
    */
-  describeProposal?(input: TInput): string;
+  decision?: "allow" | "ask" | "deny";
+  /**
+   * A short, stable label for why, such as `own-pr-text`. The decision
+   * record keeps it. Core writes what people and Guardian read.
+   */
+  reason?: string;
 }
 
 /**
@@ -477,11 +484,23 @@ export interface PluginToolDefinition<
   TOutput = unknown,
   TExecuteOutput = TOutput,
   TContext = ToolRegistrationHookContext,
-> extends ToolApprovalMetadata<TInput> {
+> {
+  annotations?: ToolAnnotations;
   description: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
   exposure?: ToolExposure | undefined;
+  /**
+   * What one call touches and who can read it, from parsed input and stored
+   * records, never from what tool input or a tool result claims. It must not
+   * write anything. Without it, the target counts as `world`.
+   */
+  guardian?(input: TInput, ctx: GuardianContext): Promise<GuardianResult>;
+  /**
+   * One line about the call for the current Guardian only. The agent Guardian
+   * reads `guardian`. Remove this with the current Guardian.
+   */
+  describeProposal?(input: TInput): string;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**
@@ -610,7 +629,6 @@ function createZodTool<
   }
   return {
     ...tool,
-    approvalMode: tool.approvalMode ?? "auto",
     inputSchema: modelInputSchema,
     outputSchema: modelOutputSchema,
     prepareArguments(args) {

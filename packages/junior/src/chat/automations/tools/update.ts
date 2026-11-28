@@ -20,6 +20,7 @@ import {
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
 import {
+  automationDeliveryTarget,
   automationDestinationParam,
   resolveToolDestination,
 } from "@/chat/automations/tool-destination";
@@ -305,6 +306,12 @@ export function createUpdateAutomationTool(
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
+    // A move gets the same delivery target as a new Automation. Other
+    // updates keep the facts of a tool with no `guardian`.
+    guardian: async (input) =>
+      input.destination
+        ? { target: await automationDeliveryTarget(context, input.destination) }
+        : undefined,
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

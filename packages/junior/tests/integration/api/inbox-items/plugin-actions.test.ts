@@ -268,6 +268,11 @@ it("gives a kind action on a plugin item to the plugin, and starts no Turn", asy
       events: ["deploy.stopped"],
       identifier: "api",
       namespace: "deploys",
+      // The Watch serves the person who answered (`follows-instruction`).
+      creator: {
+        actor: { platform: "web", email: ana.user.email, userId: ana.user.id },
+        plugin: "deploys",
+      },
     }),
   ]);
   // The plugin does the work, so the Conversation only records the actions.

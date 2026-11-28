@@ -14,7 +14,7 @@ import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import { renderDataTag } from "@/chat/input-tags";
+import { renderDataTag, TOP_LEVEL_AGENT_WRITER } from "@/chat/input-tags";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { AgentMessageTargetError } from "./errors";
@@ -87,7 +87,7 @@ function renderTopLevelMessageInput(args: {
       conversation_id: args.senderConversationId,
       source: "top_level_agent",
     },
-    "Another top-level agent",
+    TOP_LEVEL_AGENT_WRITER,
     args.text.trim(),
   );
 }

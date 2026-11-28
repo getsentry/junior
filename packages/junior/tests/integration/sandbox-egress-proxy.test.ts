@@ -919,7 +919,6 @@ describe("sandbox egress proxy integration", () => {
       tools() {
         return {
           managedEgressRead: definePluginTool({
-            approvalMode: "approve",
             annotations: {
               destructiveHint: false,
               idempotentHint: true,

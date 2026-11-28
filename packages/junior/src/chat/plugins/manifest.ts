@@ -286,13 +286,14 @@ const mcpSourceSchema = z
     "oauth-client": mcpOauthClientSourceSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
-    "viewer-tools": nonEmptyStringArraySchema("viewer-tools").optional(),
     guardian: z
       .object({
+        audience: z.enum(["internal", "world"]).optional(),
         skipReview: nonEmptyStringArraySchema("skipReview").optional(),
       })
       .strict()
       .optional(),
+    "viewer-tools": nonEmptyStringArraySchema("viewer-tools").optional(),
   })
   .passthrough();
 
@@ -438,6 +439,7 @@ function manifestConfigPatch(
       );
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
+      setDefined(mcp, "guardian", config.mcp.guardian);
       setDefined(mcp, "viewer-tools", config.mcp.viewerTools);
       result["mcp"] = mcp;
     }
@@ -1200,10 +1202,10 @@ function normalizeMcp(
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
       : undefined),
+    ...(result.data.guardian ? { guardian: result.data.guardian } : undefined),
     ...(result.data["viewer-tools"]
       ? { viewerTools: result.data["viewer-tools"] }
       : undefined),
-    ...(skipReview ? { guardian: { skipReview } } : undefined),
   } satisfies PluginMcpConfig;
 }
 

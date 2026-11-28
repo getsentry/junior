@@ -2,13 +2,19 @@
 import * as z from "zod";
 import { getConversationStore } from "@/chat/db";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
-import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
+import {
+  parseSlackTeamId,
+  type SlackChannelId,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
+import { slackChannelTarget } from "@/chat/slack/channel-audience";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { Action } from "@/chat/guardian/guardian";
 import type { AutomationDestination } from "./creator";
 import {
   requireToolDestination,
@@ -123,4 +129,43 @@ export async function resolveToolDestination(
     visibility: "public",
   });
   return { destination, visibility: "public" };
+}
+
+/**
+ * Where an Automation delivers and who can read it, for Guardian
+ * (`audience`). A Slack channel or DM, also this Conversation's own, is
+ * `world` when it is shared with another organization or Slack cannot
+ * answer. A channel can be shared after the Automation is created.
+ */
+export async function automationDeliveryTarget(
+  context: AutomationToolContext,
+  value: z.output<typeof automationDestinationParam>,
+): Promise<NonNullable<Action["target"]>> {
+  if (value !== "current_conversation") {
+    const channelId = await namedChannelId(context, value).catch(
+      () => undefined,
+    );
+    return channelId
+      ? await slackChannelTarget(channelId)
+      : { ref: `Slack channel ${value}`, audience: "world" };
+  }
+  return context.destination
+    ? await slackChannelTarget(context.destination.channelId)
+    : { ref: "this Conversation", audience: "internal" };
+}
+
+async function namedChannelId(
+  context: AutomationToolContext,
+  value: string,
+): Promise<SlackChannelId | undefined> {
+  const teamId =
+    parseSlackTeamId(context.destination?.teamId) ??
+    parseSlackTeamId(await resolveBotSlackTeamId());
+  if (!teamId) return undefined;
+  const { channelId } = await resolveSlackChannelRef({
+    field: "destination",
+    value,
+    teamId,
+  });
+  return channelId;
 }

@@ -13,6 +13,7 @@ import {
   type PluginToolOutput,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
+import { repositoryCall } from "../tool-support/guardian-call.js";
 import * as z from "zod";
 import { watchGitHubIssue } from "../events/issue.js";
 import {
@@ -119,6 +120,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
   description:
     "Update an existing GitHub issue's title, body, or open/closed state, or assign it to the requester. Use this instead of raw GitHub API calls when changing issue metadata.",
   inputSchema,
+  guardian: (input, ctx) => repositoryCall(input.repo, ctx, input.issue),
   outputSchema,
   async execute(
     input,

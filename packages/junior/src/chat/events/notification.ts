@@ -22,7 +22,9 @@ import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID, eventBotAuthorId } from "@/chat/events/actor";
+import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { eventAuthorText, type AuthorTrust } from "@/chat/identities/trust";
 import {
   credentialSubjectSchema,
@@ -71,6 +73,8 @@ const eventTaskFactsSchema = z.object({
       verified: z.boolean(),
     })
     .optional(),
+  /** The Event author's linked account is the Watch creator's. */
+  authorIsCreator: z.literal(true).optional(),
 });
 
 /** Facts for one Watch Event, saved so several Events can share one message. */
@@ -156,7 +160,7 @@ export function timerWatchCredentialSubject(
  * without a Watch or saved facts, such as child agent results and input queued
  * before facts were saved, return undefined and keep their own text.
  */
-function readEventTaskFacts(
+export function readEventTaskFacts(
   message: InboundMessage,
 ):
   | { facts: EventTaskFacts; metadata: EventMailboxMetadata; watchId: string }
@@ -344,7 +348,10 @@ function eventMessageAuthor(
 /** Build plain conversation mailbox input for one matched watch. */
 export function createEventInboundMessage(input: {
   event: EventNotification;
-  subscription: Pick<Watch, "conversationId" | "credentialSubject" | "id">;
+  subscription: Pick<
+    Watch,
+    "conversationId" | "creator" | "credentialSubject" | "id"
+  >;
   text: string;
   /** Facts behind `text`, used when several Events share one message. */
   task?: EventTaskFacts;
@@ -359,6 +366,9 @@ export function createEventInboundMessage(input: {
     ...(input.task ? { task: input.task } : undefined),
     ...(input.subscription.credentialSubject
       ? { credentialSubject: input.subscription.credentialSubject }
+      : undefined),
+    ...(input.subscription.creator
+      ? { watchCreator: input.subscription.creator }
       : undefined),
     event: {
       eventKey: input.event.eventKey,
@@ -409,6 +419,22 @@ export async function addQuietEventNote(args: {
 }
 
 /**
+ * Whether a trusted Event author is the same User as the Watch creator, on
+ * any linked account (`linked-account`).
+ */
+async function authorIsCreator(
+  creator: Actor | undefined,
+  author: AuthorTrust | undefined,
+): Promise<boolean> {
+  if (!creator || author?.status !== "trusted" || !author.actor) return false;
+  const [mine, theirs] = await Promise.all([
+    readActorIdentity(creator),
+    readActorIdentity(author.actor),
+  ]);
+  return Boolean(mine?.user && mine.user.id === theirs?.user?.id);
+}
+
+/**
  * Enqueue a event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation
@@ -426,19 +452,25 @@ export async function enqueueEventNotification(args: {
   subscription: Watch;
   state?: StateAdapter | undefined;
 }): Promise<AppendAndEnqueueInboundMessageResult | { status: "held" }> {
-  const task = eventTaskFacts(
-    args.subscription,
-    args.event,
-    args.people,
-    args.doneBy,
-    args.author,
-  );
+  const task = {
+    ...eventTaskFacts(
+      args.subscription,
+      args.event,
+      args.people,
+      args.doneBy,
+      args.author,
+    ),
+    ...((await authorIsCreator(args.subscription.creator?.actor, args.author))
+      ? { authorIsCreator: true as const }
+      : undefined),
+  };
   return await enqueueAutomatedInput({
     message: createEventInboundMessage({
       author: args.author,
       event: args.event,
       subscription: {
         conversationId: args.subscription.conversationId,
+        creator: args.subscription.creator,
         credentialSubject: args.subscription.credentialSubject,
         id: args.subscription.id,
       },

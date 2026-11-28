@@ -39,6 +39,7 @@ export const runOperatorSqlToolDefinition = zodToolDefinition({
     openWorldHint: false,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description:
     "Run one SQL statement against this deployment's Postgres database and return its rows. Reads and writes are allowed. Add RETURNING to see rows changed by INSERT, UPDATE, or DELETE. Use $1, $2 placeholders with params for values.",
   inputSchema: z

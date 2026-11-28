@@ -19,6 +19,7 @@ import {
   presentationReferenceSchema,
   presentationUrl,
 } from "../slides/presentation";
+import { fileGuardian } from "../drive/file-audience";
 
 // Google validates each request. The tool checks only the shape that every
 // batchUpdate request has: one key, the request kind.
@@ -236,7 +237,7 @@ function namesPredefinedLayout(
 
 const replySchema = z.object({ replies: z.array(z.unknown()).default([]) });
 
-/** Count request kinds for the action review proposal, such as `insertText ×2`. */
+/** Count request kinds for the current Guardian, such as `insertText ×2`. */
 function describeRequests(requests: Array<Record<string, unknown>>): string {
   const counts = new Map<string, number>();
   for (const request of requests) {
@@ -256,13 +257,15 @@ export const updateGoogleSlidesTool = definePluginTool({
     openWorldHint: true,
     readOnlyHint: false,
   },
+  description:
+    "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation. A Sheets chart needs a Sheet that the requester can open; videos must be from YouTube.",
+  inputSchema,
   describeProposal(input) {
     const images = sandboxImagePaths(input.requests).length;
     return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.${images ? ` Google fetches ${images} sandbox image(s) from public URLs that expire within 5 minutes.` : ""}`;
   },
-  description:
-    "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation. A Sheets chart needs a Sheet that the requester can open; videos must be from YouTube.",
-  inputSchema,
+  guardian: async (input, ctx) =>
+    await fileGuardian("Google Slides presentation", input.presentation, ctx),
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const file = await requireEditableFile(

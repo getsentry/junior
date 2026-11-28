@@ -15,6 +15,7 @@ import {
 } from "../docs/edits";
 import { googleFileRequest } from "../drive/files";
 import type { GoogleToolContext } from "../google-api";
+import { fileGuardian } from "../drive/file-audience";
 
 const inputSchema = z
   .object({
@@ -73,12 +74,14 @@ export const replaceGoogleDocTextTool = definePluginTool({
     openWorldHint: true,
     readOnlyHint: false,
   },
-  describeProposal(input) {
-    return `In Google Doc ${input.document}, replace every "${input.find}" with "${input.replace}".`;
-  },
   description:
     "Replace every match of a text in a Google Doc, as your own Google account. Matches keep their formatting. Only the first tab of a Doc with tabs is changed. Works only when that account and the requester can both edit the Doc. Anyone who can talk to you can read a Doc your account can edit, if they give you its link.",
   inputSchema,
+  describeProposal(input) {
+    return `In Google Doc ${input.document}, replace every "${input.find}" with "${input.replace}".`;
+  },
+  guardian: async (input, ctx) =>
+    await fileGuardian("Google Doc", input.document, ctx),
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const doc = await requireEditableDoc(ctx, input.document);

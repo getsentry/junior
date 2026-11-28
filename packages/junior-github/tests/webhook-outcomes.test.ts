@@ -3106,6 +3106,29 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("records an opened pull request as a code change of the Conversation in its footer", async () => {
+    // createPullRequest keeps no code change for a retry, so this record is
+    // what links a pull request to the work that opened it.
+    const fixture = await createGitHubFixture();
+    try {
+      const route = webhookRoute(fixture);
+      expect(
+        (await route.handler(signedRequest(pullRequestPayload()))).status,
+      ).toBe(202);
+      expect(await fixture.codeIndex.changes()).toEqual([
+        expect.objectContaining({
+          conversationIds: ["slack:C123:1712345.0001"],
+          number: 946,
+          providerId: "1001",
+          repository: { name: "getsentry/junior", providerId: "2001" },
+          state: "open",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("tracks one idempotent projection and ignores stale lifecycle events", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];

@@ -10,7 +10,9 @@ export const deleteWorkspaceToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: WORKSPACES_TOOL_SOURCE,
   approvalMode: "review",
-  describeProposal: ({ id }) => `Delete Workspace ${id}.`,
+  guardian: ({ id }) => ({
+    summary: `Delete Workspace ${id}.`,
+  }),
   executionMode: "sequential",
   annotations: {
     destructiveHint: true,

@@ -11,6 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { gitHubDbSchema } from "../db/database.js";
+import { repositoryCall } from "../tool-support/guardian-call.js";
 import {
   ADD_REVIEW_REACTION,
   type GitHubGraphqlOperation,
@@ -509,9 +510,6 @@ export function createGitHubUpdatePullRequestFeedbackTool(
   botEmail: string | undefined,
 ) {
   return definePluginTool({
-    // No action review: the tool checks in code that the bot authored the pull
-    // request, and it changes only the bot's own reaction, which is reversible.
-    approvalMode: "approve",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -521,6 +519,10 @@ export function createGitHubUpdatePullRequestFeedbackTool(
     description:
       "Set your outcome reaction on GitHub pull request feedback: addressed (+1) or declined (-1). Call it after you act on or reply to the feedback. Replaces only your prior status reaction on that comment. When every comment of the author's latest change request, or of the requester's latest comment-only reviews, is marked and the required checks pass, asks the author to review again. Only works on pull requests the bot authored.",
     exposure: "direct",
+    // A status reaction can ask the author to review again, so it is not
+    // just text.
+    guardian: (input, ctx) =>
+      repositoryCall(input.repo, ctx, input.pull_request),
     inputSchema,
     outputSchema,
     async execute(input, _options, ctx: FeedbackContext): Promise<Result> {

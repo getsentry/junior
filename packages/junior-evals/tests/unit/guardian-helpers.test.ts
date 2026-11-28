@@ -136,3 +136,50 @@ describe("guardian eval helpers", () => {
     ).rejects.toThrow("The agent has no tool named notAnAgentTool.");
   });
 });
+
+describe("guardian design request", () => {
+  it("gives a shell command the GitHub plugin's context from the case's records", async () => {
+    const { designGuardianRequest } =
+      await import("../../src/guardian-design-request");
+    const request = await designGuardianRequest(
+      [
+        await proposal({
+          context: slackContext("fix the flaky test"),
+          input: { command: "git push origin fix/retry-flake" },
+          tool: "bash",
+        }),
+      ],
+      {
+        ownPullRequests: ["getsentry/getsentry#930"],
+        pullRequestBranches: { "getsentry/getsentry#930": "fix/retry-flake" },
+        privateRepos: ["getsentry/getsentry"],
+        workspaceRepos: ["getsentry/getsentry"],
+      },
+    );
+
+    expect(request.actions[0]?.context).toEqual([
+      "[github] The agent's open pull request getsentry/getsentry#930 in this work has work branch fix/retry-flake.",
+      "[github] Repository getsentry/getsentry has audience internal.",
+    ]);
+  });
+
+  it("skips the reads that a plugin lists in skipReview, as the gate does", async () => {
+    const { gateReviews } = await import("../../src/guardian-tools");
+    const mcpCall = (toolName: string) =>
+      proposal({
+        context: slackContext("check PRODENG-2640"),
+        input: {
+          arguments: { id: "PRODENG-2640" },
+          tool_name: toolName,
+        },
+        tool: "callMcpTool",
+      });
+
+    expect(await gateReviews(await mcpCall("mcp__linear__get_issue"))).toBe(
+      false,
+    );
+    expect(await gateReviews(await mcpCall("mcp__linear__save_issue"))).toBe(
+      true,
+    );
+  });
+});

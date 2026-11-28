@@ -7,354 +7,20 @@ import {
   reviewToolActions,
   ToolActionReviewUnavailableError,
   type ToolAction,
-  type ToolActionReview,
-  type ToolActionReviewContext,
 } from "@/chat/guardian/gate";
-import type { Guardian, Review, ReviewRequest } from "@/chat/guardian/guardian";
+import type { Guardian, ReviewRequest } from "@/chat/guardian/guardian";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
-
-const LOCAL_SOURCE = {
-  kind: "local",
-  visibility: "private",
-  conversationId: "local:approval-test",
-} as const;
-const LOCAL_DESTINATION = {
-  platform: "local",
-  conversationId: "local:approval-test",
-} as const;
-
-function reviewContext(
-  reviewer: ToolActionReviewer,
-  overrides: Partial<ToolActionReviewContext> = {},
-): ToolActionReview {
-  return createToolActionReview({
-    context: {
-      actor: {
-        platform: "system",
-        name: "scheduler",
-      },
-      conversationId: "local:approval-test",
-      credentialContext: {
-        actor: {
-          platform: "system",
-          name: "scheduler",
-        },
-        subject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "scheduled-automation",
-          taskId: "task-123",
-          binding: {
-            type: "scheduled-automation",
-            plugin: "scheduler",
-            taskId: "task-123",
-            signature: "must-not-reach-guardian",
-          },
-        },
-      },
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-      userIntent: () => "Run my scheduled report.",
-      evidence: () => ({
-        entries: [
-          { role: "user", text: "Run the report I described yesterday." },
-        ],
-        omittedEntries: 2,
-      }),
-      ...overrides,
-    },
-    onFatal: () => undefined,
-    onDecision: vi.fn(async () => undefined),
-    guardian: (batch) => createCurrentGuardian(reviewer, batch),
-  });
-}
-
-/** Review a batch of one action, as the tool adapter does. */
-async function reviewToolAction(
-  toolCallId: string,
-  toolName: string,
-  tool: AnyToolDefinition,
-  input: Record<string, unknown>,
-  review: ToolActionReview | undefined,
-): Promise<Review | undefined> {
-  const results = await reviewToolActions(
-    [{ toolCallId, toolName, tool, input }],
-    review,
-  );
-  const result = results.get(toolCallId)!;
-  if (!result.allowed) {
-    throw result.error;
-  }
-  return result.decision;
-}
-
-function definition(
-  overrides: Partial<AnyToolDefinition> = {},
-): AnyToolDefinition {
-  return {
-    description: "Generate the scheduled report.",
-    inputSchema: {},
-    execute: async () => ({ ok: true }),
-    ...overrides,
-  };
-}
+import { createApp, defineJuniorPlugins } from "@/app";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  definition,
+  LOCAL_DESTINATION,
+  LOCAL_SOURCE,
+  reviewContext,
+  reviewToolAction,
+} from "../../fixtures/guardian-gate";
 
 describe("tool action review", () => {
-  it("preserves execution behavior for unclassified core tools", async () => {
-    const reviewer = { review: vi.fn() };
-    const resolveApprovalMetadata = vi.fn();
-
-    await reviewToolAction(
-      "tool-call",
-      "generateReport",
-      definition({ resolveApprovalMetadata }),
-      { reportId: "weekly" },
-      reviewContext(reviewer),
-    );
-
-    expect(reviewer.review).not.toHaveBeenCalled();
-    expect(resolveApprovalMetadata).not.toHaveBeenCalled();
-  });
-
-  it("reviews auto plugin actions with exact input and safe context", async () => {
-    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "allow",
-      reason: "Matches the scheduled request.",
-      riskLevel: "low",
-      userAuthorization: "high",
-    }));
-    const tool = definition({
-      approvalMode: "auto",
-      annotations: {
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: true,
-        readOnlyHint: false,
-      },
-      describeProposal: ({ reportId }) => `Generate report ${reportId}.`,
-      identity: {
-        id: "scheduler.generateReport",
-        name: "generateReport",
-        plugin: "scheduler",
-      },
-      source: {
-        id: "scheduler",
-        description: "Scheduled work",
-      },
-    });
-
-    await reviewToolAction(
-      "tool-call",
-      "scheduler_generateReport",
-      tool,
-      { reportId: "weekly" },
-      reviewContext({ review }),
-    );
-
-    const proposal = review.mock.calls[0]![0];
-    expect(proposal).toMatchObject({
-      context: {
-        actor: { platform: "system", name: "scheduler" },
-        conversationId: "local:approval-test",
-        credential: {
-          actor: { platform: "system", name: "scheduler" },
-          subject: {
-            allowedWhen: "scheduled-automation",
-            taskId: "task-123",
-            type: "user",
-            userId: "U123",
-          },
-        },
-        userIntent: "Run my scheduled report.",
-      },
-      evidence: {
-        entries: [
-          { role: "user", text: "Run the report I described yesterday." },
-        ],
-        omittedEntries: 2,
-      },
-      input: { reportId: "weekly" },
-      tool: {
-        name: "scheduler_generateReport",
-        proposalDescription: "Generate report weekly.",
-      },
-    });
-    expect(JSON.stringify(proposal)).not.toContain("must-not-reach-guardian");
-  });
-
-  it("reviews auto actions when tool annotations are missing", async () => {
-    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "allow",
-      reason: "Unknown risk needs review.",
-      riskLevel: "medium",
-      userAuthorization: "medium",
-    }));
-
-    await reviewToolAction(
-      "tool-call",
-      "callMcpTool",
-      definition({
-        approvalMode: "auto",
-        // Without `readOnlyHint: true`, partial annotations are unknown risk.
-        annotations: {
-          destructiveHint: false,
-          openWorldHint: false,
-        },
-        resolveApprovalMetadata: async () => ({
-          annotations: {
-            destructiveHint: false,
-            openWorldHint: false,
-          },
-          description: "Call a remote MCP tool.",
-          name: "mcp__demo__search",
-        }),
-      }),
-      { tool_name: "mcp__demo__search" },
-      reviewContext({ review }),
-    );
-
-    expect(review).toHaveBeenCalledTimes(1);
-  });
-
-  it("reviews auto actions when annotations are absent", async () => {
-    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "allow",
-      reason: "Unknown risk needs review.",
-      riskLevel: "medium",
-      userAuthorization: "medium",
-    }));
-
-    await reviewToolAction(
-      "tool-call",
-      "callMcpTool",
-      definition({
-        approvalMode: "auto",
-        resolveApprovalMetadata: async () => ({
-          description: "Call a remote MCP tool with no annotations.",
-          name: "mcp__demo__search",
-        }),
-      }),
-      { tool_name: "mcp__demo__search" },
-      reviewContext({ review }),
-    );
-
-    expect(review).toHaveBeenCalledTimes(1);
-  });
-
-  it("skips review of read-only plugin actions", async () => {
-    const review = vi.fn<ToolActionReviewer["review"]>();
-
-    await reviewToolAction(
-      "plugin-call",
-      "github_getIssue",
-      definition({
-        approvalMode: "auto",
-        annotations: {
-          destructiveHint: false,
-          idempotentHint: true,
-          openWorldHint: true,
-          readOnlyHint: true,
-        },
-        identity: {
-          id: "github.getIssue",
-          name: "getIssue",
-          plugin: "github",
-        },
-        source: { id: "github", description: "GitHub" },
-      }),
-      { issue: 1, repo: "getsentry/junior" },
-      reviewContext({ review }),
-    );
-
-    expect(review).not.toHaveBeenCalled();
-  });
-
-  it("reviews MCP actions that the server marks read-only", async () => {
-    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "allow",
-      reason: "Server annotations are only hints.",
-      riskLevel: "low",
-      userAuthorization: "high",
-    }));
-
-    await reviewToolAction(
-      "mcp-call",
-      "callMcpTool",
-      definition({
-        approvalMode: "auto",
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: true,
-          readOnlyHint: false,
-        },
-        resolveApprovalMetadata: async () => ({
-          annotations: { readOnlyHint: true },
-          description: "Delete a Linear issue.",
-          name: "mcp__linear__delete_issue",
-          source: { id: "linear", description: "MCP provider linear" },
-        }),
-      }),
-      { tool_name: "mcp__linear__delete_issue" },
-      reviewContext({ review }),
-    );
-
-    expect(review).toHaveBeenCalledTimes(1);
-    expect(review.mock.calls[0]?.[0].tool.annotations).toEqual({
-      readOnlyHint: true,
-    });
-  });
-
-  it("skips review of MCP actions that the plugin lists", async () => {
-    const review = vi.fn<ToolActionReviewer["review"]>();
-
-    await reviewToolAction(
-      "mcp-call",
-      "callMcpTool",
-      definition({
-        approvalMode: "auto",
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: true,
-          readOnlyHint: false,
-        },
-        resolveApprovalMetadata: async () => ({
-          description: "Search Linear issues.",
-          name: "mcp__linear__list_issues",
-          skipReview: true,
-          source: { id: "linear", description: "MCP provider linear" },
-        }),
-      }),
-      { tool_name: "mcp__linear__list_issues" },
-      reviewContext({ review }),
-    );
-
-    expect(review).not.toHaveBeenCalled();
-  });
-
-  it("reviews read-only actions that are also marked destructive", async () => {
-    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
-      decision: "allow",
-      reason: "Conflicting annotations need review.",
-      riskLevel: "medium",
-      userAuthorization: "medium",
-    }));
-
-    await reviewToolAction(
-      "tool-call",
-      "demo_purgeCache",
-      definition({
-        approvalMode: "auto",
-        annotations: { destructiveHint: true, readOnlyHint: true },
-      }),
-      { cache: "demo" },
-      reviewContext({ review }),
-    );
-
-    expect(review).toHaveBeenCalledTimes(1);
-  });
-
   it("returns ask and deny decisions as expected tool rejections", async () => {
     for (const decision of ["ask", "deny"] as const) {
       const action = reviewToolAction(
@@ -459,7 +125,7 @@ describe("tool action review", () => {
     [
       "proposal description",
       (tool: AnyToolDefinition, failure: Error) => {
-        tool.describeProposal = () => {
+        tool.guardian = () => {
           throw failure;
         };
         return {};
@@ -608,10 +274,205 @@ describe("tool action review", () => {
       {
         tool: "generateReport",
         input: { reportId: "weekly" },
-        effect: "write",
         summary: "generateReport",
       },
     ]);
+  });
+
+  it("gives an MCP call its plugin's audience", async () => {
+    const requests: ReviewRequest[] = [];
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "notes",
+            displayName: "Notes",
+            description: "Notes",
+            mcp: {
+              transport: "http",
+              url: "https://mcp.notes.example.test/mcp",
+              guardian: { audience: "internal" },
+            },
+          },
+        }),
+      ]),
+    });
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Put the numbers on the page.",
+      },
+      guardian: () => ({
+        review: async (request) => {
+          requests.push(request);
+          return request.actions.map(() => ({
+            decision: "allow" as const,
+            reason: "The person asked for the update.",
+          }));
+        },
+      }),
+      onFatal: () => undefined,
+      onDecision: vi.fn(async () => undefined),
+    });
+
+    await reviewToolAction(
+      "tool-call",
+      "callMcpTool",
+      definition({
+        approvalMode: "review",
+        resolveApprovalMetadata: async () => ({
+          serverHints: { readOnlyHint: false },
+          name: "mcp__notes__update_page",
+          source: { description: "Notes", id: "notes" },
+        }),
+      }),
+      { tool_name: "mcp__notes__update_page", arguments: {} },
+      actionReview,
+    );
+
+    expect(requests[0]!.actions[0]!).toMatchObject({
+      target: {
+        ref: "notes",
+        audience: "internal",
+      },
+    });
+  });
+
+  it("reviews a shell command from its text, with the placeholders", async () => {
+    const requests: ReviewRequest[] = [];
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Push the fix.",
+        agentReviews: true,
+      },
+      guardian: () => ({
+        review: async (request) => {
+          requests.push(request);
+          return request.actions.map(() => ({
+            decision: "allow" as const,
+            reason: "The person asked for the push.",
+          }));
+        },
+      }),
+      onFatal: () => undefined,
+      onDecision: vi.fn(async () => undefined),
+    });
+
+    await reviewToolAction(
+      "tool-call",
+      "bash",
+      // Like the real bash tool, it has no approval mode.
+      definition(),
+      {
+        command:
+          "git -C /vercel/sandbox/repos/demo push https://example.com/mirror.git fix/export:main",
+      },
+      actionReview,
+    );
+
+    expect(requests[0]!.actions[0]!).toMatchObject({
+      tool: "bash",
+    });
+    expect(requests[0]!.sandbox).toEqual({ placeholders: [] });
+  });
+
+  it("reviews setting a Watch only for the agent Guardian", async () => {
+    const reviewed = async (agentReviews: boolean) => {
+      const requests: ReviewRequest[] = [];
+      const actionReview = createToolActionReview({
+        context: {
+          actor: { platform: "local", userId: "local-user" },
+          conversationId: "local:approval-test",
+          destination: LOCAL_DESTINATION,
+          source: LOCAL_SOURCE,
+          userIntent: () => "Tell me when acme/app#1 merges.",
+          ...(agentReviews ? { agentReviews } : undefined),
+        },
+        guardian: () => ({
+          review: async (request) => {
+            requests.push(request);
+            return request.actions.map(() => ({
+              decision: "allow" as const,
+              reason: "The person asked for the Watch.",
+            }));
+          },
+        }),
+        onFatal: () => undefined,
+        onDecision: vi.fn(async () => undefined),
+      });
+      await reviewToolAction(
+        "tool-call",
+        "watchEvents",
+        // Like the real watchEvents tool, it has no approval mode.
+        definition(),
+        { identifier: "acme/app#1", intent: "Tell the thread when it merges." },
+        actionReview,
+      );
+      return requests.length;
+    };
+    expect(await reviewed(true)).toBe(1);
+    expect(await reviewed(false)).toBe(0);
+  });
+
+  it("fails only the action that cannot be reviewed in a batch", async () => {
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Update both pages.",
+      },
+      guardian: () => ({
+        review: async (request) => {
+          if (
+            request.actions.some((action) =>
+              JSON.stringify(action.input).includes("huge"),
+            )
+          ) {
+            throw new Error("The action is too large to review.");
+          }
+          return request.actions.map(() => ({
+            decision: "allow" as const,
+            reason: "The person asked for it.",
+          }));
+        },
+      }),
+      onFatal: () => undefined,
+      onDecision: vi.fn(async () => undefined),
+    });
+    const tool = definition({ approvalMode: "review" });
+
+    const results = await reviewToolActions(
+      [
+        {
+          toolCallId: "small",
+          toolName: "updatePage",
+          tool,
+          input: { page: "small" },
+        },
+        {
+          toolCallId: "huge",
+          toolName: "updatePage",
+          tool,
+          input: { page: "huge" },
+        },
+      ],
+      actionReview,
+    );
+
+    expect(results.get("small")).toMatchObject({ allowed: true });
+    expect(results.get("huge")).toMatchObject({
+      allowed: false,
+      error: { name: "ToolActionReviewUnavailableError" },
+    });
   });
 
   it("fails closed when the Guardian decision cannot be recorded", async () => {

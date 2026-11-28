@@ -385,7 +385,7 @@ export async function prepareForkParentHistory(): Promise<string> {
   return toolCallId;
 }
 
-/** Plugins with one approved tool, `upkeep_markDone`, for child agent tests. */
+/** Plugins with one read-only tool, `upkeep_markDone`, for child agents. */
 export function upkeepPlugins(
   markDone: (input: { itemId: string }) => Record<string, never>,
 ) {
@@ -399,15 +399,14 @@ export function upkeepPlugins(
       hooks: {
         tools: () => ({
           markDone: definePluginTool({
-            // The tool checks in code that its effect is safe, so action
-            // review does not run, also in a child agent.
-            approvalMode: "approve",
+            // Read-only, so action review does not run, also in a child
+            // agent.
             exposure: "direct",
             annotations: {
-              destructiveHint: true,
+              destructiveHint: false,
               idempotentHint: true,
               openWorldHint: true,
-              readOnlyHint: false,
+              readOnlyHint: true,
             },
             description: "Mark one item done.",
             inputSchema: z.object({ itemId: z.string() }),

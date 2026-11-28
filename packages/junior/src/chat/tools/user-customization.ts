@@ -24,6 +24,7 @@ export const updateUserCustomizationToolDefinition = zodToolDefinition({
     openWorldHint: false,
     readOnlyHint: false,
   },
+  approvalMode: "review",
   description: `Replace the current user's saved customization: short text that changes how you reply to them in every conversation, such as "keep replies short". Use it only when the user's latest message asks to change it. Pass the complete new text, including any saved text from \`<user-customization>\` to keep. Pass an empty string to clear it. Maximum ${USER_CUSTOMIZATION_MAX_CHARS} characters.`,
   inputSchema: z
     .object({

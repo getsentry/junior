@@ -5,7 +5,7 @@ import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
 import { readGitHubReviewAsked } from "../src/pull-request-review-again";
 import { gitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
-import { memoryState } from "./plugin-harness";
+import { guardianContext, memoryState } from "./plugin-harness";
 
 let dbFixture: GitHubFixture;
 
@@ -351,5 +351,27 @@ describe("commentOnPullRequest", () => {
     ).rejects.toThrow(
       "GitHub pull request comment failed with HTTP 404: Not Found",
     );
+  });
+});
+
+describe("commentOnPullRequest call facts", () => {
+  const input = { repo: "getsentry/junior", pull_request: 691, body: "Done." };
+
+  it("allows a comment on this work's pull request", async () => {
+    await expect(
+      gitHubCommentOnPullRequestTool.guardian?.(
+        input as never,
+        guardianContext({ own: true }),
+      ),
+    ).resolves.toMatchObject({ decision: "allow" });
+  });
+
+  it("gives no decision for a comment that asks the requester", async () => {
+    await expect(
+      gitHubCommentOnPullRequestTool.guardian?.(
+        { ...input, asks_requester: true } as never,
+        guardianContext({ own: true }),
+      ),
+    ).resolves.toEqual({ target: "getsentry/junior#691", audience: "world" });
   });
 });

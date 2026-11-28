@@ -31,22 +31,6 @@ describe("cloneRepository", () => {
       openWorldHint: true,
       readOnlyHint: true,
     });
-    expect(
-      tool.describeProposal?.({
-        directory: "repos/junior",
-        repo: "getsentry/junior",
-      }),
-    ).toBe(
-      "Shallow-clone getsentry/junior into the local sandbox at repos/junior for inspection (no GitHub mutation).",
-    );
-    expect(
-      tool.describeProposal?.({
-        allow_ad_hoc: true,
-        repo: "getsentry/junior",
-      }),
-    ).toBe(
-      "Shallow-clone getsentry/junior into the local sandbox as an intentional ad-hoc checkout for inspection (no GitHub mutation).",
-    );
   });
 
   it("clones into a new sandbox directory", async () => {

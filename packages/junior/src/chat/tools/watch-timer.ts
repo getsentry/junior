@@ -5,6 +5,10 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 export const watchTimerToolDefinition = zodToolDefinition({
+  // The intent is stored for this Conversation's later Turns only.
+  guardian: () => ({
+    target: { ref: "timer in this Conversation", audience: "internal" },
+  }),
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -50,6 +54,7 @@ export function createWatchTimerTool(context: ToolRuntimeContext) {
         afterMs: input.after_ms,
         intent: input.intent,
         conversationId: context.conversationId,
+        creator: context.watchCreator,
         ...(creatorUserId ? { creatorUserId } : undefined),
         toolCallId: options.toolCallId,
       });

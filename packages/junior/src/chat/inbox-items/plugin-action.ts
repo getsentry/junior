@@ -1,3 +1,6 @@
+import type { User } from "@sentry/junior-plugin-api";
+import { getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
@@ -20,6 +23,8 @@ export async function runPluginInboxItemAction(args: {
   delivery: InboxItemDelivery;
   item: InboxItem;
   nowMs: number;
+  /** The person who answered. A Watch that the plugin sets serves them. */
+  user: User;
 }): Promise<void> {
   const { item } = args;
   const pluginName = inboxItemPlugin(item);
@@ -29,6 +34,14 @@ export async function runPluginInboxItemAction(args: {
   const plugin = getPlugins().find((p) => p.manifest.name === pluginName);
   const hook = plugin?.hooks?.inboxItemAction;
   if (!plugin || !hook) return;
+  // Store the answerer's Identity, as a dashboard Turn does, so a Watch
+  // Turn finds their lines and their own linked accounts.
+  const answerer = {
+    platform: "web" as const,
+    email: args.user.email,
+    userId: args.user.id,
+  };
+  await resolveActorIdentityId(getSqlExecutor(), answerer);
   const events = createEventAppPublisher({
     conversationWork: () => ({ queue: args.delivery.queue }),
   });
@@ -53,6 +66,8 @@ export async function runPluginInboxItemAction(args: {
         }),
     },
     state: createPluginState(pluginName),
-    watches: createPluginConversationWatches(plugin, conversationId),
+    watches: createPluginConversationWatches(plugin, conversationId, {
+      actor: answerer,
+    }),
   });
 }

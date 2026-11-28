@@ -15,7 +15,10 @@ function pluginSource(name: string): string {
   return path.resolve(packagesRoot, name, "src/index.ts");
 }
 // Leave room for provider retry inside the separate 60-second review budget.
-const GUARDIAN_EVAL_TEST_TIMEOUT_MS = 90_000;
+// The input audit (`GUARDIAN_ABLATIONS`) runs many samples for each case.
+const GUARDIAN_EVAL_TEST_TIMEOUT_MS = process.env["GUARDIAN_ABLATIONS"]
+  ? 900_000
+  : 90_000;
 const evalReportPath = path.resolve(
   evalsPackageRoot,
   process.env["VITEST_EVALS_OUTPUT_FILE"] ?? "guardian-results.json",
@@ -43,6 +46,8 @@ export default defineConfig({
       "@": path.resolve(juniorPackageRoot, "src"),
       "@sentry/junior-github": pluginSource("junior-github"),
       "@sentry/junior-google": pluginSource("junior-google"),
+      "@sentry/junior-linear": pluginSource("junior-linear"),
+      "@sentry/junior-notion": pluginSource("junior-notion"),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
         "src/index.ts",
@@ -66,8 +71,10 @@ export default defineConfig({
     // resets, or MSW, so they skip those setup files.
     setupFiles: [
       path.resolve(__dirname, "src/stable-setup.ts"),
+      path.resolve(__dirname, "src/guardian-slack-setup.ts"),
       "@sentry/roach/vitest/setup",
       path.resolve(__dirname, "src/fetch-setup.ts"),
+      path.resolve(__dirname, "src/baseline-usage-setup.ts"),
     ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],

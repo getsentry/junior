@@ -31,6 +31,7 @@ import {
 import { syncGitHubPullRequestRequesters } from "../pull-request-requesters/code-index.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "../conversation-footer.js";
+import { pullRequestCall } from "../tool-support/guardian-call.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -265,6 +266,8 @@ export function createGitHubUpdatePullRequestTool(
     },
     description:
       "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
+    // Only a title or body update changes just text.
+    guardian: (input, ctx) => pullRequestCall(input, ctx, ["title", "body"]),
     inputSchema,
     outputSchema,
     async execute(

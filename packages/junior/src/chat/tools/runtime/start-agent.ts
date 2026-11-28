@@ -99,6 +99,13 @@ export const startAgentToolDefinition = zodToolDefinition({
   exposure: "modelOnly",
   // Action review judges the actions that the task names.
   approvalMode: "auto",
+  // A child agent is part of this organization's work.
+  guardian: (input) => ({
+    target: {
+      ref: input.name ? `new child agent ${input.name}` : "new child agent",
+      audience: "internal",
+    },
+  }),
   annotations: {
     destructiveHint: false,
     idempotentHint: true,

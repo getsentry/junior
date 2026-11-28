@@ -42,6 +42,10 @@ export function createCreatePreviewTool(
       })
       .strict(),
     outputSchema,
+    // Anyone with the URL can open the server.
+    guardian: ({ port }) => ({
+      target: { ref: `public preview of port ${port}`, audience: "world" },
+    }),
     async execute({ port }) {
       return { url: await createPreview(port) };
     },

@@ -48,12 +48,18 @@ export const createGoogleSlidesTool = definePluginTool({
     openWorldHint: true,
     readOnlyHint: false,
   },
-  describeProposal(input) {
-    return `Create Google Slides presentation "${input.title}", make the requester its owner (Google emails them), and keep edit access for your own account.`;
-  },
   description:
     "Create a Google Slides presentation and hand it to the requester: they become the owner, and Google emails them about it. Your own Google account stays an editor, so build the deck next with readGoogleSlidesLayout, updateGoogleSlides, and getGoogleSlideThumbnail. A new deck has one title slide with empty placeholders. The requester can remove your account in the deck's sharing settings. Only works for requesters in the same Google Workspace organization as that account.",
   inputSchema,
+  // The new presentation goes to the requester, in the company's Workspace
+  // domains.
+  describeProposal(input) {
+    return `Create Google Slides presentation "${input.title}", make the requester its owner (Google emails them), and keep edit access for your own account.`;
+  },
+  guardian: async (input) => ({
+    target: `new Google Slides presentation "${input.title}"`,
+    audience: "internal",
+  }),
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const requester = await requesterEmail(ctx);

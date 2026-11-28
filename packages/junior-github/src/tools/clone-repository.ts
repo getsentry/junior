@@ -150,6 +150,8 @@ export const gitHubCloneRepositoryTool = definePluginTool({
   },
   description:
     "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or opt in to an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
+  // The clone stays in the Sandbox.
+  executionMode: "sequential",
   describeProposal(input) {
     const directory =
       typeof input.directory === "string" && input.directory.length > 0
@@ -161,7 +163,6 @@ export const gitHubCloneRepositoryTool = definePluginTool({
       ? `Shallow-clone ${input.repo} into the local sandbox at ${directory}${adHoc} for inspection (no GitHub mutation).`
       : `Shallow-clone ${input.repo} into the local sandbox${adHoc} for inspection (no GitHub mutation).`;
   },
-  executionMode: "sequential",
   inputSchema,
   outputSchema,
   async execute(

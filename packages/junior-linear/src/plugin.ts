@@ -1,6 +1,7 @@
 import {
   defineJuniorPlugin,
   type AfterMcpToolHookContext,
+  type GuardianResult,
   type PluginRegistration,
   type AnnotatedObject,
 } from "@sentry/junior-plugin-api";
@@ -70,8 +71,27 @@ async function annotateSavedIssue(
   };
 }
 
+/**
+ * Tell the current Guardian, which reads no call target, which teams sync to
+ * public repositories.
+ */
+function publicTeamsReviewContext(keys: string[]): string | undefined {
+  if (keys.length === 0) return undefined;
+  const list =
+    keys.length === 1
+      ? keys[0]
+      : `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`;
+  return `Issues in the Linear ${keys.length === 1 ? "team" : "teams"} ${list} sync to public GitHub repositories. Other teams are internal.`;
+}
+
 /** Install options for the Linear plugin. */
 export interface LinearPluginOptions {
+  /**
+   * Exact keys of the Linear teams whose issues sync to public GitHub
+   * repositories, such as `["SDK", "DOCS"]`. Guardian counts a write to
+   * these teams as one the world can read. Other team keys are internal.
+   */
+  publicTeams?: readonly string[];
   /**
    * Facts for action review about where Linear writes go. For example, say
    * which teams sync issues to public GitHub repositories. Only Guardian reads
@@ -80,10 +100,61 @@ export interface LinearPluginOptions {
   reviewContext?: string;
 }
 
+const TEAM_KEY = /^[A-Z][A-Z0-9]*$/;
+const ISSUE_KEY = /^([A-Z][A-Z0-9]*)-\d+$/;
+
+/**
+ * What one Linear MCP write names: the `team` of a new issue, or the issue
+ * of an edit or comment. Undefined for a call that is not a write. The team
+ * is set only when the input names it by its exact key, such as `team: "PY"`
+ * or the issue `PY-12`. A team name or a UUID leaves it unknown.
+ */
+function writeTeam(
+  tool: string,
+  input: Record<string, unknown>,
+): { named: string; key?: string } | undefined {
+  if (tool !== "save_issue" && tool !== "save_comment") return undefined;
+  const issue = tool === "save_comment" ? input["issueId"] : input["id"];
+  const team = tool === "save_issue" ? input["team"] : undefined;
+  // A named team is where the issue lands, also when the call moves it.
+  const named =
+    typeof team === "string" && team
+      ? team
+      : typeof issue === "string" && issue
+        ? issue
+        : undefined;
+  if (!named) return undefined;
+  const key =
+    named === team ? TEAM_KEY.exec(named)?.[0] : ISSUE_KEY.exec(named)?.[1];
+  return key ? { named, key } : { named };
+}
+
+/**
+ * A write named by an exact team key gets that team's audience. A team
+ * name, a UUID, or no team could be any team, so it counts as `world`.
+ */
+function writeGuardian(
+  tool: "save_issue" | "save_comment",
+  input: Record<string, unknown>,
+  publicTeams: ReadonlySet<string>,
+): GuardianResult {
+  const team = writeTeam(tool, input);
+  if (!team) return { target: "Linear", audience: "world" };
+  return team.key
+    ? {
+        target: `Linear team ${team.key}`,
+        audience: publicTeams.has(team.key) ? "world" : "internal",
+      }
+    : { target: `Linear ${team.named}`, audience: "world" };
+}
+
 /** Register Linear's hosted MCP provider and conversation-link side effects. */
 export function linearPlugin(
   options: LinearPluginOptions = {},
 ): PluginRegistration {
+  const publicTeams = new Set(options.publicTeams);
+  const reviewContext =
+    options.reviewContext ?? publicTeamsReviewContext([...publicTeams]);
   return defineJuniorPlugin({
     packageName: "@sentry/junior-linear",
     events: {
@@ -135,13 +206,19 @@ export function linearPlugin(
         guardian: { skipReview: [...LINEAR_READ_TOOLS] },
       },
       name: "linear",
-      ...(options.reviewContext
-        ? { reviewContext: options.reviewContext }
-        : undefined),
+      ...(reviewContext ? { reviewContext } : undefined),
     },
     inboxSubjects: linearInboxSubjectKinds,
     hooks: {
       afterMcpTool: annotateSavedIssue,
+      guardian: {
+        tools: {
+          save_issue: async (input) =>
+            writeGuardian("save_issue", input, publicTeams),
+          save_comment: async (input) =>
+            writeGuardian("save_comment", input, publicTeams),
+        },
+      },
       routes(ctx) {
         return [
           createLinearWebhookRoute({

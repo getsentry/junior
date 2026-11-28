@@ -35,6 +35,7 @@ jobs:
               - 'packages/junior-evals/src/proxy-dispatcher.ts'
               - 'packages/junior-evals/evals/guardian/**'
               - 'packages/junior-evals/src/guardian-harness.ts'
+              - 'packages/junior-evals/src/guardian-design-*.ts'
               - 'packages/junior-evals/src/guardian-setup.ts'
               - 'packages/junior-evals/src/guardian-tools.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
@@ -57,6 +58,8 @@ jobs:
               - 'packages/junior/src/chat/identities/lookup-providers.ts'
               - 'packages/junior-github/src/**'
               - 'packages/junior-google/src/**'
+              - 'packages/junior-linear/src/**'
+              - 'packages/junior-notion/src/**'
               - 'packages/junior-vercel/src/**'
       - id: decision
         env:
@@ -88,10 +91,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   guardian:
-    name: guardian / run
+    name: guardian / run (${{ matrix.arm }})
     needs: select
     if: needs.select.outputs.should_run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        # One Guardian arm per job, so each arm gets its own score.
+        arm: [current, agent, agent-one-step]
     permissions:
       contents: read
       pull-requests: read
@@ -100,6 +108,7 @@ jobs:
     env:
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+      GUARDIAN_DESIGN_ARM: ${{ matrix.arm }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -115,7 +124,12 @@ jobs:
           VITEST_EVALS_REPORT_LEVEL: info
           # The write token of Roach. With it, the run records new requests.
           ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
-        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:guardian
+          ROACH_MODE: "off"
+          BASELINE_USAGE_FILE: ${{ github.workspace }}/packages/junior-evals/guardian-usage.jsonl
+        # Temporary fair baseline: all three arms fully live, 3 samples per case.
+        # With Roach off, model calls go direct, which the network jail
+        # blocks, so this step runs outside it.
+        run: node packages/junior-evals/scripts/baseline-live.mjs
       - name: Require Guardian eval results
         id: results
         if: steps.run.conclusion != 'skipped'
@@ -132,18 +146,26 @@ jobs:
         with:
           results: packages/junior-evals/guardian-results.json
           publish-check: true
-          check-name: guardian / score
+          check-name: ${{ matrix.arm == 'current' && 'guardian / score' || format('guardian / score ({0})', matrix.arm) }}
           fail-on-failures: true
+      - name: Write per-case Guardian results
+        if: steps.results.conclusion == 'success'
+        env:
+          ARM: ${{ matrix.arm }}
+        run: node packages/junior-evals/scripts/guardian-cases.mjs "$ARM" packages/junior-evals/guardian-cases.tsv packages/junior-evals/guardian-results*.json
       - name: Upload Guardian eval results
         if: steps.results.conclusion == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: guardian-evals
-          path: packages/junior-evals/guardian-results.json
+          name: guardian-evals-${{ matrix.arm }}
+          path: |
+            packages/junior-evals/guardian-results*.json
+            packages/junior-evals/guardian-usage.jsonl
+            packages/junior-evals/guardian-cases.tsv
           if-no-files-found: error
           retention-days: 7
       - name: Report evals to Sentry Evals
         if: ${{ !cancelled() && steps.results.outcome == 'success' }}
         env:
           SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
-        run: node packages/junior-evals/scripts/report.mjs guardian packages/junior-evals/guardian-results.json
+        run: node packages/junior-evals/scripts/report.mjs ${{ matrix.arm == 'current' && 'guardian' || format('guardian-{0}', matrix.arm) }} packages/junior-evals/guardian-results.json

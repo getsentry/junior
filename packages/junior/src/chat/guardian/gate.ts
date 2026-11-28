@@ -4,10 +4,12 @@
  * Deterministic host checks establish authority before the model evaluates
  * untrusted action evidence.
  */
+import type { TurnWatch } from "@/chat/events/watch-creator";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type {
+  ActionDescription,
   AnyToolDefinition,
   ToolApprovalResolution,
 } from "@/chat/tool-support/definition";
@@ -19,7 +21,12 @@ import {
   addPriorRejection,
   projectToolActionRejection,
 } from "@/chat/guardian/history";
-import type { Action, Guardian, Review } from "@/chat/guardian/guardian";
+import type {
+  Action,
+  Guardian,
+  Review,
+  ReviewRequest,
+} from "@/chat/guardian/guardian";
 import type {
   RootConversation,
   ScriptCallStatus,
@@ -28,7 +35,20 @@ import type {
   ToolActionProposal,
   ToolActionScript,
 } from "@/chat/guardian/proposal";
+import {
+  describedProposal,
+  proposalTool,
+  truncateMiddle,
+} from "@/chat/guardian/proposal-tool";
 import { guardianMessages } from "@/chat/guardian/request";
+import { credentialPlaceholders } from "@/chat/guardian/sandbox-facts";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
+import { getDb } from "@/chat/db";
+import { mcpCallGuardian } from "@/chat/plugins/mcp-call-guardian";
+import { pluginGuardianContext } from "@/chat/plugins/guardian-context";
+import { guardianContext } from "@/chat/guardian/call-facts";
+import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -46,6 +66,15 @@ export interface ToolActionReviewContext {
   evidence?: () => ToolActionEvidence;
   /** Read the Run's own Conversation when an action needs review. */
   rootConversation?: () => Promise<RootConversation>;
+  /** The agent Guardian reviews, so it also reviews `AGENT_REVIEWED_TOOLS`. */
+  agentReviews?: boolean;
+  /** The Watch that started the Turn. Set for the agent Guardian only. */
+  watch?: TurnWatch | undefined;
+  /**
+   * The repositories of the active Workspace. Set for the agent Guardian,
+   * which reads the plugins' `guardian.context`.
+   */
+  workspaceRepos?: () => Promise<Array<{ provider: string; repo: string }>>;
 }
 
 /** One exact tool call that the agent asked to run. */
@@ -91,6 +120,8 @@ export type ToolActionReviewResult =
  * through `reviewToolActions`, which owns the batch limit.
  */
 export interface ToolActionReview {
+  /** Whether the review may send the action to Guardian, before metadata. */
+  mayReview(action: ToolAction): boolean;
   /** Review a batch of actions. The result has one entry per `toolCallId`. */
   review(
     actions: readonly ToolAction[],
@@ -189,11 +220,11 @@ export class ToolActionReviewLimitError extends Error {
 }
 
 /**
- * True when an `auto` action must enter review. Only Junior or plugin code
- * can skip it: annotations that it declares on the tool, read-only and not
+ * True when an `auto` action must enter review. Only our own code can skip
+ * it: annotations that it declares on the tool, read-only and not
  * destructive, or a remote MCP tool that the plugin lists by exact name in
- * `mcp.guardian.skipReview`. Annotations that an MCP server sends reach
- * Guardian only as hints, because a server can mark a write as read-only.
+ * `mcp.guardian.skipReview`. A remote MCP server's marks are hints, never a
+ * reason to skip (`review-by-default`). Missing marks are unknown risk.
  */
 function autoActionNeedsReview(
   { annotations }: AnyToolDefinition,
@@ -302,6 +333,7 @@ function buildProposal(
   priorRejections: ToolActionPriorRejection[],
   rootConversation: RootConversation | undefined,
   script: ToolAction["script"],
+  described: ActionDescription | undefined,
 ): ToolActionProposal {
   const credential = actionCredential(context.credentialContext);
   return {
@@ -313,6 +345,7 @@ function buildProposal(
       ...(context.lead ? { lead: true as const } : undefined),
       source: context.source,
       userIntent: context.userIntent(),
+      ...(context.watch ? { watch: context.watch } : undefined),
     },
     ...(context.evidence ? { evidence: context.evidence() } : undefined),
     input,
@@ -325,21 +358,18 @@ function buildProposal(
       : undefined),
     ...(rootConversation ? { rootConversation } : undefined),
     ...(script ? { script: boundedScript(script) } : undefined),
-    tool: proposalTool(toolName, tool, input, resolved),
+    tool: proposalTool(
+      toolName,
+      tool,
+      resolved,
+      describedProposal(described, tool, input),
+    ),
   };
 }
 
 const MAX_SCRIPT_SOURCE_CHARS = 16_000;
 const MAX_SCRIPT_CALLS = 20;
 const MAX_SCRIPT_CALL_INPUT_CHARS = 500;
-
-function truncateMiddle(text: string, maxChars: number): string {
-  if (text.length <= maxChars) {
-    return text;
-  }
-  const half = Math.floor(maxChars / 2);
-  return `${text.slice(0, half)}\n[truncated]\n${text.slice(-half)}`;
-}
 
 /**
  * Bound the script provenance of one action, so a long script or many
@@ -361,33 +391,6 @@ function boundedScript(
     })),
     omittedCalls: script.calls.length - calls.length,
     source: truncateMiddle(script.source, MAX_SCRIPT_SOURCE_CHARS),
-  };
-}
-
-/**
- * Build the `tool` field of a proposal: the tool as Guardian sees it for this
- * input. The resolved metadata of a dispatcher, such as `callMcpTool`, names
- * the real tool. The Guardian evals call this with the agent's own tools, so
- * they send the same shape as production.
- */
-export function proposalTool(
-  toolName: string,
-  tool: AnyToolDefinition,
-  input: Record<string, unknown>,
-  resolved: ToolApprovalResolution | undefined,
-): ToolActionProposal["tool"] {
-  const name = resolved?.name ?? toolName;
-  const annotations = resolved?.annotations ?? tool.annotations;
-  const catalogSource = resolved?.source ?? tool.source;
-  const proposalDescription = tool.describeProposal?.(input);
-  return {
-    ...(annotations ? { annotations } : undefined),
-    description: resolved?.description ?? tool.description,
-    ...(name !== toolName ? { dispatcherName: toolName } : undefined),
-    ...(tool.identity ? { identity: tool.identity } : undefined),
-    name,
-    ...(proposalDescription ? { proposalDescription } : undefined),
-    ...(catalogSource ? { catalogSource } : undefined),
   };
 }
 
@@ -432,15 +435,123 @@ function projectedRejection(
   };
 }
 
-/** Core tools skip review unless they opt in; plugin tools default `auto`. */
+/**
+ * A core tool stays outside review unless it opts in. Plugin tools are
+ * `auto`, so only a read-only one whose marks cannot change at call time
+ * stays outside review.
+ */
 function mayNeedReview(tool: AnyToolDefinition): boolean {
-  return tool.approvalMode !== undefined && tool.approvalMode !== "approve";
+  if (tool.approvalMode === undefined || tool.approvalMode === "approve") {
+    return false;
+  }
+  return (
+    tool.approvalMode !== "auto" ||
+    tool.resolveApprovalMetadata !== undefined ||
+    autoActionNeedsReview(tool, undefined)
+  );
+}
+
+/** Whether the gate sends a call of `tool` to Guardian, given its metadata. */
+export function toolActionNeedsReview(
+  tool: AnyToolDefinition,
+  resolved?: ToolApprovalResolution,
+): boolean {
+  if (!mayNeedReview(tool)) {
+    return false;
+  }
+  // Each mode other than `auto`, also one that is not known, needs review.
+  return tool.approvalMode !== "auto" || autoActionNeedsReview(tool, resolved);
+}
+
+/**
+ * The action of a tool that has no `guardian` of its own: no target. An MCP
+ * call is the exception when its plugin says what the call touches
+ * (`mcpCallGuardian`). Without a target, the audience counts as `world`.
+ */
+export async function undescribedAction(
+  toolName: string,
+  resolved: ToolApprovalResolution | undefined,
+  input: Record<string, unknown>,
+  conversationId: string,
+): Promise<ActionDescription> {
+  const provider =
+    toolName === "callMcpTool" ? resolved?.source?.id : undefined;
+  return provider
+    ? await mcpCallGuardian({
+        provider,
+        toolName: resolved?.name ?? String(input["tool_name"] ?? ""),
+        input: input["arguments"],
+        conversationIds: async () =>
+          await readAncestorAndDescendantIds(getDb(), conversationId),
+      })
+    : {};
+}
+
+/** The review of an action that the tool's own code denies. */
+function toolDenial(action: Action): Review | undefined {
+  const tool = action.toolDecision;
+  return tool?.decision === "deny"
+    ? {
+        decision: "deny",
+        reason: `Tool: deny${tool.reason ? ` (${tool.reason})` : ""}. The tool's own check denies this call.`,
+      }
+    : undefined;
+}
+
+/** The plugins' facts about one call, for the agent Guardian. */
+async function callContext(
+  action: ToolAction,
+  tool: string,
+  context: ToolActionReviewContext,
+): Promise<Pick<Action, "context">> {
+  if (!context.workspaceRepos) return {};
+  const input =
+    action.toolName === "callMcpTool"
+      ? z
+          .record(z.string(), z.unknown())
+          .catch(() => ({}))
+          .parse(action.input["arguments"])
+      : action.input;
+  const { workspaceRepos } = context;
+  const lines = await pluginGuardianContext({
+    call: { tool, input },
+    ctxFor: (plugin) => ({
+      ...guardianContext({
+        plugin,
+        conversationIds: async () =>
+          await readAncestorAndDescendantIds(getDb(), context.conversationId),
+      }),
+      workspaceRepos,
+    }),
+  });
+  return lines.length > 0 ? { context: lines } : {};
 }
 
 /** One action that Guardian must review, with the gate's proposal for it. */
 interface PreparedReview {
   action: Action;
   proposal: ToolActionProposal;
+}
+
+/**
+ * Tools with no approval mode that only the agent Guardian reviews: each
+ * shell command (getsentry/junior#4550), and setting a Watch, which hands
+ * work to later Turns (`handoff-check`).
+ */
+export const AGENT_REVIEWED_TOOLS: ReadonlySet<string> = new Set([
+  "bash",
+  "watchEvents",
+  "watchTimer",
+]);
+
+/** Whether the gate reviews this call, before its metadata resolves. */
+function mayReviewCall(
+  action: ToolAction,
+  context: ToolActionReviewContext,
+): boolean {
+  return AGENT_REVIEWED_TOOLS.has(action.toolName)
+    ? context.agentReviews === true
+    : mayNeedReview(action.tool);
 }
 
 /** Prepare the exact action that Guardian must review, when it must. */
@@ -450,15 +561,18 @@ async function prepareToolActionReview(
   priorRejections: ToolActionPriorRejection[],
 ): Promise<PreparedReview | undefined> {
   const { tool, input } = action;
-  if (!mayNeedReview(tool)) {
+  if (!mayReviewCall(action, context)) {
     return;
   }
   const resolved = await tool.resolveApprovalMetadata?.(input);
-  // Each mode other than `auto`, also one that is not known, needs review.
-  if (tool.approvalMode === "auto" && !autoActionNeedsReview(tool, resolved)) {
+  if (
+    !AGENT_REVIEWED_TOOLS.has(action.toolName) &&
+    !toolActionNeedsReview(tool, resolved)
+  ) {
     return;
   }
   assertAuthoritativeContext(context);
+  const described = await tool.guardian?.(input);
   const proposal = buildProposal(
     action.toolName,
     tool,
@@ -469,13 +583,24 @@ async function prepareToolActionReview(
     // Read at review time, so a later message in the root counts.
     await context.rootConversation?.(),
     action.script,
+    described,
   );
   return {
     action: {
       tool: proposal.tool.name,
       input,
-      effect: "write",
-      summary: proposal.tool.proposalDescription ?? proposal.tool.name,
+      ...(described ??
+        (await undescribedAction(
+          action.toolName,
+          resolved,
+          input,
+          context.conversationId,
+        ))),
+      summary: described?.summary ?? proposal.tool.name,
+      ...(resolved?.serverHints
+        ? { serverHints: resolved.serverHints }
+        : undefined),
+      ...(await callContext(action, proposal.tool.name, context)),
     },
     proposal,
   };
@@ -574,30 +699,70 @@ export function createToolActionReview(options: {
     const reviews = prepared.filter(
       (entry): entry is PreparedReview => !("kind" in entry),
     );
-    let decisions: Review[] = [];
-    let failure: unknown;
-    if (reviews.length > 0) {
+    const runGuardian = async (
+      batch: readonly PreparedReview[],
+    ): Promise<Review[]> => {
+      // The tool's own `deny` holds without a model review.
+      const open = batch.filter((review) => !toolDenial(review.action));
+      const reviewed = open.length > 0 ? await reviewByGuardian(open) : [];
+      return batch.map(
+        (review) =>
+          toolDenial(review.action) ?? reviewed[open.indexOf(review)]!,
+      );
+    };
+    const reviewByGuardian = async (
+      batch: readonly PreparedReview[],
+    ): Promise<Review[]> => {
+      const request: ReviewRequest = {
+        actions: batch.map((review) => review.action),
+        messages: guardianMessages(batch[0]!.proposal),
+      };
+      // A shell command is judged from its text (`sandbox-boundary`), with
+      // the credential placeholders of the Sandbox (`placeholders`).
+      if (request.actions.some((action) => action.tool === "bash")) {
+        request.sandbox = {
+          placeholders: credentialPlaceholders(
+            getPlugins().map((plugin) => plugin.manifest),
+          ),
+        };
+      }
+      const decisions = await options
+        .guardian({ proposals: batch.map((review) => review.proposal) })
+        .review(request, signal ?? new AbortController().signal);
+      if (decisions.length !== batch.length) {
+        throw new Error("Guardian must return one Review per action.");
+      }
+      return decisions;
+    };
+    const reviewAlone = async (
+      review: PreparedReview,
+    ): Promise<Review | { failure: unknown }> => {
       try {
-        decisions = await options
-          .guardian({
-            proposals: reviews.map((review) => review.proposal),
-          })
-          .review(
-            {
-              actions: reviews.map((review) => review.action),
-              messages: guardianMessages(reviews[0]!.proposal),
-            },
-            signal ?? new AbortController().signal,
-          );
-        if (decisions.length !== reviews.length) {
-          throw new Error("Guardian must return one Review per action.");
-        }
+        return (await runGuardian([review]))[0]!;
       } catch (error) {
         if (signal?.aborted) {
           throw error;
         }
-        // Only the actions of this request fail (`bounded-failure`).
-        failure = error;
+        return { failure: error };
+      }
+    };
+    let results: Array<Review | { failure: unknown }> = [];
+    if (reviews.length === 1) {
+      results = [await reviewAlone(reviews[0]!)];
+    } else if (reviews.length > 1) {
+      try {
+        results = await runGuardian(reviews);
+      } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
+        // Only an action that cannot be reviewed fails (`bounded-failure`),
+        // so a failed batch is reviewed again one action at a time.
+        results = await mapBounded(
+          reviews,
+          reviewAlone,
+          MAX_CONCURRENT_PREPARATIONS,
+        );
       }
     }
     // The index in the request of each action that needs review.
@@ -613,10 +778,10 @@ export function createToolActionReview(options: {
         if ("kind" in entry) {
           return entry;
         }
-        if (failure !== undefined) {
-          return unavailableStep(failure);
+        const decision = results[indexes[index]!]!;
+        if ("failure" in decision) {
+          return unavailableStep(decision.failure);
         }
-        const decision = decisions[indexes[index]!]!;
         try {
           await options.onDecision({
             toolCallId: actions[index]!.toolCallId,
@@ -727,6 +892,7 @@ export function createToolActionReview(options: {
   };
 
   return {
+    mayReview: (action) => mayReviewCall(action, options.context),
     async review(actions, signal) {
       // One span per batch. Each review sets `app.guardian.proposal.chars`
       // and, when its model call aborts, `app.guardian.review.aborted_by`
@@ -784,7 +950,10 @@ export async function reviewToolActions(
       actions.map((action) => [action.toolCallId, { allowed: false, error }]),
     );
   }
-  if (!actions.some((action) => mayNeedReview(action.tool))) {
+  // Without a review, bash stays unreviewed (getsentry/junior#4550).
+  const mayReview = (action: ToolAction) =>
+    review ? review.mayReview(action) : mayNeedReview(action.tool);
+  if (!actions.some(mayReview)) {
     return new Map(
       actions.map((action) => [action.toolCallId, { allowed: true }]),
     );

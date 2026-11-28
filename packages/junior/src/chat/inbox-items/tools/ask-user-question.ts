@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as z from "zod";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import { askQuestionId } from "@/chat/inbox-items/request";
@@ -15,6 +16,7 @@ import {
 import {
   activeParticipantUserIds,
   automationCreatorUserId,
+  conversationParticipantUserIds,
   resolveAssignees,
   type ResolvedAssignees,
 } from "@/chat/inbox-items/assignees";
@@ -44,19 +46,20 @@ const ASKED_NEXT_STEP = `The questions were sent. There is no answer yet. The an
 
 /**
  * Pick the assignees when the agent names none: the Actor's User, else the
- * Automation's creator, else the Conversation's active Participants. A Slack
- * Actor without a Junior User gets no assignees, so the agent can still ask
- * and any person in the thread can answer on the card.
+ * creator of this run's Automation or Watch, else the Conversation's active
+ * Participants. A Slack Actor without a Junior User gets no assignees, so the
+ * agent can still ask and any person in the thread can answer on the card.
  */
 async function defaultAssignees(
   scope: InboxItemAgentScope,
   conversationId: string,
+  watchCreatorUserId: string | undefined,
 ): Promise<ResolvedAssignees> {
   const userId =
     scope.user?.id ??
     (scope.reader.automationId
       ? await automationCreatorUserId(getDb(), scope.reader.automationId)
-      : undefined);
+      : watchCreatorUserId);
   if (userId) return { everyone: false, userIds: [userId] };
   if (scope.actorIsPerson) return { everyone: false, userIds: [] };
   const participants = await activeParticipantUserIds(getDb(), conversationId);
@@ -64,6 +67,26 @@ async function defaultAssignees(
     everyone: false,
     userIds: participants.filter((id) => id !== scope.appUserId),
   };
+}
+
+/**
+ * Return the Watch creator as a default assignee only when they pass the
+ * check that any assignee of a private item passes: they still take part in
+ * its Conversation. Someone who lost access gets nothing that shows its
+ * content, and the item goes to the usual default assignees.
+ */
+async function watchCreatorAssignee(
+  userId: string | undefined,
+  conversationId: string,
+  visibility: InboxItemVisibility,
+): Promise<string | undefined> {
+  if (!userId || visibility === "public") return userId;
+  const participants = await conversationParticipantUserIds(
+    getDb(),
+    [conversationId],
+    [userId],
+  );
+  return participants.has(userId) ? userId : undefined;
 }
 
 export const askUserQuestionToolDefinition = zodToolDefinition({
@@ -82,7 +105,7 @@ export const askUserQuestionToolDefinition = zodToolDefinition({
         .nullable()
         .optional()
         .describe(
-          "Who is asked. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
+          "Who is asked. Omit for the person in this Turn, else the Automation creator in an Automation run or the Watch creator in a Watch Turn, else the people still subscribed to the Conversation.",
         ),
     })
     .strict(),
@@ -100,6 +123,7 @@ export function createAskUserQuestionTool(
       const content = questionContent(input.questions);
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
+      const watchCreator = context.watchCreator?.actor;
       // Each call asks a new question. A retry of the same tool call keeps
       // the same question id, so it cannot add a second item.
       // Its answer names the call, so a call without an id gets none.
@@ -112,6 +136,13 @@ export function createAskUserQuestionTool(
       const visibility: InboxItemVisibility = scope.inPrivateConversation
         ? "private"
         : "public";
+      const watchCreatorUserId = watchCreator
+        ? await watchCreatorAssignee(
+            (await readActorIdentity(watchCreator))?.user?.id,
+            context.conversationId,
+            visibility,
+          )
+        : undefined;
       const conversationIds = [context.conversationId];
       await requireInboxItemLinks({
         allowedIds: new Set(conversationIds),
@@ -127,7 +158,11 @@ export function createAskUserQuestionTool(
             scope.tenant,
             services.findMentionedUserId,
           )
-        : await defaultAssignees(scope, context.conversationId);
+        : await defaultAssignees(
+            scope,
+            context.conversationId,
+            watchCreatorUserId,
+          );
       // Only an assignee gets the item in their Inbox count. A Turn
       // without a person, such as one that an app asked for, has nobody to
       // show it to, so it needs an assignee.

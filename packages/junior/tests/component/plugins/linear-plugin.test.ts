@@ -23,10 +23,14 @@ describe("Linear plugin package", () => {
     expect(serviceAccountAllows(manifest, { tool: "save_issue" })).toBe(false);
   });
 
-  it("passes install review context to the manifest", () => {
+  it("gives each team write the audience of its team", async () => {
     const registration = linearPlugin({
-      reviewContext: "Issues in team PY sync to a public GitHub repository.",
+      publicTeams: ["PY"],
+      reviewContext: "Issues in the Linear team PY are public.",
     });
+    const tools = registration.hooks!.guardian!.tools!;
+    const guardian = (tool: string, input: Record<string, unknown>) =>
+      tools[tool]!(input, {} as never);
     const manifest = parseInlinePluginManifest(
       {
         ...registration.manifest,
@@ -35,8 +39,38 @@ describe("Linear plugin package", () => {
       "/plugins/linear",
     );
 
+    // The host's own text reaches the current Guardian unchanged.
     expect(manifest.reviewContext).toBe(
-      "Issues in team PY sync to a public GitHub repository.",
+      "Issues in the Linear team PY are public.",
     );
+    await expect(
+      guardian("save_issue", { team: "PY", title: "x" }),
+    ).resolves.toEqual({ target: "Linear team PY", audience: "world" });
+    await expect(
+      guardian("save_comment", { issueId: "WEB-12" }),
+    ).resolves.toEqual({ target: "Linear team WEB", audience: "internal" });
+    // A team name or a UUID could be a public team.
+    await expect(
+      guardian("save_issue", { team: "Python SDK", title: "x" }),
+    ).resolves.toEqual({ target: "Linear Python SDK", audience: "world" });
+    await expect(guardian("save_issue", { id: "6f1c-uuid" })).resolves.toEqual({
+      target: "Linear 6f1c-uuid",
+      audience: "world",
+    });
+    // A move gets the audience of the team it lands on.
+    await expect(
+      guardian("save_issue", { id: "WEB-12", team: "PY" }),
+    ).resolves.toEqual({ target: "Linear team PY", audience: "world" });
+    // A read has no entry, so it keeps the manifest default.
+    expect(Object.keys(tools)).toEqual(["save_issue", "save_comment"]);
+  });
+
+  it("tells the current Guardian the public teams when the host gives no text", () => {
+    expect(
+      linearPlugin({ publicTeams: ["SDK", "DOCS"] }).manifest.reviewContext,
+    ).toBe(
+      "Issues in the Linear teams SDK and DOCS sync to public GitHub repositories. Other teams are internal.",
+    );
+    expect(linearPlugin().manifest.reviewContext).toBeUndefined();
   });
 });

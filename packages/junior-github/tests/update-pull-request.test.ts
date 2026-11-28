@@ -1,6 +1,8 @@
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { githubGuardianContext } from "../src/guardian-context";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
+import { guardianContext } from "./plugin-harness";
 
 const ATTRIBUTED_BODY = `Original body
 
@@ -594,5 +596,93 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
       name: "Error",
       message: "GitHub pull request update failed with HTTP 500: Server Error",
     });
+  });
+});
+
+describe("updatePullRequest call facts", () => {
+  const tool = createGitHubUpdatePullRequestTool();
+
+  async function guardianOf(input: Record<string, unknown>, own = true) {
+    return await tool.guardian?.(
+      { repo: "getsentry/junior", pull_request: 691, ...input } as never,
+      guardianContext({ own, visibility: { private: true } }),
+    );
+  }
+
+  it("allows a text update of this work's pull request", async () => {
+    await expect(
+      guardianOf({ title: "New title", body: "New body" }),
+    ).resolves.toEqual({
+      target: "getsentry/junior#691",
+      audience: "internal",
+      decision: "allow",
+      reason: "own-pr-text",
+    });
+  });
+
+  it("gives no decision for another pull request", async () => {
+    await expect(guardianOf({ body: "New body" }, false)).resolves.toEqual({
+      target: "getsentry/junior#691",
+      audience: "internal",
+    });
+  });
+
+  it("gives no decision when the repository is empty", async () => {
+    await expect(guardianOf({ repo: "", body: "New body" })).resolves.toEqual({
+      target: "#691",
+      audience: "world",
+    });
+  });
+
+  it.each([
+    { state: "closed" },
+    { draft: false },
+    { base: "release" },
+    { request_review: true },
+  ])("gives no decision for an update that also sets %o", async (change) => {
+    await expect(guardianOf({ body: "New body", ...change })).resolves.toEqual({
+      target: "getsentry/junior#691",
+      audience: "internal",
+    });
+  });
+});
+
+describe("GitHub call context", () => {
+  async function contextOf(own: boolean, tool = "github_updatePullRequest") {
+    return await githubGuardianContext(
+      {
+        tool,
+        input: { repo: "getsentry/junior", pull_request: 691, state: "closed" },
+      },
+      { ...guardianContext({ own }), workspaceRepos: async () => [] },
+    );
+  }
+
+  it("says that a GitHub call is on this work's own pull request", async () => {
+    await expect(contextOf(true)).resolves.toEqual([
+      "The agent's open pull request getsentry/junior#691 is in this work.",
+    ]);
+  });
+
+  it("asks core only for the open pull requests of this work", async () => {
+    const list = vi.fn(async () => []);
+    await githubGuardianContext(
+      {
+        tool: "github_updatePullRequest",
+        input: { repo: "getsentry/junior", pull_request: 691 },
+      },
+      {
+        ...guardianContext({ own: true }),
+        codeChanges: { list },
+        workspaceRepos: async () => [],
+      },
+    );
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "open" }),
+    );
+  });
+
+  it("says nothing about another pull request", async () => {
+    await expect(contextOf(false)).resolves.toEqual([]);
   });
 });

@@ -9,6 +9,7 @@ import { optionCheck } from "@/config/fields";
  * once they become stable defaults.
  */
 const EXPERIMENTAL_FEATURES = [
+  "guardian-agent",
   "operator-tools",
   "passive-routing",
   "user-customization",

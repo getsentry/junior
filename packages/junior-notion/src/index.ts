@@ -26,6 +26,12 @@ export function notionPlugin(): PluginRegistration {
       mcp: {
         transport: "http",
         url: "https://mcp.notion.com/mcp",
+        // Only people in the workspace can read Notion pages. Search and
+        // fetch have no effect, so they skip review.
+        guardian: {
+          audience: "internal",
+          skipReview: ["notion-search", "notion-fetch"],
+        },
         allowedTools: [
           "notion-search",
           "notion-fetch",
@@ -35,7 +41,6 @@ export function notionPlugin(): PluginRegistration {
         ],
         // Page link cards and covers read the page as the viewer.
         viewerTools: ["notion-fetch"],
-        guardian: { skipReview: ["notion-search", "notion-fetch"] },
       },
       // Optional shared account. It has no effect until an admin connects
       // it on the dashboard Admin page. It can create and update pages so

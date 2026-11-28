@@ -33,6 +33,7 @@ import {
   closeConversationFixture,
   createConversationWebHarness,
 } from "../fixtures/conversation";
+import { mockGuardianAllows } from "../fixtures/guardian-model";
 import {
   GITHUB_API,
   GITHUB_REPO,
@@ -89,6 +90,8 @@ const readResult = () => ({
 afterEach(closeConversationFixture);
 
 it("saves plugin object results once per reply, rejects them from reads, leaves background updates silent, and stores only Message card references", async () => {
+  // `save` writes, so Guardian reviews it.
+  mockGuardianAllows();
   const saveInputs: unknown[] = [];
   // What the provider shows now. Undefined means the provider is down.
   let liveStatus: string | undefined = "draft";
@@ -118,7 +121,6 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
         hooks: {
           tools: () => ({
             save: definePluginTool({
-              approvalMode: "approve",
               exposure: "direct",
               annotations: {
                 destructiveHint: false,
@@ -154,7 +156,6 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
               },
             }),
             read: definePluginTool({
-              approvalMode: "approve",
               exposure: "direct",
               annotations: {
                 destructiveHint: false,

@@ -180,7 +180,8 @@ describeEval("Guardian Child Agent Approval Snapshots", guardianEvals, (it) => {
           deleteCall,
         ],
         input: deleteInput,
-        root: [parentLine(task), { author: "other person", text: result }],
+        // A child agent's result reaches the root as an event.
+        root: [parentLine(task), { author: "event", text: result }],
         tool: deleteAutomationTool,
       }),
     });

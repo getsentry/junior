@@ -42,7 +42,8 @@ export function createPublishImageTool(args: {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    approvalMode: "approve",
+    // Anyone with the URL can see the image, so Guardian reviews it.
+    approvalMode: "review",
     description:
       "Publish one sandbox image to a public HTTPS URL. Anyone on the internet with the URL can view the image until it expires or is unpublished. Use only when an external destination needs a public image URL. Do not use for private file sharing or private conversation storage. Supports PNG, JPEG, GIF, and WebP up to 10 MB.",
     executionMode: "sequential",
@@ -64,6 +65,10 @@ export function createPublishImageTool(args: {
       })
       .strict(),
     outputSchema,
+    // Anyone on the internet with the URL can view the image.
+    guardian: ({ path }) => ({
+      target: { ref: `public URL of ${path}`, audience: "world" },
+    }),
     async execute({ path, expires_in_minutes }) {
       const publicBaseUrl = getChatConfig().deployment.baseUrl;
       if (!publicBaseUrl) {

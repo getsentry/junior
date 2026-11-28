@@ -4,6 +4,7 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { eventGuardian } from "../calendar/event-audience";
 import {
   emailListSchema,
   googleApiError,
@@ -100,6 +101,9 @@ export const updateCalendarEventTool = definePluginTool({
     openWorldHint: true,
     readOnlyHint: false,
   },
+  description:
+    "Change a Google Calendar event organized by your own Google account: title, description, time, location, video call, or attendees. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. You cannot change events other people organize. Confirm the change with the requester first unless they already stated it exactly.",
+  inputSchema,
   describeProposal(input) {
     const changes = [
       input.title && `rename it to "${input.title}"`,
@@ -119,9 +123,7 @@ export const updateCalendarEventTool = definePluginTool({
     ].filter(Boolean);
     return `Update Google Calendar event ${input.event_id}: ${changes.join("; ")}. Attendees get an email about the change.`;
   },
-  description:
-    "Change a Google Calendar event organized by your own Google account: title, description, time, location, video call, or attendees. Google emails the attendees about the change, and existing attendees keep their responses. Only people invited to the event can ask for changes, and only people in the company's Google Workspace domains can be invited. You cannot change events other people organize. Confirm the change with the requester first unless they already stated it exactly.",
-  inputSchema,
+  guardian: async (input, ctx) => await eventGuardian(input.event_id, ctx),
   outputSchema,
   async execute(input, _options, ctx: GoogleToolContext) {
     const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());

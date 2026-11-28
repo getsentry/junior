@@ -5,6 +5,7 @@ import {
   pluginToolOutputSchema,
   type PluginToolOutput,
 } from "@sentry/junior-plugin-api";
+import { repositoryCall } from "../tool-support/guardian-call.js";
 import * as z from "zod";
 import {
   RESOLVE_REVIEW_THREAD,
@@ -47,6 +48,33 @@ const inputSchema = z
   })
   .strict();
 
+const threadPullRequestSchema = z.object({
+  data: z.object({
+    node: z.object({ pullRequest: z.object({ number: z.number() }) }),
+  }),
+});
+
+/** The pull request that a review thread is on, when GitHub answers. */
+async function threadPullRequest(
+  egress: PluginEgress,
+  threadId: string,
+): Promise<number | undefined> {
+  try {
+    const response = await githubApi(egress, {
+      operation: "github.pull.review-thread.get",
+      method: "POST",
+      path: "/graphql",
+      body: { ...REVIEW_THREAD_OWNERSHIP, variables: { threadId } },
+    });
+    const parsed = threadPullRequestSchema.safeParse(response.body);
+    return response.ok && parsed.success
+      ? parsed.data.data.node.pullRequest.number
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("resolvePullRequestReviewThread"),
   repo: z.string(),
@@ -67,10 +95,6 @@ export function createGitHubResolvePullRequestReviewThreadTool(
   botEmail: string | undefined,
 ) {
   return definePluginTool({
-    // No action review: the tool checks in code that the bot authored the pull
-    // request, and it changes only the thread's resolved state, which is
-    // reversible.
-    approvalMode: "approve",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -80,6 +104,14 @@ export function createGitHubResolvePullRequestReviewThreadTool(
     description:
       "Resolve a GitHub pull request review thread after acting on its feedback. Only works on pull requests the bot authored.",
     exposure: "direct",
+    // The target is the thread's pull request, or the repository when
+    // GitHub does not answer.
+    guardian: async (input, ctx) =>
+      await repositoryCall(
+        input.repo,
+        ctx,
+        await threadPullRequest(ctx.egress, input.thread_id),
+      ),
     inputSchema,
     outputSchema,
     async execute(

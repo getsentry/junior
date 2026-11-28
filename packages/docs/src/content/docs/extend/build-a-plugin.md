@@ -188,6 +188,12 @@ accounts:
   an admin connects the account, the plugin is not available.
   `user-oauth: false` requires `service-account`.
 - You cannot use `service-account` with `mcp.auth` or `mcp.oauth-client`.
+- `mcp.guardian.audience` tells Guardian who can read what the MCP tools
+  write: `internal` when only people in your organization can read it, or
+  `world`. Without it, Guardian counts the audience as `world`.
+- In plugin code, `guardian.tools` can give one remote MCP tool, by the exact
+  name that the server lists, its own target and decision from its input,
+  such as the team of a write. Its answer wins over `mcp.guardian.audience`.
 - Junior rejects unknown keys in `accounts`, so a typo cannot change which
   accounts Junior uses.
 
@@ -466,7 +472,6 @@ export function myProviderPlugin() {
       tools() {
         return {
           ping: zodTool({
-            approvalMode: "auto",
             annotations: {
               readOnlyHint: true,
               openWorldHint: true,
@@ -496,32 +501,59 @@ it in generic `ok`, `status`, or `data` fields. Throw `PluginToolInputError` for
 model-repairable failures; Junior projects successful values and thrown errors
 onto the agent runtime's separate result channels.
 
-`approvalMode` sets whether Guardian reviews a call before the tool runs:
+Guardian reviews each call of a plugin tool before it runs. Only a tool
+with `readOnlyHint: true` and no `destructiveHint: true` runs without review.
+Set `readOnlyHint: true` only when the tool never writes. A plugin cannot
+turn review off for its own tools. For remote MCP tools, see
+`mcp.guardian.skipReview`.
 
-- `auto` is the default. Junior sets it when you omit the field. A tool with
-  `readOnlyHint: true` and no `destructiveHint: true` runs without review.
-  Guardian reviews each call of every other tool in this mode. Set
-  `readOnlyHint: true` only when the tool never writes. Annotations that a
-  remote MCP server sends never skip review. Use `mcp.guardian.skipReview`
-  for those tools.
-- `review` makes Guardian review each call.
-- `approve` skips review. The tool runs without a Guardian decision, also in a
-  child agent.
+Annotations describe side effects; they do not authorize an action. Add
+`guardian(input, ctx)` to tell Guardian what one call touches:
 
-Use `approve` only when the tool code proves that each effect is safe, and no
-model judgment is necessary. For example, the GitHub tools that mark feedback
-and resolve review threads read the pull request from GitHub first. They refuse
-unless the bot authored it. Their only effect is the bot's own reaction or the
-resolved state of a thread, and you can undo both. Do not use `approve` when
-the tool writes text that can make claims, or when the tool does not check its
-target itself.
+```ts
+async guardian(input, ctx) {
+  const target = `${input.repo}#${input.number}`;
+  const own = await isOwnPullRequest(input.repo, input.number, ctx);
+  return own && onlyTextChanges(input)
+    ? { target, audience: "world", decision: "allow", reason: "own-pr-text" }
+    : { target, audience: "world" };
+},
+```
 
-Annotations describe side effects; they do not authorize an action. Junior
-selects and enforces the reviewer. Add `describeProposal(input)` only when a
-short domain-specific summary makes the reviewed semantic action clearer.
-Review runs after `replaceInput`, while values added through `ctx.env` remain
-execution-only. Keep action targets and side effects in typed input so Guardian
-can review them.
+- `target` names what the call touches, such as a pull request or a channel.
+- `audience` is `internal` when only people in your organization can read
+  the target, and `world` otherwise. Guardian counts an unknown audience as
+  `world`.
+- `decision` is optional. `deny` and `ask` always hold, and only the
+  person's yes to that exact call clears an ask. `allow` removes only
+  Guardian's check that somebody asked for this exact step, such as an
+  update of the text of Junior's own pull request. Every other check still
+  applies, so Guardian still asks or refuses for a restriction, for private
+  data, or for planted instructions.
+- `reason` is a short, stable label, such as `own-pr-text`. The decision
+  record keeps it.
+- `ctx.codeChanges.list(...)` reads Junior's own code records, and
+  `ctx.cache` with `ctx.egress` reads the provider as Junior's own account.
+
+A plugin can also set `hooks.guardian`:
+
+- `tools` maps the exact name of a remote MCP tool to the same function, for
+  tools that have no definition in plugin code. A name that the plugin also
+  defines as a tool is an error, and Junior logs a name that the MCP server
+  does not list.
+- `context(call, ctx)` returns short fact lines for Guardian: general ones
+  when `call` is undefined, and ones about the call otherwise. Write each
+  line from a template, from plugin code and stored records, never from
+  text that outsiders can write, such as titles or comments. Lines are
+  facts, never permissions, and they never clear a refusal or a person's
+  hold.
+
+Read facts from the input and from stored records only. Never use what a
+tool result or the input claims about who can read a target. `guardian` runs
+before review, so it must not write anything. Review runs after
+`replaceInput`, while values added through `ctx.env` remain execution-only.
+Keep action targets and side effects in typed input so Guardian can review
+them.
 
 Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata

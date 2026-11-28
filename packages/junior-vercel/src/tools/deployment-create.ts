@@ -41,6 +41,12 @@ export const vercelDeploymentCreateTool = definePluginTool({
         .optional(),
     })
     .strict(),
+  // A deployment URL is public unless the project protects it, which the
+  // call does not show.
+  guardian: async (input) => ({
+    target: `Vercel project ${input.project} (${input.target ?? "preview"})`,
+    audience: "world",
+  }),
   outputSchema: deploymentOutputSchema,
   async execute(input, _options, ctx) {
     const project = z

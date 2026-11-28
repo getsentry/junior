@@ -71,20 +71,15 @@ const demoToolResultSchema = pluginToolOutputSchema.extend({
   message: z.string(),
 });
 
-function demoPluginTool(
-  description = "Demo tool",
-  approvalMode?: "auto" | "review" | "approve",
-  exposure?: ToolExposure,
-) {
+function demoPluginTool(description = "Demo tool", exposure?: ToolExposure) {
   return definePluginTool({
-    approvalMode,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
       readOnlyHint: true,
     },
-    describeProposal: () => `${description} proposal`,
+    guardian: async () => ({ target: description, audience: "internal" }),
     description,
     exposure,
     inputSchema: z.object({}),
@@ -645,7 +640,7 @@ describe("agent plugin hooks", () => {
           hooks: {
             tools() {
               return {
-                demoTool: demoPluginTool("Demo tool", "review"),
+                demoTool: demoPluginTool("Demo tool"),
                 writeTool: demoPluginTool("Write tool"),
               };
             },
@@ -683,10 +678,10 @@ describe("agent plugin hooks", () => {
       id: "agent-demo",
       description: "Agent demo",
     });
-    expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("review");
-    expect(tools["agentDemo_demoTool"]?.describeProposal?.({})).toBe(
-      "Demo tool proposal",
-    );
+    expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("auto");
+    expect(await tools["agentDemo_demoTool"]?.guardian?.({})).toEqual({
+      target: { ref: "Demo tool", audience: "internal" },
+    });
     expect(tools["agentDemo_demoTool"]?.disabledReason).toBeUndefined();
     expect(tools["agentDemo_writeTool"]?.disabledReason).toBe(
       "Read-only Turn.",
@@ -732,7 +727,7 @@ describe("agent plugin hooks", () => {
           hooks: {
             tools() {
               return {
-                demoTool: demoPluginTool("Demo tool", "review"),
+                demoTool: demoPluginTool("Demo tool"),
               };
             },
             disabledTools(ctx) {
@@ -901,7 +896,7 @@ describe("agent plugin hooks", () => {
           hooks: {
             tools() {
               return {
-                directTool: demoPluginTool("Direct tool", undefined, "direct"),
+                directTool: demoPluginTool("Direct tool", "direct"),
                 defaultTool: demoPluginTool(),
               };
             },

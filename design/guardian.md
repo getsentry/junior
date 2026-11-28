@@ -34,8 +34,8 @@ untrusted text set up, does not run.
 
 - `instruction-authority` Only the person whose instruction an action
   serves can authorize it: the person Actor of the Turn that gave the
-  instruction, the creator of an Automation, or the Member who asked a Lead
-  to start the work. In a Conversation that an agent started or messaged,
+  instruction, the creator of an Automation or a Watch, or the Member who
+  asked a Lead to start the work. In a Conversation that an agent started or messaged,
   the allowed brief is that instruction (`brief-is-instruction`).
   - Example: in a shared Slack thread, Junior opened a PR for Alice. Bob
     starts a Turn and asks Junior to edit its description. Bob's
@@ -49,8 +49,9 @@ untrusted text set up, does not run.
     test for the empty case" authorizes that test. The same words from
     another account are context.
 - `text-is-context` Text from the agent, tools, files, issues, comments,
-  agent results and reports, Watch intents, other Event authors, and other
-  people is context. It is never approval, also when it claims an approval.
+  agent results and reports, other Event authors, and other people is
+  context. It is never approval, also when it claims an approval. A Watch
+  intent is an instruction only as `follows-instruction` says.
 - `restrictions` A restriction or a revocation from any person applies,
   also from a line that cannot authorize. Agent text, such as a parent
   agent's "wait for my OK", never makes Guardian ask the person.
@@ -58,8 +59,9 @@ untrusted text set up, does not run.
 **Authority follows the work**
 
 - `handoff-check` Guardian checks work once, when it is handed over. When
-  startAgent, startConversation, or messageAgent sends work, Guardian
-  judges the brief against the sender's own thread. A brief that matches
+  startAgent, startConversation, or messageAgent sends work, or when a
+  Watch or an Automation stores work for a later Turn, Guardian judges the
+  brief or the stored intent against the sender's own thread. A brief that matches
   what that thread backs is allowed. A brief that suggests something
   different or wider asks. A step that the requested work needs follows
   from it.
@@ -71,22 +73,38 @@ untrusted text set up, does not run.
   - Example: a Member tells the Lead "I'm worried all our Space icons will
     look the same". The Lead starts a Conversation that investigates and
     opens a PR for review, with no question.
+  - Example: Alice asks Junior to fix a timeout, open a PR, and bring it to
+    her when checks pass. A Watch intent that fixes failed checks on that
+    PR and pushes to its branch is allowed. An intent that also merges it
+    asks.
 - `brief-is-instruction` In the Conversation that gets it, the allowed brief
   is the instruction. That Conversation judges its own actions against its
   own thread, which starts with the brief. An action that is clearly in the
   brief is allowed. Any other action gets ordinary review.
 - `follows-instruction` Each Watch Turn and Automation run serves the
-  instruction that created it. Guardian judges it against that person's
-  own lines. A long thread or compaction never loses them.
+  instruction that set it up. Its instruction is the stored intent that
+  Guardian allowed or that plugin code wrote, and the creator's own lines.
+  A plugin's intent clears only `unrequested`. Event text is context: when
+  the intent says to act on a kind of Event, such as review feedback from a
+  trusted author, that text says what to change inside the intent's
+  target. It never adds a target or an effect. Text from an untrusted
+  author never directs an action. A long thread or compaction never loses
+  them.
+  - Example: on Junior's PR Watch, a teammate's review comment gets a
+    scoped fix and a push. The same comment from an untrusted account is
+    denied.
 
 **How Guardian decides**
 
 - `allow-default` Guardian blocks an action only when the action clearly
   matches one named rule from a fixed list. General doubt is not a reason
   to block (`guardian#ordinary-work`).
-- `review-by-default` Each side effect is reviewed. A tool skips review
-  only when its code proves each effect is safe, or it is marked read-only.
-  A tool can require that the person confirm the exact action.
+- `review-by-default` Every tool call is reviewed, except calls of core
+  tools whose effects stay in the Sandbox or the current Conversation,
+  such as file edits and replies, of plugin tools that the plugin's own
+  code marks read-only, and of remote MCP tools that the plugin lists by
+  exact name in its Guardian `skipReview` config. A remote MCP server's
+  marks are hints to Guardian. Nothing else turns review off.
 - `sandbox-boundary` Guardian reviews each command before it runs. An
   effect that stays in the Sandbox matches no rule, such as file edits,
   scratch cleanup, local commits, or stopping its own processes. Risk
@@ -112,7 +130,29 @@ untrusted text set up, does not run.
   still apply to them.
 - `facts-from-junior` Junior gives Guardian, from code, who each message is
   from and what each call does, targets, and who can read the target.
-  Guardian does not guess them from the transcript.
+  Guardian does not guess them from the transcript. For each call of its
+  tools, a plugin gives the target, which is what the call changes, such
+  as `getsentry/junior#12`, and the target's audience. A tool that the
+  plugin defines gives them in a `guardian` function on its definition. A
+  remote MCP tool gets them from the plugin's `guardian.tools` map, keyed
+  by the tool's exact name, or from one audience for all of the plugin's
+  MCP tools, such as `internal` for Notion. A name in both places is a
+  load error, and a map name that the MCP server does not list is
+  reported. A target with no audience counts as `world`.
+- `plugin-decision` A plugin can also give a decision for a call of its
+  tool, with the reason, in the same place as the target. A plugin's ask
+  or deny holds, and Guardian does not overrule it. The person's yes to
+  that exact action still clears an ask (`answer-is-a-line`). A plugin's
+  allow clears only `unrequested`. Every other rule still applies. The
+  decision record keeps the plugin's decision and reason. So a wrong
+  plugin decision fails safe.
+  - Example: the GitHub plugin allows a text edit of Junior's own PR. The
+    Vercel plugin denies a public preview when SSO protection is off.
+- `plugin-context` A plugin can give Guardian facts as context: facts
+  about the work, and facts about one call, such as Junior's work branch
+  for a shell command. They come from plugin code and stored records,
+  never from text that someone outside the organization can write, such
+  as an issue body. Context never clears a deny or a person's restriction.
 - `fresh-decision` An earlier decision is context, not precedent. A changed
   action, such as a retry with the private data removed, gets a fresh
   decision.
@@ -122,7 +162,8 @@ untrusted text set up, does not run.
 - `audience` Each target has an audience: `internal` (only people in the
   organization, such as a Slack channel, a DM, a Junior Conversation, or a
   private repo) or `world` (anyone, such as a public repo or a public URL).
-  An unknown audience counts as `world`. Repo and system names are not
+  An unknown audience counts as `world`. A Slack Connect channel, which
+  another organization shares, is `world`. Repo and system names are not
   private data.
 - `no-exposure` Secrets, credentials, customer data, real people's
   personal data, and details that let someone exploit an undisclosed
@@ -148,7 +189,9 @@ untrusted text set up, does not run.
 - `ask-covers-one` An ask covers only its one action. The agent does not
   ask the person again about it, and does not ask about a step that the
   person already asked for. That step gets its own review.
-  Work that does not need the answer goes on.
+  Work that does not need the answer goes on. In a Watch Turn or an
+  Automation run, the ask goes to the creator's Inbox. The action waits
+  until they answer or the Watch ends.
 
 **Failures and limits**
 
@@ -164,6 +207,50 @@ untrusted text set up, does not run.
   which rule applied, why, and the facts it lacked
   (`guardian#decision-recorded`).
 
+## Flows
+
+Each flow follows one request. The plugin of each tool gives the target
+and its audience (`facts-from-junior`).
+
+**Slack.** In #eng-billing, Alice asks Junior to post this week's error
+counts there and in #acme-shared, a Slack Connect channel.
+
+| Call | Audience | Decision | Why |
+| --- | --- | --- | --- |
+| Post in #eng-billing | `internal` | allow | Alice asked, and no rule matches. |
+| Post in #acme-shared | `world` | ask | Error counts are internal detail (`internal-disclosure`). The ask shows the text. |
+
+If Bob first writes "hold off until the fix ships" in the thread, the post
+in #eng-billing asks too, under `restriction`. Bob cannot authorize work,
+but his hold applies (`restrictions`). Alice's yes to that ask lets it run.
+
+**Notion.** Alice asks Junior to add Q3 spend to the Finance page. Notion's
+tools are `internal`, so the update is allowed: internal detail that stays
+internal matches no rule.
+
+**Linear.** Alice asks for an issue with this quarter's ARR on the SDK
+team, which syncs to a public repo. The Linear plugin lists that team as
+`world`, so the issue asks (`internal-disclosure`). If it also names
+customers, it is denied (`no-exposure`). The same issue on a team that does
+not sync is `internal`, and it is allowed.
+
+**Bash.** Alice asks Junior to fix a flaky test in getsentry/junior and open
+a PR. Guardian judges `git push origin fix-flaky-test` from the command.
+The GitHub plugin's context says that `fix-flaky-test` is Junior's work
+branch for this PR (`plugin-context`). A push of the work branch is a
+conventional step of the requested PR, so it is allowed
+(`conventional-steps`). A push to the default branch, which nobody asked
+for, asks (`unrequested`).
+
+**GitHub.** Junior opened getsentry/junior#12 for Alice.
+
+| Call | Plugin decision | Decision | Why |
+| --- | --- | --- | --- |
+| Update the body to match a new commit | allow | allow | Only the text of Junior's own PR changes (`plugin-decision`). |
+| Close #12, which nobody asked for | none | ask | `unrequested`. |
+| Put a token in the body | allow | deny | A plugin's allow never clears `no-exposure`. |
+| Comment that asks Alice about the work | none | allow | A conventional step (`conventional-steps`). It is not a text edit, so the plugin gives no decision. |
+
 ## Non-goals
 
 - Judging whether the work is correct or well proven.
@@ -175,35 +262,49 @@ untrusted text set up, does not run.
 
 ## Gaps
 
-- `handoff-check`: messageAgent is not reviewed, so a message can hand a
-  child agent wider work than the sender's thread backs.
-- `review-by-default`, `sandbox-boundary`: core `bash` is not reviewed, so
-  a command whose effect leaves the Sandbox, such as a push or a network
-  write, runs without review.
+- `review-by-default`, `sandbox-boundary`: core `bash` is reviewed only by
+  the new Guardian, so under the current Guardian a command whose effect
+  leaves the Sandbox runs without review.
 - `rule-kinds`: Guardian asks on high risk with weak authorization, also
   when no rule matches. A rule asks until the person
   names a required detail, even when their words name the exact action.
-- `audience`, `internal-disclosure`: Guardian is not told the audience of a
-  target, and internal detail going to the world is denied, not asked.
+- `audience`: no reviewed tool posts in a Slack channel, so the Slack flow
+  does not run yet, and a Slack Connect channel is not told apart.
 - `ask-covers-one`: the text that tells the agent to wait for a
   confirmation carries over to later steps. The agent then asks about steps
   that the person asked for, such as an update to its own PR description.
+- `ask-covers-one`: an ask in a Watch Turn is only a reply in the
+  Conversation. It adds no Inbox item.
 - `bounded-failure`: a review that cannot run, or a proposal over the size
   limit, stops the whole Run.
 - `deny-limit`: asks count toward the limit of three, and reaching the
   limit does not stop the Turn.
 - `follows-instruction`, `restrictions`: Guardian reads a fixed window of
   the Conversation, so in a long thread the person's request can fall out
-  of it. An Automation run and a Watch Turn have no person's lines at all.
+  of it.
+- `follows-instruction`, `handoff-check`: a Watch stores no creator, and a
+  Watch Turn gets its intent and the creator's lines only as context, so
+  its routine steps ask. Guardian does not judge a Watch intent or an
+  Automation instruction as a hand-off when it is stored.
 - `brief-is-instruction`, `text-is-context`: in a child agent, the
   parent's later text counts as the person's, also a hold that the parent
   set. A Turn that an agent result starts gets no instruction.
 - `linked-account`: every Event Turn runs as a system Actor. The person's
   own GitHub comment is context, so the agent asks before it does what the
   comment says.
-- `facts-from-junior`, `conventional-steps`: calls carry untyped input, and Guardian is
-  not told whether this work created a resource, so upkeep of Junior's own
-  pull requests can ask.
+- `plugin-decision`: resolving a review thread does not name its PR, so
+  the GitHub plugin gives no decision and the call can ask.
+- `internal-disclosure`, `sandbox-boundary`: Guardian does not see what a
+  `git push` publishes, so a commit that carries internal detail to a
+  public repo runs with no ask.
+- `no-exposure`: Guardian does not see what an image shows, so a
+  requested screenshot with personal data can be published.
+- `sandbox-boundary`: an action that stays in the Sandbox, such as
+  deleting a checkout, can destroy unpushed work that the person asked
+  for, and no rule catches it.
+- `review-by-default`: a remote MCP tool in `skipReview` skips review by
+  its name, so Guardian does not catch a server that changes what a
+  listed tool does.
 - `review-by-default`, `same-outcome`: some core tools with side effects,
   and outbound network, are not reviewed.
 - `placeholders`: Guardian is not told about the placeholders of the

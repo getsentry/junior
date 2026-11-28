@@ -2,6 +2,7 @@ import * as z from "zod";
 import type { ZodTypeAny } from "zod";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type {
+  ActionDescription,
   AnyToolDefinition,
   JsonSchemaObject,
   ToolExecuteOptions,
@@ -20,7 +21,9 @@ type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   | "promptGuidelines"
   | "executionMode"
 > & {
-  describeProposal?(input: z.output<TInputSchema>): string;
+  guardian?(
+    input: z.output<TInputSchema>,
+  ): ActionDescription | undefined | Promise<ActionDescription | undefined>;
   inputSchema: TInputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
   resolveApprovalMetadata?(

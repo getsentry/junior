@@ -17,6 +17,7 @@ import {
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getPluginTools } from "@/chat/plugins/hooks/tools";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
@@ -29,7 +30,10 @@ import {
   canJoinTurn,
   canShareTurn,
 } from "@/chat/task-execution/attempt-selection";
-import { renderEventBatchInputs } from "@/chat/events/notification";
+import {
+  readEventTaskFacts,
+  renderEventBatchInputs,
+} from "@/chat/events/notification";
 import {
   SYSTEM_IDENTITY_ID,
   resolveActorIdentityId,
@@ -118,6 +122,13 @@ describe("Event author trust", () => {
       linked: { handle: "reviewer", provider: "demo", subjectId: "2002" },
       slackUserId: "U456",
     });
+    // A dashboard Turn stores its Actor's Identity before tools run.
+    const dashboardAuthor = {
+      platform: "web" as const,
+      email: "author@example.com",
+      userId: (await resolveViewerUser("author@example.com"))!.id,
+    };
+    await resolveActorIdentityId(getSqlExecutor(), dashboardAuthor);
     getPluginTools({
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
       conversationId: CONVERSATION_ID,
@@ -133,6 +144,8 @@ describe("Event author trust", () => {
         hasParent: false,
         personInput: true,
       }).tools,
+      // The author set the Watch from the dashboard, not from Slack.
+      watchCreator: { actor: dashboardAuthor },
       workspace: {} as any,
     });
     await watches!.subscribe({
@@ -239,6 +252,12 @@ describe("Event author trust", () => {
       approval,
       system,
     ] = messages;
+    // Only the creator's own linked account writes as the creator.
+    expect(
+      [byAuthor, byReviewer, byUnlinked].map(
+        (message) => readEventTaskFacts(message!)?.facts.authorIsCreator,
+      ),
+    ).toEqual([true, undefined, undefined]);
     const taskText = (message: (typeof messages)[number] | undefined) => {
       const inputs = renderEventBatchInputs([message!]);
       expect(inputs).toHaveLength(1);

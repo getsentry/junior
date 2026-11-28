@@ -4,6 +4,7 @@ import type {
   ConversationChangeBatch,
   EventInput,
   EventPublisher,
+  GuardianContext,
   HeartbeatHookContext,
   ObjectSubject,
   PluginHttpCache,
@@ -42,6 +43,66 @@ export function signedRequest(input: {
     },
     body,
   });
+}
+
+/** A plugin cache in memory with no TTL, so a test reads what a hook wrote. */
+export function memoryCache(): HeartbeatHookContext["cache"] {
+  const cacheEntries = new Map<string, unknown>();
+  return {
+    async get<T>(key: string) {
+      return cacheEntries.get(key) as T | undefined;
+    },
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<{ value: T }>,
+      options?: { refresh?: boolean },
+    ) {
+      if (!options?.refresh && cacheEntries.has(key)) {
+        return cacheEntries.get(key) as T;
+      }
+      const { value } = await load();
+      cacheEntries.set(key, value);
+      return value;
+    },
+    async update<T>(
+      key: string,
+      next: (current: T | undefined) => { value: T } | undefined,
+    ) {
+      const entry = next(cacheEntries.get(key) as T | undefined);
+      if (entry) cacheEntries.set(key, entry.value);
+    },
+    async delete(key) {
+      cacheEntries.delete(key);
+    },
+  };
+}
+
+/**
+ * What a `guardian` reads in a test: repositories that GitHub reports with
+ * `visibility`, and code-change records that hold this work's pull request
+ * only when `own` is true.
+ */
+export function guardianContext(
+  options: { own?: boolean; visibility?: { private: boolean } } = {},
+): GuardianContext {
+  return {
+    cache: memoryCache(),
+    egress: {
+      async fetch() {
+        return options.visibility
+          ? Response.json(options.visibility)
+          : Response.json({ message: "Not Found" }, { status: 404 });
+      },
+    },
+    codeChanges: {
+      async list() {
+        return options.own ? [{} as never] : [];
+      },
+    },
+    async conversationIds() {
+      return ["conversation-1"];
+    },
+  };
 }
 
 /**
@@ -238,35 +299,7 @@ export function createPluginHarness(
       };
     },
   };
-  // An in-memory cache with no TTL, so a test can read what a hook wrote.
-  const cacheEntries = new Map<string, unknown>();
-  const cache: HeartbeatHookContext["cache"] = {
-    async get<T>(key: string) {
-      return cacheEntries.get(key) as T | undefined;
-    },
-    async getOrLoad<T>(
-      key: string,
-      load: () => Promise<{ value: T }>,
-      options?: { refresh?: boolean },
-    ) {
-      if (!options?.refresh && cacheEntries.has(key)) {
-        return cacheEntries.get(key) as T;
-      }
-      const { value } = await load();
-      cacheEntries.set(key, value);
-      return value;
-    },
-    async update<T>(
-      key: string,
-      next: (current: T | undefined) => { value: T } | undefined,
-    ) {
-      const entry = next(cacheEntries.get(key) as T | undefined);
-      if (entry) cacheEntries.set(key, entry.value);
-    },
-    async delete(key) {
-      cacheEntries.delete(key);
-    },
-  };
+  const cache = memoryCache();
 
   async function deliver(request: Request): Promise<void> {
     const unused = () => {

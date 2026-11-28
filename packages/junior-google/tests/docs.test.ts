@@ -509,3 +509,60 @@ describe("Google Docs write tools", () => {
     ).rejects.toThrow("Not allowed: eve@other.com");
   });
 });
+
+describe("Google Docs write tools for Guardian", () => {
+  beforeEach(() => stubGoogleEnv());
+  afterEach(() => vi.unstubAllEnvs());
+
+  async function audience(...responses: Response[]) {
+    const fetch = vi.fn();
+    for (const response of responses) fetch.mockResolvedValueOnce(response);
+    const tool = googlePlugin().hooks!.tools!()["insertGoogleDocContent"]!;
+    return await tool.guardian!(
+      { document: DOC_LINK } as never,
+      {
+        egress: { fetch },
+      } as never,
+    );
+  }
+
+  it("counts a Doc shared only in the company's domain as internal", async () => {
+    expect(
+      await audience(
+        permissions(
+          { type: "user", emailAddress: REQUESTER },
+          { type: "domain", domain: "example.com" },
+        ),
+      ),
+    ).toEqual({ target: `Google Doc ${DOC_ID}`, audience: "internal" });
+  });
+
+  it("counts a Doc that anyone or an outside person can open as world", async () => {
+    expect((await audience(permissions({ type: "anyone" }))).audience).toBe(
+      "world",
+    );
+    expect(
+      (
+        await audience(
+          permissions({ type: "user", emailAddress: "bob@partner.test" }),
+        )
+      ).audience,
+    ).toBe("world");
+  });
+
+  it("counts a reference that is not a Google file as world", async () => {
+    const tool = googlePlugin().hooks!.tools!()["insertGoogleDocContent"]!;
+    await expect(
+      tool.guardian!(
+        { document: "https://example.com/not-a-doc" } as never,
+        { egress: { fetch: vi.fn() } } as never,
+      ),
+    ).resolves.toMatchObject({ audience: "world" });
+  });
+
+  it("counts a Doc whose shares Drive does not return as world", async () => {
+    expect(
+      (await audience(new Response("nope", { status: 403 }))).audience,
+    ).toBe("world");
+  });
+});

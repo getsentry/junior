@@ -26,8 +26,6 @@ export interface Target {
   /** Such as `getsentry/junior#12`. */
   ref: string;
   audience: Audience;
-  /** Core sets it from its own records. Upkeep applies only to it. */
-  createdByThisWork: boolean;
 }
 
 /** One exact action for Guardian. */
@@ -36,14 +34,22 @@ export interface Action {
   tool: string;
   /** Evidence for the model only. */
   input: unknown;
-  /**
-   * `edit` keeps an existing target current, such as its title, body,
-   * replies, or CI reruns, but never changes its state. `write` is
-   * anything else.
-   */
-  effect: "edit" | "write";
   target?: Target;
+  /** What the call does, written by the tool's code. */
   summary?: string;
+  /** Marks that a remote MCP server gives its tool. Untrusted hints. */
+  serverHints?: Record<string, unknown>;
+  /**
+   * Facts that plugin code wrote from stored records about this call
+   * (`guardian.context`). Context only: never permissions.
+   */
+  context?: string[];
+  /**
+   * The decision of the tool's own code. `deny` and `ask` hold, and only
+   * the person's yes to this exact action clears an ask. `allow` clears
+   * only `unrequested`.
+   */
+  toolDecision?: { decision: "allow" | "ask" | "deny"; reason?: string };
 }
 
 /** One batch of actions and the messages of the work. */
@@ -52,6 +58,11 @@ export interface ReviewRequest {
   actions: Action[];
   /** Oldest first. Every instruction line is kept. */
   messages: Message[];
+  /** What Guardian knows about the Sandbox, set for a shell command. */
+  sandbox?: {
+    /** Credential placeholders and the domains each one is sent to. */
+    placeholders: { env: string; domains: string[] }[];
+  };
 }
 
 /** A rule that blocks an action. The first three ask, the others deny. */
@@ -69,7 +80,10 @@ export interface Review {
   decision: "allow" | "ask" | "deny";
   /** The rule that matched, also when code cleared it and allowed. */
   rule?: Rule;
-  /** An ask names what the person must give. */
+  /**
+   * An ask names what the person must give. When the tool's own code
+   * decided, it starts with that decision and its reason.
+   */
   reason: string;
   /** Model cost of this review. */
   costUsd?: number;

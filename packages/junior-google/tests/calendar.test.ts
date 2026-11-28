@@ -961,3 +961,38 @@ describe("Google Calendar tools", () => {
     }
   });
 });
+
+describe("Calendar changes for Guardian", () => {
+  beforeEach(() => stubGoogleEnv());
+  afterEach(() => vi.unstubAllEnvs());
+
+  async function audience(response: Response) {
+    const tool = googlePlugin().hooks!.tools!()["updateCalendarEvent"]!;
+    const fetch = vi.fn().mockResolvedValueOnce(response);
+    const result = await tool.guardian!(
+      { event_id: "event1" } as never,
+      { egress: { fetch } } as never,
+    );
+    return result.audience;
+  }
+
+  it("counts an event with an outside attendee, or no answer, as world", async () => {
+    const attendees = (...emails: string[]) =>
+      Response.json({ attendees: emails.map((email) => ({ email })) });
+    expect(await audience(attendees(REQUESTER))).toBe("internal");
+    expect(await audience(attendees(REQUESTER, "bob@partner.test"))).toBe(
+      "world",
+    );
+    expect(await audience(new Response("nope", { status: 500 }))).toBe("world");
+    // A booked room reads nothing.
+    const room = {
+      email: "c_188@resource.calendar.google.com",
+      resource: true,
+    };
+    expect(
+      await audience(
+        Response.json({ attendees: [{ email: REQUESTER }, room] }),
+      ),
+    ).toBe("internal");
+  });
+});

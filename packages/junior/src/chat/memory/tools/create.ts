@@ -1,4 +1,5 @@
 import {
+  type GuardianResult,
   definePluginTool,
   getSourceKey,
   PluginToolInputError,
@@ -194,7 +195,6 @@ function targetForKind(kind: MemoryKind): "actor" | "conversation" {
 
 /** Submit an explicit memory candidate for storage. */
 export const memoryCreateTool = definePluginTool({
-  approvalMode: "approve",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -205,6 +205,11 @@ export const memoryCreateTool = definePluginTool({
     "Explicit memory-write tool. Use only when the latest user message directly asks you to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. The runtime sets access, Location, Source, and subject. The memory agent rewrites the content and sets the memory kind.",
   executionMode: "sequential",
   inputSchema: createMemoryInputSchema,
+  // Only people in the organization read memories.
+  guardian: async (): Promise<GuardianResult> => ({
+    target: "memory",
+    audience: "internal",
+  }),
   outputSchema: memoryCreateOutputSchema,
   execute: async (input, options, context: MemoryCreateToolContext) => {
     const parsedInput = parseMemoryToolInput(createMemoryInputSchema, input);

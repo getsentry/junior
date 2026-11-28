@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   definePluginTool,
+  type GuardianContext,
   missingToolAnnotationKeys,
   PluginToolInputError,
   pluginToolOutputSchema,
-  toolApprovalModeSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -14,23 +14,24 @@ const countResultSchema = pluginToolOutputSchema.extend({
 });
 
 describe("definePluginTool", () => {
-  it("preserves approval metadata", () => {
+  it("preserves approval metadata", async () => {
     const tool = definePluginTool({
-      approvalMode: "review",
       annotations: {
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: true,
         readOnlyHint: true,
       },
-      describeProposal: ({ query }) => `Search for ${query}.`,
+      guardian: async ({ query }) => ({
+        target: `search:${query}`,
+        audience: "internal",
+      }),
       description: "Schedule a meeting.",
       inputSchema: z.object({ query: z.string() }),
       outputSchema: countResultSchema,
       execute: async () => ({ count: 1 }),
     });
 
-    expect(tool.approvalMode).toBe("review");
     expect(tool.annotations).toEqual({
       destructiveHint: false,
       idempotentHint: true,
@@ -38,8 +39,9 @@ describe("definePluginTool", () => {
       readOnlyHint: true,
     });
     const input = tool.prepareArguments?.({ query: "errors" });
-    expect(tool.describeProposal?.(input!)).toBe("Search for errors.");
-    expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
+    // This `guardian` reads nothing, so it gets no context.
+    const call = await tool.guardian?.(input!, {} as GuardianContext);
+    expect(call?.target).toBe("search:errors");
   });
 
   it("reports missing behavioral annotations", () => {
@@ -64,7 +66,7 @@ describe("definePluginTool", () => {
       execute,
     });
 
-    expect(tool.approvalMode).toBe("auto");
+    expect(tool.guardian).toBeUndefined();
     expect(tool.inputSchema).toMatchObject({
       properties: {
         count: { type: "integer" },

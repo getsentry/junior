@@ -5,6 +5,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
+import { repositoryCall } from "../tool-support/guardian-call.js";
 import * as z from "zod";
 import {
   githubApi,
@@ -47,6 +48,7 @@ export const gitHubCommentOnIssueTool = definePluginTool({
   description:
     "Post a comment on a GitHub issue. Returns the comment id and URL.",
   inputSchema,
+  guardian: (input, ctx) => repositoryCall(input.repo, ctx, input.issue),
   outputSchema,
   async execute(
     input,

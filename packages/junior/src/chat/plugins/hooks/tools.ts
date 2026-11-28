@@ -7,6 +7,11 @@ import {
   type SlackToolRegistrationHookContext,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
+import {
+  actionFromGuardian,
+  guardianContext,
+} from "@/chat/guardian/call-facts";
+import { readAncestorAndDescendantIds } from "@/chat/conversations/sql/conversation-tree";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
 import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
@@ -64,17 +69,19 @@ function pluginToolNamespace(pluginName: string): string {
  */
 function pluginToolDefinitions(
   plugin: PluginRegistration,
+  pluginTools = plugin.hooks?.tools?.(),
 ): Record<string, AnyToolDefinition> {
-  const hook = plugin.hooks?.tools;
-  if (!hook) return {};
+  if (!pluginTools) return {};
   const pluginName = plugin.manifest.name;
   const namespace = pluginToolNamespace(pluginName);
   const definitions: Record<string, AnyToolDefinition> = {};
-  for (const [localName, definition] of Object.entries(hook())) {
+  for (const [localName, definition] of Object.entries(pluginTools)) {
     const execute = definition.execute;
+    // Only `getPluginTools` binds the plugin's `guardian`.
+    const { guardian: _guardian, ...rest } = definition;
     // Naming conventions belong in lint, not on the turn's critical path.
     definitions[`${namespace}_${localName}`] = {
-      ...(definition as AnyToolDefinition),
+      ...(rest as AnyToolDefinition),
       // Keep prototype methods and their receiver on class-instance tools.
       // `getPluginTools` passes the Turn context as the third argument.
       ...(execute
@@ -82,7 +89,8 @@ function pluginToolDefinitions(
             execute: execute.bind(definition) as AnyToolDefinition["execute"],
           }
         : undefined),
-      approvalMode: definition.approvalMode ?? "auto",
+      // A plugin cannot skip review (`review-by-default`).
+      approvalMode: "auto",
       identity: {
         id: `${pluginName}.${localName}`,
         name: localName,
@@ -149,7 +157,11 @@ export function getPluginTools(
       plugin: pluginName,
     });
     const mcp = pluginMcpContext(plugin, context);
-    const events = createPluginWatches(plugin, context.conversationId);
+    const events = createPluginWatches(
+      plugin,
+      context.conversationId,
+      context.watchCreator,
+    );
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
     const onCost = createPluginModelCostRecorder({
@@ -232,6 +244,8 @@ export function getPluginTools(
         },
       },
     };
+    const conversationIds = async () =>
+      await readAncestorAndDescendantIds(getDb(), context.conversationId);
     let pluginContext: ToolRegistrationHookContext;
     switch (context.source.kind) {
       case "slack":
@@ -283,7 +297,8 @@ export function getPluginTools(
         };
         break;
     }
-    const definitions = pluginToolDefinitions(plugin);
+    const pluginTools = hook();
+    const definitions = pluginToolDefinitions(plugin, pluginTools);
     const namespace = pluginToolNamespace(pluginName);
     const disabled = plugin.hooks?.disabledTools?.(pluginContext) ?? {};
     for (const localName of Object.keys(disabled)) {
@@ -313,10 +328,24 @@ export function getPluginTools(
       const execute = definition.execute as
         | PluginToolDefinition["execute"]
         | undefined;
+      const source = pluginTools[localName];
+      // Keep the receiver of the plugin's object, like `execute`.
+      const guardian = source?.guardian?.bind(source);
       const disabledReason = disabled[localName];
       tools[name] = {
         ...definition,
         ...(disabledReason ? { disabledReason } : undefined),
+        ...(guardian
+          ? {
+              guardian: async (input: unknown) =>
+                actionFromGuardian(
+                  await guardian(
+                    input,
+                    guardianContext({ plugin: pluginName, conversationIds }),
+                  ),
+                ),
+            }
+          : undefined),
         ...(execute
           ? {
               execute: async (input: unknown, options: ToolExecuteOptions) =>
