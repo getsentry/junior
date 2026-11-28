@@ -110,6 +110,12 @@ export function watchTurnContext(args: {
           instructions: args.intent,
           trustedSummary: args.trustedSummary,
           ...(args.authorText ? { authorText: args.authorText } : undefined),
+          // Delivery finds that the author's linked account is the creator's.
+          ...(args.authorText?.verified &&
+          "userId" in person &&
+          args.authorText.authorId === person.userId
+            ? { authorIsCreator: true as const }
+            : undefined),
           ...(args.doneBy ? { doneBy: args.doneBy } : undefined),
           ...(args.externalText
             ? { externalText: args.externalText }

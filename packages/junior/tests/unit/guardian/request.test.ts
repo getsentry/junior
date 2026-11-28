@@ -75,25 +75,23 @@ describe("guardianMessages", () => {
 
   it("makes the Watch intent the instruction and labels the Event author", () => {
     const person = { platform: "slack", teamId: "T1", userId: "U1" } as const;
-    const event = (authorId: string | undefined, verified: boolean) => ({
+    // Delivery marks an author whose linked account is the creator's.
+    const event = (byCreator: boolean, verified: boolean) => ({
       instructions: "Maintain acme/app#1. Fix review feedback and push.",
       about: "GitHub PR acme/app#1",
       trustedSummary: "A review comment was posted.",
-      authorText: {
-        text: "rename the flag",
-        ...(authorId ? { authorId } : undefined),
-        verified,
-      },
+      authorText: { text: "rename the flag", verified },
+      ...(byCreator ? { authorIsCreator: true as const } : undefined),
     });
     const lines = (
       creator: NonNullable<ToolActionProposal["context"]["watch"]>["creator"],
-      authorId: string | undefined,
+      byCreator: boolean,
       verified: boolean,
     ) =>
       guardianMessages(
-        watchProposal({ creator, events: [event(authorId, verified)] }),
+        watchProposal({ creator, events: [event(byCreator, verified)] }),
       );
-    expect(lines({ actor: person, plugin: "github" }, "U2", true)).toEqual([
+    expect(lines({ actor: person, plugin: "github" }, false, true)).toEqual([
       {
         from: "instruction",
         text: "Watch intent (github plugin): Maintain acme/app#1. Fix review feedback and push.",
@@ -104,11 +102,9 @@ describe("guardianMessages", () => {
       },
       { from: "other_person", text: "rename the flag" },
     ]);
-    expect(lines({ actor: person }, "U1", true).at(-1)?.from).toBe(
+    expect(lines({ actor: person }, true, true).at(-1)?.from).toBe(
       "instruction",
     );
-    expect(lines({ actor: person }, undefined, false).at(-1)?.from).toBe(
-      "context",
-    );
+    expect(lines({ actor: person }, true, false).at(-1)?.from).toBe("context");
   });
 });

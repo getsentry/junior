@@ -33,13 +33,9 @@ type EventFacts = TurnWatch["events"][number];
  * writes `instruction` (`linked-account`), a trusted author `other_person`,
  * and anyone else `context`.
  */
-function authorFrom(task: EventFacts, watch: TurnWatch): Message["from"] {
-  const author = task.authorText;
-  if (!author?.verified) return "context";
-  const creator = watch.creator.actor;
-  return creator && "userId" in creator && author.authorId === creator.userId
-    ? "instruction"
-    : "other_person";
+function authorFrom(task: EventFacts): Message["from"] {
+  if (!task.authorText?.verified) return "context";
+  return task.authorIsCreator ? "instruction" : "other_person";
 }
 
 /**
@@ -68,7 +64,7 @@ function watchMessages(watch: TurnWatch): Message[] {
     }
     if (task.authorText) {
       messages.push({
-        from: authorFrom(task, watch),
+        from: authorFrom(task),
         text: task.authorText.text,
       });
     }
