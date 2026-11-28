@@ -1,0 +1,29 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #fffbea;
+  color: #3b2f00;
+}
+
+header {
+  padding: 2rem;
+  background: #ffd93b;
+}
+
+main {
+  padding: 2rem;
+}
+
+.menu {
+  list-style: none;
+  padding: 0;
+}
+
+.menu li {
+  padding: 0.5rem 0;
+}
+
+.price {
+  color: #8a7a40;
+  font-size: 0.8rem;
+}
