@@ -29,7 +29,7 @@ import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { upsertReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { getInboxItem } from "@/chat/inbox-items/store";
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { ask } from "../fixtures/questions";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import {

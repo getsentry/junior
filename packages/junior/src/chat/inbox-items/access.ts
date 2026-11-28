@@ -20,12 +20,16 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
+  readAskScope,
+  type AskScope,
+  type AskScopeContext,
+} from "@/chat/questions/ask-scope";
+import {
   readConversationAccessFromSql,
   type ProviderTenant,
 } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   juniorAutomationRuns,
   juniorConversationParticipants,
@@ -34,11 +38,6 @@ import {
   juniorInboxItemConversations,
   juniorInboxItems,
 } from "@/db/schema";
-import {
-  automationCreatorUserId,
-  conversationParticipantUserIds,
-  type ResolvedAssignees,
-} from "./assignees";
 import type { InboxItem, InboxItemVisibility } from "./store";
 import {
   INBOX_SUBJECT_KINDS,
@@ -447,20 +446,8 @@ export async function inboxItemReaderForUserInConversation(
 }
 
 /** What an agent can see and change, from the Conversation it runs in. */
-export interface InboxItemAgentScope {
-  /**
-   * Whether the Actor of the Turn is a person. A system Actor, such as the
-   * Actor of an event Turn, is not, and an app Actor is not.
-   */
-  actorIsPerson: boolean;
-  /** User of an app Actor. An app is not a person, so it gets no item. */
-  appUserId?: string;
-  /** Whether the current Conversation is not public. */
-  inPrivateConversation: boolean;
+export interface InboxItemAgentScope extends AskScope {
   reader: InboxItemReader;
-  /** Provider tenant of the current Conversation. */
-  tenant?: ProviderTenant;
-  user?: User;
 }
 
 /**
@@ -469,37 +456,18 @@ export interface InboxItemAgentScope {
  * the Inbox, not let an agent read it into another Conversation.
  */
 export async function readInboxItemAgentScope(
-  context: Pick<
-    ToolRuntimeContext,
-    "actorIsApp" | "conversationId" | "resolveActorIdentity" | "source"
-  >,
+  context: AskScopeContext,
 ): Promise<InboxItemAgentScope> {
-  // Only a user Identity resolves, so a system Actor has none. An app can
-  // have a user Identity and a User, but it is not a person.
-  const resolved = await context.resolveActorIdentity?.();
-  const actor = context.actorIsApp ? undefined : resolved;
-  const appUserId = context.actorIsApp ? resolved?.user?.id : undefined;
-  const user = actor?.user;
-  const automationId =
-    context.source.kind === "scheduled_automation" ||
-    context.source.kind === "event_automation"
-      ? context.source.automationId
-      : undefined;
-  const current = (
-    await readConversationAccessFromSql(getDb(), [context.conversationId], user)
-  ).get(context.conversationId);
-  const tenant = current?.tenant;
+  const scope = await readAskScope(context);
   return {
-    actorIsPerson: actor !== undefined,
-    ...(appUserId ? { appUserId } : undefined),
-    inPrivateConversation: current?.visibility !== "public",
+    ...scope,
     reader: {
       conversationId: context.conversationId,
-      ...(automationId ? { automationId } : undefined),
-      ...(tenant ? { tenants: [tenant] } : undefined),
+      ...(scope.automationId
+        ? { automationId: scope.automationId }
+        : undefined),
+      ...(scope.tenant ? { tenants: [scope.tenant] } : undefined),
     },
-    ...(tenant ? { tenant } : undefined),
-    ...(user ? { user } : undefined),
   };
 }
 
@@ -587,48 +555,6 @@ export async function requireInboxItemLinks(args: {
           : `Conversation ${conversationId} is not found. Check conversation_ids, or search Conversations to find the id.`,
       );
     }
-  }
-}
-
-/**
- * Check who an agent assigns a private item to. It cannot go to Everyone
- * yet: the old visibility check stays for the release before this one
- * (migration `20261126154025_inbox_item_owners`), and a later release lets
- * it go to the people who can see its owner (`inboxItemForEveryoneOfOwner`).
- * Each User must be the current Actor, a Participant of one of the given
- * Conversations (the current one and, for an existing item, the one that
- * added it), or the creator of the Automation that added the item. An
- * Automation run often has no Actor and no people yet, and its creator wrote
- * the work. A public item can go to anyone.
- */
-export async function requireInboxItemAssignees(args: {
-  assignees: ResolvedAssignees;
-  automationId: string | undefined;
-  conversationIds: readonly string[];
-  scope: InboxItemAgentScope;
-  visibility: InboxItemVisibility;
-}): Promise<void> {
-  if (args.visibility === "public") return;
-  if (args.assignees.everyone) {
-    throw new ToolInputError(
-      "A private item cannot be assigned to Everyone. Assign Users instead.",
-    );
-  }
-  const creatorId = args.automationId
-    ? await automationCreatorUserId(getDb(), args.automationId)
-    : undefined;
-  const others = args.assignees.userIds.filter(
-    (id) => id !== args.scope.user?.id && id !== creatorId,
-  );
-  const inConversation = await conversationParticipantUserIds(
-    getDb(),
-    args.conversationIds,
-    others,
-  );
-  if (others.some((id) => !inConversation.has(id))) {
-    throw new ToolInputError(
-      "A private item can be assigned only to people in its Conversation. Remove the other people from `assignees`.",
-    );
   }
 }
 

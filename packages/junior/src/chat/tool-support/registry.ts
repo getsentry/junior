@@ -56,7 +56,7 @@ import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
 import { runOperatorSqlToolDefinition } from "@/chat/tools/operator-sql";
 import { readConversationEventToolDefinition } from "@/chat/tools/read-conversation-event";
 import { updateInboxItemToolDefinition } from "@/chat/inbox-items/tools/update";
-import { askUserQuestionToolDefinition } from "@/chat/inbox-items/tools/ask-user-question";
+import { askUserQuestionToolDefinition } from "@/chat/questions/tools/ask-user-question";
 import { archiveAgentToolDefinition } from "@/chat/tools/runtime/archive-agent";
 import { messageAgentToolDefinition } from "@/chat/tools/runtime/message-agent";
 import { noReplyToolDefinition } from "@/chat/tools/runtime/no-reply";

@@ -20,13 +20,13 @@ export {
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
   userInputQuestionText,
-} from "../chat/inbox-items/user-input-request";
-export { ASK_TOOL_NAMES, inboxItemQuestion } from "../chat/inbox-items/request";
+} from "../chat/questions/user-input-request";
+export { ASK_TOOL_NAMES, inboxItemQuestion } from "../chat/questions/request";
 export type {
   UserInputAnswer,
   UserInputField,
   UserInputRequest,
-} from "../chat/inbox-items/user-input-request";
+} from "../chat/questions/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";

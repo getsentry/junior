@@ -1,5 +1,5 @@
 import type { Message } from "chat";
-import type { InboxItemChangeRecord } from "./change-record";
+import type { InboxItemChangeRecord } from "./inbox-item-change-record";
 
 // A Slack Turn passes Chat SDK messages, not mailbox input. Like the author
 // Identity id, the record rides next to the message until the Message write.

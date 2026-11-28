@@ -80,7 +80,7 @@ import {
   resolveInboxItemSubjects,
   type InboxSubjectView,
 } from "./resolve-subjects";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { inboxItemQuestion } from "@/chat/questions/request";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and

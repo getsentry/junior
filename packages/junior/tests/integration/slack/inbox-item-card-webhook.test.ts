@@ -1,4 +1,4 @@
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

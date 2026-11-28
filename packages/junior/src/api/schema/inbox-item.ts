@@ -6,7 +6,7 @@ import {
 import {
   inboxItemNoticeRequestSchema,
   inboxItemRequestSchema,
-} from "@/chat/inbox-items/request";
+} from "@/chat/questions/request";
 import { actorIdentitySchema } from "./conversation";
 import {
   inboxSnoozeResourceSchema,
@@ -177,7 +177,7 @@ export const inboxItemSchema = z
   .strict();
 
 export type InboxItemPayload = z.output<typeof inboxItemSchema>;
-export type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+export type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
 
 /**
  * Inbox list filters. The list has the open items that the viewer can

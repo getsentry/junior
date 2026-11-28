@@ -4,6 +4,8 @@
  * app plugin cannot use their names.
  */
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
+import type { ConversationChangeReaction } from "@/chat/conversations/change-reactions";
+import { reactInboxToConversationChange } from "@/chat/inbox-items/conversation-reactions";
 import { eventSearchTaskRegistration } from "@/chat/conversations/event-embedding";
 import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import {
@@ -50,4 +52,13 @@ export function coreRegistrations(): PluginRegistration[] {
     todosRegistration,
     ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
   ];
+}
+
+/**
+ * Return the core features that react to a committed Conversation change
+ * (`reactToConversationChange`). It is not a plugin hook: a person's message
+ * text reaches only these features.
+ */
+export function coreConversationReactions(): ConversationChangeReaction[] {
+  return [reactInboxToConversationChange];
 }

@@ -2,7 +2,7 @@ import * as z from "zod";
 import {
   inboxItemNoticeRequestSchema,
   inboxItemRequestSchema,
-} from "@/chat/inbox-items/request";
+} from "@/chat/questions/request";
 import { actorIdentitySchema } from "./conversation";
 import { inboxItemAnswerSchema, personSchema } from "./inbox-item";
 

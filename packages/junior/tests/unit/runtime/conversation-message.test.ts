@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Message } from "chat";
 import { bindMessageActorIdentity } from "@/chat/services/message-actor-identity";
-import { bindMessageInboxItemChange } from "@/chat/inbox-items/message-change";
+import { bindMessageInboxItemChange } from "@/chat/state/inbox-item-message-change";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
 
 function createMessage(authorUserId = "U039RR91S") {

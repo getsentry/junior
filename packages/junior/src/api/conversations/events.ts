@@ -7,7 +7,7 @@ import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
-import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/state/inbox-item-change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import * as z from "zod";
 import {

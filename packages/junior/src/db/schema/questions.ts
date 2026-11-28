@@ -9,8 +9,8 @@ import {
 import type {
   InboxItemNoticeRequest,
   InboxItemRequest,
-} from "@/chat/inbox-items/request";
-import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
+} from "@/chat/questions/request";
+import type { UserInputAnswer } from "@/chat/questions/user-input-request";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 import { juniorUsers } from "./users";

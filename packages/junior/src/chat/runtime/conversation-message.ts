@@ -1,4 +1,4 @@
-import { getMessageInboxItemChange } from "@/chat/inbox-items/message-change";
+import { getMessageInboxItemChange } from "@/chat/state/inbox-item-message-change";
 import { getSlackFileId } from "@/chat/slack/attachments";
 import type { Message } from "chat";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";

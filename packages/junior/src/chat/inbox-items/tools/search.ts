@@ -1,7 +1,7 @@
 import * as z from "zod";
 import { getDb } from "@/chat/db";
 import { readInboxItemAgentScope } from "@/chat/inbox-items/access";
-import { resolveAssignee } from "@/chat/inbox-items/assignees";
+import { resolveAssignee } from "@/chat/questions/assignees";
 import {
   searchInboxItems,
   type InboxItemStatus,

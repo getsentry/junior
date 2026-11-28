@@ -1,6 +1,6 @@
 import { messageAttachmentSchema } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
-import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/state/inbox-item-change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { conversationKindSchema } from "./conversation-kind";

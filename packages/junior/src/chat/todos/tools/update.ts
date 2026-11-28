@@ -32,7 +32,7 @@ import {
 import {
   resolveAssignee,
   type FindMentionedUserId,
-} from "@/chat/inbox-items/assignees";
+} from "@/chat/questions/assignees";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";

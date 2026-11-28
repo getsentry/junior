@@ -1,4 +1,4 @@
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { type Identity, type User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";

@@ -16,7 +16,7 @@ import { toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
-import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/state/inbox-item-change-record";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,

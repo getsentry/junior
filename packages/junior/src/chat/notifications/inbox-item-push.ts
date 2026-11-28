@@ -16,7 +16,7 @@ import {
   type InboxItemDeliverySkipReason,
 } from "@/chat/inbox-items/deliveries";
 import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
-import { cutInboxItemTitle } from "@/chat/inbox-items/tool-support";
+import { cutInboxItemTitle } from "@/chat/questions/tool-input";
 import {
   getInboxItem,
   isInboxItemOpen,

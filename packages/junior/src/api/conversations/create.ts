@@ -21,10 +21,8 @@ import {
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
-import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
+import { reactToConversationChange } from "@/chat/conversations/change-reactions";
 import { markConversationRead } from "./read-position";
-import { closeReadReplyNotice } from "@/chat/inbox-items/reply-notice";
-import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
 import type {
@@ -199,28 +197,24 @@ export async function appendConversationMessageForViewer(
         queue: services.queue,
       },
     );
-  // A dashboard message answers the open questions that the agent asked in
-  // this Conversation, like a typed Slack reply. The viewer also saw the
-  // transcript so far. The message can wait as pending with no event, so
-  // move the read position here: it closes the reply notice, and a reply
-  // task that runs later sees the read and adds no notice.
+  // The viewer also saw the transcript so far. The message can wait as
+  // pending with no event, so move the read position here: a reply task
+  // that runs later sees the read. Then the message can answer the open
+  // questions that the agent asked, like a typed Slack reply.
   const applyAccepted = async () => {
-    await closeInboxItemsAnsweredByReply({
-      conversationId,
-      delivery: {
-        queue: services.queue,
-        show: createInboxItemShow(getProductionSlackAdapter),
-      },
-      resolveUser: async () => viewer,
-      text: body.message,
-    });
     await markConversationRead(viewer, conversationId, {
       lastReadSeq: Number.MAX_SAFE_INTEGER,
     });
-    await closeReadReplyNotice(getDb(), {
+    await reactToConversationChange({
       conversationId,
-      nowMs: Date.now(),
-      userId: viewer.id,
+      kind: "person_message",
+      resolveUser: async () => viewer,
+      services: {
+        queue: () => services.queue,
+        slackAdapter: getProductionSlackAdapter,
+      },
+      text: body.message,
+      viewed: true,
     });
   };
   try {

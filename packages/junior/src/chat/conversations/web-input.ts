@@ -23,7 +23,7 @@ import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox"
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { getActiveTraceContext } from "@/chat/logging";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,

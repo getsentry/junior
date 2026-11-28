@@ -6,7 +6,7 @@ import {
   eventTaskFacts,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
-import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { renderTaskInput } from "@/chat/task-input";
 

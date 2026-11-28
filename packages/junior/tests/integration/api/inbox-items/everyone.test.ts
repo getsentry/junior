@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getSpaceLead } from "@/chat/lead/conversation";
 import { createSpace } from "@/chat/spaces/store";

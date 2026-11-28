@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { savedUserInputRequestSchema } from "@/chat/inbox-items/user-input-request";
+import { savedUserInputRequestSchema } from "@/chat/questions/user-input-request";
 
 /**
  * One related link that an agent adds to an Inbox item: a link or a

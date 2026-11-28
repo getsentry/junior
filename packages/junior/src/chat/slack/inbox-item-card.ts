@@ -20,9 +20,9 @@ import {
   slackUserInputAnswerNote,
   slackUserInputText,
 } from "@/chat/slack/user-input";
-import { buttonUserInputField } from "@/chat/inbox-items/user-input-request";
+import { buttonUserInputField } from "@/chat/questions/user-input-request";
 import { safeLinkUrl } from "@/net/link-url";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { inboxItemQuestion } from "@/chat/questions/request";
 import { SLACK_MAX_MARKDOWN_CHARS } from "./limits";
 
 // Posted Slack cards and open forms keep the ids that they were sent with,

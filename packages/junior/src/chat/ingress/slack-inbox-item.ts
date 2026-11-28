@@ -47,14 +47,14 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buttonUserInputField,
   type UserInputAnswer,
-} from "@/chat/inbox-items/user-input-request";
+} from "@/chat/questions/user-input-request";
 import { resolveSlackActingUser } from "./slack-acting-user";
 import {
   buildSlackInteractionInput,
   type SlackInteractionInputFacts,
 } from "./slack-interaction-input";
 import type { SlackInteractivePayload } from "./slack-payload";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { inboxItemQuestion } from "@/chat/questions/request";
 
 /** What an Inbox item interaction handler needs from Slack ingress. */
 export interface SlackInboxItemServices {

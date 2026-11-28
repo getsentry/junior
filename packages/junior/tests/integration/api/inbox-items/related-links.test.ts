@@ -9,11 +9,11 @@ import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { insertInboxItem } from "@/chat/inbox-items/store";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import type {
   InboxItemNoticeRequest,
   InboxItemRequest,
-} from "@/chat/inbox-items/request";
+} from "@/chat/questions/request";
 import { ask as questions } from "../../../fixtures/questions";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import {

@@ -1,5 +1,5 @@
 /** Shared setup for the Conversation status and tree state tests. */
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { ask } from "./questions";
 import { eq, max } from "drizzle-orm";
 import { Hono } from "hono";

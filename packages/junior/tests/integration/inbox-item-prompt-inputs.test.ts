@@ -1,4 +1,4 @@
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import type { User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -16,7 +16,7 @@ import { renderEventBatchInputs } from "@/chat/events/notification";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { sendInboxItemMessages } from "@/chat/inbox-items/messages";
-import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
+import { eventAnswerInputs } from "@/chat/questions/answer-input";
 import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { webTurnInputs } from "@/chat/task-execution/mailbox-input";
@@ -267,7 +267,7 @@ describe("inbox item prompt inputs", () => {
     const events = await pendingMessages(CLI_CONVERSATION_ID);
     const cliInputs = renderEventBatchInputs(
       events,
-      await eventInboxItemInputs(events),
+      await eventAnswerInputs(events),
     );
     expect(promptParts(cliInputs)).toEqual(parts.slice(0, 2));
     expect(

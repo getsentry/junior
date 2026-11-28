@@ -19,11 +19,11 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   inboxItemRequestSchema,
   type InboxItemRequest,
-} from "@/chat/inbox-items/request";
-import { USER_INPUT_LIMITS } from "@/chat/inbox-items/user-input-request";
+} from "@/chat/questions/request";
+import { USER_INPUT_LIMITS } from "@/chat/questions/user-input-request";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
 import { mapBounded } from "@/chat/fan-out";
-import { automationCreatorUserId } from "@/chat/inbox-items/assignees";
+import { automationCreatorUserId } from "@/chat/questions/assignees";
 import {
   dismissOpenInboxItems,
   insertInboxItem,

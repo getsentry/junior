@@ -8,7 +8,7 @@ import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   type UserInputAnswer,
-} from "@/chat/inbox-items/user-input-request";
+} from "@/chat/questions/user-input-request";
 import { deliverInboxItemChange, type InboxItemDelivery } from "./changes";
 import type { InboxItemChange } from "./messages";
 import {
@@ -39,7 +39,7 @@ import {
   takeInboxItem,
   type InboxItem,
 } from "./store";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { inboxItemQuestion } from "@/chat/questions/request";
 
 /**
  * What a person can do with an Inbox item. A To-do's item takes only

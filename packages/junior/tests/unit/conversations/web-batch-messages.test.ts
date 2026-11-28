@@ -3,7 +3,7 @@ import {
   buildWebInboundMessage,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   savedTurnInputMessages,

@@ -5,10 +5,15 @@ import {
   canAgentChangeInboxItem,
   isPluginInboxItem,
   readInboxItemAgentScope,
-  requireInboxItemAssignees,
   requireInboxItemLinks,
 } from "@/chat/inbox-items/access";
-import { resolveAssignees } from "@/chat/inbox-items/assignees";
+import { requireAskedPeople } from "@/chat/questions/ask-scope";
+import {
+  assigneesSchema,
+  questionContent,
+  questionsSchema,
+} from "@/chat/questions/tool-input";
+import { resolveAssignees } from "@/chat/questions/assignees";
 import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 import {
   closeInboxItem,
@@ -21,14 +26,11 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   INBOX_TOOL_SOURCE,
-  assigneesSchema,
   conversationIdsSchema,
   itemResult,
   ownerLinks,
   readableItem,
   inboxItemDelivery,
-  questionContent,
-  questionsSchema,
   type InboxItemToolContext,
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
@@ -191,12 +193,12 @@ export function createUpdateInboxItemTool(
               userIds: item.assignees.map((assignee) => assignee.userId),
             };
         if (input.assignees) {
-          await requireInboxItemAssignees({
+          await requireAskedPeople({
             assignees,
             automationId: item.addedByAutomationId,
             conversationIds: [context.conversationId, ...ownerLinks(item)],
-            scope,
-            visibility,
+            isPrivate: visibility === "private",
+            user: scope.user,
           });
         }
         const updated = await updateInboxItemContent(db, {

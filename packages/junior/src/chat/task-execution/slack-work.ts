@@ -44,8 +44,8 @@ import {
   ensureSlackMessageActorIdentity,
   getMessageAuthorIdentityId,
 } from "@/chat/services/message-actor-identity";
-import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
-import { bindMessageInboxItemChange } from "@/chat/inbox-items/message-change";
+import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
+import { bindMessageInboxItemChange } from "@/chat/state/inbox-item-message-change";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { getSqlExecutor } from "@/chat/db";

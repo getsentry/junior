@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { messageAttachmentSchema } from "@/chat/attachments/input";
-import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/state/inbox-item-change-record";
 import {
   actorIdentitySchema,
   conversationDetailReportSchema,

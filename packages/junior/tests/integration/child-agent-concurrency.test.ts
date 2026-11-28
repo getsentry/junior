@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
 import { messageChildAgent, spawnChildAgent } from "@/chat/child-agents/create";

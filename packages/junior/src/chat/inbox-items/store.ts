@@ -16,7 +16,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { ProviderTenant } from "@/api/conversations/access";
-import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
+import { updateQuestionContent } from "@/chat/questions/store";
 import { inboxItemSnoozedBy } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -42,7 +42,7 @@ import {
   juniorQuestions,
   juniorUsers,
 } from "@/db/schema";
-import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
+import type { UserInputAnswer } from "@/chat/questions/user-input-request";
 import {
   inboxItemAddedByAnyAutomation,
   inboxItemAddedByAutomation,
@@ -55,7 +55,10 @@ import {
   type InboxItemReader,
 } from "./access";
 import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
-import type { InboxItemNoticeRequest, InboxItemRequest } from "./request";
+import type {
+  InboxItemNoticeRequest,
+  InboxItemRequest,
+} from "@/chat/questions/request";
 import {
   inboxItemBody,
   inboxItemTitle,
@@ -102,24 +105,6 @@ export function ownerConversationId(
   item: Pick<InboxItem, "owner">,
 ): string | undefined {
   return item.owner.kind === "conversation" ? item.owner.id : undefined;
-}
-
-/** The owner Conversations, whose detail versions an item change moves. */
-function ownerConversationIds(
-  owners: readonly { ownerConversationId: string | null }[],
-): string[] {
-  return [
-    ...new Set(
-      owners.flatMap((owner) =>
-        owner.ownerConversationId ? [owner.ownerConversationId] : [],
-      ),
-    ),
-  ];
-}
-
-// Read in RETURNING, so a change moves the detail version of its owner.
-function ownerColumns() {
-  return { ownerConversationId: inboxItemOwnerConversationId() };
 }
 
 /** An Inbox item with its assignees and linked Conversations. */
@@ -493,25 +478,6 @@ export async function insertInboxItem(
 ): Promise<InboxItem | undefined> {
   const now = new Date(input.nowMs);
   const id = await db.transaction(async (tx) => {
-    if (isQuestion(input.subject)) {
-      if (input.owner.kind !== "conversation") {
-        throw new Error("Only a Conversation asks a question");
-      }
-      // A concurrent add of the same question adds it first.
-      const asked = await tx
-        .insert(juniorQuestions)
-        .values({
-          ...questionColumns(input),
-          conversationId: input.owner.id,
-          createdAt: now,
-          id: input.subject.id,
-          turnId: input.addedByTurnId ?? null,
-          updatedAt: now,
-        })
-        .onConflictDoNothing()
-        .returning({ id: juniorQuestions.id });
-      if (!asked[0]) return undefined;
-    }
     // The old owner columns stay for the release before this one, and a
     // trigger writes them from this owner (migration
     // `20261126154025_inbox_item_owners`). A later release drops both.
@@ -524,11 +490,13 @@ export async function insertInboxItem(
         ...contentColumns(input),
         addedByTurnId: input.addedByTurnId ?? null,
         createdAt: now,
-        id: randomUUID(),
+        // A question's item has the question's id, so the answer that a
+        // message records names the question too (`chat/questions/answer-input.ts`).
+        id: isQuestion(input.subject) ? input.subject.id : randomUUID(),
         status: "open",
         updatedAt: now,
       })
-      // The only possible conflict is the open subject index.
+      // The open subject index, or a question that already has its item.
       .onConflictDoNothing()
       .returning({ id: juniorInboxItems.id });
     if (!inserted[0]) return undefined;
@@ -545,9 +513,6 @@ export async function insertInboxItem(
       );
     }
     await replaceLinks(tx, inserted[0].id, input);
-    if (input.owner.kind === "conversation") {
-      await touchConversationDetail(tx, [input.owner.id]);
-    }
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -586,16 +551,12 @@ export async function updateInboxItemContent(
     // The question changes first: the item write copies its content onto
     // the item for the release before this one (`20261126154025_inbox_item_owners`).
     if (isQuestion(input.subject)) {
-      await tx
-        .update(juniorQuestions)
-        .set({
-          ...questionColumns(input),
-          updatedAt: new Date(input.nowMs),
-          ...(input.addedByTurnId
-            ? { turnId: input.addedByTurnId }
-            : undefined),
-        })
-        .where(eq(juniorQuestions.id, input.subject.id));
+      await updateQuestionContent(tx, {
+        content: questionColumns(input),
+        id: input.subject.id,
+        nowMs: input.nowMs,
+        turnId: input.addedByTurnId,
+      });
     }
     const updated = await tx
       .update(juniorInboxItems)
@@ -612,10 +573,9 @@ export async function updateInboxItemContent(
           eq(juniorInboxItems.status, "open"),
         ),
       )
-      .returning({ ...ownerColumns(), id: juniorInboxItems.id });
+      .returning({ id: juniorInboxItems.id });
     if (!updated[0]) return false;
     await replaceLinks(tx, updated[0].id, input);
-    await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });
 }
@@ -658,7 +618,6 @@ export async function closeInboxItem(
         ),
       )
       .returning({
-        ...ownerColumns(),
         subjectId: juniorInboxItems.subjectId,
         subjectKind: juniorInboxItems.subjectKind,
       });
@@ -669,7 +628,6 @@ export async function closeInboxItem(
         : undefined),
       now,
     });
-    await touchConversationDetail(tx, ownerConversationIds(closed));
     return closed;
   });
   if (updated.length === 0) return false;
@@ -719,13 +677,11 @@ export async function dismissOpenInboxItems(
       ),
     )
     .returning({
-      ...ownerColumns(),
       id: juniorInboxItems.id,
       subjectId: juniorInboxItems.subjectId,
       subjectKind: juniorInboxItems.subjectKind,
     });
   await closeItemQuestions(db, dismissed, { now });
-  await touchConversationDetail(db, ownerConversationIds(dismissed));
   await clearInboxItemDeliveries(
     db,
     dismissed.map((item) => item.id),
@@ -751,7 +707,7 @@ export async function takeInboxItem(
           eq(juniorInboxItems.status, "open"),
         ),
       )
-      .returning(ownerColumns());
+      .returning({ id: juniorInboxItems.id });
     if (!updated[0]) return false;
     await tx
       .delete(juniorInboxItemAssignees)
@@ -766,7 +722,6 @@ export async function takeInboxItem(
       skipReason: "taken",
       userId: input.userId,
     });
-    await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });
 }

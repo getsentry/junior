@@ -10,8 +10,8 @@ import { canActOnInboxItem } from "@/chat/inbox-items/access";
 import type { InboxItem } from "@/chat/inbox-items/store";
 import type { InboxSubjectView } from "@/api/inbox-items/resolve-subjects";
 import { subjectKey } from "@/chat/inbox-items/subject-links";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
-import { userInputQuestionText } from "@/chat/inbox-items/user-input-request";
+import { inboxItemQuestion } from "@/chat/questions/request";
+import { userInputQuestionText } from "@/chat/questions/user-input-request";
 
 /** MCP view of one Inbox item. Answers happen in Slack or the dashboard. */
 export const mcpInboxItemSchema = z

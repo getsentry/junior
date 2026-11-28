@@ -2,7 +2,7 @@ import type { ObjectType } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type { MessageCard, MessageCardRef } from "@/chat/conversations/cards";
-import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
 
 type ConversationRole = "assistant" | "system" | "user";
 

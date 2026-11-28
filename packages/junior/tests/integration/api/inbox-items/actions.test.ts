@@ -29,7 +29,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { useAppContext } from "../../../fixtures/app-context";
 import { avatarPath } from "../../../fixtures/avatar";
 import { getConversation } from "@/chat/task-execution/store";
-import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
+import type { UserInputRequest } from "@/chat/questions/user-input-request";
 import {
   closeConversationFixture,
   createConversationFixture,

@@ -2,7 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { asc, eq, getTableColumns } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { loadConversationSlackTenantIds } from "@/chat/conversations/sql/event-actor";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { inboxItemQuestion } from "@/chat/questions/request";
 import { juniorQuestions, juniorUsers } from "@/db/schema";
 import { throwApiError } from "../http";
 import { resolveMentions } from "../mentions";

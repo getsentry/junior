@@ -81,7 +81,8 @@ export function agentWatch(input: {
 export type UpdateKey =
   | { type: "turn"; turnId: string }
   | { type: "turn_failed"; turnId: string }
-  | { type: "waiting"; inboxItemId: string }
+  /** What it waits on: a question, or a plugin's Inbox item. */
+  | { type: "waiting"; id: string }
   | { type: "stopped"; stoppedAtMs: number };
 
 /** The Event key of one update, so a retry delivers it once. */
@@ -92,7 +93,7 @@ function updateEventKey(conversationId: string, key: UpdateKey): string {
     case "turn_failed":
       return `${prefix}:turn:${key.turnId}`;
     case "waiting":
-      return `${prefix}:inbox_item:${key.inboxItemId}`;
+      return `${prefix}:inbox_item:${key.id}`;
     case "stopped":
       return `${prefix}:stopped:${key.stoppedAtMs}`;
   }

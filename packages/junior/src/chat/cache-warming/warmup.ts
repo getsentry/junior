@@ -280,8 +280,6 @@ async function startIdlePeriod(
   // Read once here, not on each model call.
   const { watches, waitingOn } = await readPendingWork(
     conversationId,
-    request.context.messages,
-    message,
     turn.idleNeedsPendingWork,
   );
   if (turn.idleNeedsPendingWork && !waitingOn) return undefined;

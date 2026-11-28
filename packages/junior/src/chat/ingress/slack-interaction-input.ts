@@ -1,6 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { Message } from "chat";
-import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import type { SlackInteractivePayload } from "./slack-payload";
 

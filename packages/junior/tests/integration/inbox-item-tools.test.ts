@@ -18,7 +18,7 @@ import {
 } from "@/db/schema";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { listOpenAutomationQuestions } from "@/chat/inbox-items/automation-questions";
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";

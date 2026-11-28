@@ -7,11 +7,11 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import type { AgentInstructionInput } from "@/chat/agent/types";
-import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
 import {
-  eventInboxItemInputs,
-  loadInboxItemInput,
-} from "@/chat/inbox-items/prompt-input";
+  eventAnswerInputs,
+  loadAnswerInput,
+} from "@/chat/questions/answer-input";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import {
   eventBatchMessageMeta,
@@ -35,7 +35,7 @@ export async function webTurnInputs(
   const inputs = await mapBounded(
     messages,
     async (message): Promise<AgentInstructionInput[]> => {
-      const inboxItem = await loadInboxItemInput(message.reviewItemChange);
+      const inboxItem = await loadAnswerInput(message.reviewItemChange);
       if (inboxItem) return [inboxItem];
       const text = message.text.trim();
       return text ? [{ kind: "person", text }] : [];
@@ -143,7 +143,7 @@ export async function mailboxTurnInputs(
       eventMeta: eventBatchMessageMeta(messages),
       inputs: renderEventBatchInputs(
         messages,
-        await eventInboxItemInputs(messages),
+        await eventAnswerInputs(messages),
       ),
       webInputMessages: [],
     };

@@ -14,7 +14,10 @@ import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import type { JuniorDatabase } from "@/db/db";
 import type { ShowInboxItem } from "./changes";
-import { inboxItemRequestSchema, type InboxItemRequest } from "./request";
+import {
+  inboxItemRequestSchema,
+  type InboxItemRequest,
+} from "@/chat/questions/request";
 import {
   closeInboxItem,
   getOpenInboxItemBySubject,
@@ -32,7 +35,7 @@ import {
   subjectKindLabel,
   type InboxItemSubject,
 } from "./subjects";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { inboxItemQuestion } from "@/chat/questions/request";
 
 /**
  * Resolve the Users to assign. A plugin notice goes only to people in its
@@ -297,7 +300,7 @@ export function createPluginInboxItems(args: {
       if (waitText !== undefined) {
         await publishAgentUpdate(
           conversationId,
-          { type: "waiting", inboxItemId: changed.itemId },
+          { type: "waiting", id: changed.itemId },
           {
             queue: getVercelConversationWorkQueue(),
             update: async () => ({ status: "waiting", text: waitText }),

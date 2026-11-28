@@ -11,7 +11,7 @@ import {
   eventBatchMessageMeta,
   renderEventBatchInputs,
 } from "@/chat/events/notification";
-import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
+import { eventAnswerInputs } from "@/chat/questions/answer-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import {
   appendAndEnqueueInboundMessage,
@@ -283,7 +283,7 @@ export async function saveHeldInput(
 ): Promise<void> {
   const first = messages[0]!;
   const { text } = instructionForInputs(
-    renderEventBatchInputs(messages, await eventInboxItemInputs(messages)),
+    renderEventBatchInputs(messages, await eventAnswerInputs(messages)),
   );
   const stored = toStoredConversationMessage({
     id: first.inboundMessageId,

@@ -7,7 +7,10 @@
  */
 import { and, eq, sql } from "drizzle-orm";
 import { juniorInboxItems, juniorQuestions } from "@/db/schema";
-import type { InboxItemNoticeRequest, InboxItemRequest } from "./request";
+import type {
+  InboxItemNoticeRequest,
+  InboxItemRequest,
+} from "@/chat/questions/request";
 import { INBOX_SUBJECT_KINDS } from "./subjects";
 
 /** SQL: the join of a question item to its question. */

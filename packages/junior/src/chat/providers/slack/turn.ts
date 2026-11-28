@@ -28,11 +28,11 @@ import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
 } from "@/chat/slack/errors";
-import { getMessageInboxItemChange } from "@/chat/inbox-items/message-change";
+import { getMessageInboxItemChange } from "@/chat/state/inbox-item-message-change";
 import {
-  loadInboxItemInput,
+  loadAnswerInput,
   savedInputInstruction,
-} from "@/chat/inbox-items/prompt-input";
+} from "@/chat/questions/answer-input";
 import {
   buildSteeringPiMessage,
   withoutSavedSteeringMessages,
@@ -479,7 +479,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           return await mapBounded(queuedMessages, async (queued) => {
             const attachments = queued.message.attachments;
             // An answer steers in as its Inbox item tag.
-            const inboxItemInput = await loadInboxItemInput(
+            const inboxItemInput = await loadAnswerInput(
               getMessageInboxItemChange(queued.message),
             );
             return {

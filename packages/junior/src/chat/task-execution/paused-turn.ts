@@ -8,7 +8,7 @@
  */
 import { instructionActorFor } from "@/chat/agent/prompt";
 import { withHeldInput } from "@/chat/conversations/held-input";
-import { savedInputInstruction } from "@/chat/inbox-items/prompt-input";
+import { savedInputInstruction } from "@/chat/questions/answer-input";
 import { logException, logWarn, withLogContext } from "@/chat/logging";
 import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";

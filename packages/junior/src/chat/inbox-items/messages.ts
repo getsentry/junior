@@ -27,12 +27,12 @@ import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import {
   formatUserInputAnswer,
   userInputQuestionText,
-} from "@/chat/inbox-items/user-input-request";
+} from "@/chat/questions/user-input-request";
 import { juniorConversations } from "@/db/schema";
-import type { InboxItemChangeRecord } from "./change-record";
+import type { InboxItemChangeRecord } from "@/chat/state/inbox-item-change-record";
 import { isPluginInboxItem } from "./access";
 import type { InboxItem } from "./store";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { inboxItemQuestion } from "@/chat/questions/request";
 
 /** One change to an Inbox item that linked Conversations learn about. */
 export type InboxItemChange =

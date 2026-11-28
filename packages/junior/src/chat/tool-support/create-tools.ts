@@ -29,7 +29,7 @@ import { createReplyTool } from "@/chat/tools/runtime/reply";
 import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
-import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { createAskUserQuestionTool } from "@/chat/questions/tools/ask-user-question";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
@@ -45,7 +45,10 @@ import {
 } from "@/chat/slack/tool-support/context";
 import { readSlackAttachmentSource } from "@/chat/slack/attachments";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
-import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import {
+  createSlackInboxItemToolServices,
+  findSlackMentionedUserId,
+} from "@/chat/slack/inbox-item-tools";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import { createSendFilesTool } from "@/chat/tools/send-files";
 import { getSqlExecutor } from "@/chat/db";
@@ -371,11 +374,14 @@ const STATIC_TOOL_BINDERS = {
   // model can read the active destination or another accessible public channel.
   slackChannelListMessages: (run) =>
     createSlackChannelListMessagesTool(slackOf(run)),
-  // Inbox items link to root Conversations, where a person can see them.
   // `askUserQuestion` is how the agent asks a person anything, so it is
   // loaded in every root Turn. A child agent asks its parent instead.
   askUserQuestion: (run) =>
-    createAskUserQuestionTool(run.context, run.inboxItemServices()),
+    createAskUserQuestionTool(run.context, {
+      findMentionedUserId: findSlackMentionedUserId,
+      queue: run.inboxItemServices().queue,
+    }),
+  // Inbox items link to root Conversations, where a person can see them.
   searchInboxItems: (run) =>
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>

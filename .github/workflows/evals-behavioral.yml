@@ -65,7 +65,7 @@ jobs:
               - 'packages/junior/src/chat/tool-support/**'
               - 'packages/junior/src/chat/inbox-items/tools/**'
               - 'packages/junior/src/chat/inbox-items/tool-support.ts'
-              - 'packages/junior/src/chat/inbox-items/user-input-request.ts'
+              - 'packages/junior/src/chat/questions/**'
               - 'packages/junior/src/chat/sandbox/edit-file.ts'
               - 'packages/junior/src/chat/sandbox/file-uploads.ts'
               - 'packages/junior/src/chat/sandbox/file-utils.ts'
