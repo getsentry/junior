@@ -94,7 +94,9 @@ export async function stopChildAgentsOf(
     state,
   });
   await dropUnreadLoopReplies(conversationIds, stoppedIds, state);
-  await dropOwnUnreadLoopReplies(conversationId, state);
+  // This Conversation's own unread replies are not dropped here. A person's
+  // stop of it already dropped them, and a stop of a Conversation above it
+  // holds them in the parent.
 }
 
 /**
@@ -106,6 +108,9 @@ export async function stopChildAgentsOf(
  * When it does, `stopChildAgentsOf` stops the child agents that it spawned
  * after this stop, at the time of this stop. So
  * input that ends this stop ends theirs too.
+ *
+ * Each stopped Conversation holds the unread replies in its mailbox, and so
+ * does this Conversation when its own stop follows.
  */
 export async function stopChildAgentsBelow(
   conversationId: string,
@@ -126,7 +131,6 @@ export async function stopChildAgentsBelow(
     stoppedAtMs,
     state,
   });
-  await dropUnreadLoopReplies(conversationIds, stoppedIds, state);
 }
 
 /**

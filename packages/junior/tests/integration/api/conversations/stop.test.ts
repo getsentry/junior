@@ -29,19 +29,16 @@ import {
 import {
   closeConversationFixture,
   createConversationFixture,
-  stoppedConversationMessageTexts,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import {
   abortableAgentRunner,
   expectChildAgentStopped,
   spawnInput,
-  loadTurnEvents,
   spawnChildAgent,
   startRunningChildAgent,
   createPublishChildTurn,
 } from "../../../fixtures/child-agents";
-import { neverRunAgentRunner } from "../../../fixtures/agent-runner";
 import { startChildAgent } from "../../../fixtures/child-agent-start";
 import {
   createConversationWorkHarness,
@@ -411,59 +408,80 @@ describe("conversation stop API", () => {
     }
   });
 
-  it("drops a child result that waits when a person stops the parent", async () => {
-    const work = await createConversationWorkHarness(neverRunAgentRunner());
-    const fixture = {
-      ...(await createConversationFixture()),
-      queue: work.queue,
-    };
-    const { actor, conversationStore, queue, state } = fixture;
-    const { created, leaseToken } = await startParentTurn(
-      fixture,
-      "stop-result-root",
-    );
-    await completeConversationWork({
-      conversationId: created.conversationId,
-      conversationStore,
-      leaseToken,
-      state,
-    });
-    const child = await spawnChildAgent({
-      conversationStore,
-      idempotencyKey: "stop-result-child",
-      parentConversationId: created.conversationId,
-      queue,
-      state,
-    });
-    await createPublishChildTurn({ queue, state })({
-      actor: spawnInput.actor,
-      conversationId: child.childConversationId,
-      update: { status: "blocked", text: "Child needs a token." },
-      turnId: "turn_blocked-child",
-    });
-    await expect(
-      parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent.update"]);
+  it.each([{ childSeesStopFirst: false }, { childSeesStopFirst: true }])(
+    "holds a child result that waits when a person stops the parent (child sees the stop first: $childSeesStopFirst)",
+    async ({ childSeesStopFirst }) => {
+      const rootRuns: AgentRun[] = [];
+      const work = await createConversationWorkHarness({
+        run: async (run) => {
+          if (run.parentConversationId) {
+            return await finishRun(run, { finalText: "Child finding: 42." });
+          }
+          rootRuns.push(run);
+          return await finishRun(run, { finalText: "Asked a helper." });
+        },
+      });
+      const fixture = {
+        ...(await createConversationFixture()),
+        queue: work.queue,
+      };
+      const { actor, conversationStore, queue, state } = fixture;
+      const created = await createAndEnqueueConversation(
+        {
+          actor,
+          idempotencyKey: "stop-result-root",
+          message: "Find the number.",
+        },
+        { conversationStore, queue, state },
+      );
+      await work.process(queue.takeMessageFor(created.conversationId));
+      const child = await spawnChildAgent({
+        conversationStore,
+        idempotencyKey: "stop-result-child",
+        parentConversationId: created.conversationId,
+        queue,
+        state,
+      });
+      // The child's Turn replies to the parent, and the parent has not read
+      // the reply yet.
+      await work.process(queue.takeMessageFor(child.childConversationId));
 
-    const response = await stopRequest(
-      fixture,
-      created.conversationId,
-      actor.email,
-    );
-    expect(response.status).toBe(200);
-    // The stop also stops the child, so the parent gets no result from it,
-    // and nothing is left to run.
-    await expect(
-      parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual([]);
-    await expect(
-      stoppedConversationMessageTexts(created.conversationId),
-    ).resolves.toEqual([]);
-    await expect(
-      work.process(queue.takeMessageFor(created.conversationId)),
-    ).resolves.toMatchObject({ status: "no_work" });
-    await expect(loadTurnEvents(created.conversationId)).resolves.toEqual([]);
-  });
+      if (childSeesStopFirst) {
+        // The stop reaches the child first, and the child's run sees it before
+        // the parent's own stop holds the parent's input.
+        await stopConversationTree([child.childConversationId], {
+          queue,
+          state,
+          stoppedAtMs: Date.now(),
+        });
+        await stopChildAgentsOf(child.childConversationId, state);
+      }
+      const response = await stopRequest(
+        fixture,
+        created.conversationId,
+        actor.email,
+      );
+      expect(response.status).toBe(200);
+      // The stop holds the reply, so no parent Turn runs for it.
+      await expect(
+        work.process(queue.takeMessageFor(created.conversationId)),
+      ).resolves.toMatchObject({ status: "no_work" });
+
+      // The person's next message ends the stop. Its Turn reads the reply.
+      await appendAndEnqueueWebMessage(
+        {
+          actor,
+          conversationId: created.conversationId,
+          idempotencyKey: "after-stop",
+          message: "What did the helper find?",
+        },
+        { conversationStore, queue, state },
+      );
+      await work.process(queue.takeMessageFor(created.conversationId));
+      expect(rootRuns).toHaveLength(2);
+      expect(rootRuns[1]!.instruction.text).toContain("Child finding: 42.");
+    },
+  );
 
   it("keeps the stop below a child agent when its run sees the stop late", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);

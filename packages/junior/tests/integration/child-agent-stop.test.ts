@@ -11,6 +11,7 @@ import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
+  appendAndEnqueueInboundMessage,
   getConversationWorkState,
   hasConversationStop,
 } from "@/chat/task-execution/store";
@@ -296,6 +297,63 @@ describe("stopping child agents", () => {
       });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
     } finally {
+      await harness.close();
+    }
+  });
+
+  it("gives the parent no unread reply that an earlier release stored when it stops the child", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness({ run: finishRun });
+    try {
+      const childId = await harness.spawn({
+        idempotencyKey: "stop-legacy-reply",
+      });
+      // The child's task wake is not run, so its task stays open.
+      harness.queue.takeMessageFor(childId);
+      // An earlier release also stored `agentInvocationId` in the sender of
+      // a reply. A reply that the parent did not read yet outlives the
+      // deploy.
+      const sentAtMs = Date.now();
+      await appendAndEnqueueInboundMessage({
+        message: {
+          conversationId: parentConversationId,
+          createdAtMs: sentAtMs,
+          delivery: "defer",
+          inboundMessageId: "legacy-reply",
+          input: {
+            authorId: "junior",
+            metadata: {
+              kind: "event",
+              event: {
+                eventKey: "legacy-reply",
+                eventType: "agent.reply",
+                identifier: "agent-invocation:legacy",
+                namespace: "junior",
+                trustedSummary: "Child agent replied.",
+              },
+              sender: {
+                agentInvocationId: "agent-invocation:legacy",
+                conversationId: childId,
+                turnId: "turn_legacy",
+              },
+            },
+            text: "Legacy finding.",
+          },
+          receivedAtMs: sentAtMs,
+          source: "event",
+        },
+        queue: harness.queue,
+        state: harness.state,
+      });
+
+      await stopAgent(childId);
+      // The parent asked for the stop, so no parent Turn reads the reply,
+      // also after its delivery delay.
+      vi.setSystemTime(Date.now() + 60_000);
+      await harness.processNext(parentConversationId);
+      await expect(loadTurnEvents(parentConversationId)).resolves.toEqual([]);
+    } finally {
+      vi.useRealTimers();
       await harness.close();
     }
   });
