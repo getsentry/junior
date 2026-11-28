@@ -141,11 +141,10 @@ function parseFileLink(url: URL): FileLink | undefined {
     : undefined;
 }
 
-// The access check and the card share this read of the file. Each live
-// check still asks Drive whether the viewer can open the file, with
-// `trashed = false`, so only card fields can be five minutes old. A page
-// load shows the last good file after that. Every read checks `trashed`,
-// so a trashed file never shows.
+// A live access check always reads the file again, and the card shares
+// that read, so a live card is never stale. The entry lives five minutes,
+// and then stays as the last good file for page loads. Every read checks
+// `trashed`, so a trashed file never shows.
 const FILE_READ_TTL_MS = 300_000;
 
 async function fetchFile(
@@ -182,16 +181,21 @@ function fitsLink(file: LinkedFile | null, link: FileLink): file is LinkedFile {
 async function readLinkedFile(
   ctx: ObjectLinkContext,
   link: FileLink,
+  options?: { refresh: true },
 ): Promise<LinkedFile | undefined> {
   const { fileId, resourceKey } = link.file;
   const key = `drive-file:${fileId}:${resourceKey ?? ""}`;
   const file = ctx.cacheOnly
     ? ((await ctx.cache.get<LinkedFile | null>(key, { stale: true })) ?? null)
-    : await ctx.cache.getOrLoad(key, async () => ({
-        staleIfError: true,
-        value: await fetchFile(ctx, link.file),
-        ttlMs: FILE_READ_TTL_MS,
-      }));
+    : await ctx.cache.getOrLoad(
+        key,
+        async () => ({
+          staleIfError: true,
+          value: await fetchFile(ctx, link.file),
+          ttlMs: FILE_READ_TTL_MS,
+        }),
+        options,
+      );
   return fitsLink(file, link) ? file : undefined;
 }
 
@@ -245,7 +249,11 @@ async function canViewGoogleFileLink(
   // A page load shows the stored card to anyone who can read the
   // Conversation, so it checks no viewer access.
   if (ctx.cacheOnly) return !!config && !!link;
-  const file = config && link && (await readLinkedFile(ctx, link));
+  // The owners and the shared drive decide which Drive queries count, so a
+  // live check never uses the last good file. The card then reads the entry
+  // that this check stored.
+  const file =
+    config && link && (await readLinkedFile(ctx, link, { refresh: true }));
   return (
     !!file &&
     (await personCanOpenFile(

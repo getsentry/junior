@@ -116,8 +116,9 @@ function viewerIsOnEvent(event: LinkedEvent, viewer: string): boolean {
   ].some((email) => email?.toLowerCase() === viewer);
 }
 
-// A live access check always reads the event again, so only card fields
-// can be five minutes old. A page load shows the last good event after that.
+// A live access check always reads the event again, and the card shares
+// that read, so a live card is never stale. The entry lives five minutes,
+// and then stays as the last good event for page loads.
 const EVENT_READ_TTL_MS = 300_000;
 
 /**

@@ -26,9 +26,10 @@ import {
   type SentryIssueLink,
 } from "./urls.js";
 
-// The entry holds only card fields: each live read checks the viewer's
-// access with their own token, apart from it. So a live card can be five
-// minutes old, and a page load shows the last good card after that.
+// The entry holds only card fields. Each live read checks the viewer's
+// access with their own token, apart from it, so access stays fresh and
+// only card fields can be five minutes old. Page loads then show the last
+// good card.
 const ISSUE_CACHE_TTL_MS = 300_000;
 
 const issueSchema = z.object({

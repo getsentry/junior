@@ -300,6 +300,19 @@ describe("Google link cards", () => {
       ).resolves.toMatchObject({ title: TITLE });
     });
 
+    it("checks the current owner on each live read", async () => {
+      const file = { ...DOC };
+      const google = fakeGoogle({ file, finds: [DOMAIN] });
+
+      await resolveAs("alice@example.com", google, "document", DOC_URL);
+      // The owner moves the file to another domain within the cache time.
+      file.owners = [{ displayName: "Eve", emailAddress: "eve@other.test" }];
+
+      await expect(
+        resolveAs("alice@example.com", google, "document", DOC_URL),
+      ).resolves.toBeUndefined();
+    });
+
     it("hides a file that the viewer cannot open", async () => {
       const google = fakeGoogle({ doc: DOC_BODY, file: DOC });
 
