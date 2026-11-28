@@ -111,3 +111,21 @@ test("fails when an ast-grep baseline rule ignores another file", async () => {
     ],
   );
 });
+
+test("reads the finding counts of an ast-grep baseline rule", async () => {
+  const rule = (counts) =>
+    `id: no-host-globals\nignores:\n${Object.keys(counts)
+      .map((file) => `  - ${file}\n`)
+      .join("")}metadata:\n  baseline:\n${Object.entries(counts)
+      .map(([file, count]) => `    ${file}: ${count}\n`)
+      .join("")}`;
+  const filePath = "ast-grep/rules/no-host-globals-baseline.yml";
+  assert.deepEqual(
+    await growth(filePath, rule({ [CHILD]: 3 }), rule({ [CHILD]: 2 })),
+    [],
+  );
+  assert.deepEqual(
+    await growth(filePath, rule({ [CHILD]: 3 }), rule({ [CHILD]: 4 })),
+    [{ rule: "no-host-globals", allowed: 3, count: 4, entries: [CHILD] }],
+  );
+});

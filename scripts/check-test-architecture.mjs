@@ -28,6 +28,13 @@ const SHARED_WORKER_TEST_ROOTS = [
   `${JUNIOR_TESTS_ROOT}integration/`,
   `${JUNIOR_TESTS_ROOT}fixtures/`,
 ];
+// Integration tests may not mock any module. These layers may mock only an
+// external package.
+const MODULE_MOCK_TEST_ROOTS = [
+  `${JUNIOR_TESTS_ROOT}unit/`,
+  `${JUNIOR_TESTS_ROOT}component/`,
+];
+const JUNIOR_SOURCE_ROOT = "packages/junior/src/";
 // Guardian and classifier evals call one model boundary and do not run the
 // agent.
 const ISOLATED_EVAL_ROOTS = [
@@ -134,6 +141,16 @@ const AGENT_TEST_RULES = [
     count: (file) =>
       SHARED_WORKER_TEST_ROOTS.some((root) => file.path.startsWith(root))
         ? countMatches(file.contents, /\bprocess\.env\s*=(?!=)/g)
+        : 0,
+  },
+  {
+    id: "junior-module-mocks",
+    message:
+      "unit and component tests must not mock Junior modules; build a real app context and pass it in. Mock only an external package",
+    pathPrefix: JUNIOR_TESTS_ROOT,
+    count: (file) =>
+      MODULE_MOCK_TEST_ROOTS.some((root) => file.path.startsWith(root))
+        ? countJuniorModuleMocks(file)
         : 0,
   },
   {
@@ -327,6 +344,29 @@ function allowedAgentTestImport(filePath, source, typeOnly) {
   );
   // Fixture imports use the alias; relative imports stay inside evals.
   return resolved.startsWith(AGENT_EVALS_ROOT);
+}
+
+const MODULE_MOCK_PATTERN =
+  /\bvi\.(?:doMock|mock)\(\s*(?:import\(\s*)?["'`]([^"'`]+)["'`]/g;
+
+/** Count `vi.mock` and `vi.doMock` calls whose target is a Junior module. */
+function countJuniorModuleMocks(file) {
+  let count = 0;
+  for (const [, source] of file.contents.matchAll(MODULE_MOCK_PATTERN)) {
+    if (isJuniorModule(file.path, source)) count += 1;
+  }
+  return count;
+}
+
+function isJuniorModule(filePath, source) {
+  if (/^(?:@\/|#junior\/|@sentry\/junior(?:-[\w-]+)?(?:\/|$))/.test(source)) {
+    return true;
+  }
+  if (!source.startsWith(".")) return false;
+  const resolved = path.posix.normalize(
+    path.posix.join(path.posix.dirname(filePath), source),
+  );
+  return resolved.startsWith(JUNIOR_SOURCE_ROOT);
 }
 
 function agentRuleApplies(rule, filePath) {

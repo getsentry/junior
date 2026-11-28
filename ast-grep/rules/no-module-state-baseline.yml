@@ -1,0 +1,135 @@
+# Module-level state is a process global: it leaks between apps and tests in
+# one process. Keep state on the app context, or in the function or object
+# that owns its lifecycle. See `policies/interface-design.md`.
+#
+# This rule finds a module-level `let` or `var`, and a module-level array,
+# object, Map, Set, WeakMap, or WeakSet that a function changes. A lookup
+# table that only module load fills is not state.
+#
+# `ignores` lists the files that keep module state today, and
+# `metadata.baseline` gives the number of matches that each file may keep.
+# `ast-grep-ignores:check` fails when a file has more or fewer matches, and
+# `baseline-growth:check` lets the lists only shrink.
+id: no-module-state
+language: TypeScript
+severity: error
+message: "Do not keep state in a module-level variable or collection. Put it on the app context, or in the function or object that owns its lifecycle. See policies/interface-design.md."
+files:
+  - packages/junior/src/**/*.ts
+ignores:
+  - packages/junior/src/app/context.ts
+  - packages/junior/src/chat/agent/skills.ts
+  - packages/junior/src/chat/app/production.ts
+  - packages/junior/src/chat/capabilities/factory.ts
+  - packages/junior/src/chat/config.ts
+  - packages/junior/src/chat/db.ts
+  - packages/junior/src/chat/gateway-providers/routing.ts
+  - packages/junior/src/chat/inbox-items/message-change.ts
+  - packages/junior/src/chat/logging.ts
+  - packages/junior/src/chat/sandbox/docker/egress.ts
+  - packages/junior/src/chat/sandbox/egress/oidc.ts
+  - packages/junior/src/chat/scheduled-automations/cadence.ts
+  - packages/junior/src/chat/services/message-actor-identity.ts
+  - packages/junior/src/chat/skills.ts
+  - packages/junior/src/chat/slack/adapter-context.ts
+  - packages/junior/src/chat/slack/assistant-thread/title.ts
+  - packages/junior/src/chat/slack/client.ts
+  - packages/junior/src/chat/state/adapter.ts
+  - packages/junior/src/chat/task-execution/vercel-queue.ts
+  - packages/junior/src/core/prompt/layout.ts
+metadata:
+  baseline:
+    packages/junior/src/app/context.ts: 1
+    packages/junior/src/chat/agent/skills.ts: 1
+    packages/junior/src/chat/app/production.ts: 1
+    packages/junior/src/chat/capabilities/factory.ts: 1
+    packages/junior/src/chat/config.ts: 1
+    packages/junior/src/chat/db.ts: 1
+    packages/junior/src/chat/gateway-providers/routing.ts: 1
+    packages/junior/src/chat/inbox-items/message-change.ts: 1
+    packages/junior/src/chat/logging.ts: 4
+    packages/junior/src/chat/sandbox/docker/egress.ts: 1
+    packages/junior/src/chat/sandbox/egress/oidc.ts: 1
+    packages/junior/src/chat/scheduled-automations/cadence.ts: 1
+    packages/junior/src/chat/services/message-actor-identity.ts: 2
+    packages/junior/src/chat/skills.ts: 1
+    packages/junior/src/chat/slack/adapter-context.ts: 1
+    packages/junior/src/chat/slack/assistant-thread/title.ts: 1
+    packages/junior/src/chat/slack/client.ts: 1
+    packages/junior/src/chat/state/adapter.ts: 2
+    packages/junior/src/chat/task-execution/vercel-queue.ts: 1
+    packages/junior/src/core/prompt/layout.ts: 1
+rule:
+  any:
+    - kind: lexical_declaration
+      has: { regex: "^let$" }
+      matches: module-level
+    - kind: variable_declaration
+      matches: module-level
+    - kind: variable_declarator
+      all:
+        - has: { field: name, pattern: $NAME }
+        - has:
+            field: value
+            any:
+              - kind: array
+              - kind: object
+              - kind: new_expression
+                has:
+                  field: constructor
+                  regex: ^(Map|Set|WeakMap|WeakSet)$
+        - inside: { kind: lexical_declaration, matches: module-level }
+        # A change inside a function, so a lookup table that module load
+        # fills does not match.
+        - inside:
+            kind: program
+            stopBy: end
+            has:
+              stopBy: end
+              matches: change
+              inside:
+                stopBy: end
+                any:
+                  - kind: function_declaration
+                  - kind: generator_function_declaration
+                  - kind: function_expression
+                  - kind: arrow_function
+                  - kind: method_definition
+utils:
+  module-level:
+    any:
+      - inside: { kind: program }
+      - inside: { kind: export_statement, inside: { kind: program } }
+  # The collection, or one field of it.
+  target:
+    any:
+      - pattern: $NAME
+      - kind: member_expression
+        has: { field: object, pattern: $NAME }
+  member-of-target:
+    any:
+      - kind: subscript_expression
+        has: { field: object, matches: target }
+      - kind: member_expression
+        has: { field: object, matches: target }
+  change:
+    any:
+      - kind: call_expression
+        has:
+          field: function
+          kind: member_expression
+          all:
+            - has: { field: object, matches: target }
+            - has:
+                field: property
+                regex: ^(set|add|delete|clear|push|pop|shift|unshift|splice|sort|reverse|fill|copyWithin)$
+      - kind: assignment_expression
+        has: { field: left, matches: member-of-target }
+      - kind: augmented_assignment_expression
+        has: { field: left, matches: member-of-target }
+      - kind: update_expression
+        has: { matches: member-of-target }
+      - kind: unary_expression
+        regex: ^delete\s
+        has: { matches: member-of-target }
+      - pattern: Object.assign($NAME, $$$)
