@@ -131,7 +131,13 @@ async function readLinkedEvent(
   const link = calendarLink(url);
   const eventId = config && link && parseEventLink(link, config.accountEmail);
   if (!eventId) return null;
-  return await ctx.cache.getOrLoad(`calendar-event:${eventId}`, async () => ({
+  const key = `calendar-event:${eventId}`;
+  if (ctx.cacheOnly) {
+    return (
+      (await ctx.cache.get<LinkedEvent | null>(key, { stale: true })) ?? null
+    );
+  }
+  return await ctx.cache.getOrLoad(key, async () => ({
     value: await fetchLinkedEvent(ctx, eventId),
     ttlMs: EVENT_READ_TTL_MS,
   }));
@@ -159,6 +165,9 @@ async function canViewGoogleCalendarLink(
   ctx: ObjectLinkContext,
   url: URL,
 ): Promise<boolean> {
+  // A page load shows the stored card to anyone who can read the
+  // Conversation, so it checks no viewer access.
+  if (ctx.cacheOnly) return true;
   const event = await readLinkedEvent(ctx, url);
   return !!event && viewerIsOnEvent(event, ctx.viewer.email.toLowerCase());
 }
@@ -207,6 +216,7 @@ export const googleCalendarLinks: PluginObjectLinkDefinition = {
       target: { param: "continue", filters: CALENDAR_EVENT_FILTERS },
     },
   ],
+  cacheOnlyReads: true,
   canView: canViewGoogleCalendarLink,
   label: (url) => (calendarLink(url) ? "Calendar event" : undefined),
   objectTypes: ["calendar_event"],

@@ -181,13 +181,13 @@ async function readLinkedFile(
   link: FileLink,
 ): Promise<LinkedFile | undefined> {
   const { fileId, resourceKey } = link.file;
-  const file = await ctx.cache.getOrLoad(
-    `drive-file:${fileId}:${resourceKey ?? ""}`,
-    async () => ({
-      value: await fetchFile(ctx, link.file),
-      ttlMs: FILE_READ_TTL_MS,
-    }),
-  );
+  const key = `drive-file:${fileId}:${resourceKey ?? ""}`;
+  const file = ctx.cacheOnly
+    ? ((await ctx.cache.get<LinkedFile | null>(key, { stale: true })) ?? null)
+    : await ctx.cache.getOrLoad(key, async () => ({
+        value: await fetchFile(ctx, link.file),
+        ttlMs: FILE_READ_TTL_MS,
+      }));
   return fitsLink(file, link) ? file : undefined;
 }
 
@@ -238,6 +238,9 @@ async function canViewGoogleFileLink(
 ): Promise<boolean> {
   const config = readGoogleConfig();
   const link = parseFileLink(url);
+  // A page load shows the stored card to anyone who can read the
+  // Conversation, so it checks no viewer access.
+  if (ctx.cacheOnly) return !!config && !!link;
   const file = config && link && (await readLinkedFile(ctx, link));
   return (
     !!file &&
@@ -260,8 +263,11 @@ async function resolveGoogleFileLink(
   // A Drive link to a Doc, Sheet, or Slides file shows the same card as its
   // Docs link.
   const type = googleFileType(file.mimeType);
+  // The summary is not in the cache, so a page load shows none.
   const summary =
-    type === "document" ? await docSummary(ctx, link.file) : undefined;
+    type === "document" && !ctx.cacheOnly
+      ? await docSummary(ctx, link.file)
+      : undefined;
   const modifiedAtMs = file.modifiedTime
     ? Date.parse(file.modifiedTime)
     : Number.NaN;
@@ -315,6 +321,7 @@ export const googleFileLinks: PluginObjectLinkDefinition = {
     ),
     { host: "drive.google.com", path: "/open" },
   ],
+  cacheOnlyReads: true,
   canView: canViewGoogleFileLink,
   objectTypes: ["document"],
   // One tool reads Docs, Sheets, and Slides. No tool reads other files.

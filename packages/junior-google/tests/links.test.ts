@@ -131,6 +131,9 @@ function linkType(objectType: string): PluginObjectLinkDefinition {
 function memoryCache() {
   const entries = new Map<string, unknown>();
   return {
+    async get<T>(key: string) {
+      return entries.get(key) as T | undefined;
+    },
     async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
       if (!entries.has(key)) entries.set(key, (await load()).value);
       return entries.get(key) as T;
@@ -138,16 +141,25 @@ function memoryCache() {
   };
 }
 
-/** Check access, then read the card, the same as Junior does. */
+/**
+ * Check access, then read the card, the same as Junior does. A page load
+ * reads with `cacheOnly`, where egress throws.
+ */
 async function resolveAs(
   email: string,
   google: ReturnType<typeof fakeGoogle>,
   objectType: string,
   url: string,
+  read: { cacheOnly?: true } = {},
 ) {
   const ctx = {
+    ...read,
     cache: google.cache,
-    egress: { fetch: google.fetch },
+    egress: {
+      fetch: read.cacheOnly
+        ? () => Promise.reject(new Error("A page load reads no provider"))
+        : google.fetch,
+    },
     imagePath: (ref: string, version?: string) =>
       `/api/images/${Buffer.from(ref).toString("base64url")}.sig?w=640${version ? `&v=${version}` : ""}`,
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
@@ -328,6 +340,25 @@ describe("Google link cards", () => {
           `https://docs.google.com/spreadsheets/d/${DOC_ID}/edit`,
         ),
       ).resolves.toBeUndefined();
+    });
+
+    it("shows the cached file on a page load, with no Google read", async () => {
+      const google = fakeGoogle({ doc: DOC_BODY, file: DOC, finds: [NAMED] });
+      const pageLoad = (email: string) =>
+        resolveAs(email, google, "document", DOC_URL, { cacheOnly: true });
+
+      expect(linkType("document").cacheOnlyReads).toBe(true);
+      // Nothing holds the file yet, so the page shows the stored title.
+      await expect(pageLoad("alice@example.com")).resolves.toBeUndefined();
+      await resolveAs("alice@example.com", google, "document", DOC_URL);
+      const reads = google.fetch.mock.calls.length;
+      // A reader who can read the Conversation sees the stored file. The
+      // Doc summary is not cached, so it is left out.
+      await expect(pageLoad("bob@example.com")).resolves.toMatchObject({
+        facts: { summary: undefined },
+        title: TITLE,
+      });
+      expect(google.fetch).toHaveBeenCalledTimes(reads);
     });
 
     it("reads the file once for the access check and the card", async () => {
@@ -647,6 +678,22 @@ describe("Google link cards", () => {
       expect(new URL(google.fetch.mock.calls[0][0].request.url).pathname).toBe(
         "/calendar/v3/calendars/primary/events/evt123abc",
       );
+    });
+
+    it("shows the cached event on a page load, with no Calendar read", async () => {
+      const google = fakeGoogle({ event: EVENT });
+      const pageLoad = () =>
+        resolveAs("carol@example.com", google, "calendar_event", EVENT_URL, {
+          cacheOnly: true,
+        });
+
+      expect(linkType("calendar_event").cacheOnlyReads).toBe(true);
+      await expect(pageLoad()).resolves.toBeUndefined();
+      await resolveAs("alice@example.com", google, "calendar_event", EVENT_URL);
+      await expect(pageLoad()).resolves.toMatchObject({
+        title: "Launch review",
+      });
+      expect(google.fetch).toHaveBeenCalledOnce();
     });
 
     it("shows an event that has a guest without an email", async () => {

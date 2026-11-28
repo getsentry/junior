@@ -1,5 +1,6 @@
 import { githubPlugin } from "@sentry/junior-github";
 import { encodeObjectImageRef } from "@sentry/junior-plugin-api";
+import { sentryPlugin } from "@sentry/junior-sentry";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +13,7 @@ import {
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { decodeImageId } from "@/chat/images/ids";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -223,6 +225,89 @@ describe("conversation detail annotations", () => {
           kind: "object",
           status: "merged",
           title: "Show screenshots on cards",
+        }),
+      ]);
+      expect(outbound.urls).toEqual([]);
+    } finally {
+      outbound.stop();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("shows a Sentry issue that the plugin cache holds, and reads no provider", async () => {
+    useAppContext();
+    vi.stubEnv("SENTRY_READ_TOKEN", "org-read-token");
+    const issueUrl = "https://sentry.sentry.io/issues/4567/";
+    mswServer.use(
+      http.get("https://sentry.io/api/0/organizations/sentry/", () =>
+        HttpResponse.json({
+          links: { regionUrl: "https://us.sentry.io" },
+          slug: "sentry",
+        }),
+      ),
+      http.get(
+        "https://us.sentry.io/api/0/organizations/sentry/issues/4567/",
+        () =>
+          HttpResponse.json({
+            id: "4567",
+            project: { slug: "junior" },
+            shortId: "JUNIOR-3ZK",
+            status: "resolved",
+            title: "TypeError: cart.total is undefined",
+          }),
+      ),
+    );
+    await createApp({ plugins: defineJuniorPlugins([sentryPlugin()]) });
+    const conversationId = "local:test:sentry-annotations";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: 1,
+      source: "internal",
+      title: "Checkout crash",
+      visibility: "public",
+    });
+    await createPluginAnnotations({
+      conversationId,
+      db: getDb(),
+      plugin: "sentry",
+    }).upsert({
+      kind: "object",
+      objectType: "task",
+      key: "sentry/4567",
+      title: "Stored title",
+      url: issueUrl,
+    });
+    const alice = await signedInViewer("alice@example.com");
+    await createUserTokenStore().set(alice.id, "sentry", {
+      accessToken: "alice-token",
+      expiresAt: Date.now() + 3_600_000,
+      refreshToken: "alice-refresh",
+      scope:
+        "alerts:write event:write member:read org:read project:releases project:write team:write",
+    });
+    const outbound = recordOutboundRequests();
+    try {
+      // Nothing holds the issue yet, so the page shows the stored title.
+      const unknown = await readConversationDetail(conversationId, {
+        viewer: alice,
+      });
+      expect(unknown?.annotations).toEqual([
+        expect.objectContaining({ kind: "object", title: "Stored title" }),
+      ]);
+      expect(outbound.urls).toEqual([]);
+
+      await readLiveCards(alice, [issueUrl]);
+      outbound.urls.length = 0;
+      // A reader without a Sentry account sees the cached issue too.
+      const outsider = await readConversationDetail(conversationId, {
+        viewer: await signedInViewer("bob@example.com"),
+      });
+      expect(outsider?.annotations).toEqual([
+        expect.objectContaining({
+          label: "JUNIOR-3ZK",
+          status: "resolved",
+          title: "TypeError: cart.total is undefined",
         }),
       ]);
       expect(outbound.urls).toEqual([]);
