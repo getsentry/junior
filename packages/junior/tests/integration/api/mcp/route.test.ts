@@ -5,7 +5,6 @@ import { JUNIOR_IOS_CLIENT } from "@/api/mcp/oauth/client-metadata";
 import { createPersonalToken } from "@/personal-tokens/store";
 import {
   approveMcpClient,
-  approveMcpConsent,
   connectMcpClient,
   createPkce,
   exchangeMcpCode,
@@ -19,7 +18,9 @@ import {
   type McpTokenBody,
   mockMcpDashboardConfig,
   openMcpConsentPage,
+  readMcpCallback,
   requestMcpTokens,
+  submitMcpConsent,
   withMcpClient,
 } from "../../../fixtures/mcp-http";
 import { seedMcpConversation } from "../../../fixtures/mcp-tools";
@@ -107,13 +108,14 @@ describe("remote MCP HTTP", () => {
       consentUrl,
       MCP_TEST_OTHER_VIEWER,
     );
-    const approved = await approveMcpConsent(app, {
+    const approved = await submitMcpConsent(app, {
       consentUrl,
       csrf: page.csrf ?? "",
       email: MCP_TEST_VIEWER,
       referrerPolicy: page.referrerPolicy,
     });
-    const callback = new URL(approved.headers.get("location") ?? "");
+    const callback = await readMcpCallback(approved);
+    const redirectPage = await approved.text();
     const issued = await exchangeMcpCode(app, {
       code: callback.searchParams.get("code") ?? "",
       verifier: pkce.verifier,
@@ -156,7 +158,20 @@ describe("remote MCP HTTP", () => {
     expect(page.status).toBe(200);
     expect(page.html).toContain(`Connect ${MCP_CLIENT_NAME}`);
     expect(page.html).toContain("mcp-client.example.test");
+    // The form posts only to Junior. The redirect page navigates onward, so
+    // later hops from the client callback are not form redirects.
+    expect(page.contentSecurityPolicy).toMatch(/form-action 'self'$/);
     expect(otherPage.status).toBe(403);
+    expect(approved.status).toBe(200);
+    expect(approved.headers.get("location")).toBeNull();
+    expect(approved.headers.get("cache-control")).toBe("no-store");
+    expect(approved.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(approved.headers.get("content-security-policy")).toBe(
+      "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'",
+    );
+    expect(redirectPage).toContain(
+      `<a href="${callback.toString().replaceAll("&", "&amp;")}">`,
+    );
     expect(`${callback.origin}${callback.pathname}`).toBe(
       MCP_TEST_REDIRECT_URI,
     );
@@ -200,7 +215,7 @@ describe("remote MCP HTTP", () => {
     );
     const consentUrl = authorize.headers.get("location") ?? "";
     const page = await openMcpConsentPage(app, consentUrl, MCP_TEST_VIEWER);
-    const approved = await approveMcpConsent(app, {
+    const approved = await submitMcpConsent(app, {
       consentUrl,
       csrf: page.csrf ?? "",
       email: MCP_TEST_VIEWER,
@@ -218,15 +233,51 @@ describe("remote MCP HTTP", () => {
 
     expect(page.html).toContain("Connect iOS app");
     expect(page.html).toContain("junior.sentry.dev");
-    // The browser checks the redirect after the consent POST against this.
-    expect(page.contentSecurityPolicy).toContain(
-      "form-action 'self' junior-ios:",
+    // Safari can ignore a meta refresh to a custom scheme, so the app keeps
+    // the 303, and the browser checks it against `form-action`.
+    expect(approved.status).toBe(303);
+    expect(page.contentSecurityPolicy).toMatch(
+      /form-action 'self' junior-ios:$/,
     );
     expect(`${callback.protocol}//${callback.host}${callback.pathname}`).toBe(
       redirectUri,
     );
     expect(callback.searchParams.get("state")).toBe("app-state");
     expect(issued.status).toBe(200);
+  });
+
+  it("sends a denial to the client callback through the redirect page", async () => {
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const authorize = await app.request(
+      mcpAuthorizeUrl({
+        client_id: MCP_CLIENT_ID,
+        code_challenge: createPkce().challenge,
+        redirect_uri: MCP_TEST_REDIRECT_URI,
+        state: "client-state",
+      }),
+    );
+    const consentUrl = authorize.headers.get("location") ?? "";
+    const page = await openMcpConsentPage(app, consentUrl, MCP_TEST_VIEWER);
+    const denied = await submitMcpConsent(app, {
+      action: "deny",
+      consentUrl,
+      csrf: page.csrf ?? "",
+      email: MCP_TEST_VIEWER,
+      referrerPolicy: page.referrerPolicy,
+    });
+    const callback = await readMcpCallback(denied);
+
+    expect(denied.status).toBe(200);
+    expect(denied.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(`${callback.origin}${callback.pathname}`).toBe(
+      MCP_TEST_REDIRECT_URI,
+    );
+    expect(Object.fromEntries(callback.searchParams)).toEqual({
+      error: "access_denied",
+      error_description: "The user denied access.",
+      iss: MCP_TEST_ORIGIN,
+      state: "client-state",
+    });
   });
 
   it("rejects a personal token and a token for a domain that is no longer allowed", async () => {

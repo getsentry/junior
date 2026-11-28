@@ -17,13 +17,13 @@ function createdIssues(result: { toolCalls: ToolCall[] }): string[] {
   });
 }
 
-/** Questions of the Inbox items that the agent added. */
+/** The questions that the agent asked with `askUserQuestion`. */
 function inboxItemQuestions(result: { toolCalls: ToolCall[] }): string[] {
-  return toolCallsOf("addInboxItem", result).map((call) =>
-    String(
-      (call.input as { request?: { question?: unknown } }).request?.question ??
-        "",
-    ),
+  return toolCallsOf("askUserQuestion", result).flatMap((call) =>
+    (
+      (call.input as { questions?: Array<{ question?: unknown }> }).questions ??
+      []
+    ).map((entry) => String(entry.question ?? "")),
   );
 }
 

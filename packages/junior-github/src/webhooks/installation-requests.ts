@@ -10,7 +10,10 @@ import {
   pullRequestFeedbackReactionContent,
   pullRequestReviewPath,
 } from "../pull-request-feedback.js";
-import type { PluginCache } from "@sentry/junior-plugin-api";
+import {
+  CACHE_LOAD_TIMEOUT_MS,
+  type PluginCache,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GitHubRequestError,
@@ -580,16 +583,18 @@ async function loadRepositoryPermission(
   return await cache.getOrLoad<RepositoryPermission>(
     `repository-permission:${owner}/${name}:${target.login}`.toLowerCase(),
     async () => {
+      const signal = AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS);
       const token = await issueInstallationToken({
         ...env,
         permissions: { metadata: "read" },
         repositories: [name],
+        signal,
       });
       const response = repositoryPermissionSchema.parse(
         await githubRequest(
           "https://api.github.com",
           `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/collaborators/${encodeURIComponent(target.login)}/permission`,
-          { responses: env.responses, token: token.token },
+          { responses: env.responses, signal, token: token.token },
         ),
       );
       return {

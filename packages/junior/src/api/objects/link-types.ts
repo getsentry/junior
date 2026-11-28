@@ -18,6 +18,8 @@ export interface ObjectLinkRead {
   cacheOnly?: true;
   now?: true;
   onStale?(storedAtMs: number): void;
+  /** Ends every provider call of the card read, its access check included. */
+  signal?: AbortSignal;
 }
 
 /** One link type of core or a plugin, with the viewer-scoped resolver. */

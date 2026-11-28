@@ -7,6 +7,7 @@ import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import { listChildAgents } from "@/chat/child-agents/list";
 import { listWatches, type Watch } from "@/chat/events/store";
 import type { WaitingOn } from "./model";
+import { ASK_TOOL_NAMES } from "@/chat/inbox-items/request";
 
 /**
  * Idle time at which the earliest timer Watch of the Conversation is due,
@@ -23,11 +24,7 @@ export function earliestTimerDueIdleMs(
   return dueIdleMs <= maxDueIdleMs ? dueIdleMs : undefined;
 }
 
-// A Turn that started before Review items became Inbox items has the old
-// tool name in its history.
-const ADD_INBOX_ITEM_TOOL_NAMES = new Set(["addInboxItem", "addReviewItem"]);
-
-// Whether the Turn called `addInboxItem` after its last user message. A
+// Whether the Turn called `askUserQuestion` after its last user message. A
 // message that steers the Turn is a user message too, so only the calls
 // after it count. Calls inside `codemode` or `executeTool` do not count.
 function askedInboxItem(
@@ -39,8 +36,7 @@ function askedInboxItem(
     if (
       message.role === "assistant" &&
       message.content.some(
-        (part) =>
-          part.type === "toolCall" && ADD_INBOX_ITEM_TOOL_NAMES.has(part.name),
+        (part) => part.type === "toolCall" && ASK_TOOL_NAMES.has(part.name),
       )
     ) {
       return true;

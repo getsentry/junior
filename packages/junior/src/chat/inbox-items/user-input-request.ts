@@ -7,6 +7,9 @@ import * as z from "zod";
 export const USER_INPUT_LIMITS = {
   maxButtonOptions: 5,
   maxDescriptionChars: 200,
+  // A field's help text can hold a whole question. Slack allows 2,000
+  // characters in an input hint.
+  maxFieldDescriptionChars: 1_000,
   maxFields: 4,
   maxLabelChars: 75,
   maxOptions: 10,
@@ -20,137 +23,87 @@ const labelSchema = z
   .trim()
   .min(1)
   .max(USER_INPUT_LIMITS.maxLabelChars);
-const descriptionSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(USER_INPUT_LIMITS.maxDescriptionChars)
-  .optional();
+
+function descriptionSchema(maxChars: number) {
+  return z.string().trim().min(1).max(maxChars).optional();
+}
 
 const optionSchema = z.object({
-  label: labelSchema.describe(
-    "Short choice text, such as `Accept` or `Decline`. The answer uses this exact text.",
-  ),
-  description: descriptionSchema.describe(
-    "Optional short note about what this choice does.",
-  ),
-  recommended: z
-    .boolean()
-    .optional()
-    .describe(
-      "Set true on the choice that you recommend, put that choice first, and say why in its description. A `choice` field can recommend one option.",
-    ),
+  label: labelSchema,
+  description: descriptionSchema(USER_INPUT_LIMITS.maxDescriptionChars),
+  recommended: z.boolean().optional(),
 });
 
 const fieldBase = {
-  id: z
-    .string()
-    .regex(/^[a-z][a-z0-9_]{0,31}$/)
-    .describe("Stable key for this field, such as `approach`."),
-  label: labelSchema.describe("Short field name, such as `Approach`."),
-  description: descriptionSchema.describe(
-    "Optional short help text for this field.",
-  ),
+  id: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
+  label: labelSchema,
+  description: descriptionSchema(USER_INPUT_LIMITS.maxFieldDescriptionChars),
 };
 
-function optionsSchema(minOptions: number) {
-  return z
-    .array(optionSchema)
-    .min(minOptions)
-    .max(USER_INPUT_LIMITS.maxOptions)
-    .describe("Choices in display order.");
-}
-
-function fieldsSchema(minOptions: number) {
-  const userInputFieldSchema = z.discriminatedUnion("kind", [
-    z.object({
-      ...fieldBase,
-      kind: z.literal("choice").describe("The person picks one option."),
-      options: optionsSchema(minOptions),
-    }),
-    z.object({
-      ...fieldBase,
-      kind: z
-        .literal("multi_choice")
-        .describe("The person picks any number of options."),
-      options: optionsSchema(minOptions),
-    }),
-    z.object({
-      ...fieldBase,
-      kind: z.literal("text").describe("The person types a short answer."),
-    }),
-  ]);
-  return z
-    .array(userInputFieldSchema)
-    .min(1)
-    .max(USER_INPUT_LIMITS.maxFields)
-    .describe(
-      "What to ask, in display order. Use one `choice` field for a simple decision.",
-    );
-}
-
-/** The question of a request, in markdown. */
-export const userInputQuestionSchema = z
-  .string()
-  .trim()
+// A plugin item can have one choice, such as Resume, so a choice field can
+// have one option.
+const optionsSchema = z
+  .array(optionSchema)
   .min(1)
-  .max(USER_INPUT_LIMITS.maxQuestionChars)
-  .describe(
-    "The question, in markdown. Include the facts the person needs to decide.",
-  );
+  .max(USER_INPUT_LIMITS.maxOptions);
 
-/** The fields of a request that an agent writes. */
-export const userInputFieldsSchema = fieldsSchema(USER_INPUT_LIMITS.minOptions);
-
-function requestSchema(minOptions: number) {
-  return z
-    .object({
-      question: userInputQuestionSchema,
-      fields: fieldsSchema(minOptions),
-    })
-    .superRefine((request, context) => {
-      const ids = new Set<string>();
-      for (const field of request.fields) {
-        if (ids.has(field.id)) {
-          context.addIssue({
-            code: "custom",
-            message: "Each field needs a different id.",
-          });
-        }
-        ids.add(field.id);
-        if (field.kind === "text") continue;
-        const labels = field.options.map((option) =>
-          option.label.toLowerCase(),
-        );
-        if (new Set(labels).size !== labels.length) {
-          context.addIssue({
-            code: "custom",
-            message: "Each choice of a field needs a different label.",
-          });
-        }
-        if (
-          field.kind === "choice" &&
-          field.options.filter((option) => option.recommended).length > 1
-        ) {
-          context.addIssue({
-            code: "custom",
-            message: "A `choice` field can recommend only one option.",
-          });
-        }
-      }
-    });
-}
-
-/** A request that an agent writes. Each choice field has two options or more. */
-export const userInputRequestSchema = requestSchema(
-  USER_INPUT_LIMITS.minOptions,
-);
+const userInputFieldSchema = z.discriminatedUnion("kind", [
+  z.object({ ...fieldBase, kind: z.literal("choice"), options: optionsSchema }),
+  z.object({
+    ...fieldBase,
+    kind: z.literal("multi_choice"),
+    options: optionsSchema,
+  }),
+  z.object({ ...fieldBase, kind: z.literal("text") }),
+]);
 
 /**
- * A saved request. A plugin item can have one choice, such as Resume, so a
- * saved choice field can have one option. Agents still need two.
+ * A saved request: an optional question that its fields share, and the
+ * fields. A question that an agent asks has no shared question: each field
+ * holds its own question.
  */
-export const savedUserInputRequestSchema = requestSchema(1);
+export const savedUserInputRequestSchema = z
+  .object({
+    question: z
+      .string()
+      .trim()
+      .min(1)
+      .max(USER_INPUT_LIMITS.maxQuestionChars)
+      .optional(),
+    fields: z
+      .array(userInputFieldSchema)
+      .min(1)
+      .max(USER_INPUT_LIMITS.maxFields),
+  })
+  .superRefine((request, context) => {
+    const ids = new Set<string>();
+    for (const field of request.fields) {
+      if (ids.has(field.id)) {
+        context.addIssue({
+          code: "custom",
+          message: "Each field needs a different id.",
+        });
+      }
+      ids.add(field.id);
+      if (field.kind === "text") continue;
+      const labels = field.options.map((option) => option.label.toLowerCase());
+      if (new Set(labels).size !== labels.length) {
+        context.addIssue({
+          code: "custom",
+          message: "Each choice of a field needs a different label.",
+        });
+      }
+      if (
+        field.kind === "choice" &&
+        field.options.filter((option) => option.recommended).length > 1
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "A `choice` field can recommend only one option.",
+        });
+      }
+    }
+  });
 
 /**
  * Label and help text of the free-text input that every form adds after the
@@ -158,25 +111,37 @@ export const savedUserInputRequestSchema = requestSchema(1);
  * every surface says that in the same words.
  */
 export const USER_INPUT_NOTE = {
-  label: "Anything else?",
-  description: "Optional. This note is sent together with your answers above.",
+  label: "Additional notes",
+  description: "Optional. Sent with your answers.",
 } as const;
 
 /** One field of a user input request. */
 export type UserInputField = UserInputRequest["fields"][number];
 
 /** A question with one or more fields for a person to answer. */
-export type UserInputRequest = z.output<typeof userInputRequestSchema>;
+export type UserInputRequest = z.output<typeof savedUserInputRequestSchema>;
 
 /**
  * A person's answer to one user input request. `values` maps field ids to
- * the picked option labels or the typed text. `other` is free text that the
- * person can always add.
+ * the picked option labels or the typed text. `other` is the card's
+ * additional notes, where the person can also write an answer that no
+ * choice fits.
  */
 export interface UserInputAnswer {
   other?: string | undefined;
   requestId: string;
   values: Record<string, string[]>;
+}
+
+/**
+ * Return the text that a request asks: its shared question, else the
+ * question of each field, one paragraph each.
+ */
+export function userInputQuestionText(request: UserInputRequest): string {
+  return (
+    request.question ??
+    request.fields.map((field) => field.description ?? field.label).join("\n\n")
+  );
 }
 
 /**
@@ -253,12 +218,12 @@ export function formatUserInputAnswer(
   const normalized = normalizeUserInputAnswer(request, answer);
   const lines: string[] = [];
   for (const field of request.fields) {
-    const values = normalized.values[field.id];
-    const value = values?.length ? values.join(", ") : "(no answer)";
+    const values = normalized.values[field.id] ?? [];
+    const value = values.length ? values.join(", ") : "(no answer)";
     lines.push(answerLine(`${field.label} (${field.id}): ${value}`));
   }
   if (normalized.other) {
-    lines.push(answerLine(`Other: ${normalized.other}`));
+    lines.push(answerLine(`${USER_INPUT_NOTE.label}: ${normalized.other}`));
   }
   return lines.join("\n");
 }

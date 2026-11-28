@@ -16,12 +16,22 @@ const ALLOWED_KEYS = new Set([
   "removedCards",
 ]);
 
+// `askUserQuestion` and the questions of `updateInboxItem` keep the keys of
+// Claude Code's `AskUserQuestion`, the shape that models are trained on.
+const ALLOWED_QUESTION_KEYS = new Set(["multiSelect"]);
+const QUESTION_TOOL_FILES = new Set([
+  "packages/junior/src/chat/inbox-items/tool-support.ts",
+]);
+
 /** Check tool input and output schemas in a set of source files. */
 export function checkToolKeyCasingSources(files, packageSrcRoots = {}) {
   const index = createToolSourceIndex(files, packageSrcRoots);
   const errors = new Set();
   const onKey = (filePath, property, key) => {
     if (SNAKE_CASE_KEY.test(key) || ALLOWED_KEYS.has(key)) return;
+    if (QUESTION_TOOL_FILES.has(filePath) && ALLOWED_QUESTION_KEYS.has(key)) {
+      return;
+    }
     errors.add(
       `${filePath}:${index.lineOf(filePath, property)}: tool schema key "${key}" must be snake_case`,
     );

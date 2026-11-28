@@ -13,6 +13,13 @@ export interface CacheEntry<T> {
 }
 
 /**
+ * How long a `getOrLoad` load that calls a provider may run. Other callers
+ * of the key wait 10 s for it, so a load that ends within this answers them
+ * all, and none of them calls the provider too.
+ */
+export const CACHE_LOAD_TIMEOUT_MS = 8000;
+
+/**
  * Short-lived copies of values that are slow or costly to load, such as
  * provider API reads. Junior can drop an entry at any time. A lost entry only
  * costs a reload, so never keep data here that Junior must not lose. Use
