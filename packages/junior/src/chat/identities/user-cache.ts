@@ -12,8 +12,12 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
-import type { PluginLinkedHandleLookup } from "@sentry/junior-plugin-api";
+import {
+  CACHE_LOAD_TIMEOUT_MS,
+  type PluginLinkedHandleLookup,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { untilAborted } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { cacheKeyPrefix, createCache } from "@/chat/state/cache";
 import type { JuniorDatabase } from "@/db/db";
@@ -278,7 +282,12 @@ export async function readCachedLinkedHandle(
   return await cache().getOrLoad<PluginLinkedHandleLookup>(
     `linked-handle:${lookup.provider}:${version.token}:${lookupHash}`,
     async () => {
-      const value = await load();
+      // The lookup searches Slack, stored accounts, and plugins at once, so
+      // the load stops waiting for it instead of ending each search.
+      const value = await untilAborted(
+        load(),
+        AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS),
+      );
       return value.status === "found" && settled
         ? { value, ttlMs: LINKED_HANDLE_TTL_MS, staleIfError: true }
         : { value };

@@ -442,7 +442,7 @@ describe("object links API", () => {
     expect(card?.facts).not.toHaveProperty("titleParts");
   });
 
-  it("ends a card read at the card deadline when GitHub stalls", async () => {
+  it("ends a card read within the cache load timeout when GitHub stalls", async () => {
     stubGitHubApp();
     // GitHub never answers this read.
     let requested!: () => void;
@@ -468,9 +468,12 @@ describe("object links API", () => {
       settled = true;
     });
     await stalled;
-    await vi.advanceTimersByTimeAsync(9_000);
+    // The card read holds the load lock of its cache entries, so it ends
+    // before the reads that wait 10 s for it give up.
+    await vi.advanceTimersByTimeAsync(7_000);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1_000);
+    expect(settled).toBe(true);
     const member = await pending;
     expect(member.objects.has(`${GITHUB_REPO}/pull/35`)).toBe(false);
   });

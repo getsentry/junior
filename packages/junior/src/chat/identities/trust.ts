@@ -15,7 +15,11 @@
  */
 import type { StateAdapter } from "chat";
 import * as z from "zod";
-import type { Event, SlackActor } from "@sentry/junior-plugin-api";
+import {
+  CACHE_LOAD_TIMEOUT_MS,
+  type Event,
+  type SlackActor,
+} from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
 import type { TagAuthor } from "@/chat/input-tags";
@@ -136,7 +140,11 @@ async function readActiveMember(
   return await createCache(getStateAdapter(), "core").getOrLoad(
     `slack:active-member:${teamId}:${userId}`,
     async () => {
-      const member = await lookupActiveSlackWorkspaceMember(userId, teamId);
+      const member = await lookupActiveSlackWorkspaceMember(
+        userId,
+        teamId,
+        AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS),
+      );
       const value: ActiveMember | null = member
         ? {
             email: member.email,
@@ -241,7 +249,10 @@ export async function isTrustedSlackAuthor(args: {
     `slack:allowed-domain:${args.teamId}:${userId}`,
     async () => {
       // Slack verifies the profile email, so Junior trusts it.
-      const profile = await lookupSlackUserProfile(userId);
+      const profile = await lookupSlackUserProfile(
+        userId,
+        AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS),
+      );
       const trusted =
         profile.id === userId && isSlackProfileDomainAllowed(profile);
       return {

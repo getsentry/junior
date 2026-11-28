@@ -19,10 +19,30 @@ export type InstallationTokens = Map<string, Promise<InstallationToken>>;
 /** A token this close to its expiry is minted again. */
 const REUSE_BUFFER_MS = 5 * 60 * 1000;
 
+// Wait for a shared mint until `signal` aborts. The mint goes on for the
+// other callers that share it.
+async function untilAborted<T>(
+  shared: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return await shared;
+  signal.throwIfAborted();
+  let onAbort!: () => void;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([shared, aborted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
 /**
  * Return the token of the same permissions and repositories while it has
  * time left, or mint one. Concurrent callers share one mint. A failed mint
- * is not kept.
+ * is not kept. `signal` ends only this caller's wait.
  */
 export async function reuseInstallationToken(
   tokens: InstallationTokens,
@@ -30,6 +50,7 @@ export async function reuseInstallationToken(
     permissions?: GitHubAppPermissions | undefined;
     repositories?: string[] | undefined;
     repositoryIds?: number[] | undefined;
+    signal?: AbortSignal | undefined;
   },
   mint: () => Promise<InstallationToken>,
 ): Promise<InstallationToken> {
@@ -40,16 +61,21 @@ export async function reuseInstallationToken(
   ]);
   // Read the map before any await, so a concurrent caller sees this mint.
   const pending = tokens.get(key);
-  const reused = pending && (await pending.catch(() => undefined));
+  const reused =
+    pending &&
+    (await untilAborted(
+      pending.catch(() => undefined),
+      scope.signal,
+    ));
   if (reused && reused.expiresAtMs - REUSE_BUFFER_MS > Date.now()) {
     return reused;
   }
   const minted = mint();
   tokens.set(key, minted);
-  try {
-    return await minted;
-  } catch (error) {
+  // Only a failed mint is dropped, not one that this caller stopped waiting
+  // for. This runs before the caller sees the failure.
+  minted.catch(() => {
     if (tokens.get(key) === minted) tokens.delete(key);
-    throw error;
-  }
+  });
+  return await untilAborted(minted, scope.signal);
 }

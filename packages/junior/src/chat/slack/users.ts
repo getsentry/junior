@@ -106,12 +106,13 @@ function nameFields(user: SlackUserRaw): string[] {
 /** Look up a Slack user by ID, returning the full profile including custom fields. */
 export async function lookupSlackUserProfile(
   userId: SlackUserId,
+  signal?: AbortSignal,
 ): Promise<SlackUserProfile> {
   const client = getSlackClient();
   const result = await withSlackRetries(
     () => client.users.info({ user: userId }),
     3,
-    { action: "users.info" },
+    { action: "users.info", signal },
   );
 
   const user = result.user;
@@ -131,10 +132,11 @@ export async function lookupSlackUserProfile(
 export async function lookupActiveSlackWorkspaceMember(
   userId: SlackUserId,
   teamId: string,
+  signal?: AbortSignal,
 ): Promise<SlackUserProfile | undefined> {
   let user: SlackUserProfile;
   try {
-    user = await lookupSlackUserProfile(userId);
+    user = await lookupSlackUserProfile(userId, signal);
   } catch (error: unknown) {
     if (
       error instanceof SlackActionError &&
@@ -153,12 +155,12 @@ export async function lookupActiveSlackWorkspaceMember(
 }
 
 /** Look up a Slack bot by ID. Returns undefined when Slack has no such bot. */
-export async function lookupSlackBot(botId: SlackBotId) {
+export async function lookupSlackBot(botId: SlackBotId, signal?: AbortSignal) {
   try {
     const result = await withSlackRetries(
       () => getSlackClient().bots.info({ bot: botId }),
       3,
-      { action: "bots.info" },
+      { action: "bots.info", signal },
     );
     return result.bot;
   } catch (error) {
