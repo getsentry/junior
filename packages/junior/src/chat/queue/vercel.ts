@@ -88,8 +88,9 @@ function visibility(consumer: QueueConsumer) {
 }
 
 // Vercel Queues rejects an idempotency key over 256 characters. Keys built
-// from nested ids, such as child agent reply ids, can be longer. Send the hash
-// of such a key: it is stable, so the same key still drops a second send.
+// from nested ids, such as child agent reply ids, can be longer. Send such a
+// key as its readable start, `:`, and the hash of the whole key, at exactly the
+// limit. The hash is stable, so the same key still drops a second send.
 const MAX_IDEMPOTENCY_KEY_LENGTH = 256;
 
 function withBoundedIdempotencyKey(
@@ -99,10 +100,9 @@ function withBoundedIdempotencyKey(
   if (!key || key.length <= MAX_IDEMPOTENCY_KEY_LENGTH) {
     return options;
   }
-  return {
-    ...options,
-    idempotencyKey: createHash("sha256").update(key).digest("hex"),
-  };
+  const digest = createHash("sha256").update(key).digest("hex");
+  const prefix = key.slice(0, MAX_IDEMPOTENCY_KEY_LENGTH - digest.length - 1);
+  return { ...options, idempotencyKey: `${prefix}:${digest}` };
 }
 
 /** Queue provider backed by Vercel Queues. */
