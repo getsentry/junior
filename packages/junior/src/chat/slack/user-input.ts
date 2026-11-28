@@ -5,6 +5,7 @@ import {
 } from "@/chat/slack/mrkdwn";
 import {
   buttonUserInputField,
+  type UserInputField,
   normalizeUserInputAnswer,
   USER_INPUT_LIMITS,
   USER_INPUT_NOTE,
@@ -42,25 +43,42 @@ function optionLabel(
     : option.label;
 }
 
-/** The question and a short list of what to answer, in Slack markdown. */
+function fieldDetail(field: UserInputField): string {
+  return field.kind === "text"
+    ? "short answer"
+    : `${field.kind === "multi_choice" ? "pick any" : "pick one"}: ${field.options.map((option) => optionLabel(option)).join(", ")}`;
+}
+
+/**
+ * The question and a short list of what to answer, in Slack markdown. A
+ * request without a shared question shows each field's own question, so
+ * each answer sits under its question.
+ */
 export function slackUserInputText(request: UserInputRequest): string {
   const buttonField = buttonUserInputField(request);
-  const notes = buttonField
+  const optionNotes = buttonField
     ? buttonField.options
         .filter((option) => option.description)
         .map((option) => `- **${optionLabel(option)}**: ${option.description}`)
-    : request.fields.map((field) => {
-        const detail =
-          field.kind === "text"
-            ? "short answer"
-            : `${field.kind === "multi_choice" ? "pick any" : "pick one"}: ${field.options.map((option) => optionLabel(option)).join(", ")}`;
-        return `- **${field.label}** (${detail})${field.description ? `: ${field.description}` : ""}`;
-      });
-  return normalizeSlackReplyMarkdown(
-    [request.question, ...(notes.length ? [notes.join("\n")] : [])].join(
-      "\n\n",
-    ),
-  );
+    : [];
+  const blocks = request.question
+    ? [
+        request.question,
+        (buttonField
+          ? optionNotes
+          : request.fields.map(
+              (field) =>
+                `- **${field.label}** (${fieldDetail(field)})${field.description ? `: ${field.description}` : ""}`,
+            )
+        ).join("\n"),
+      ]
+    : request.fields.map((field) =>
+        [
+          `**${field.label}**${field.description ? `: ${field.description}` : ""}`,
+          ...(buttonField ? optionNotes : [fieldDetail(field)]),
+        ].join("\n"),
+      );
+  return normalizeSlackReplyMarkdown(blocks.filter(Boolean).join("\n\n"));
 }
 
 function toOption(option: {
@@ -83,9 +101,9 @@ function toOption(option: {
 
 /**
  * Render a request as a Slack modal form: one input for each field and one
- * optional note input that goes with the answers. Every input is optional,
- * so a person can answer with free text only. `callbackId` and `privateMetadata` tell the submit
- * handler what the form answers.
+ * optional notes input that goes with the answers. Every input is optional,
+ * so a person can answer with free text only. `callbackId` and
+ * `privateMetadata` tell the submit handler what the form answers.
  */
 export function buildSlackUserInputForm(
   request: UserInputRequest,
@@ -208,7 +226,9 @@ export function slackUserInputAnswerNote(args: {
       : [];
   });
   if (answer.other) {
-    lines.push(`*Other*: ${escapeSlackMrkdwnText(answer.other)}`);
+    lines.push(
+      `*${USER_INPUT_NOTE.label}*: ${escapeSlackMrkdwnText(answer.other)}`,
+    );
   }
   return truncate([`${who} answered`, ...lines].join("\n"), MAX_NOTE_CHARS);
 }

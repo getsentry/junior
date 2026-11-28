@@ -118,12 +118,15 @@ function relatedText(item: InboxItem): string | undefined {
 function itemText(item: InboxItem, subjectUrl: string | undefined): string {
   const question = inboxItemQuestion(item.request);
   const related = relatedText(item);
+  // The title and body of a question without a shared question come from
+  // its fields' own questions, which the card shows below.
+  const fromFields = question !== undefined && !question.question;
   const render = (bodyChars: number) =>
     normalizeSlackReplyMarkdown(
       [
-        titleText(item, subjectUrl),
+        ...(fromFields ? [] : [titleText(item, subjectUrl)]),
         // A plugin item asks its body as the question, so it shows once.
-        ...(question?.question === item.body
+        ...(fromFields || question?.question === item.body
           ? []
           : [truncate(item.body, bodyChars)]),
         ...(related ? [related] : []),

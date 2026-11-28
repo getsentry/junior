@@ -78,7 +78,7 @@ test.describe("new UI", () => {
                 data: {
                   calls: [
                     {
-                      name: "addInboxItem",
+                      name: "askUserQuestion",
                       output: { item: { id: inboxItemId } },
                       status: "completed",
                       toolCallId: "add-inbox-item",

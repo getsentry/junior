@@ -2,6 +2,7 @@ import { botConfig } from "@/chat/config";
 import { completeDecision } from "@/chat/core-model";
 import type { InboxItem } from "./store";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { userInputQuestionText } from "@/chat/inbox-items/user-input-request";
 
 const MATCH_CONFIDENCE_THRESHOLD = 0.7;
 /** A slow decision keeps the items open instead of delaying the close. */
@@ -23,7 +24,7 @@ function describeItem(item: ReplyMatchItem): string {
   return [
     `Title: ${item.title}`,
     `Details: ${item.body}`,
-    ...(request ? [`Question: ${request.question}`] : []),
+    ...(request ? [`Question: ${userInputQuestionText(request)}`] : []),
     ...(fields.length ? ["Fields:", ...fields] : []),
   ].join("\n");
 }

@@ -22,8 +22,8 @@ function addItemCall(createdAt: string, item: MockItemSeed): MockEvent {
       type: "tool_calls",
       calls: [
         {
-          input: { kind: "action", title: item.title },
-          name: "addInboxItem",
+          input: { questions: [{ question: item.title }] },
+          name: "askUserQuestion",
           output: JSON.stringify({ item: { id: item.id } }),
           status: "completed",
           toolCallId: `add-${item.id}`,

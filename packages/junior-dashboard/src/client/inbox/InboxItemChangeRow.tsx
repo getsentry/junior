@@ -5,6 +5,7 @@ import {
   inboxItemQuestion,
   type ConversationQuestion,
   type InboxItemChangeRecord,
+  userInputQuestionText,
 } from "@sentry/junior/api/schema";
 
 import { HoverPreview } from "../components/ui/hover-preview";
@@ -74,7 +75,9 @@ function QuestionPreview(props: {
           <InboxItemObjects conversationId={props.conversationId}>
             <DisplayText
               mentions={props.question.mentions}
-              text={request?.question ?? props.question.body}
+              text={
+                request ? userInputQuestionText(request) : props.question.body
+              }
             />
           </InboxItemObjects>
           {request && answer ? (
@@ -411,12 +414,9 @@ export function InboxItemAskRow(props: {
           ) : null}
         </div>
       </div>
-      {item && !mobile ? (
-        <InboxItemActions
-          context={<InboxItemTurnMessage item={item} />}
-          item={item}
-        />
-      ) : null}
+      {/* The Turn's message is right above this card, so it shows only in
+          the phone sheet, which covers the transcript. */}
+      {item && !mobile ? <InboxItemActions item={item} /> : null}
       {item && sheet && mobile ? (
         <InboxItemSheet
           context={<InboxItemTurnMessage item={item} />}

@@ -30,7 +30,7 @@ export function createSlackMessageAddReactionTool(
       readOnlyHint: false,
     },
     // The system prompt owns the no-reply protocol. This names when a
-    // reaction is the whole reply, as `addInboxItem` does for its card.
+    // reaction is the whole reply, as `askUserQuestion` does for its card.
     description: `Add an emoji reaction to the current inbound Slack message. The person sees the reaction on their message. When the reaction is the whole reply, do not report it in text: end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
     inputSchema: z.object({
       emoji: z

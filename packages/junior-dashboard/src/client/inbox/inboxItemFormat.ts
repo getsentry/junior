@@ -1,7 +1,9 @@
 import * as z from "zod";
 import {
+  ASK_TOOL_NAMES,
   inboxItemQuestion,
   normalizeUserInputAnswer,
+  USER_INPUT_NOTE,
   type InboxItemPayload,
   type UserInputRequest,
 } from "@sentry/junior/api/schema";
@@ -72,9 +74,6 @@ export function inboxItemTitleText(
   return displayPlainText(item.title, item.mentions);
 }
 
-// Transcripts from before Review items became Inbox items have the old tool
-// name.
-const ADD_INBOX_ITEM_TOOL_NAMES = new Set(["addInboxItem", "addReviewItem"]);
 const executeToolInputSchema = z.object({ tool_name: z.string() });
 const addedItemSchema = z.object({
   item: z.object({
@@ -104,7 +103,7 @@ function addedItemAsk(output: unknown): InboxItemAsk | undefined {
 
 /**
  * Return the Inbox item that one completed tool call added, and its
- * question. The agent calls `addInboxItem` directly or through
+ * question. The agent calls `askUserQuestion` directly or through
  * `executeTool`. Returns undefined when the transcript hides the tool
  * result.
  */
@@ -119,7 +118,7 @@ export function inboxItemAskFromToolCall(call: {
     call.name === "executeTool"
       ? executeToolInputSchema.safeParse(call.input).data?.tool_name
       : call.name;
-  if (!toolName || !ADD_INBOX_ITEM_TOOL_NAMES.has(toolName)) return undefined;
+  if (!toolName || !ASK_TOOL_NAMES.has(toolName)) return undefined;
   return addedItemAsk(call.output);
 }
 
@@ -145,7 +144,9 @@ export function answerRows(
       ? [{ label: field.label, value: values.join(", ") }]
       : [];
   });
-  if (normalized.other) rows.push({ label: "Other", value: normalized.other });
+  if (normalized.other) {
+    rows.push({ label: USER_INPUT_NOTE.label, value: normalized.other });
+  }
   return rows;
 }
 

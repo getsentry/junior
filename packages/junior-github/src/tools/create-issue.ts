@@ -150,7 +150,7 @@ const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
  * a person started gets it: no one can answer the item in other runs.
  */
 function implementIssueNote(issue: string): string {
-  return `Unless the requester already asked you to fix ${issue}, ask whether to: the choice is theirs, even if they asked only for the issue. Use addInboxItem: question "Start a Thread to implement ${issue}?", choices "Start thread" (recommended) and "Not now". If they asked for the fix, start the Thread now. Skip both for issues owned by another team and for security, feedback, or tracking reports. Start the Thread with startAgent, kind thread, and this brief: read ${issue} with github_getIssue, follow the github-code workflow, and open a pull request that references it.`;
+  return `Unless the requester already asked you to fix ${issue}, ask whether to: the choice is theirs, even if they asked only for the issue. Use askUserQuestion: question "Start a Thread to implement ${issue}?", options "Start thread (Recommended)" and "Not now". If they asked for the fix, start the Thread now. Skip both for issues owned by another team and for security, feedback, or tracking reports. Start the Thread with startAgent, kind thread, and this brief: read ${issue} with github_getIssue, follow the github-code workflow, and open a pull request that references it.`;
 }
 
 async function gitHubIssueToolResult(

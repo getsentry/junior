@@ -77,7 +77,7 @@ Do not put these in `SKILL.md` or `references/`:
 | --- | --- |
 | `reply`, `noReply`, `reportBlocked`, "Ending a run" | the report, or no report |
 | `startAgent`, `messageAgent`, Task, Thread | parallel workers |
-| `addInboxItem`, Inbox item, review item | ask a person |
+| `askUserQuestion`, Inbox item, review item | ask a person |
 | Automation creator, Automation run, Turn, Destination, outcome | the requester, a run |
 | `createAutomation`, `watchEvents`, `loadSkill`, how the skill is invoked | nothing |
 | "when a scheduled task names this skill" | the work that starts it |
