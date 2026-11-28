@@ -177,19 +177,24 @@ export default {
       },
     },
   ],
-  required: [
-    {
-      name: "app-context-importers-current",
-      comment: `Each file in ${APP_CONTEXT_IMPORTERS_PATH} must still import src/app/context.ts. When a file stops, delete its entry, so the list only gets shorter.`,
-      severity: "error",
-      module: {
-        path: appContextImporterPaths,
-      },
-      to: {
-        path: "^src/app/context\\.ts$",
-      },
-    },
-  ],
+  // An empty `path` list matches every module, so the rule goes away with
+  // the last entry.
+  required:
+    appContextImporterPaths.length === 0
+      ? []
+      : [
+          {
+            name: "app-context-importers-current",
+            comment: `Each file in ${APP_CONTEXT_IMPORTERS_PATH} must still import src/app/context.ts. When a file stops, delete its entry, so the list only gets shorter.`,
+            severity: "error",
+            module: {
+              path: appContextImporterPaths,
+            },
+            to: {
+              path: "^src/app/context\\.ts$",
+            },
+          },
+        ],
   options: {
     doNotFollow: {
       path: "^node_modules",
