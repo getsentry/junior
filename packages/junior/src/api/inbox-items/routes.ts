@@ -67,7 +67,6 @@ import {
   SNOOZE_TIMER_EVENT_TYPE,
   type ViewerInboxSnooze,
 } from "@/chat/inbox-snoozes/store";
-import { readInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
@@ -264,18 +263,13 @@ function wakePayload(reason: InboxSnoozeWakeReason): InboxSnoozeWake {
   };
 }
 
-// A snooze's wake time is a timer trigger. The timer index holds its time.
+// A snooze's wake time is a timer trigger.
 function isSnoozeTimer(trigger: ViewerInboxSnooze["triggers"][number]) {
   return trigger.eventType === SNOOZE_TIMER_EVENT_TYPE;
 }
 
 /** What ends the viewer's snooze of an item, as its row says it. */
-function viewerSnoozePayload(
-  snooze: ViewerInboxSnooze,
-  wakeTimes: ReadonlyMap<string, number>,
-): InboxViewerSnooze {
-  const timer = snooze.triggers.find(isSnoozeTimer);
-  const wakeAtMs = timer && wakeTimes.get(timer.identifier);
+function viewerSnoozePayload(snooze: ViewerInboxSnooze): InboxViewerSnooze {
   const events = snooze.triggers
     .filter((trigger) => !isSnoozeTimer(trigger))
     .map((trigger) => {
@@ -292,9 +286,11 @@ function viewerSnoozePayload(
     ...(snooze.triggers.length === 0
       ? { untilClosed: true as const }
       : undefined),
-    ...(wakeAtMs !== undefined
-      ? { wakeAt: new Date(wakeAtMs).toISOString() }
-      : undefined),
+    ...(snooze.wakeAt
+      ? { wakeAt: snooze.wakeAt.toISOString() }
+      : snooze.triggers.some(isSnoozeTimer)
+        ? { untilSetTime: true as const }
+        : undefined),
     ...(events.length > 0 ? { events } : undefined),
   };
 }
@@ -398,11 +394,6 @@ async function inboxItemPayloads(
     }),
     resolveInboxItemSubjects(viewer, items, { cacheOnly: true }),
   ]);
-  const wakeTimes = await readInboxSnoozeTimers(
-    [...snoozes.snoozed.values()].flatMap((snooze) =>
-      snooze.triggers.filter(isSnoozeTimer).map((timer) => timer.identifier),
-    ),
-  );
   return items.map((item, index) => {
     const payload = inboxItemPayload(
       item,
@@ -416,7 +407,7 @@ async function inboxItemPayloads(
     );
     const snooze = snoozes.snoozed.get(item.id);
     return snooze
-      ? { ...payload, snoozedByViewer: viewerSnoozePayload(snooze, wakeTimes) }
+      ? { ...payload, snoozedByViewer: viewerSnoozePayload(snooze) }
       : payload;
   });
 }

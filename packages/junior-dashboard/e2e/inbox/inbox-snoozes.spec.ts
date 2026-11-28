@@ -4,6 +4,7 @@ import {
   digest,
   expandRow,
   license,
+  migration,
   mockInboxItems,
   openRowOf,
   pinChecks,
@@ -345,10 +346,15 @@ test.describe("new UI", () => {
   }) => {
     const other = "https://github.com/getsentry/junior/pull/3842";
     await mockInboxItems(page, {
-      open: [license, rollout, prReview],
+      open: [license, rollout, migration, prReview],
       snoozes: [
         { inboxItemId: license.id, untilClosed: true },
         { inboxItemId: rollout.id, untilMs: NOW_MS + 86_400_000 },
+        {
+          inboxItemId: migration.id,
+          untilMs: NOW_MS + 86_400_000,
+          untilSetTime: true,
+        },
         {
           inboxItemId: prReview.id,
           triggers: [
@@ -367,6 +373,7 @@ test.describe("new UI", () => {
     for (const line of [
       "Until it closes · snoozed just now",
       /^Until \w{3}, \w{3} \d{1,2}, \d{2}:\d{2} · snoozed just now$/,
+      "Until a set time · snoozed just now",
       "Until getsentry/payments#91 is merged · closes when getsentry/junior#3842 is closed without merging · snoozed just now",
     ]) {
       await expect(page.getByText(line, { exact: true })).toBeVisible();

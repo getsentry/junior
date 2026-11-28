@@ -136,6 +136,11 @@ export const inboxViewerSnoozeSchema = z
       .optional(),
     snoozedAt: z.string().datetime(),
     untilClosed: z.literal(true).optional(),
+    /**
+     * A timed snooze made before its wake time was stored: it has a time,
+     * but no `wakeAt`. No new snooze sets it.
+     */
+    untilSetTime: z.literal(true).optional(),
     wakeAt: z.string().datetime().optional(),
   })
   .strict();

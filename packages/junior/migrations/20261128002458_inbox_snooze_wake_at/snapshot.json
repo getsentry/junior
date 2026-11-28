@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "527a8523-9cab-4a17-869b-7d113544f733",
+  "prevIds": ["bc65ab56-c83c-4ce7-b610-ce709ad7c3e8"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_snoozes",
+        "wake_at"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_snoozes.wake_at",
+        "n|col|public.junior_inbox_snoozes.wake_at",
+        "e|col|public.junior_inbox_snoozes.wake_at"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_snoozes", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_snoozes",
+        "name": "wake_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

@@ -87,6 +87,7 @@ export function snoozeText(
       );
   const wakes = [
     ...(snooze.wakeAt ? [wakeTime(Date.parse(snooze.wakeAt), nowMs)] : []),
+    ...(snooze.untilSetTime ? ["a set time"] : []),
     ...clauses("wake"),
   ];
   const closes = clauses("resolve");

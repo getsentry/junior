@@ -304,6 +304,15 @@ describe("snoozes", () => {
         wakeAt: new Date(NOW_MS + 60_000).toISOString(),
       },
     });
+    // A timed snooze made before its wake time was stored still says that
+    // it has one.
+    await getDb().update(juniorInboxSnoozes).set({ wakeAt: null });
+    expect(await asAna.snoozes()).toEqual({
+      "Review acme entry": {
+        snoozedAt: new Date(NOW_MS).toISOString(),
+        untilSetTime: true,
+      },
+    });
     const asleep = await asAna.versions();
 
     // The timer.fired Event wakes it, and the versions token moves.

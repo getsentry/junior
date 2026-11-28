@@ -152,6 +152,8 @@ export async function snoozeInboxItems(
     }[];
     nowMs: number;
     userId: string;
+    /** The time of the timer trigger, when the snoozes have one. */
+    wakeAtMs?: number;
   },
 ): Promise<string[]> {
   return db.transaction(async (tx) => {
@@ -175,6 +177,7 @@ export async function snoozeInboxItems(
       inboxItemId: item.inboxItemId,
       state: "snoozed" as const,
       userId: input.userId,
+      wakeAt: input.wakeAtMs === undefined ? null : new Date(input.wakeAtMs),
     }));
     await tx.insert(juniorInboxSnoozes).values(snoozes);
     const triggers = input.items.flatMap((item, index) =>
@@ -329,6 +332,8 @@ export interface ViewerInboxSnooze {
   createdAt: Date;
   /** None: it lasts until the item closes. */
   triggers: InboxSnoozeTriggerInput[];
+  /** Null without a timer, or on a timed snooze made before it was stored. */
+  wakeAt: Date | null;
 }
 
 /**
@@ -360,6 +365,7 @@ export async function readViewerInboxSnoozes(
         namespace: juniorInboxSnoozeTriggers.namespace,
         outcome: juniorInboxSnoozeTriggers.outcome,
       },
+      wakeAt: juniorInboxSnoozes.wakeAt,
       wakeReason: juniorInboxSnoozes.wakeReason,
     })
     .from(juniorInboxSnoozes)
@@ -388,6 +394,7 @@ export async function readViewerInboxSnoozes(
       const snooze = snoozed.get(row.inboxItemId) ?? {
         createdAt: row.createdAt,
         triggers: [],
+        wakeAt: row.wakeAt,
       };
       if (row.trigger) snooze.triggers.push(row.trigger);
       snoozed.set(row.inboxItemId, snooze);

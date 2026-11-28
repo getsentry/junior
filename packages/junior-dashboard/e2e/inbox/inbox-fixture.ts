@@ -417,12 +417,14 @@ export async function mockInboxItems(
     /**
      * Snoozes that exist before the page loads, made at the page's pinned
      * clock. One without `untilMs` waits for its triggers, or with
-     * `untilClosed`, for its items to close.
+     * `untilClosed`, for its items to close. One with `untilSetTime` reads
+     * like a timed snooze made before the server stored its time.
      */
     snoozes?: ({
       triggers?: InboxSnoozeTrigger[];
       untilClosed?: true;
       untilMs?: number;
+      untilSetTime?: true;
     } & (
       | { conversationId: string; inboxItemId?: string }
       | { inboxItemId: string }
@@ -492,9 +494,10 @@ export async function mockInboxItems(
     triggers,
     untilClosed,
     untilMs,
+    untilSetTime,
     ...subject
   } of options.snoozes ?? []) {
-    snooze(
+    const ids = snooze(
       subject,
       {
         triggers,
@@ -503,6 +506,11 @@ export async function mockInboxItems(
       },
       NOW_MS,
     );
+    for (const id of untilSetTime ? ids : []) {
+      const { snooze: made, untilMs: at } = snoozes.get(id)!;
+      const { wakeAt: _wakeAt, ...rest } = made;
+      snoozes.set(id, { snooze: { ...rest, untilSetTime }, untilMs: at });
+    }
   }
   /** Snoozes made or undone, which move the versions token as on the server. */
   let snoozeChanges = 0;

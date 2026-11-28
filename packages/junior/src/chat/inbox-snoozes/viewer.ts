@@ -337,6 +337,7 @@ export async function createViewerSnooze(
     })),
     nowMs,
     userId: user.id,
+    ...(wakeAtMs === undefined ? undefined : { wakeAtMs }),
   });
   // A heartbeat that claims the timer before the snoozes commit finds no
   // snooze and removes it. That can only happen once the wake time has
