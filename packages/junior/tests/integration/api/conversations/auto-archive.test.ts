@@ -166,7 +166,7 @@ describe("conversation auto-archive API", () => {
     });
     const finishedAt = new Date(nowMs - 30 * hour).toISOString();
     process.env["JUNIOR_SCHEDULER_SECRET"] = "auto-archive-secret";
-    const juniorApp = await createApp({
+    const { app: juniorApp } = await createApp({
       dashboard: { disabled: true },
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
@@ -755,7 +755,9 @@ describe("conversation auto-archive API", () => {
     }
 
     process.env["JUNIOR_SCHEDULER_SECRET"] = "auto-archive-secret";
-    const juniorApp = await createApp({ dashboard: { disabled: true } });
+    const { app: juniorApp } = await createApp({
+      dashboard: { disabled: true },
+    });
     const { app } = await authenticatedApi(viewer.email);
     const read = await app.request(
       `http://localhost/api/conversations/${readId}/read-position`,

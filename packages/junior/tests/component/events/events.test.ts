@@ -273,7 +273,7 @@ describe("event delivery", () => {
         .update(body)
         .digest("hex")}`;
 
-      const app = await createApp({
+      const { app } = await createApp({
         conversationWork: {
           queue,
           run: async () => ({ status: "completed" }),

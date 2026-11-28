@@ -54,7 +54,7 @@ describe("dashboard plugin routes", () => {
 
   it("mounts dashboard routes through core app config", async () => {
     mockDashboardVirtualConfig();
-    const app = await createApp({
+    const { app } = await createApp({
       allowedDomains: ["sentry.io"],
       dashboard: {
         authRequired: false,
@@ -92,7 +92,7 @@ describe("dashboard plugin routes", () => {
   it("mounts plugin API route apps under the authenticated namespace", async () => {
     mockDashboardVirtualConfig();
     const pluginApp = notesRoutes();
-    const app = await createApp({
+    const { app } = await createApp({
       allowedDomains: ["sentry.io"],
       dashboard: {
         authRequired: false,

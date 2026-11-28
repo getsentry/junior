@@ -105,7 +105,7 @@ export async function linkGitHubMember() {
 
 /** Send a signed GitHub webhook through the app route. */
 export async function sendGitHubWebhook(
-  app: Awaited<ReturnType<typeof createApp>>,
+  app: Awaited<ReturnType<typeof createApp>>["app"],
   event: string,
   payload: Record<string, unknown>,
 ) {
@@ -138,7 +138,7 @@ export async function createGitHubApp(
     "pluginTaskQueue"
   > = {},
 ) {
-  const app = await createApp({
+  const { app } = await createApp({
     ...options,
     plugins: defineJuniorPlugins([githubPlugin()]),
   });

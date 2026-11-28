@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getAppContext } from "@/app/context";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConversationId,
@@ -59,7 +60,7 @@ describe("oauth identity link", () => {
       ),
       "eval-oauth",
       testWaitUntil,
-      {},
+      { catalog: getAppContext().catalog },
     );
 
     expect(response.status).toBe(200);
@@ -102,7 +103,7 @@ describe("oauth identity link", () => {
       ),
       "eval-oauth",
       testWaitUntil,
-      {},
+      { catalog: getAppContext().catalog },
     );
 
     expect(response.status).toBe(200);
@@ -184,7 +185,7 @@ describe("oauth identity link", () => {
       ),
       "google",
       testWaitUntil,
-      {},
+      { catalog: getAppContext().catalog },
     );
 
     expect(response.status).toBe(200);

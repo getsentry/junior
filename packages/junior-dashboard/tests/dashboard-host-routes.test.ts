@@ -46,7 +46,7 @@ it("forwards every dashboard route through the Junior app", async () => {
     plugins: undefined,
   }));
   mockBuiltSystemPrompts();
-  const app = await createApp();
+  const { app } = await createApp();
 
   for (const route of registeredRoutes) {
     const response = await app.fetch(

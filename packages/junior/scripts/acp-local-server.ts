@@ -38,7 +38,7 @@ const harness = await createConversationWebHarness(
 delete process.env["JUNIOR_BASE_URL"];
 delete process.env["VERCEL_PROJECT_PRODUCTION_URL"];
 delete process.env["VERCEL_URL"];
-const app = await createApp({
+const { app } = await createApp({
   conversationWork: harness.conversationWork,
   dashboard: { authRequired: false },
 });

@@ -50,7 +50,8 @@ describe("loadSkill tool", () => {
     );
     await writeSkill(pluginDir, "sentry");
 
-    vi.doMock("@/chat/discovery", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [pluginDir],
       skillRoots: () => [],
     }));

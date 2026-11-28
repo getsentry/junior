@@ -9,7 +9,8 @@ import {
   resetTestEvalOAuthHttpFixtures,
   resetTestGitHubHttpFixtures,
 } from "@sentry/junior-testing/http";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { resolveAppPaths } from "@/chat/discovery";
+import { loadConfig } from "@/config";
 import {
   createAppContext,
   installAppContext,
@@ -48,6 +49,7 @@ export default async function setup(
   const restoreAiGatewayDispatcher = installEvalAiGatewayDispatcher();
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
   let mswListening = false;
+  let appContext: AppContext | undefined;
   let previousAppContext: AppContext | undefined;
   const fixtureEnv = {
     ...evalGitHubEnv(),
@@ -71,7 +73,7 @@ export default async function setup(
       async () => {
         if (mswListening) mswServer.close();
       },
-      async () => await disconnectStateAdapter(),
+      async () => await appContext?.close(),
       async () => {
         installAppContext(previousAppContext);
         for (const [key, value] of previousEnv) {
@@ -112,9 +114,14 @@ export default async function setup(
         ...authSuitePlugins,
       ]),
     );
-    previousAppContext = installAppContext(
-      createAppContext({ plugins: runtimePlugins, pluginConfig }),
-    );
+    appContext = createAppContext({
+      config: loadConfig({ env: process.env }),
+      env: process.env,
+      paths: resolveAppPaths(),
+      plugins: runtimePlugins,
+      pluginConfig,
+    });
+    previousAppContext = installAppContext(appContext);
     Object.assign(process.env, fixtureEnv);
     mswServer.listen({ onUnhandledRequest: "bypass" });
     mswListening = true;

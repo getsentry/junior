@@ -2,87 +2,63 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { mswServer } from "../../msw/server";
+import type { PluginOAuthConfig } from "@/chat/plugins/types";
 import { queueSlackApiError } from "../../msw/handlers/slack-api";
 
 const {
   BASE_URL,
-  EXAMPLE_OAUTH_CONFIG,
-  GITHUB_OAUTH_CONFIG,
-  SENTRY_OAUTH_CONFIG,
   lookupSlackActorMock,
   resolvePluginOAuthAccountMock,
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
   BASE_URL: "https://example.com",
-  SENTRY_OAUTH_CONFIG: {
-    clientIdEnv: "SENTRY_CLIENT_ID",
-    clientSecretEnv: "SENTRY_CLIENT_SECRET",
-    authorizeEndpoint: "https://sentry.io/oauth/authorize/",
-    tokenEndpoint: "https://sentry.io/oauth/token/",
-    scope: "event:read org:read project:read team:read",
-    callbackPath: "/api/oauth/callback/sentry",
-  },
-  EXAMPLE_OAUTH_CONFIG: {
-    clientIdEnv: "EXAMPLE_CLIENT_ID",
-    clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
-    authorizeEndpoint: "https://api.example.com/v1/oauth/authorize",
-    tokenEndpoint: "https://api.example.com/v1/oauth/token",
-    authorizeParams: { audience: "workspace" },
-    tokenAuthMethod: "basic",
-    tokenExtraHeaders: { "Content-Type": "application/json" },
-    callbackPath: "/api/oauth/callback/example",
-  },
-  GITHUB_OAUTH_CONFIG: {
-    clientIdEnv: "GITHUB_APP_CLIENT_ID",
-    clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
-    authorizeEndpoint: "https://github.com/login/oauth/authorize",
-    tokenEndpoint: "https://github.com/login/oauth/access_token",
-    treatEmptyScopeAsUnreported: true,
-    callbackPath: "/api/oauth/callback/github",
-  },
   lookupSlackActorMock: vi.fn(),
   resolvePluginOAuthAccountMock: vi.fn(),
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
-vi.mock("@/app/context", () => {
-  const catalog = {
-    getDisplayName: (provider: string) => {
-      if (provider === "sentry") {
-        return "Sentry";
-      }
-      if (provider === "example") {
-        return "Example";
-      }
-      if (provider === "github") {
-        return "GitHub";
-      }
-      return undefined;
-    },
-    getOAuthConfig: (provider: string) => {
-      if (provider === "sentry") {
-        return SENTRY_OAUTH_CONFIG;
-      }
-      if (provider === "example") {
-        return EXAMPLE_OAUTH_CONFIG;
-      }
-      if (provider === "github") {
-        return GITHUB_OAUTH_CONFIG;
-      }
-      return undefined;
-    },
-    isProvider: (provider: string) =>
-      provider === "sentry" || provider === "example" || provider === "github",
-    isCapability: () => false,
-    isConfigKey: () => false,
-    getProviders: () => [],
-    getSkillRoots: () => [],
-    createBroker: () => {
-      throw new Error("not implemented in test");
+const SENTRY_OAUTH_CONFIG = {
+  clientIdEnv: "SENTRY_CLIENT_ID",
+  clientSecretEnv: "SENTRY_CLIENT_SECRET",
+  authorizeEndpoint: "https://sentry.io/oauth/authorize/",
+  tokenEndpoint: "https://sentry.io/oauth/token/",
+  scope: "event:read org:read project:read team:read",
+};
+const EXAMPLE_OAUTH_CONFIG = {
+  clientIdEnv: "EXAMPLE_CLIENT_ID",
+  clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
+  authorizeEndpoint: "https://api.example.com/v1/oauth/authorize",
+  tokenEndpoint: "https://api.example.com/v1/oauth/token",
+  authorizeParams: { audience: "workspace" },
+  tokenAuthMethod: "basic" as const,
+  tokenExtraHeaders: { "Content-Type": "application/json" },
+};
+const GITHUB_OAUTH_CONFIG = {
+  clientIdEnv: "GITHUB_APP_CLIENT_ID",
+  clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+  authorizeEndpoint: "https://github.com/login/oauth/authorize",
+  tokenEndpoint: "https://github.com/login/oauth/access_token",
+  treatEmptyScopeAsUnreported: true,
+};
+
+// An OAuth provider plugin, as an app installs it from its manifest.
+function oauthPlugin(
+  name: string,
+  displayName: string,
+  domain: string,
+  oauth: PluginOAuthConfig,
+) {
+  return {
+    manifest: {
+      name,
+      displayName,
+      description: `${displayName} plugin`,
+      configKeys: [],
+      credentials: { type: "oauth-bearer" as const, domains: [domain] },
+      oauth,
     },
   };
-  return { getAppContext: () => ({ plugins: [], catalog }) };
-});
+}
 
 vi.mock("@/chat/config", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/chat/config")>();
@@ -116,6 +92,8 @@ vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
 
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import type { AppContext } from "@/app/context";
+import { useAppContext } from "../../fixtures/app-context";
 import { GET } from "@/handlers/oauth-callback";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -125,8 +103,24 @@ const testWaitUntil: WaitUntilFn = (task) => {
   waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
 };
 
+let catalog: AppContext["catalog"];
+
 beforeEach(async () => {
   process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  ({ catalog } = useAppContext({
+    pluginConfig: {
+      inlineManifests: [
+        oauthPlugin("sentry", "Sentry", "sentry.io", SENTRY_OAUTH_CONFIG),
+        oauthPlugin(
+          "example",
+          "Example",
+          "api.example.com",
+          EXAMPLE_OAUTH_CONFIG,
+        ),
+        oauthPlugin("github", "GitHub", "api.github.com", GITHUB_OAUTH_CONFIG),
+      ],
+    },
+  }));
   await disconnectStateAdapter();
   await getStateAdapter().connect();
   lookupSlackActorMock.mockReset();
@@ -253,7 +247,7 @@ describe("oauth callback handler", () => {
       ),
       "unknown",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(404);
@@ -267,7 +261,7 @@ describe("oauth callback handler", () => {
       makeRequest("https://example.com/api/oauth/callback/sentry"),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(400);
@@ -283,7 +277,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(400);
@@ -308,7 +302,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(400);
@@ -337,7 +331,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(await getStoredState(stateKey)).toBeFalsy();
@@ -365,7 +359,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(200);
@@ -389,7 +383,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(500);
@@ -420,7 +414,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(200);
@@ -466,7 +460,7 @@ describe("oauth callback handler", () => {
       ),
       "example",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(200);
@@ -524,7 +518,7 @@ describe("oauth callback handler", () => {
       ),
       "github",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(200);
@@ -584,7 +578,7 @@ describe("oauth callback handler", () => {
       ),
       "github",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(200);
@@ -617,7 +611,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(400);
@@ -643,7 +637,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(500);
@@ -668,7 +662,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(500);
@@ -691,7 +685,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(400);
@@ -712,7 +706,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(400);
@@ -728,7 +722,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(400);
@@ -744,7 +738,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(400);
@@ -784,7 +778,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
-      {},
+      { catalog },
     );
 
     expect(response.status).toBe(200);

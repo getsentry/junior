@@ -59,7 +59,8 @@ describe("discoverSkills plugin ownership", () => {
 
     process.env["SKILL_DIRS"] = localSkillsRoot;
 
-    vi.doMock("@/chat/discovery", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [pluginsRoot],
       skillRoots: () => [],
     }));

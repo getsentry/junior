@@ -600,32 +600,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   }),
 }));
 
-vi.mock("@/app/context", () => {
-  const plugin = {
-    dir: "/tmp/plugins/demo",
-    skillsDir: "/tmp/plugins/demo/skills",
-    manifest: {
-      name: "demo",
-      description: "Demo plugin",
-      configKeys: [],
-      mcp: {
-        transport: "http",
-        url: "https://mcp.example.com",
-        allowedTools: ["ping"],
-      },
-    },
-  };
-
-  const catalog = {
-    getDefinition: (provider: string) =>
-      provider === "demo" ? plugin : undefined,
-    getMcpProviders: () => [plugin],
-    getProviders: () => [plugin],
-  };
-  const context = { plugins: [], catalog, slackUsers: new Map() };
-  return { getAppContext: () => context };
-});
-
 vi.mock("@/chat/skills", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/skills")>();
 
@@ -703,6 +677,7 @@ import {
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { recordTurnStart } from "../../fixtures/turn-start";
+import { useAppContext } from "../../fixtures/app-context";
 
 // The mocked core blocks. No core registration adds system prompt guidance.
 const CORE_SYSTEM_PROMPT = "System prompt";
@@ -791,6 +766,25 @@ function makeAgentRun(
 // agent/runtime seam; it is not integration coverage.
 describe("executeAgentRun progressive MCP loading", () => {
   beforeEach(async () => {
+    useAppContext({
+      pluginConfig: {
+        inlineManifests: [
+          {
+            manifest: {
+              name: "demo",
+              displayName: "Demo",
+              description: "Demo plugin",
+              configKeys: [],
+              mcp: {
+                transport: "http",
+                url: "https://mcp.example.com",
+                allowedTools: ["ping"],
+              },
+            },
+          },
+        ],
+      },
+    });
     agentInitialToolNames.length = 0;
     agentInitialSystemPrompts.length = 0;
     agentAfterToolResults.length = 0;

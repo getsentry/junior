@@ -7,11 +7,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import * as z from "zod";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { useAppContext } from "../../fixtures/app-context";
 import type { PiMessage } from "@/chat/pi/messages";
 import { juniorConversations } from "@/db/schema";
-
-const ORIGINAL_ENV = { ...process.env };
 
 function completedMessages(): PiMessage[] {
   return [
@@ -73,23 +72,6 @@ async function recordCompletedSession(args: {
   });
 }
 
-beforeEach(() => {
-  process.env = {
-    ...ORIGINAL_ENV,
-    JUNIOR_STATE_ADAPTER: "memory",
-  };
-  vi.resetModules();
-});
-
-afterEach(async () => {
-  const { installAppContext } = await import("@/app/context");
-  const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-  installAppContext(undefined);
-  await disconnectStateAdapter();
-  vi.resetModules();
-  process.env = { ...ORIGINAL_ENV };
-});
-
 describe("plugin conversation events", () => {
   it("binds user prompt hooks to the current turn and model history, and deduplicates retries", async () => {
     const runId = randomUUID();
@@ -150,10 +132,8 @@ describe("plugin conversation events", () => {
     });
     const { getPluginUserPromptContributions } =
       await import("@/chat/plugins/hooks/prompt");
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { getConversationEventStore } = await import("@/chat/db");
-    installAppContext(createAppContext({ plugins: [plugin] }));
+    useAppContext({ plugins: [plugin] });
     await recordCompletedSession({ conversationId, sessionId });
     const eventStore = getConversationEventStore();
     await eventStore.append(conversationId, [
@@ -296,10 +276,8 @@ describe("plugin conversation events", () => {
     });
     const { getPluginOperationalReports } =
       await import("@/chat/plugins/hooks/reports");
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask } = await import("@/chat/plugins/task-runner");
-    installAppContext(createAppContext({ plugins: [plugin] }));
+    useAppContext({ plugins: [plugin] });
     await recordCompletedSession({ conversationId, sessionId });
     await processPluginTask({
       name: "processSession",
@@ -395,13 +373,9 @@ describe("plugin conversation events", () => {
           },
         },
       });
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { getConversationEventStore, getDb } = await import("@/chat/db");
     const { processPluginTask } = await import("@/chat/plugins/task-runner");
-    installAppContext(
-      createAppContext({ plugins: [plugin([completedEventV1])] }),
-    );
+    useAppContext({ plugins: [plugin([completedEventV1])] });
     await recordCompletedSession({ conversationId, sessionId });
     const db = getDb();
     await db
@@ -432,11 +406,9 @@ describe("plugin conversation events", () => {
 
     await processPluginTask(message);
     emittedVersion = 2;
-    installAppContext(
-      createAppContext({
-        plugins: [plugin([completedEventV1, completedEventV2])],
-      }),
-    );
+    useAppContext({
+      plugins: [plugin([completedEventV1, completedEventV2])],
+    });
     await processPluginTask(message);
 
     expect(await readConversationState()).toEqual(conversationState);

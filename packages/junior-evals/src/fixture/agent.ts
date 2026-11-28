@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { type HarnessRun } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
+import type { AppContext } from "@/app/context";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { forkConversationResponseSchema } from "@/api/schema";
@@ -176,8 +177,10 @@ export async function createFixtureAgent(
   const gateway = installGatewayObserver();
   const blob = await installBlobMock();
   installWebReplay();
-  const deploy = (appOptions: JuniorAppOptions) =>
-    createApp({
+  // The context of the current deployment. Each deployment owns its own.
+  let appContext: AppContext | undefined;
+  const deploy = async (appOptions: JuniorAppOptions) => {
+    const deployed = await createApp({
       ...appOptions,
       conversationWorkQueue: (consume) => queue.connect(consume),
       // Plugin tasks run in process. A call is idle only after they finish.
@@ -190,6 +193,9 @@ export async function createFixtureAgent(
       }),
       waitUntil: (task) => track(typeof task === "function" ? task() : task),
     });
+    appContext = deployed.context;
+    return deployed.app;
+  };
   let app = await deploy(options);
   // On the core Turn engine, core's Turn messages reach the current app.
   const turnQueue = await startCoreTurnQueue({
@@ -241,6 +247,7 @@ export async function createFixtureAgent(
           state.delete(slackAvatarSavedKey(SLACK_TEAM_ID, author.userId)),
         ),
       );
+      await appContext?.close();
     }
   };
 
@@ -929,7 +936,9 @@ export async function createFixtureAgent(
   const redeploy = async (next: JuniorAppOptions): Promise<void> => {
     if (closed) throw new Error("redeploy() needs an agent that is not closed");
     await waitForIdle();
+    const previousContext = appContext;
     app = await deploy(next);
+    await previousContext?.close();
   };
 
   const createOtherSpace = (name: string) =>

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getAppContext } from "@/app/context";
 import { request as httpRequest } from "node:http";
 
 const { mcpCallback } = vi.hoisted(() => ({
@@ -15,7 +16,9 @@ describe("local OAuth callback server", () => {
   let close: (() => Promise<void>) | undefined;
 
   async function startCallback() {
-    const callback = await startLocalOAuthCallbackServer();
+    const callback = await startLocalOAuthCallbackServer(
+      getAppContext().catalog,
+    );
     close = callback.close;
     return callback;
   }

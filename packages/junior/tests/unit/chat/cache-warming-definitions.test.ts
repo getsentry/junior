@@ -4,10 +4,11 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
 import { createApp } from "@/app";
+import type { AppContext } from "@/app/context";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import type { PromptMode } from "@/chat/system-prompt-rules";
@@ -93,16 +94,21 @@ const trackerMcpPlugin = defineJuniorPlugin({
   },
 });
 
-// Start the app as one deployment with these plugins.
+// The apps that the current test deployed.
+const deployments: AppContext[] = [];
+
+// Start the app as one deployment with these plugins. Deployments share one
+// Redis, as they do in production.
 async function deploy(
   deploymentId: string,
   plugins: ReturnType<typeof defineJuniorPlugin>[],
 ) {
   vi.stubEnv("VERCEL_DEPLOYMENT_ID", deploymentId);
-  await createApp({
+  const { context } = await createApp({
     dashboard: { disabled: true },
     plugins: defineJuniorPlugins(plugins),
   });
+  deployments.push(context);
 }
 
 // Run one Turn that ends with a final response, like one agent run does.
@@ -136,6 +142,10 @@ function scheduledWarmup(): WarmupMessage {
 }
 
 describe("cache warming definitions", () => {
+  beforeEach(() => {
+    vi.stubEnv("JUNIOR_STATE_ADAPTER", "redis");
+  });
+
   afterEach(async () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -149,6 +159,7 @@ describe("cache warming definitions", () => {
     ]) {
       await getStateAdapter().delete(`junior:cache_warming:${key}`);
     }
+    await Promise.all(deployments.splice(0).map((app) => app.close()));
   });
 
   // A deploy: `dpl_old` ends a Turn, then `dpl_new`, with `newPlugins`, ends

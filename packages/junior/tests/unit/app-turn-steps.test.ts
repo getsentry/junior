@@ -14,7 +14,7 @@ vi.mock("@/turn-steps/prompt", async (importOriginal) => ({
 
 describe("createApp core Turn steps", () => {
   it("starts and serves its routes without building the Turn step consumer", async () => {
-    const app = await createApp({ plugins: defineJuniorPlugins([]) });
+    const { app } = await createApp({ plugins: defineJuniorPlugins([]) });
     const response = await app.fetch(
       createSlackWebhookTestClient({
         signingSecret: "test-signing-secret",

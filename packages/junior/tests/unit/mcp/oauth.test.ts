@@ -1,79 +1,60 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const ORIGINAL_ENV = { ...process.env };
+import { useAppContext } from "../../fixtures/app-context";
+
 const ORIGINAL_FETCH = globalThis.fetch;
-const closeMock = vi.fn();
-const finishAuthMock = vi.fn();
-const transportOptions: Array<{ fetch?: typeof fetch }> = [];
+const { closeMock, finishAuthMock, transportOptions } = vi.hoisted(() => ({
+  closeMock: vi.fn(),
+  finishAuthMock: vi.fn(),
+  transportOptions: [] as Array<{ fetch?: typeof fetch }>,
+}));
 const SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
   channelId: "C123",
 } as const;
 
-function buildPlugin() {
-  return {
-    dir: "/tmp/plugins/demo",
-    skillsDir: "/tmp/plugins/demo/skills",
-    manifest: {
-      name: "demo",
-      displayName: "Demo",
-      description: "Demo plugin",
-      configKeys: [],
-      mcp: {
-        transport: "http" as const,
-        url: "https://mcp.example.com",
-      },
-    },
-  };
-}
+vi.mock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
+  StreamableHTTPClientTransport: class StreamableHTTPClientTransport {
+    constructor(_url: URL, options: { fetch?: typeof fetch } = {}) {
+      transportOptions.push(options);
+    }
+
+    async finishAuth(code: string) {
+      return await finishAuthMock(code, transportOptions.at(-1));
+    }
+
+    async close() {
+      return await closeMock();
+    }
+  },
+}));
 
 describe("createMcpOAuthClientProvider", () => {
-  beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      JUNIOR_BASE_URL: "https://junior.example.com",
-      JUNIOR_STATE_ADAPTER: "memory",
-    };
-    vi.resetModules();
-    vi.doMock("@/app/context", () => {
-      const catalog = {
-        getDefinition: (provider: string) =>
-          provider === "demo" ? buildPlugin() : undefined,
-      };
-      return { getAppContext: () => ({ plugins: [], catalog }) };
-    });
-    vi.doMock("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
-      StreamableHTTPClientTransport: class StreamableHTTPClientTransport {
-        constructor(_url: URL, options: { fetch?: typeof fetch } = {}) {
-          transportOptions.push(options);
-        }
-
-        async finishAuth(code: string) {
-          return await finishAuthMock(code, transportOptions.at(-1));
-        }
-
-        async close() {
-          return await closeMock();
-        }
+  beforeEach(() => {
+    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
+    useAppContext({
+      pluginConfig: {
+        inlineManifests: [
+          {
+            manifest: {
+              name: "demo",
+              displayName: "Demo",
+              description: "Demo plugin",
+              configKeys: [],
+              mcp: { transport: "http", url: "https://mcp.example.com" },
+            },
+          },
+        ],
       },
-    }));
+    });
     closeMock.mockReset();
     closeMock.mockResolvedValue(undefined);
     finishAuthMock.mockReset();
     transportOptions.length = 0;
-
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
   });
 
-  afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
-    vi.doUnmock("@/app/context");
-    vi.doUnmock("@modelcontextprotocol/sdk/client/streamableHttp.js");
-    vi.resetModules();
+  afterEach(() => {
     globalThis.fetch = ORIGINAL_FETCH;
-    process.env = { ...ORIGINAL_ENV };
   });
 
   it("creates isolated lazy authorization attempts for the same turn", async () => {

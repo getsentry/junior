@@ -4,7 +4,6 @@
  * It applies core and enabled-plugin Drizzle migrations through one owned
  * executor; legacy state conversion belongs to the required bridge release.
  */
-import { getChatConfig } from "@/chat/config";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
@@ -16,6 +15,7 @@ import type {
   UpgradeIo,
 } from "./upgrade/types";
 import { type JuniorPluginSet } from "@/plugins";
+import { loadConfig } from "@/config";
 import type { JuniorSqlExecutor } from "@/db/db";
 import { createJuniorSqlExecutor } from "@/db/executor";
 import { isMissingVirtualModule } from "@/virtual-module";
@@ -129,7 +129,8 @@ export async function runUpgrade(
   io: UpgradeIo = DEFAULT_IO,
   options: { pluginSet?: JuniorPluginSet | null | undefined } = {},
 ): Promise<void> {
-  const { sql } = getChatConfig();
+  // Upgrade opens its own migration connection, so it reads only SQL config.
+  const { sql } = loadConfig({ env: process.env });
   const sqlExecutor: JuniorSqlExecutor = createJuniorSqlExecutor({
     connectionString: readMigrationDatabaseUrl(sql.databaseUrl),
     driver: sql.driver,

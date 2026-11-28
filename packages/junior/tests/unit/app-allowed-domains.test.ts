@@ -25,7 +25,7 @@ describe("createApp allowed domains", () => {
     }));
     mockBuiltSystemPrompts();
 
-    const app = await createApp({
+    const { app } = await createApp({
       allowedDomains: [" Sentry.io "],
       dashboard: { authRequired: false },
       plugins: defineJuniorPlugins([]),

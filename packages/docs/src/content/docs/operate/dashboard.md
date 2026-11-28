@@ -35,13 +35,15 @@ also gates who can use Junior in Slack:
 import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins";
 
-export default await createApp({
+const { app } = await createApp({
   allowedDomains: ["example.com"],
   dashboard: {
     trustedOrigins: ["https://<your-domain>"],
   },
   plugins,
 });
+
+export default app;
 ```
 
 Point the Junior Nitro module at the same dashboard policy and plugin module:

@@ -1,16 +1,15 @@
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { isDeepStrictEqual } from "node:util";
-import { getAppContext } from "@/app/context";
+import type { AppContext } from "@/app/context-types";
 import type { PluginManifest } from "@/chat/plugins/types";
 
 /** Validate hook registrations against the loaded plugin manifest catalog. */
 export function validatePluginRegistrations(
+  catalog: AppContext["catalog"],
   registrations: PluginRegistration[],
 ): void {
   const loadedPlugins = new Map(
-    getAppContext()
-      .catalog.getProviders()
-      .map((plugin) => [plugin.manifest.name, plugin]),
+    catalog.getProviders().map((plugin) => [plugin.manifest.name, plugin]),
   );
 
   for (const registration of registrations) {
@@ -20,11 +19,10 @@ export function validatePluginRegistrations(
         `Plugin registration "${registration.manifest.name}" does not have a matching plugin manifest. Add an inline manifest, packageName, or app-local plugin.yaml with the same name.`,
       );
     }
-    const effectiveRegistrationManifest =
-      getAppContext().catalog.parseConfiguredInlineManifest(
-        registration.manifest as PluginManifest,
-        loadedPlugin.dir,
-      );
+    const effectiveRegistrationManifest = catalog.parseConfiguredInlineManifest(
+      registration.manifest as PluginManifest,
+      loadedPlugin.dir,
+    );
     if (
       !isDeepStrictEqual(effectiveRegistrationManifest, loadedPlugin.manifest)
     ) {
@@ -37,6 +35,7 @@ export function validatePluginRegistrations(
 
 /** Validate credential hook registrations against the loaded plugin manifests. */
 export function validatePluginEgressCredentialHooks(
+  catalog: AppContext["catalog"],
   registrations: PluginRegistration[],
 ): void {
   const plugins = new Map(
@@ -46,7 +45,7 @@ export function validatePluginEgressCredentialHooks(
     ]),
   );
 
-  for (const provider of getAppContext().catalog.getProviders()) {
+  for (const provider of catalog.getProviders()) {
     const hooks = plugins.get(provider.manifest.name)?.hooks;
     const hasGrantHook = Boolean(hooks?.grantForEgress);
     const hasIssueHook = Boolean(hooks?.issueCredential);

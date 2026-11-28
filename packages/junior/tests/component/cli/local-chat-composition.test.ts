@@ -84,7 +84,15 @@ export const plugins = {
 `,
     );
     process.chdir(tempDir);
+    let stateAdapter: string | undefined;
+    let pluginNames: string[] = [];
     executeAgentRunMock.mockImplementation(async (request) => {
+      const { getChatConfig } = await import("@/chat/config");
+      const { getAppContext } = await import("@/app/context");
+      stateAdapter = getChatConfig().state.adapter;
+      pluginNames = getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name);
       await deliverAssistantMessagesForTest(request, [{ text: "hello local" }]);
       return completedAgentRun(successReply("hello local"));
     });
@@ -103,14 +111,8 @@ export const plugins = {
         }),
       ).resolves.toBe(0);
 
-      const { getChatConfig } = await import("@/chat/config");
-      expect(getChatConfig().state.adapter).toBe("memory");
-      const { getAppContext } = await import("@/app/context");
-      expect(
-        getAppContext()
-          .catalog.getProviders()
-          .map((plugin) => plugin.manifest.name),
-      ).toContain("local-chat-plugin");
+      expect(stateAdapter).toBe("memory");
+      expect(pluginNames).toContain("local-chat-plugin");
       expect(executeAgentRunMock).toHaveBeenCalledWith(
         expect.objectContaining({
           authorization: expect.objectContaining({
