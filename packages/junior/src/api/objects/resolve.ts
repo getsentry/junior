@@ -1,4 +1,5 @@
 import { mapBounded } from "@/chat/fan-out";
+import { untilAborted } from "@/chat/sleep";
 import { createHash } from "node:crypto";
 import {
   CACHE_LOAD_TIMEOUT_MS,
@@ -86,7 +87,7 @@ function cardReadFetch(read: AbortSignal | undefined): typeof fetch {
 /**
  * Run one card read, its access check included, within the cache load
  * timeout. The read loads cache entries that other card reads wait for, so
- * it ends before they give up on it.
+ * it ends before they give up on it, also when a step ignores the signal.
  */
 async function withCardReadDeadline<T>(
   run: (signal: AbortSignal) => Promise<T>,
@@ -98,7 +99,7 @@ async function withCardReadDeadline<T>(
   );
   timer.unref?.();
   try {
-    return await run(deadline.signal);
+    return await untilAborted(run(deadline.signal), deadline.signal);
   } finally {
     clearTimeout(timer);
   }
