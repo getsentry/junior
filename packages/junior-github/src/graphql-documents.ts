@@ -282,7 +282,9 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
         updatedAt
         url
         reviewRequests(first: 100) {
-          nodes { requestedReviewer { __typename ... on User { login } } }
+          nodes {
+            requestedReviewer { __typename ... on User { login } ... on Bot { login } }
+          }
         }
         reviews(last: 100) {
           pageInfo { hasPreviousPage startCursor }

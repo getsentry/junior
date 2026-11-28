@@ -451,7 +451,6 @@ describe("the ask of a Junior pull request", () => {
       // the review.
       await readLiveCards(viewer, [PULL_URL]);
       expect(cardReads).toBe(1);
-      // A review webhook names the head commit of the pull request.
       const sendReview = async (state: string, login: string) =>
         await sendGitHubWebhook("pull_request_review", {
           action: state === "dismissed" ? "dismissed" : "submitted",
@@ -879,8 +878,11 @@ describe("the ask of a Junior pull request", () => {
                   isInMergeQueue: false,
                   mergeStateStatus: "CLEAN",
                   reviewRequests: {
-                    nodes: github.reviewers.map((login) => ({
-                      requestedReviewer: { __typename: "User", login },
+                    nodes: [...github.reviewers, "copilot"].map((login) => ({
+                      requestedReviewer: {
+                        __typename: login === "copilot" ? "Bot" : "User",
+                        login,
+                      },
                     })),
                   },
                   reviews: {
@@ -982,6 +984,14 @@ describe("the ask of a Junior pull request", () => {
       expect(dismissed.status).toBe(200);
       expect(removed).toEqual([{ reviewers: ["out"] }]);
       expect(await reviewItem()).toMatchObject({ status: "dismissed" });
+      // A later webhook's next-action read keeps the App on the card.
+      await sendGitHubWebhook("pull_request", {
+        action: "review_request_removed",
+        pull_request: pullRequest(body, false, "2026-07-01T12:03:00.000Z"),
+        requested_reviewer: { login: "out" },
+      });
+      const { object } = (await readLiveCards(viewer, [PULL_URL])).objects[0]!;
+      expect(object.facts).toMatchObject({ reviewers: ["nolink", "copilot"] });
     } finally {
       await fixture.close();
     }
