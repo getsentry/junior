@@ -1,7 +1,12 @@
+import { createHash } from "node:crypto";
 import { PollingQueueClient, QueueClient } from "@vercel/queue";
 import { getAppContext } from "@/app/context";
 import { getChatConfig } from "@/chat/config";
-import type { QueueConsumer, QueueProvider } from "@/chat/queue/provider";
+import type {
+  QueueConsumer,
+  QueueProvider,
+  QueueSendOptions,
+} from "@/chat/queue/provider";
 
 type QueueClientOptions = ConstructorParameters<typeof QueueClient>[0];
 
@@ -82,6 +87,24 @@ function visibility(consumer: QueueConsumer) {
     : { visibilityTimeoutSeconds: consumer.visibilityTimeoutSeconds };
 }
 
+// Vercel Queues rejects an idempotency key over 256 characters. Keys built
+// from nested ids, such as child agent reply ids, can be longer. Send the hash
+// of such a key: it is stable, so the same key still drops a second send.
+const MAX_IDEMPOTENCY_KEY_LENGTH = 256;
+
+function withBoundedIdempotencyKey(
+  options: QueueSendOptions | undefined,
+): QueueSendOptions | undefined {
+  const key = options?.idempotencyKey;
+  if (!key || key.length <= MAX_IDEMPOTENCY_KEY_LENGTH) {
+    return options;
+  }
+  return {
+    ...options,
+    idempotencyKey: createHash("sha256").update(key).digest("hex"),
+  };
+}
+
 /** Queue provider backed by Vercel Queues. */
 export const vercelQueueProvider: QueueProvider = {
   // OpenTelemetry has no well-known `messaging.system` value for Vercel Queues.
@@ -90,7 +113,7 @@ export const vercelQueueProvider: QueueProvider = {
     const { messageId } = await getVercelQueueClients().send(
       topic,
       payload,
-      options,
+      withBoundedIdempotencyKey(options),
     );
     return messageId ? { messageId } : {};
   },

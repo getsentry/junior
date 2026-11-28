@@ -114,13 +114,19 @@ export function CodeChangeSubtitle(props: {
   );
 }
 
-/** The open row's main action: the change's page, such as on GitHub. */
-export function CodeChangeOpenButton(props: { head: CodeChangeHead }) {
+/**
+ * The open row's link to the change's page, such as on GitHub. It is the
+ * main action unless the item has its own, such as Resume.
+ */
+export function CodeChangeOpenButton(props: {
+  head: CodeChangeHead;
+  secondary?: boolean;
+}) {
   return (
     <a
       aria-label={props.head.openLabel}
       className={cn(
-        buttonVariants({ variant: "default" }),
+        buttonVariants({ variant: props.secondary ? "outline" : "default" }),
         // Narrower on a phone, so the card's actions fit on one line.
         "pointer-coarse:h-11 max-sm:px-2",
       )}

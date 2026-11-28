@@ -74,6 +74,7 @@ function stubMergeState(mergeable: string, head: string) {
     commits: { nodes: [] },
     headRefOid: head,
     mergeable,
+    reviewRequests: { nodes: [] },
     updatedAt: new Date().toISOString(),
   };
   mswServer.use(
@@ -93,7 +94,6 @@ function stubMergeState(mergeable: string, head: string) {
         isDraft: false,
         merged: false,
         number: 1,
-        reviewRequests: { nodes: [] },
         state: "OPEN",
         title: "Add acme entry",
         url: PULL_REQUEST.url,

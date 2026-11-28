@@ -1,14 +1,10 @@
-import { closeItemQuestions } from "./question-close";
 import { randomUUID } from "node:crypto";
 import {
   and,
   asc,
   desc,
   eq,
-  gt,
-  ilike,
   inArray,
-  lt,
   not,
   or,
   sql,
@@ -17,7 +13,6 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import { inboxItemSnoozedBy } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
   InboxItemOwnerMismatchError,
@@ -46,21 +41,15 @@ import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import {
   inboxItemAddedByAnyAutomation,
   inboxItemAddedByAutomation,
-  inboxItemAssignedTo,
-  inboxItemForUser,
-  inboxItemLinkedTo,
   inboxItemNeedsUser,
   inboxItemOwnedByConversation,
-  inboxItemVisibleTo,
   type InboxItemReader,
 } from "./access";
 import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
+import { closeItemQuestions } from "./question-close";
 import type { InboxItemNoticeRequest, InboxItemRequest } from "./request";
-import {
-  inboxItemBody,
-  inboxItemTitle,
-  itemQuestion,
-} from "./question-content";
+import { itemQuestion } from "./question-content";
+import { searchConditions, type InboxItemFilters } from "./search-filters";
 import { INBOX_SUBJECT_KINDS, type InboxItemSubject } from "./subjects";
 
 export type { InboxItemSubject } from "./subjects";
@@ -85,7 +74,7 @@ export interface InboxItemAssignee {
 }
 
 /** The kind of an Inbox item's owner. */
-type InboxItemOwnerKind = "conversation" | "automation";
+export type InboxItemOwnerKind = "conversation" | "automation";
 
 /**
  * What an Inbox item belongs to, like a parent: the Conversation of the
@@ -139,6 +128,8 @@ export interface InboxItem {
    * reads it from its close.
    */
   answeredBy?: InboxItemAssignee;
+  /** The id of the subject kind's action that closed it, such as `resume`. */
+  closeAction?: string;
   closeReason?: string;
   closedAt?: Date;
   closedBy?: InboxItemAssignee;
@@ -342,6 +333,7 @@ async function hydrate(
       ...(answeredBy ? { answeredBy } : undefined),
       ...(row.addedByTurnId ? { addedByTurnId: row.addedByTurnId } : undefined),
       ...(addedByAutomationId ? { addedByAutomationId } : undefined),
+      ...(row.closeAction ? { closeAction: row.closeAction } : undefined),
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
@@ -469,13 +461,27 @@ export async function getOpenInboxItemBySubject(
   subject: InboxItemSubject,
 ): Promise<InboxItem | undefined> {
   const rows = await selectItemRows(db).where(
-    and(
-      eq(juniorInboxItems.subjectKind, subject.kind),
-      eq(juniorInboxItems.subjectId, subject.id),
-      eq(juniorInboxItems.status, "open"),
-    ),
+    and(subjectIs(subject), eq(juniorInboxItems.status, "open")),
   );
   return (await hydrate(db, rows))[0];
+}
+
+/** Read every Inbox item of one subject, open and closed, newest first. */
+export async function listInboxItemsBySubject(
+  db: JuniorDatabase,
+  subject: InboxItemSubject,
+): Promise<InboxItem[]> {
+  const rows = await selectItemRows(db)
+    .where(subjectIs(subject))
+    .orderBy(desc(juniorInboxItems.createdAt), desc(juniorInboxItems.id));
+  return await hydrate(db, rows);
+}
+
+function subjectIs(subject: InboxItemSubject): SQL | undefined {
+  return and(
+    eq(juniorInboxItems.subjectKind, subject.kind),
+    eq(juniorInboxItems.subjectId, subject.id),
+  );
 }
 
 /**
@@ -628,6 +634,7 @@ export async function updateInboxItemContent(
 export async function closeInboxItem(
   db: JuniorDatabase,
   input: {
+    action?: string;
     answer?: UserInputAnswer;
     closedByUserId?: string;
     id: string;
@@ -645,6 +652,7 @@ export async function closeInboxItem(
         answer: input.answer
           ? sql`case when ${juniorInboxItems.subjectKind} = ${INBOX_SUBJECT_KINDS.question} then null else ${JSON.stringify(input.answer)}::jsonb end`
           : null,
+        closeAction: input.action ?? null,
         closeReason: input.reason ?? null,
         closedAt: now,
         closedByUserId: input.closedByUserId ?? null,
@@ -769,163 +777,6 @@ export async function takeInboxItem(
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });
-}
-
-/**
- * A position in the oldest-first order: the last item of a page. Search
- * returns the items after it.
- */
-export interface InboxItemPosition {
-  createdAt: Date;
-  id: string;
-}
-
-/**
- * A position in the waiting-first order: the last item of a page, and
- * whether it needs the User. Search returns the items after it.
- */
-export interface InboxItemWaitingPosition extends InboxItemPosition {
-  needsUser: boolean;
-}
-
-/**
- * A position in the newest-closed-first order: the last closed item of a
- * page. Search returns the items closed before it.
- */
-export interface InboxItemClosedPosition {
-  closedAt: Date;
-  id: string;
-}
-
-/** Filters for Inbox item search. Every filter is optional. */
-export interface InboxItemFilters {
-  /**
-   * Return only the items after this position. Use it with `order: "oldest"`
-   * and one status group, such as only open items, because open items sort
-   * first.
-   */
-  after?: InboxItemPosition;
-  /**
-   * Return only the items after this position. Use it with
-   * `order: { needsUserId }` and only open items.
-   */
-  afterWaiting?: InboxItemWaitingPosition;
-  /** One assigned User, or Everyone. */
-  assignee?: { everyone: true } | { userId: string };
-  automationId?: string;
-  /**
-   * Return only the items closed before this position. Use it with
-   * `order: "closed"` and closed statuses.
-   */
-  closedBefore?: InboxItemClosedPosition;
-  conversationId?: string;
-  /**
-   * Drop the items that are assigned only to other people
-   * (`inboxItemForUser`).
-   */
-  forUserId?: string;
-  /** Keep only the items that this kind of owner owns. */
-  ownerKind?: InboxItemOwnerKind;
-  /** Drop the items in Inbox rows that this User snoozed. */
-  awakeForUserId?: string;
-  /** Keep only the items in Inbox rows that this User snoozed. */
-  snoozedForUserId?: string;
-  limit: number;
-  /** Words to find in the title or body. */
-  query?: string;
-  /**
-   * `oldest` sorts by creation, oldest first. `closed` sorts closed items by
-   * when they closed, newest first. `{ needsUserId }` puts the items that
-   * need that User first (`inboxItemNeedsUser`), then the rest, each group
-   * newest created first. By default the newest change comes first.
-   */
-  order?: "closed" | "oldest" | { needsUserId: string };
-  statuses: readonly InboxItemStatus[];
-  subjectId?: string;
-}
-
-function searchConditions(
-  reader: InboxItemReader,
-  filters: Omit<InboxItemFilters, "limit">,
-): SQL[] {
-  const conditions: SQL[] = [
-    inboxItemVisibleTo(reader),
-    inArray(juniorInboxItems.status, [...filters.statuses]),
-  ];
-  if (filters.after) {
-    conditions.push(
-      or(
-        gt(juniorInboxItems.createdAt, filters.after.createdAt),
-        and(
-          eq(juniorInboxItems.createdAt, filters.after.createdAt),
-          gt(juniorInboxItems.id, filters.after.id),
-        ),
-      )!,
-    );
-  }
-  if (filters.afterWaiting) {
-    if (typeof filters.order !== "object") {
-      throw new Error("afterWaiting needs the waiting-first order");
-    }
-    const needs = inboxItemNeedsUser(filters.order.needsUserId);
-    const { createdAt, id, needsUser } = filters.afterWaiting;
-    const older = or(
-      lt(juniorInboxItems.createdAt, createdAt),
-      and(
-        eq(juniorInboxItems.createdAt, createdAt),
-        lt(juniorInboxItems.id, id),
-      ),
-    )!;
-    conditions.push(
-      needsUser ? or(not(needs), and(needs, older))! : and(not(needs), older)!,
-    );
-  }
-  if (filters.closedBefore) {
-    conditions.push(
-      or(
-        lt(juniorInboxItems.closedAt, filters.closedBefore.closedAt),
-        and(
-          eq(juniorInboxItems.closedAt, filters.closedBefore.closedAt),
-          lt(juniorInboxItems.id, filters.closedBefore.id),
-        ),
-      )!,
-    );
-  }
-  if (filters.subjectId) {
-    conditions.push(eq(juniorInboxItems.subjectId, filters.subjectId));
-  }
-  if (filters.automationId) {
-    conditions.push(inboxItemAddedByAutomation(filters.automationId));
-  }
-  if (filters.conversationId) {
-    conditions.push(inboxItemLinkedTo(filters.conversationId));
-  }
-  if (filters.assignee) {
-    conditions.push(
-      "everyone" in filters.assignee
-        ? eq(juniorInboxItems.assignedToEveryone, true)
-        : inboxItemAssignedTo(filters.assignee.userId),
-    );
-  }
-  if (filters.ownerKind) {
-    conditions.push(eq(inboxItemOwnerKind(), filters.ownerKind));
-  }
-  if (filters.forUserId) {
-    conditions.push(inboxItemForUser(filters.forUserId));
-  }
-  if (filters.awakeForUserId) {
-    conditions.push(not(inboxItemSnoozedBy(filters.awakeForUserId)));
-  }
-  if (filters.snoozedForUserId) {
-    conditions.push(inboxItemSnoozedBy(filters.snoozedForUserId));
-  }
-  if (filters.query) {
-    const pattern = `%${filters.query.replace(/[\\%_]/g, "\\$&")}%`;
-    conditions.push(
-      or(ilike(inboxItemTitle, pattern), ilike(inboxItemBody, pattern))!,
-    );
-  }
-  return conditions;
 }
 
 /**

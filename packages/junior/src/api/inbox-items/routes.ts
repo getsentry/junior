@@ -31,6 +31,8 @@ import {
 } from "@/chat/inbox-items/access";
 import {
   questionLinks,
+  subjectKindActionLabel,
+  subjectKindActions,
   subjectKindDismissNote,
   subjectKindLabel,
   subjectTodo,
@@ -50,9 +52,11 @@ import {
   ownerConversationId,
   searchInboxItems,
   type InboxItem,
-  type InboxItemFilters,
-  type InboxItemPosition,
 } from "@/chat/inbox-items/store";
+import type {
+  InboxItemFilters,
+  InboxItemPosition,
+} from "@/chat/inbox-items/search-filters";
 import {
   countInboxItemsNeedingUserBySubject,
   listWaitingConversations,
@@ -204,6 +208,7 @@ function subjectPayload(
     object,
     viewer,
   );
+  const actions = subjectKindActions(subject.kind, getPlugins());
   const objectType = url && readLinkObjectType(url);
   const snoozeUrl = url ?? questionLinks(item)[0];
   const resource =
@@ -211,6 +216,15 @@ function subjectPayload(
   return {
     id: subject.id,
     kind: subject.kind,
+    ...(actions.length > 0
+      ? {
+          actions: actions.map(({ icon, id, label }) => ({
+            id,
+            label,
+            ...(icon ? { icon } : undefined),
+          })),
+        }
+      : undefined),
     ...(label ? { label } : undefined),
     ...(dismissNote ? { dismissNote } : undefined),
     ...(url ? { url } : undefined),
@@ -262,6 +276,11 @@ function inboxItemPayload(
   const root = conversationId ? roots.get(conversationId) : undefined;
   const todo = subjectTodo(item.subject);
   const question = inboxItemQuestion(item.request);
+  const closeAction = subjectKindActionLabel(
+    item.subject.kind,
+    getPlugins(),
+    item.closeAction,
+  );
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: isInboxItemForEveryone(item),
@@ -294,6 +313,7 @@ function inboxItemPayload(
     ...(item.addedByAutomationId
       ? { automationId: item.addedByAutomationId }
       : undefined),
+    ...(closeAction ? { closeAction } : undefined),
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
@@ -334,7 +354,7 @@ async function inboxItemPayloads(
         .map((item) => item.id),
       userId: viewer.id,
     }),
-    resolveInboxItemSubjects(viewer, items),
+    resolveInboxItemSubjects(viewer, items, { cacheOnly: true }),
   ]);
   return items.map((item, index) => {
     const payload = inboxItemPayload(
@@ -587,6 +607,9 @@ export function createInboxItemRoutes(services: {
           user: viewer,
           ...(body.action === "submit"
             ? { answer: { ...body.answer, requestId: id } }
+            : undefined),
+          ...(body.action === "done" && body.id
+            ? { kindAction: body.id }
             : undefined),
         });
         // The viewer acted on the item, so it no longer says why it woke.

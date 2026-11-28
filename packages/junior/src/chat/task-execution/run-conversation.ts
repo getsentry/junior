@@ -27,7 +27,10 @@ type ConversationWorkers = {
     context: ConversationWorkerContext,
     dispatchId: string,
   ) => Promise<ConversationWorkerResult>;
-  /** Workers by Destination platform. Work for any other platform throws. */
+  /**
+   * Workers by Destination platform. Input for any other platform that no
+   * Turn or dispatch took throws.
+   */
   destinations?: Partial<Record<Destination["platform"], RunWork>>;
   state?: StateAdapter | undefined;
 };
@@ -66,18 +69,19 @@ export async function runConversation(
     }
   }
   const destination = context.destination;
-  if (!destination) {
-    // No open Turn is left, such as after a late stop request or a retry of
-    // a killed Turn. Child work and work with no Conversation record have no
-    // Destination.
-    await context.attempt.ack();
-    return { status: "completed" };
+  const runDestination =
+    destination && workers.destinations?.[destination.platform];
+  if (runDestination) {
+    return await runDestination(context);
   }
-  const runDestination = workers.destinations?.[destination.platform];
-  if (!runDestination) {
+  if (destination && context.attempt.messages.length > 0) {
     throw new Error(
       `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
     );
   }
-  return await runDestination(context);
+  // No open Turn is left, such as after a late stop request or a retry of a
+  // killed Turn. Work with no Conversation record has no Destination, and a
+  // Destination with no worker, such as `local`, has no other work.
+  await context.attempt.ack();
+  return { status: "completed" };
 }

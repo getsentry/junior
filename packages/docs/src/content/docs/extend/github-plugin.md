@@ -680,25 +680,25 @@ people work on it:
   the limit of 3 in a row. The ready to merge notice needs a clean merge
   state, so it comes after the fix.
 - When the head commit is the same a day after its fix, the fix did not
-  land. Then Junior adds an Inbox item with a **Resume** button for the
-  person who asked for the pull request. It adds the item once after each
-  Resume, so **Dismiss** ends these asks for the pull request. The item
-  closes when the conflict is gone, or when the pull request merges or
-  closes. When the conflict goes away while the item is open, a later fix
-  that does not land adds the item again.
-- **Resume** counts as activity by a person, so the count starts again. It
-  adds the pull request's watch again if it expired, so the event reaches
-  the conversation, and publishes the event at once. Until a fix lands
-  after it, Junior publishes no event. If no fix lands in a day, Junior
-  adds the item again. Resume on a draft, or on a pull request that GitHub
-  can merge, does nothing.
+  land. Then Junior adds an Inbox item with a **Keep fixing** button for
+  the person who asked for the pull request. It adds the item once after
+  each Keep fixing, so **Dismiss** ends these asks for the pull request.
+  The item closes when the conflict is gone, or when the pull request
+  merges or closes. When the conflict goes away while the item is open, a
+  later fix that does not land adds the item again.
+- **Keep fixing** counts as activity by a person, so the count starts
+  again. It adds the pull request's watch again if it expired, so the
+  event reaches the conversation, and publishes the event at once. Until a
+  fix lands after it, Junior publishes no event. If no fix lands in a day,
+  Junior adds the item again. Keep fixing on a draft, or on a pull request
+  that GitHub can merge, does nothing.
 
 For each conflict, Junior reads the pull request's timeline and review
 decision from GitHub, for the latest activity by a person. Only the events
 that Junior published for a fix count as fixes, so a merge or force push for
 work that a person asked for does not. Junior stores those, with the times
-of the latest Resume and the latest item. Each head commit publishes one
-event.
+of the latest Keep fixing and the latest item. Each head commit publishes
+one event.
 
 </details>
 
