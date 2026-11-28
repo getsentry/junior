@@ -53,14 +53,14 @@ function formActionSource(redirectUri: string): string | undefined {
 }
 
 /*
- * Chrome checks the consent page's `form-action` on every redirect after the
- * POST, and a web callback can redirect again to an origin that Junior cannot
- * know. A page that navigates to the callback ends the form submission at
- * Junior, so those hops are ordinary navigations. A custom scheme hands off to
- * the app with no later hop, and Safari can ignore a meta refresh to one.
+ * Chrome and Safari check `form-action` on every redirect after a form POST,
+ * even `302`/`303` hops; Firefox does not. Ending the POST with this page
+ * keeps a web callback's own redirects out of `form-action`. Return a `303`
+ * once browsers skip those hops: https://github.com/w3c/webappsec-csp/issues/8
  */
 function authorizationResponse(args: AuthorizationResponse): Response {
   const url = authorizationResponseUrl(args);
+  // Safari can ignore a meta refresh to a custom scheme, such as the iOS app's.
   if (!isWebUrl(url)) return authorizationRedirect(args);
   const href = escapeHtml(url.toString());
   return renderHtmlPage({
