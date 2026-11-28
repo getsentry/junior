@@ -20,7 +20,7 @@ const ALLOWED_KEYS = new Set([
 // Claude Code's `AskUserQuestion`, the shape that models are trained on.
 const ALLOWED_QUESTION_KEYS = new Set(["multiSelect"]);
 const QUESTION_TOOL_FILES = new Set([
-  "packages/junior/src/chat/inbox-items/tool-support.ts",
+  "packages/junior/src/chat/questions/tool-input.ts",
 ]);
 
 /** Check tool input and output schemas in a set of source files. */
