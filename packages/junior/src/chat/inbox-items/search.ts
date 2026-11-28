@@ -80,9 +80,11 @@ export async function searchInboxItemsForUser(
 ): Promise<InboxItemSearchMatch[]> {
   const db = getDb();
   const items = juniorInboxItems;
+  // Search finds closed items too.
+  const statuses = ["open", "done", "dismissed"] as const;
   const visible = and(
-    inboxItemVisibleTo(inboxItemReaderForUser(viewer)),
-    inboxItemForUser(viewer.id),
+    inboxItemVisibleTo(inboxItemReaderForUser(viewer), statuses),
+    inboxItemForUser(viewer.id, statuses),
   );
   // The newest matches, before any is ranked.
   const ownMatches = db

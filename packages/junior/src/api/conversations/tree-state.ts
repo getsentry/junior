@@ -39,7 +39,7 @@ export type ConversationTreeRead = {
 function needsUserSql(userId: string) {
   return sql<boolean>`(${conversationOwnsInboxItem(
     juniorConversations.conversationId,
-    and(inboxItemNeedsInput(), inboxItemForUser(userId))!,
+    and(inboxItemNeedsInput(), inboxItemForUser(userId, ["open"]))!,
   )} or ${awaitsAuthorizationFrom(juniorConversations.conversationId, userId)})`;
 }
 

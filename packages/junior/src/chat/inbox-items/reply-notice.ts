@@ -219,7 +219,7 @@ async function openReplyNoticeId(
         eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.reply),
         eq(juniorInboxItems.subjectId, input.conversationId),
         eq(juniorInboxItems.status, "open"),
-        inboxItemAssignedTo(input.userId),
+        inboxItemAssignedTo(input.userId, ["open"]),
       ),
     )
     .limit(1);

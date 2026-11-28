@@ -44,7 +44,10 @@ function linkedWork(item: InboxItem): string[] {
 }
 
 function openVisible(reader: InboxItemReader): SQL {
-  return and(eq(juniorInboxItems.status, "open"), inboxItemVisibleTo(reader))!;
+  return and(
+    eq(juniorInboxItems.status, "open"),
+    inboxItemVisibleTo(reader, ["open"]),
+  )!;
 }
 
 /** Rank the candidates in each group, newest first. */

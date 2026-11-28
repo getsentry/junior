@@ -136,7 +136,7 @@ async function visibleRowItems(
   const reader = await inboxItemReaderForUserInConversation(user, root);
   const rows = await getDb()
     .select({
-      canAct: sql<boolean>`${inboxItemForUser(user.id)}`,
+      canAct: sql<boolean>`${inboxItemForUser(user.id, ["open"])}`,
       id: juniorInboxItems.id,
       request: inboxItemRequest,
       subjectId: juniorInboxItems.subjectId,
@@ -147,7 +147,7 @@ async function visibleRowItems(
     .where(
       and(
         eq(juniorInboxItems.status, "open"),
-        inboxItemVisibleTo(reader),
+        inboxItemVisibleTo(reader, ["open"]),
         inboxItemInRow(root),
       ),
     );
@@ -384,8 +384,8 @@ export async function countViewerSnoozes(user: User): Promise<number> {
     .where(
       and(
         eq(juniorInboxItems.status, "open"),
-        inboxItemVisibleTo(inboxItemReaderForUser(user)),
-        inboxItemForUser(user.id),
+        inboxItemVisibleTo(inboxItemReaderForUser(user), ["open"]),
+        inboxItemForUser(user.id, ["open"]),
         inboxItemSnoozedBy(user.id),
       ),
     );

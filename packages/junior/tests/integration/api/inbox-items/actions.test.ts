@@ -494,6 +494,18 @@ describe("inbox item actions API", () => {
       ).items,
     ).toEqual([]);
     expect((await api(fixture, ana).get("?status=open,done")).status).toBe(400);
+    // Outside Slack, only Ben's assignment shows him the closed item.
+    const benOutside = { ...ben, identities: [] };
+    expect(
+      (
+        await (
+          await api(fixture, benOutside).get("?status=done,dismissed")
+        ).json()
+      ).items,
+    ).toMatchObject([{ id, status: "done" }]);
+    expect(
+      (await (await api(fixture, benOutside).get("?q=acme")).json()).items,
+    ).toMatchObject([{ id, status: "done" }]);
     // Closed items never count.
     expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
       decisions: 0,

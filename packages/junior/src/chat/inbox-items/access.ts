@@ -41,7 +41,7 @@ import {
   conversationParticipantUserIds,
   type ResolvedAssignees,
 } from "./assignees";
-import type { InboxItem, InboxItemVisibility } from "./store";
+import type { InboxItem, InboxItemStatus, InboxItemVisibility } from "./store";
 import {
   INBOX_SUBJECT_KINDS,
   subjectKindPlugin,
@@ -213,13 +213,16 @@ function ownerConversationOpenTo(
 }
 
 /**
- * SQL: the Inbox item has this assigned User. A To-do's item counts only
- * while the User can see its Conversation's private content, so a person
- * who loses access to the Conversation no longer sees or acts on it. The
- * set has no outer reference, so Postgres reads it once and checks the
- * owner of only the User's To-dos.
+ * SQL: the Inbox item has this assigned User and one of `statuses`, the
+ * statuses that the outer query reads. A To-do's item counts only while
+ * the User can see its Conversation's private content. The set has no
+ * outer reference, so Postgres reads it once and checks the owner of only
+ * the User's To-dos.
  */
-export function inboxItemAssignedTo(userId: string): SQL {
+export function inboxItemAssignedTo(
+  userId: string,
+  statuses: readonly InboxItemStatus[],
+): SQL {
   const assigned = getDb()
     .select({ id: juniorInboxItems.id })
     .from(juniorInboxItemAssignees)
@@ -230,6 +233,7 @@ export function inboxItemAssignedTo(userId: string): SQL {
     .where(
       and(
         eq(juniorInboxItemAssignees.userId, userId),
+        inArray(juniorInboxItems.status, [...statuses]),
         or(
           ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
           ownerConversationOpenTo(userId, todoItemOwnerConversationId()),
@@ -250,7 +254,7 @@ export function inboxItemNeedsUser(userId: string): SQL {
   return and(
     eq(juniorInboxItems.status, "open"),
     eq(juniorInboxItems.kind, "action"),
-    inboxItemAssignedTo(userId),
+    inboxItemAssignedTo(userId, ["open"]),
   )!;
 }
 
@@ -282,11 +286,14 @@ export function inboxItemSetsConversationStatus(): SQL {
  * to this User, to Everyone, or to no one. This is the assignee rule of
  * `canActOnInboxItem`; keep the two the same.
  */
-export function inboxItemForUser(userId: string): SQL {
+export function inboxItemForUser(
+  userId: string,
+  statuses: readonly InboxItemStatus[],
+): SQL {
   return or(
     eq(juniorInboxItems.assignedToEveryone, true),
     sql`not exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
-    inboxItemAssignedTo(userId),
+    inboxItemAssignedTo(userId, statuses),
   )!;
 }
 
@@ -344,14 +351,17 @@ export function inboxItemAddedByAnyAutomation(): SQL {
  * Inbox item access test checks that they agree. Only the SQL form reads
  * `ownerAudienceUserId`.
  */
-export function inboxItemVisibleTo(reader: InboxItemReader): SQL {
+export function inboxItemVisibleTo(
+  reader: InboxItemReader,
+  statuses: readonly InboxItemStatus[],
+): SQL {
   // `or` of nothing is undefined, so `false` keeps the query closed. Do not
   // put `false` inside the `or`: Postgres then cannot turn a lone assignee
   // `exists` into a semi-join, and it scans every closed item.
   return (
     or(
       ...publicIn(reader.tenants ?? []),
-      ...(reader.userId ? [inboxItemAssignedTo(reader.userId)] : []),
+      ...(reader.userId ? [inboxItemAssignedTo(reader.userId, statuses)] : []),
       ...(reader.ownerAudienceUserId
         ? [inboxItemForEveryoneOfOwner(reader.ownerAudienceUserId)]
         : []),
