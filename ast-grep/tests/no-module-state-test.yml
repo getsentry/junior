@@ -1,0 +1,38 @@
+id: no-module-state
+valid:
+  - "const TERMINAL_STATES = new Set(['completed', 'failed']);"
+  - "export const DEFAULTS = { retries: 3 };"
+  - "function run() { let count = 0; count += 1; return count; }"
+  - "function cache() { const seen = new Map(); seen.set('a', 1); return seen; }"
+  - |
+    const synonyms = new Map();
+    for (const term of TERMS) synonyms.set(term, []);
+  - |
+    const NAMES = ['a', 'b'];
+    export function names() { return NAMES.map((name) => name.toUpperCase()); }
+  - "class Store { items = new Map(); }"
+invalid:
+  - "let installed;"
+  - "export let installed = undefined;"
+  - "var count = 0;"
+  - |
+    const clients = new Map();
+    export function client(token) { clients.set(token, create(token)); }
+  - |
+    const routers = new WeakMap();
+    export const router = (key) => routers.get(key) ?? routers.set(key, {});
+  - |
+    const sinks = new Set();
+    export function addSink(sink) { sinks.add(sink); }
+  - |
+    const queue = [];
+    export function enqueue(item) { queue.push(item); }
+  - |
+    const byId = {};
+    export function remember(id, value) { byId[id] = value; }
+  - |
+    const state = { count: 0 };
+    export function bump() { state.count++; }
+  - |
+    export const cache = { entries: new Map() };
+    export function remember(key, value) { cache.entries.set(key, value); }

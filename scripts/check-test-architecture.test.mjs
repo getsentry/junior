@@ -394,6 +394,39 @@ test("rejects a process.env assignment in integration tests and fixtures", () =>
   );
 });
 
+test("rejects a Junior module mock in unit and component tests", () => {
+  const unitPath = "packages/junior/tests/unit/chat/new.test.ts";
+  const componentPath = "packages/junior/tests/component/new.test.ts";
+  assert.deepEqual(
+    checkAgentTestArchitecture(
+      [
+        integrationTest(
+          [
+            'vi.mock("@/chat/config", () => ({}));',
+            "vi.doMock(\n  '#junior/config',\n  () => ({}),\n);",
+            'vi.mock(import("@sentry/junior-plugin-api"));',
+            'vi.mock("../../../src/chat/db", () => ({}));',
+            'vi.mock("@vercel/sandbox", () => ({}));',
+            'vi.mock("@modelcontextprotocol/sdk/client", () => ({}));',
+            'vi.mock("../helpers", () => ({}));',
+          ].join("\n"),
+          unitPath,
+        ),
+        integrationTest('vi.mock("@/chat/db");', componentPath),
+        integrationTest(
+          'vi.mock("@/chat/db");',
+          "packages/junior/tests/fixtures/sql.ts",
+        ),
+      ],
+      {},
+    ),
+    [
+      `${unitPath}: unit and component tests must not mock Junior modules; build a real app context and pass it in. Mock only an external package (4 found)`,
+      `${componentPath}: unit and component tests must not mock Junior modules; build a real app context and pass it in. Mock only an external package (1 found)`,
+    ],
+  );
+});
+
 test("requires a lower baseline when a file breaks a rule less", () => {
   assert.deepEqual(
     checkAgentTestArchitecture([integrationTest("setPlugins([]);")], {

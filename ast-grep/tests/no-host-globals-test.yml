@@ -1,0 +1,26 @@
+id: no-host-globals
+valid:
+  - "await engineCtx.queue.send(TURN_STEP_TOPIC, payload);"
+  - "const owner = engineCtx.owner;"
+  - "await findTurn(engineCtx, turnId);"
+  - "const rows = await app.db.select().from(conversations);"
+  - "const name = app.config.bot.userName;"
+  - "const context = createAppContext({ plugins });"
+invalid:
+  - 'import { getQueueProvider } from "@/chat/queue/provider";'
+  - "await getQueueProvider().send(TURN_STEP_TOPIC, payload);"
+  - "const seconds = getChatConfig().functionMaxDurationSeconds;"
+  - "const executor = getSqlExecutor();"
+  - 'import { SERVICE_INSTANCE_ID } from "@/deployment";'
+  - 'const { getChatConfig } = await import("@/chat/config");'
+  - "await queue.getQueueProvider();"
+  - "const rows = await getDb().select().from(conversations);"
+  - "const state = getStateAdapter();"
+  - "const name = botConfig.userName;"
+  - "const plugins = getAppContext().plugins;"
+  - "const previous = installAppContext(context);"
+  - "installChatConfig(config);"
+  - "const store = getConversationStore();"
+  - "const redis = await getDefaultRedisStateAdapterFor(adapter);"
+  - "await getVercelConversationWorkQueue().send(message);"
+  - "const sandbox = getSandboxProvider();"

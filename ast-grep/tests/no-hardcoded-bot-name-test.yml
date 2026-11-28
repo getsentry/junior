@@ -1,7 +1,7 @@
 id: no-hardcoded-bot-name
 valid:
   - 'const tool = { description: "Find open slots in your own calendar." };'
-  - "const title = `Sign in to ${botConfig.userName}`;"
+  - "const title = `Sign in to ${app.config.bot.userName}`;"
   - 'const pkg = "@sentry/junior";'
   - 'const key = "junior:acp:v1:authorization";'
   - "// Junior reads this comment, not the model."

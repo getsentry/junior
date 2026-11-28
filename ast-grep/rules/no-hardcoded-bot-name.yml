@@ -4,7 +4,7 @@
 id: no-hardcoded-bot-name
 language: TypeScript
 severity: error
-message: Do not write "Junior" in a string. Each install configures the bot name. In model text, write "you" or "the runtime". In other text, use the configured name (botConfig.userName in core, getDashboardAgentName() in the dashboard client) or reword.
+message: Do not write "Junior" in a string. Each install configures the bot name. In model text, write "you" or "the runtime". In other text, use the configured name or reword. On the server, read it from the config in the app context that the caller passes in. In the dashboard client, use getDashboardAgentName().
 files:
   - packages/*/src/**/*.ts
 rule:

@@ -1,6 +1,36 @@
+import fs from "node:fs";
+
+// The files outside the composition roots that import the app context today.
+// `baseline-growth:check` lets the list only shrink.
+const appContextImporters = JSON.parse(
+  fs.readFileSync(
+    new URL("./scripts/app-context-importers-baseline.json", import.meta.url),
+    "utf8",
+  ),
+);
+
 /** @type {import("dependency-cruiser").IConfiguration} */
 export default {
   forbidden: [
+    {
+      name: "app-context-only-in-composition-roots",
+      comment:
+        "Only composition roots import the app context module: createApp in src/app.ts and the CLI commands in src/cli/. Other code gets the context, or a Pick of it, from its caller. A type-only leaf module, such as src/app/context-types.ts, may import it to give other code its types. See policies/interface-design.md.",
+      severity: "error",
+      from: {
+        path: "^src/",
+        pathNot: [
+          "^src/(app|app/context-types)\\.ts$",
+          "^src/cli/",
+          ...appContextImporters.map(
+            (file) => `^${file.replaceAll(".", "\\.")}$`,
+          ),
+        ],
+      },
+      to: {
+        path: "^src/app/context\\.ts$",
+      },
+    },
     {
       name: "no-chat-app-imports-outside-app",
       comment: "Only chat composition roots may depend on app/ modules.",

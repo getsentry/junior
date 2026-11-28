@@ -79,13 +79,60 @@ function scanRoots(rules) {
   );
 }
 
-/** Report rule-level ast-grep ignores that exempt no finding of their rule. */
+// A rule with `metadata.baseline` maps each file that it ignores to the
+// number of findings that the file may keep, so an ignored file cannot gain a
+// finding. Its ignores are exact paths, so a file with no finding is a stale
+// entry. A count that is too high must go down, so the baseline only shrinks.
+function checkBaselineCounts({ file, ignores, baseline, unignored }, findings) {
+  const errors = [];
+  const actual = new Map();
+  for (const findingFile of findings) {
+    actual.set(findingFile, (actual.get(findingFile) ?? 0) + 1);
+  }
+  for (const ignored of ignores) {
+    const allowed = baseline[ignored];
+    const count = actual.get(ignored) ?? 0;
+    if (allowed === undefined) {
+      errors.push(
+        `${file}: ${unignored.id} ignores ${ignored}, but metadata.baseline has no count for it.`,
+      );
+    } else if (count === 0) {
+      errors.push(
+        `${file}: ${unignored.id} ignores ${ignored}, but it exempts no finding.`,
+      );
+    } else if (count > allowed) {
+      errors.push(
+        `${ignored}: ${unignored.id} finds ${count}, but its baseline in ${file} is ${allowed}. Fix the new finding. The baseline can only go down.`,
+      );
+    } else if (count < allowed) {
+      errors.push(
+        `${ignored}: ${unignored.id} finds ${count}, but its baseline in ${file} is ${allowed}. Lower the entry to ${count}.`,
+      );
+    }
+  }
+  for (const filePath of Object.keys(baseline)) {
+    if (!ignores.includes(filePath)) {
+      errors.push(
+        `${file}: ${unignored.id} has a metadata.baseline count for ${filePath}, but does not ignore it.`,
+      );
+    }
+  }
+  return errors;
+}
+
+/**
+ * Report rule-level ast-grep ignores that exempt no finding of their rule,
+ * and ignored files whose findings do not match the rule's baseline counts.
+ */
 export async function checkAstGrepIgnores(root) {
+  // Metadata does not change what a rule matches, and a baseline can be too
+  // long to pass to ast-grep as an argument.
   const entries = readRulesWithIgnores(root).map(
-    ({ file, rule: { ignores, ...unignored } }, index) => ({
+    ({ file, rule: { ignores, metadata, ...unignored } }, index) => ({
       file,
       id: `rule-${index}`,
       ignores,
+      baseline: metadata?.baseline,
       unignored,
     }),
   );
@@ -96,8 +143,8 @@ export async function checkAstGrepIgnores(root) {
   );
   // An ignore is stale when the rule keeps every finding with only that
   // ignore set. Every finding file of every rule is scanned once more.
-  const probes = entries.flatMap(({ id, ignores, unignored }) =>
-    findings.get(id).length === 0
+  const probes = entries.flatMap(({ id, ignores, baseline, unignored }) =>
+    baseline || findings.get(id).length === 0
       ? []
       : ignores.map((glob, index) => ({
           id: `${id}-ignore-${index}`,
@@ -107,7 +154,9 @@ export async function checkAstGrepIgnores(root) {
   const kept = await scanFindingFiles(root, probes, [
     ...new Set([...findings.values()].flat()),
   ]);
-  return entries.flatMap(({ file, id, ignores, unignored }) => {
+  return entries.flatMap((entry) => {
+    const { file, id, ignores, baseline, unignored } = entry;
+    if (baseline) return checkBaselineCounts(entry, findings.get(id));
     const count = findings.get(id).length;
     return ignores
       .filter(
@@ -121,12 +170,12 @@ export async function checkAstGrepIgnores(root) {
   });
 }
 
-/** Check that every ast-grep rule-level ignore still exempts a finding. */
+/** Check that rule-level ast-grep ignores and baseline counts are current. */
 export async function run({ root }) {
   const errors = await checkAstGrepIgnores(root);
   if (errors.length === 0) return [];
   return [
     ...errors,
-    "Delete each stale entry. Rule-level ignores exempt only the module that owns the boundary. For a one-off exception, put `// ast-grep-ignore: <rule-id> -- <reason>` on the line before the match.",
+    "Delete each stale entry, and lower each count that went down. Rule-level ignores exempt only the module that owns the boundary, or the files that a baseline lists. Do not add or raise a baseline entry. For a one-off exception, put `// ast-grep-ignore: <rule-id> -- <reason>` on the line before the match.",
   ];
 }

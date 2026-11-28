@@ -70,13 +70,17 @@ export function baselineEntries(value) {
 export async function parseBaseline(filePath, source) {
   if (filePath.endsWith(".json")) return baselineEntries(JSON.parse(source));
   // An ast-grep baseline: each rule's `ignores` lists the files it still
-  // allows.
+  // allows, and its `metadata.baseline`, if any, counts the findings that
+  // each file keeps.
   if (filePath.endsWith(".yml")) {
     return baselineEntries(
       Object.fromEntries(
         parseAllDocuments(source)
           .map((document) => document.toJS())
-          .map((rule) => [rule.id, rule.ignores ?? []]),
+          .map((rule) => [
+            rule.id,
+            rule.metadata?.baseline ?? rule.ignores ?? [],
+          ]),
       ),
     );
   }
