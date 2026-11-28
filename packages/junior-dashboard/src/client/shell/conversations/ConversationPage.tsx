@@ -90,7 +90,7 @@ import {
   ConversationStateIcon,
   conversationDisplayState,
 } from "../../conversations/ConversationStateIcon";
-import { useInboxItemData } from "../../inbox/queries";
+import { useInboxItemData, useWaitingConversations } from "../../inbox/queries";
 import {
   itemConversationId,
   inboxItemIdFromToolCall,
@@ -113,7 +113,10 @@ import {
   transcriptScrollClassName,
 } from "../../conversations/ChatLayout";
 import type { ConversationComposerHandle } from "../../conversations/ConversationComposer";
-import { ConversationOutline } from "../../conversations/ConversationOutline";
+import {
+  ConversationOutline,
+  useConversationOutline,
+} from "../../conversations/ConversationOutline";
 import {
   QuickQuestionPanel,
   QuickQuestionSelectionButton,
@@ -282,6 +285,15 @@ export function ConversationPage(props: {
     setLinkStart(undefined);
   }, []);
   const memoryList = useConversationMemories(conversationId).data;
+  // The outline and the transcript's list of waiting Conversations need
+  // only the id. Start them with the page's other reads, not after the
+  // transcript's first render, which can take longer than those reads.
+  useConversationOutline(
+    conversationId,
+    view === "rich" &&
+      (detail.data?.eventHistory.status ?? "available") === "available",
+  );
+  useWaitingConversations();
   const archive = useArchiveConversation(conversationId);
   const [confirmChildArchive, setConfirmChildArchive] = useState(false);
   const navigate = useNavigate();
