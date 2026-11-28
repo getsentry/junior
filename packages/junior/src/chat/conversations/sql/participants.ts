@@ -1,11 +1,13 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, not, or, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
+import { isPublicConversation } from "./privacy";
 
 /** Resolve the root conversation id that owns personal-feed membership. */
 export async function resolveRootConversationId(
@@ -208,4 +210,66 @@ export async function rootConversationIdsForParticipant(
       ),
     );
   return new Set(rows.map((row) => row.rootConversationId));
+}
+
+/**
+ * Remove a Slack user from the Participants of each private root in a Slack
+ * channel, after they leave the channel or someone removes them. The
+ * channel decides who reads its private Conversations, so they lose access.
+ * A public root keeps them: anyone can read it and Join it.
+ */
+export async function removeSlackChannelParticipant(
+  executor: JuniorSqlDatabase,
+  args: { channelId: string; slackUserId: string; teamId: string },
+): Promise<void> {
+  await executor.transaction(async () => {
+    const db = executor.db();
+    const users = db
+      .select({ userId: juniorIdentities.userId })
+      .from(juniorIdentities)
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerTenantId, args.teamId),
+          eq(juniorIdentities.providerSubjectId, args.slackUserId),
+          isNotNull(juniorIdentities.userId),
+        ),
+      );
+    const roots = db
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .innerJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .where(
+        and(
+          eq(juniorDestinations.provider, "slack"),
+          eq(juniorDestinations.providerTenantId, args.teamId),
+          eq(juniorDestinations.providerDestinationId, args.channelId),
+          isNull(juniorConversations.parentConversationId),
+          // Null visibility reads as private.
+          or(
+            isNull(juniorConversations.visibility),
+            not(isPublicConversation(juniorConversations)),
+          ),
+        ),
+      );
+    const removed = await db
+      .delete(juniorConversationParticipants)
+      .where(
+        and(
+          inArray(juniorConversationParticipants.userId, users),
+          inArray(juniorConversationParticipants.rootConversationId, roots),
+        ),
+      )
+      .returning({
+        rootConversationId: juniorConversationParticipants.rootConversationId,
+      });
+    // The root's detail lists its Participants.
+    await touchConversationDetail(
+      db,
+      removed.map((row) => row.rootConversationId),
+    );
+  });
 }

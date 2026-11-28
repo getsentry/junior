@@ -20,6 +20,8 @@ import {
   joinCreatedSlackChannel,
   slackChannelCreatedEnvelopeSchema,
 } from "./slack-channel-created";
+import { slackMemberLeftChannelEnvelopeSchema } from "./slack-member-left-channel";
+import { removeSlackChannelParticipant } from "@/chat/conversations/sql/participants";
 import { ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import {
@@ -868,6 +870,22 @@ export async function handleSlackWebhook(args: {
           }),
         ),
       );
+    }
+    return new Response("ok", { status: 200 });
+  }
+
+  const memberLeft = slackMemberLeftChannelEnvelopeSchema.safeParse(json);
+  if (memberLeft.success) {
+    // Remove access before the ack, so Slack retries a failed write.
+    try {
+      await removeSlackChannelParticipant(getSqlExecutor(), {
+        channelId: memberLeft.data.event.channel,
+        slackUserId: memberLeft.data.event.user,
+        teamId: memberLeft.data.team_id,
+      });
+    } catch (error) {
+      logException(error, "slack.member_left_channel.failed");
+      return new Response("Slack event handling failed", { status: 503 });
     }
     return new Response("ok", { status: 200 });
   }
