@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { getAppContext } from "@/app/context";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
@@ -123,7 +124,7 @@ describe("connections API", () => {
       ),
       "eval-oauth",
       testWaitUntil,
-      {},
+      { catalog: getAppContext().catalog },
     );
     for (const callback of waitUntilCallbacks.splice(0)) {
       await callback();

@@ -2,6 +2,7 @@ import fs, { statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolvePackageDir } from "@/package-resolution";
+import type { AppPaths } from "@/app/context-types";
 
 // ---------------------------------------------------------------------------
 // Filesystem helpers
@@ -329,6 +330,16 @@ export function skillRoots(): string[] {
 /** Return all unique plugin root directories. */
 export function pluginRoots(): string[] {
   return unique([resolveContentRoot("plugins")]);
+}
+
+/** Resolve the content directories of the app in the working directory. */
+export function resolveAppPaths(): AppPaths {
+  const home = resolveHomeDir(process.cwd());
+  return {
+    home,
+    skillRoots: unique([builtInSkillsDir(), path.join(home, "skills")]),
+    pluginRoots: [path.join(home, "plugins")],
+  };
 }
 
 /** Return candidate paths where SOUL.md might be found. */

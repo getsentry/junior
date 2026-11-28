@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import { loadConfig } from "@/config";
+import { useAppContext } from "../../fixtures/app-context";
 
-const ORIGINAL_ENV = { ...process.env };
 const OVERSIZED_CONTEXT_TEXT = "x".repeat(1_600_000);
 
 function user(text: string, timestamp = 1): PiMessage {
@@ -58,21 +59,13 @@ function textOf(message: PiMessage): string {
 }
 
 describe("active-turn context compaction", () => {
-  beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      JUNIOR_STATE_ADAPTER: "memory",
-    };
-    vi.resetModules();
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
-    vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
+  beforeEach(() => {
+    useAppContext({
+      config: loadConfig({
+        env: process.env,
+        options: { state: { adapter: "memory" } },
+      }),
+    });
   });
 
   it("includes provider output in measured context usage", async () => {

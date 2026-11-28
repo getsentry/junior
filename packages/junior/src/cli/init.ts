@@ -17,7 +17,7 @@ const [
   import("./plugins.ts"),
 ]);
 
-const app = await createApp({
+const { app } = await createApp({
   allowedDomains: ["example.com"],
   plugins,
 });

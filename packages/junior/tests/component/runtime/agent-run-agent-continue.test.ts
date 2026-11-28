@@ -272,15 +272,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   }),
 }));
 
-vi.mock("@/app/context", () => {
-  const catalog = {
-    getMcpProviders: () => [],
-    getProviders: () => [],
-  };
-  const context = { plugins: [], catalog, slackUsers: new Map() };
-  return { getAppContext: () => context };
-});
-
 vi.mock("@/chat/skills", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/skills")>()),
   discoverSkills: async () => [],

@@ -5,12 +5,12 @@ import {
   defineJuniorPlugin,
   type PluginRunContext,
 } from "@sentry/junior-plugin-api";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { useAppContext } from "../../fixtures/app-context";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-queue";
 import type { ConversationMessage } from "@/chat/state/conversation";
 
-const ORIGINAL_ENV = { ...process.env };
 const conversationId = "local:test:plugin-tasks";
 const sessionId = "task-session-1";
 const destination = {
@@ -117,24 +117,6 @@ async function seedVisibleMessages(
   await persistConversationMessages({ conversation, conversationId });
 }
 
-beforeEach(async () => {
-  process.env = {
-    ...ORIGINAL_ENV,
-    JUNIOR_STATE_ADAPTER: "memory",
-  };
-  vi.resetModules();
-});
-
-afterEach(async () => {
-  const { installAppContext } = await import("@/app/context");
-  const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-  installAppContext(undefined);
-  await disconnectStateAdapter();
-  vi.useRealTimers();
-  vi.resetModules();
-  process.env = { ...ORIGINAL_ENV };
-});
-
 describe("plugin background tasks", () => {
   it("schedules and runs session.completed tasks from durable session records", async () => {
     const runId = randomUUID();
@@ -148,32 +130,28 @@ describe("plugin background tasks", () => {
     const runActor = { name: "plugin", platform: "system" } as const;
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-demo",
-              displayName: "Task Demo",
-              description: "Task demo",
-            },
-            tasks: {
-              processSession: {
-                async run(ctx) {
-                  loadedRuns.push(await ctx.run.load());
-                },
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-demo",
+            displayName: "Task Demo",
+            description: "Task demo",
+          },
+          tasks: {
+            processSession: {
+              async run(ctx) {
+                loadedRuns.push(await ctx.run.load());
               },
             },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
     const { getConversationStore } = await import("@/chat/db");
     await getConversationStore().recordActivity({
       conversationId: runConversationId,
@@ -296,32 +274,28 @@ describe("plugin background tasks", () => {
     const runSource = createLocalSource(runConversationId);
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-embedded-demo",
-              displayName: "Task Embedded Demo",
-              description: "Task embedded demo",
-            },
-            tasks: {
-              processSession: {
-                async run(ctx) {
-                  loadedRuns.push(await ctx.run.load());
-                },
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-embedded-demo",
+            displayName: "Task Embedded Demo",
+            description: "Task embedded demo",
+          },
+          tasks: {
+            processSession: {
+              async run(ctx) {
+                loadedRuns.push(await ctx.run.load());
               },
             },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
 
     // The live runtime embeds prior-thread context (here Bob's verbatim
     // message) in the same user-turn text that carries the current
@@ -414,32 +388,28 @@ describe("plugin background tasks", () => {
     const source = { kind: "scheduled_automation" } as const;
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-context-demo",
-              displayName: "Task Context Demo",
-              description: "Task context demo",
-            },
-            tasks: {
-              processSession: {
-                async run(ctx) {
-                  loadedRuns.push(await ctx.run.load());
-                },
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-context-demo",
+            displayName: "Task Context Demo",
+            description: "Task context demo",
+          },
+          tasks: {
+            processSession: {
+              async run(ctx) {
+                loadedRuns.push(await ctx.run.load());
               },
             },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
 
     const { getConversationStore } = await import("@/chat/db");
     await getConversationStore().recordActivity({
@@ -540,32 +510,28 @@ describe("plugin background tasks", () => {
     });
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-context-window-demo",
-              displayName: "Task Context Window Demo",
-              description: "Task context window demo",
-            },
-            tasks: {
-              processSession: {
-                async run(ctx) {
-                  loadedRuns.push(await ctx.run.load());
-                },
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-context-window-demo",
+            displayName: "Task Context Window Demo",
+            description: "Task context window demo",
+          },
+          tasks: {
+            processSession: {
+              async run(ctx) {
+                loadedRuns.push(await ctx.run.load());
               },
             },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
 
     const { getConversationStore } = await import("@/chat/db");
     await getConversationStore().recordActivity({
@@ -649,32 +615,28 @@ describe("plugin background tasks", () => {
     const runSource = createLocalSource(runConversationId);
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-actorless-demo",
-              displayName: "Task Actorless Demo",
-              description: "Task actorless demo",
-            },
-            tasks: {
-              processSession: {
-                async run(ctx) {
-                  loadedRuns.push(await ctx.run.load());
-                },
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-actorless-demo",
+            displayName: "Task Actorless Demo",
+            description: "Task actorless demo",
+          },
+          tasks: {
+            processSession: {
+              async run(ctx) {
+                loadedRuns.push(await ctx.run.load());
               },
             },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
 
     const { recordTurnStart } = await import("../../fixtures/turn-start");
     await recordTurnStart(runConversationId, runSessionId);
@@ -730,8 +692,6 @@ describe("plugin background tasks", () => {
     const source = { kind: "scheduled_automation" } as const;
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertTurnRecord } =
@@ -740,26 +700,24 @@ describe("plugin background tasks", () => {
       await import("@/chat/runtime/thread-state");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-private-demo",
-              displayName: "Task Private Demo",
-              description: "Task private demo",
-            },
-            tasks: {
-              processSession: {
-                async run(ctx) {
-                  loadedRuns.push(await ctx.run.load());
-                },
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-private-demo",
+            displayName: "Task Private Demo",
+            description: "Task private demo",
+          },
+          tasks: {
+            processSession: {
+              async run(ctx) {
+                loadedRuns.push(await ctx.run.load());
               },
             },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
 
     const { getConversationStore } = await import("@/chat/db");
     await getConversationStore().recordActivity({
@@ -825,31 +783,27 @@ describe("plugin background tasks", () => {
   });
 
   it("lets task failures bubble to the queue retry boundary", async () => {
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const queue = new PluginTaskQueueTestAdapter();
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-failure-demo",
-              displayName: "Task Failure Demo",
-              description: "Task failure demo",
-            },
-            tasks: {
-              processSession: {
-                run() {
-                  throw new Error("task failure marker");
-                },
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-failure-demo",
+            displayName: "Task Failure Demo",
+            description: "Task failure demo",
+          },
+          tasks: {
+            processSession: {
+              run() {
+                throw new Error("task failure marker");
               },
             },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
     await recordCompletedSession({
       conversationId: "local:test:failure",
       sessionId: "turn-1",
@@ -867,41 +821,37 @@ describe("plugin background tasks", () => {
   });
 
   it("attempts every plugin task send when one enqueue fails", async () => {
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const attempted: PluginTaskQueueMessage[] = [];
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-send-failure-demo",
-              displayName: "Task Send Failure Demo",
-              description: "Task send failure demo",
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-send-failure-demo",
+            displayName: "Task Send Failure Demo",
+            description: "Task send failure demo",
+          },
+          tasks: {
+            processSession: {
+              run() {},
             },
-            tasks: {
-              processSession: {
-                run() {},
-              },
+          },
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-send-success-demo",
+            displayName: "Task Send Success Demo",
+            description: "Task send success demo",
+          },
+          tasks: {
+            processSession: {
+              run() {},
             },
-          }),
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-send-success-demo",
-              displayName: "Task Send Success Demo",
-              description: "Task send success demo",
-            },
-            tasks: {
-              processSession: {
-                run() {},
-              },
-            },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
 
     await recordCompletedSession({
       conversationId: "local:test:send-failure",
@@ -930,29 +880,25 @@ describe("plugin background tasks", () => {
   });
 
   it("rejects task messages for unregistered plugin tasks", async () => {
-    const { createAppContext, installAppContext } =
-      await import("@/app/context");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const queue = new PluginTaskQueueTestAdapter();
-    installAppContext(
-      createAppContext({
-        plugins: [
-          defineJuniorPlugin({
-            manifest: {
-              name: "task-registration-demo",
-              displayName: "Task Registration Demo",
-              description: "Task registration demo",
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "task-registration-demo",
+            displayName: "Task Registration Demo",
+            description: "Task registration demo",
+          },
+          tasks: {
+            processSession: {
+              run() {},
             },
-            tasks: {
-              processSession: {
-                run() {},
-              },
-            },
-          }),
-        ],
-      }),
-    );
+          },
+        }),
+      ],
+    });
     await recordCompletedSession({
       conversationId: "local:test:missing",
       sessionId: "turn-1",
@@ -963,7 +909,7 @@ describe("plugin background tasks", () => {
       (message) => queue.send(message),
     );
     const [message] = queue.queuedMessages();
-    installAppContext(createAppContext({ plugins: [] }));
+    useAppContext({ plugins: [] });
 
     await expect(processPluginTask(message!)).rejects.toThrow(
       'Plugin task "task-registration-demo.processSession" is not registered',

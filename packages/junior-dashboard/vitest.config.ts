@@ -21,6 +21,10 @@ export default defineConfig({
         replacement: path.resolve(import.meta.dirname, "../junior/src/app.ts"),
       },
       {
+        find: /^@sentry\/junior\/api$/,
+        replacement: path.resolve(import.meta.dirname, "../junior/src/api.ts"),
+      },
+      {
         find: /^@sentry\/junior\/api\/schema$/,
         replacement: path.resolve(
           import.meta.dirname,
@@ -57,6 +61,13 @@ export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, "e2e/**"],
     include: ["tests/**/*.{test,spec}.{ts,tsx}", "visual/**/*.test.ts"],
+    // Dashboard routes read the app context that createApp installs.
+    setupFiles: [
+      path.resolve(
+        import.meta.dirname,
+        "../junior/tests/fixtures/app-context-setup.ts",
+      ),
+    ],
     coverage: {
       provider: "v8",
       reporter: ["json", "lcov"],

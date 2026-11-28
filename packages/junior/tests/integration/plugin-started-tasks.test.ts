@@ -127,7 +127,7 @@ function demoPlugin(store: DemoStore) {
 }
 
 async function deliverWebhook(
-  app: Awaited<ReturnType<typeof createApp>>,
+  app: Awaited<ReturnType<typeof createApp>>["app"],
   body: {
     delaySeconds?: number;
     key: string;
@@ -157,7 +157,7 @@ describe("plugin tasks that a route starts", () => {
   /** Start the app with the local Vercel Queues server pushing to its task route. */
   async function startQueuedApp(store: DemoStore) {
     await disconnectStateAdapter();
-    const app = await createApp({
+    const { app } = await createApp({
       conversationWorkQueue: () => createConversationWorkQueueTestAdapter(),
       plugins: defineJuniorPlugins([demoPlugin(store)]),
       waitUntil: createWaitUntilCollector().fn,

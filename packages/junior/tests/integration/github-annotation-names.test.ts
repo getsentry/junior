@@ -31,18 +31,18 @@ const person = slackSpawnInput.actor;
 // The objects that one slice reads, as the GitHub plugin sets it.
 const BATCH = 50;
 
-let app: Awaited<ReturnType<typeof createApp>>;
+let app: Awaited<ReturnType<typeof createApp>>["app"];
 let tasks: ReturnType<typeof createPluginTaskQueueTestAdapter>;
 let waitUntil: ReturnType<typeof createWaitUntilCollector>;
 
 async function createGitHubApp() {
   tasks = createPluginTaskQueueTestAdapter();
   waitUntil = createWaitUntilCollector();
-  app = await createApp({
+  ({ app } = await createApp({
     plugins: defineJuniorPlugins([githubPlugin()]),
     pluginTaskQueue: tasks.pluginTaskQueue,
     waitUntil: waitUntil.fn,
-  });
+  }));
   await prepareSlackParentConversation();
   await migratePluginSchemas(getSqlExecutor(), [
     {

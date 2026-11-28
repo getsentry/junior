@@ -22,7 +22,7 @@ import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { exampleDashboardAuthRequired } from "./dashboard.ts";
 
-/** An app that serves requests, such as the Hono app from `createApp()`. */
+/** An app that serves requests, such as the `app` that `createApp()` returns. */
 export interface FetchApp<Rest extends unknown[]> {
   fetch(request: Request, ...rest: Rest): Response | Promise<Response>;
 }

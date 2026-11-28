@@ -1,6 +1,7 @@
 import path from "node:path";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../../fixtures/app-context";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
@@ -131,6 +132,7 @@ describe("pre-registered MCP OAuth client", () => {
     };
     pluginApp = await createPluginAppFixture([PLUGIN_ROOT]);
     vi.resetModules();
+    await useFreshAppContext();
   });
 
   afterEach(async () => {

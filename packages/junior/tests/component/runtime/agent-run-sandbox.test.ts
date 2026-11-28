@@ -276,16 +276,6 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
   maybeExecuteJrRpcCustomCommand: async () => ({ handled: false }),
 }));
 
-vi.mock("@/app/context", () => {
-  const catalog = {
-    getMcpProviders: () => [],
-    getProviders: () => [],
-    getRuntimeDependencies: () => [],
-    getRuntimePostinstall: () => [],
-  };
-  return { getAppContext: () => ({ plugins: [], catalog }) };
-});
-
 vi.mock("@/chat/oauth-flow", () => ({
   extractOAuthStartedMessageFromToolResults: () => undefined,
 }));

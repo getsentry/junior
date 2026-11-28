@@ -7,16 +7,15 @@ import {
 } from "@/chat/services/plugin-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import { useAppContext } from "../../fixtures/app-context";
 
 const {
   formatProviderLabel,
-  getOAuthConfigMock,
   startOAuthFlow,
   unlinkProvider,
   abandonTurnRecord,
 } = vi.hoisted(() => ({
   formatProviderLabel: vi.fn((provider: string) => provider),
-  getOAuthConfigMock: vi.fn(),
   startOAuthFlow: vi.fn(),
   unlinkProvider: vi.fn(),
   abandonTurnRecord: vi.fn(),
@@ -27,12 +26,24 @@ vi.mock("@/chat/oauth-flow", () => ({
   startOAuthFlow,
 }));
 
-vi.mock("@/app/context", () => {
-  const catalog = {
-    getOAuthConfig: getOAuthConfigMock,
+// An OAuth provider plugin, as an app installs it from its manifest.
+function oauthPlugin(name: string, domain: string) {
+  return {
+    manifest: {
+      name,
+      displayName: name,
+      description: `${name} plugin`,
+      configKeys: [],
+      credentials: { type: "oauth-bearer" as const, domains: [domain] },
+      oauth: {
+        clientIdEnv: `${name.toUpperCase()}_CLIENT_ID`,
+        clientSecretEnv: `${name.toUpperCase()}_CLIENT_SECRET`,
+        authorizeEndpoint: `https://${domain}/oauth/authorize`,
+        tokenEndpoint: `https://${domain}/oauth/token`,
+      },
+    },
   };
-  return { getAppContext: () => ({ plugins: [], catalog }) };
-});
+}
 
 vi.mock("@/chat/credentials/unlink-provider", () => ({
   unlinkProvider,
@@ -76,10 +87,14 @@ const slackSource = createSlackSource({
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
     formatProviderLabel.mockClear();
-    getOAuthConfigMock.mockReset();
-    getOAuthConfigMock.mockImplementation((provider: string) =>
-      provider === "sentry" || provider === "github" ? { provider } : undefined,
-    );
+    useAppContext({
+      pluginConfig: {
+        inlineManifests: [
+          oauthPlugin("sentry", "sentry.io"),
+          oauthPlugin("github", "api.github.com"),
+        ],
+      },
+    });
     startOAuthFlow.mockReset();
     unlinkProvider.mockReset();
     abandonTurnRecord.mockReset();

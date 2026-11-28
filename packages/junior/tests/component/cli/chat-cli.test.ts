@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CHAT_USAGE, runChat } from "@/cli/chat";
+import { getAppContext } from "@/app/context";
 import { getChatConfig } from "@/chat/config";
 import type {
   LocalAgentReply,
@@ -13,19 +14,9 @@ import type {
 const runner = vi.hoisted(() => ({
   runLocalAgentTurn: vi.fn(),
 }));
-const testDb = vi.hoisted(() => ({
-  requiredDatabaseConnection: true,
-}));
-const db = vi.hoisted(() => ({
-  getDb: vi.fn(() => testDb),
-}));
 
 vi.mock("@/chat/local/runner", () => ({
   runLocalAgentTurn: runner.runLocalAgentTurn,
-}));
-
-vi.mock("@/chat/db", () => ({
-  getDb: db.getDb,
 }));
 
 const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
@@ -67,8 +58,6 @@ async function waitForMockCalls(
 describe("chat cli", () => {
   beforeEach(() => {
     runner.runLocalAgentTurn.mockReset();
-    db.getDb.mockReset();
-    db.getDb.mockImplementation(() => testDb);
   });
 
   afterEach(() => {
@@ -172,7 +161,9 @@ describe("chat cli", () => {
   it("defaults prompt local chat to memory even when REDIS_URL is present", async () => {
     delete process.env["JUNIOR_STATE_ADAPTER"];
     process.env["REDIS_URL"] = "redis://localhost:6379";
+    let stateAdapter: string | undefined;
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      stateAdapter = getChatConfig().state.adapter;
       const result = reply("success");
       await deps.deliverReply(result.reply);
       return result;
@@ -187,14 +178,11 @@ describe("chat cli", () => {
 
     expect(await runChat(["-p", "hello"], io)).toBe(0);
     expect(process.env["JUNIOR_STATE_ADAPTER"]).toBeUndefined();
-    expect(getChatConfig().state.adapter).toBe("memory");
+    expect(stateAdapter).toBe("memory");
   });
 
   it("fails local chat for hook plugins when database access fails", async () => {
     delete process.env["DATABASE_URL"];
-    db.getDb.mockImplementationOnce(() => {
-      throw new Error("DATABASE_URL is required");
-    });
     const tempDir = mkdtempSync(path.join(tmpdir(), "junior-chat-plugins-"));
     writeFileSync(
       path.join(tempDir, "plugins.mjs"),
@@ -302,7 +290,11 @@ export const plugins = {
 `,
     );
     process.chdir(tempDir);
+    let pluginNames: string[] = [];
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      pluginNames = getAppContext()
+        .catalog.getProviders()
+        .map((plugin) => plugin.manifest.name);
       const result = reply("success");
       await deps.deliverReply(result.reply);
       return result;
@@ -318,10 +310,6 @@ export const plugins = {
 
       expect(await runChat(["-p", "hello"], io)).toBe(0);
       expect(runner.runLocalAgentTurn).toHaveBeenCalledOnce();
-      const { getAppContext } = await import("@/app/context");
-      const pluginNames = getAppContext()
-        .catalog.getProviders()
-        .map((plugin) => plugin.manifest.name);
       expect(pluginNames).toContain("typescript-plugin");
       expect(pluginNames).not.toContain("javascript-plugin");
     } finally {
@@ -333,7 +321,9 @@ export const plugins = {
   it("preserves an explicit prompt local chat state adapter", async () => {
     process.env["JUNIOR_STATE_ADAPTER"] = "redis";
     process.env["REDIS_URL"] = "redis://localhost:6379";
+    let stateAdapter: string | undefined;
     runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      stateAdapter = getChatConfig().state.adapter;
       const result = reply("success");
       await deps.deliverReply(result.reply);
       return result;
@@ -348,12 +338,19 @@ export const plugins = {
 
     expect(await runChat(["-p", "hello"], io)).toBe(0);
     expect(process.env["JUNIOR_STATE_ADAPTER"]).toBe("redis");
-    expect(getChatConfig().state.adapter).toBe("redis");
+    expect(stateAdapter).toBe("redis");
   });
 
   it("defaults interactive local chat to memory even when REDIS_URL is present", async () => {
     delete process.env["JUNIOR_STATE_ADAPTER"];
     process.env["REDIS_URL"] = "redis://localhost:6379";
+    let stateAdapter: string | undefined;
+    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
+      stateAdapter = getChatConfig().state.adapter;
+      const result = reply("success");
+      await deps.deliverReply(result.reply);
+      return result;
+    });
     const input = new PassThrough();
     const output = new Writable({
       write(_chunk, _encoding, callback) {
@@ -367,12 +364,14 @@ export const plugins = {
       output,
       write: vi.fn(),
     });
+    input.write("hello\n");
+    await waitForMockCalls(runner.runLocalAgentTurn, 1);
     input.write("/exit\n");
     input.end();
 
     expect(await pending).toBe(0);
     expect(process.env["JUNIOR_STATE_ADAPTER"]).toBeUndefined();
-    expect(getChatConfig().state.adapter).toBe("memory");
+    expect(stateAdapter).toBe("memory");
   });
 
   it("uses a fresh local conversation for each prompt invocation", async () => {

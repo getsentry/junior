@@ -1,6 +1,8 @@
 import path from "node:path";
+import { getAppContext } from "@/app/context";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../fixtures/app-context";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import {
   getCapturedSlackApiCalls,
@@ -40,6 +42,7 @@ describe("oauth callback integration", () => {
     });
     pluginApp = await createPluginAppFixture([EVAL_OAUTH_PLUGIN_ROOT]);
     vi.resetModules();
+    await useFreshAppContext();
     stateAdapterModule = await import("@/chat/state/adapter");
     capabilitiesFactoryModule = await import("@/chat/capabilities/factory");
     oauthCallbackModule = await import("@/handlers/oauth-callback");
@@ -69,7 +72,7 @@ describe("oauth callback integration", () => {
       ),
       "eval-oauth",
       testWaitUntil,
-      {},
+      { catalog: getAppContext().catalog },
     );
     for (const callback of waitUntilCallbacks.splice(0)) {
       await callback();
@@ -110,7 +113,9 @@ describe("oauth callback integration", () => {
       await import("@/chat/local/oauth-callback-server");
     const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
     const conversationId = "local:oauth:loopback";
-    const callback = await startLocalOAuthCallbackServer();
+    const callback = await startLocalOAuthCallbackServer(
+      getAppContext().catalog,
+    );
 
     try {
       const state = await createLocalOAuthState(callback.port);

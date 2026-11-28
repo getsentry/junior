@@ -61,7 +61,7 @@ export default defineConfig({
 ```
 
 ```ts
-const app = await createApp();
+const { app } = await createApp();
 ```
 
 Packages that export runtime hooks must be registered from app code with

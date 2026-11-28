@@ -19,6 +19,7 @@ vi.mock("@/chat/mcp/client", () => ({
 }));
 
 import { McpToolManager } from "@/chat/mcp/tool-manager";
+import { useFreshAppContext } from "../../fixtures/app-context";
 
 const originalCwd = process.cwd();
 const readOnlyTools = [
@@ -107,11 +108,10 @@ describe("Amplitude plugin package", () => {
       pluginRoots: () => [],
     }));
 
-    const { getAppContext } = await import("@/app/context");
-    getAppContext().catalog.setConfig({
-      packages: ["@sentry/junior-amplitude"],
+    const { catalog } = await useFreshAppContext({
+      pluginConfig: { packages: ["@sentry/junior-amplitude"] },
     });
-    const providers = getAppContext().catalog.getProviders();
+    const providers = catalog.getProviders();
 
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.mcp).toMatchObject({

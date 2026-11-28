@@ -20,6 +20,7 @@ vi.mock("@/chat/mcp/client", () => ({
 }));
 
 import { McpToolManager } from "@/chat/mcp/tool-manager";
+import { useFreshAppContext } from "../../fixtures/app-context";
 
 const originalCwd = process.cwd();
 const allowedTools = [
@@ -71,13 +72,14 @@ describe("Notion plugin package", () => {
       pluginRoots: () => [],
     }));
 
-    const { getAppContext } = await import("@/app/context");
     const { defineJuniorPlugins, pluginCatalogConfigFromPluginSet } =
       await import("@/plugins");
-    getAppContext().catalog.setConfig(
-      pluginCatalogConfigFromPluginSet(defineJuniorPlugins([notionPlugin()])),
-    );
-    const providers = getAppContext().catalog.getProviders();
+    const { catalog } = await useFreshAppContext({
+      pluginConfig: pluginCatalogConfigFromPluginSet(
+        defineJuniorPlugins([notionPlugin()]),
+      ),
+    });
+    const providers = catalog.getProviders();
 
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.mcp).toMatchObject({

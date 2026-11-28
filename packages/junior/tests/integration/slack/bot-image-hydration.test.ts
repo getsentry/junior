@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../../fixtures/app-context";
 import {
   createTestMessage,
   createTestThread,
@@ -34,6 +35,7 @@ async function createRuntime(
     ...env,
   });
   vi.resetModules();
+  await useFreshAppContext();
   const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
   return createTestChatRuntime(args);
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   actorDirectoryReportSchema,
   codeOverviewReportSchema,
@@ -618,11 +618,15 @@ describe("dashboard mock sends", () => {
     resetMockDashboardState();
   });
 
-  const app = createDashboardApp({
-    agentName: "Junior",
-    authRequired: false,
-    allowedDomains: [],
-    mockConversations: true,
+  // The API reads the app context when it is built, so build it per test.
+  let app: ReturnType<typeof createDashboardApp>;
+  beforeEach(() => {
+    app = createDashboardApp({
+      agentName: "Junior",
+      authRequired: false,
+      allowedDomains: [],
+      mockConversations: true,
+    });
   });
   const post = (path: string, body: unknown) =>
     app.fetch(
@@ -776,11 +780,14 @@ describe("dashboard mock Spaces", () => {
     resetMockDashboardState();
   });
 
-  const app = createDashboardApp({
-    agentName: "Junior",
-    authRequired: false,
-    allowedDomains: [],
-    mockConversations: true,
+  let app: ReturnType<typeof createDashboardApp>;
+  beforeEach(() => {
+    app = createDashboardApp({
+      agentName: "Junior",
+      authRequired: false,
+      allowedDomains: [],
+      mockConversations: true,
+    });
   });
   const patch = (path: string, body: unknown) =>
     app.fetch(

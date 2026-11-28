@@ -10,7 +10,6 @@ import {
   listWatches,
 } from "@/chat/events/store";
 import { createPluginState } from "@/chat/plugins/state";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createAgentDispatchTestRecord } from "../fixtures/agent-dispatch";
 
 // Chat config reads the state adapter when it loads, so set it first. CI
@@ -29,14 +28,10 @@ const previousEnv = vi.hoisted(() => {
 });
 
 // Later files in the same worker must not run on this file's Redis state.
-afterAll(async () => {
-  try {
-    await disconnectStateAdapter();
-  } finally {
-    for (const [key, value] of Object.entries(previousEnv)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
+afterAll(() => {
+  for (const [key, value] of Object.entries(previousEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
 });
 

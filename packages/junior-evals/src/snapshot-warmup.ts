@@ -36,18 +36,20 @@ const MAX_SAVED_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export async function warmSandboxSnapshot(
   pluginPackages: readonly string[] = [],
 ): Promise<void> {
+  const pluginSet = defineJuniorPlugins([
+    ...pluginPackages,
+    ...evalRuntimePlugins(pluginPackages),
+  ]);
   // Only the catalog changes. The app plugins stay as they are.
-  const previousAppContext = installAppContext(
-    createAppContext({
-      plugins: getAppContext().plugins,
-      pluginConfig: pluginCatalogConfigFromPluginSet(
-        defineJuniorPlugins([
-          ...pluginPackages,
-          ...evalRuntimePlugins(pluginPackages),
-        ]),
-      ),
-    }),
-  );
+  const evalContext = getAppContext();
+  const context = createAppContext({
+    config: evalContext.config,
+    env: evalContext.env,
+    paths: evalContext.paths,
+    plugins: evalContext.plugins,
+    pluginConfig: pluginCatalogConfigFromPluginSet(pluginSet),
+  });
+  const previousAppContext = installAppContext(context);
   try {
     // Every profile has the global runtime dependencies, so it has a hash.
     const profileHash = profile.hash(SANDBOX_RUNTIME)!;
@@ -60,7 +62,7 @@ export async function warmSandboxSnapshot(
     if (snapshot && Date.now() - snapshot.createdAtMs < MAX_SAVED_AGE_MS) {
       await setCachedSnapshot(snapshot);
     }
-    await runSnapshotCreate();
+    await runSnapshotCreate(undefined, { pluginSet });
     const current = await getCachedSnapshot(profileHash);
     if (current && current.snapshotId !== snapshot?.snapshotId) {
       mkdirSync(path.dirname(SAVED_SNAPSHOTS_FILE), { recursive: true });
@@ -71,5 +73,6 @@ export async function warmSandboxSnapshot(
     }
   } finally {
     installAppContext(previousAppContext);
+    await context.close();
   }
 }

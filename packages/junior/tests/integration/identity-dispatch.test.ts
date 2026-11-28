@@ -39,14 +39,14 @@ describe("plugin Identity dispatch", () => {
   let onGoogleHeartbeat: (
     agent: HeartbeatHookContext["agent"],
   ) => Promise<void> = async () => {};
-  let app: Awaited<ReturnType<typeof createApp>>;
+  let app: Awaited<ReturnType<typeof createApp>>["app"];
   let queue: ConversationWorkQueueTestAdapter;
   const waitUntil = createWaitUntilCollector();
 
   async function startApp(allowedDomains?: string[]): Promise<void> {
     await disconnectStateAdapter();
     queue = createConversationWorkQueueTestAdapter();
-    app = await createApp({
+    ({ app } = await createApp({
       ...(allowedDomains ? { allowedDomains } : undefined),
       conversationWorkQueue: () => queue,
       waitUntil: waitUntil.fn,
@@ -78,7 +78,7 @@ describe("plugin Identity dispatch", () => {
           },
         }),
       ]),
-    });
+    }));
   }
 
   beforeEach(async () => {

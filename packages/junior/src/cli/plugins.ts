@@ -1,7 +1,7 @@
 /**
  * Plugin CLI bootstrap for the local/package command line.
- * This module imports app plugins, validates top-level namespaces before
- * installing runtime plugin state, and dispatches only plugin-owned subcommands.
+ * This module imports app plugins, validates them and their top-level
+ * namespaces, and dispatches only plugin-owned subcommands.
  */
 import { stderr as defaultStderr, stdout as defaultStdout } from "node:process";
 import { createJiti } from "jiti";
@@ -12,10 +12,10 @@ import type {
   PluginCliIo,
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createAppContext, installAppContext } from "@/app/context";
 import { coreRegistrations } from "@/chat/plugins/core-registrations";
+import { validatePlugins } from "@/chat/plugins/hooks/registry";
+import { createPluginCatalogRuntime } from "@/chat/plugins/registry";
 import {
   validatePluginEgressCredentialHooks,
   validatePluginRegistrations,
@@ -27,6 +27,7 @@ import {
   pluginRuntimeRegistrationsFromPluginSet,
   type JuniorPluginSet,
 } from "@/plugins";
+import { withCliAppContext } from "./context";
 
 export type PluginCommandIo = PluginCliIo;
 
@@ -98,24 +99,29 @@ function createPluginCliHost(args: {
   command: PluginCliCommandDefinition;
   io: PluginCommandIo;
   plugin: PluginRegistration;
+  pluginSet: JuniorPluginSet | undefined;
   setExitCode: (exitCode: number) => void;
 }): PluginCliHost {
   return {
     action(handler) {
       return async (...actionArgs) => {
         const pluginName = args.plugin.manifest.name;
-        const result = await handler(
-          {
-            db: getDb(),
-            command: {
-              name: args.command.name,
-              summary: args.command.summary,
-            },
-            io: args.io,
-            log: createPluginLogger(pluginName),
-            plugin: { name: pluginName },
-          },
-          ...actionArgs,
+        const result = await withCliAppContext(
+          { pluginSet: args.pluginSet },
+          async (context) =>
+            await handler(
+              {
+                db: context.sql.db(),
+                command: {
+                  name: args.command.name,
+                  summary: args.command.summary,
+                },
+                io: args.io,
+                log: createPluginLogger(pluginName),
+                plugin: { name: pluginName },
+              },
+              ...actionArgs,
+            ),
         );
         args.setExitCode(result ?? 0);
       };
@@ -127,6 +133,7 @@ function createPluginCommanderCommand(args: {
   command: PluginCliCommandDefinition;
   io: PluginCommandIo;
   plugin: PluginRegistration;
+  pluginSet: JuniorPluginSet | undefined;
   setExitCode: (exitCode: number) => void;
 }): Command {
   const command = new Command(args.command.name)
@@ -207,6 +214,7 @@ function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
           command: definition,
           io: validationIo,
           plugin,
+          pluginSet: undefined,
           setExitCode: (nextExitCode) => {
             exitCode = nextExitCode;
           },
@@ -219,37 +227,29 @@ function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
   }
 }
 
-async function loadPluginRegistrations(args: {
+// Validate the plugin set against its own catalog. Each command builds its
+// app context when it runs, so loading commands needs no config.
+function loadCliPlugins(args: {
   pluginSet?: JuniorPluginSet | undefined;
   validateConfiguredCommands?: (plugins: PluginRegistration[]) => void;
-}): Promise<{
-  cliPlugins: PluginRegistration[];
-  runtimePlugins: PluginRegistration[];
-}> {
+}): PluginRegistration[] {
   const pluginSet = args.pluginSet;
   const coreCliPlugins = coreRegistrations().filter((plugin) => plugin.cli);
   if (!pluginSet) {
-    return { cliPlugins: coreCliPlugins, runtimePlugins: [] };
+    return coreCliPlugins;
   }
 
   const cliPlugins = [
     ...pluginCliRegistrationsFromPluginSet(pluginSet),
     ...coreCliPlugins,
   ];
-  const runtimePlugins = pluginRuntimeRegistrationsFromPluginSet(pluginSet);
-  const pluginConfig = pluginCatalogConfigFromPluginSet(pluginSet);
-  const previousAppContext = installAppContext(
-    createAppContext({ plugins: runtimePlugins, pluginConfig }),
-  );
-  try {
-    validatePluginRegistrations(pluginSet.registrations);
-    validatePluginEgressCredentialHooks(pluginSet.registrations);
-    args.validateConfiguredCommands?.(cliPlugins);
-    return { cliPlugins, runtimePlugins };
-  } catch (error) {
-    installAppContext(previousAppContext);
-    throw error;
-  }
+  validatePlugins(pluginRuntimeRegistrationsFromPluginSet(pluginSet));
+  const catalog = createPluginCatalogRuntime();
+  catalog.setConfig(pluginCatalogConfigFromPluginSet(pluginSet));
+  validatePluginRegistrations(catalog, pluginSet.registrations);
+  validatePluginEgressCredentialHooks(catalog, pluginSet.registrations);
+  args.validateConfiguredCommands?.(cliPlugins);
+  return cliPlugins;
 }
 
 /** Import configured app plugins and build the plugin CLI command dispatcher. */
@@ -260,7 +260,7 @@ export async function loadCliPluginCommands(
     pluginSet === undefined
       ? await loadCliPluginSet()
       : (pluginSet ?? undefined);
-  const { cliPlugins } = await loadPluginRegistrations({
+  const cliPlugins = loadCliPlugins({
     pluginSet: resolvedPluginSet,
     validateConfiguredCommands: validateConfiguredPluginCommands,
   });
@@ -281,6 +281,7 @@ export async function loadCliPluginCommands(
         command: resolved.command,
         io,
         plugin: resolved.plugin,
+        pluginSet: resolvedPluginSet,
         setExitCode: (nextExitCode) => {
           exitCode = nextExitCode;
         },

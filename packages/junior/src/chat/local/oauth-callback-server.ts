@@ -8,6 +8,7 @@ import type { AddressInfo } from "node:net";
 import { GET as handlePluginOAuthCallback } from "@/handlers/oauth-callback";
 import { GET as handleMcpOAuthCallback } from "@/handlers/mcp-oauth-callback";
 import type { WaitUntilFn } from "@/handlers/types";
+import type { AppContext } from "@/app/context-types";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { syncLocalOAuthCredential } from "@/chat/local/credential-sync";
 
@@ -50,7 +51,9 @@ function decodeProvider(value: string | undefined): string | undefined {
 }
 
 /** Start the loopback callback that completes OAuth in the local CLI process. */
-export async function startLocalOAuthCallbackServer(): Promise<LocalOAuthCallbackServer> {
+export async function startLocalOAuthCallbackServer(
+  catalog: AppContext["catalog"],
+): Promise<LocalOAuthCallbackServer> {
   let pendingAuthorization: PendingAuthorization | undefined;
 
   const completeAuthorization = (
@@ -132,7 +135,9 @@ export async function startLocalOAuthCallbackServer(): Promise<LocalOAuthCallbac
       const request = new Request(requestUrl, { method: "GET" });
       const response = mcpMatch
         ? await handleMcpOAuthCallback(request, provider, waitUntil, {})
-        : await handlePluginOAuthCallback(request, provider, waitUntil, {});
+        : await handlePluginOAuthCallback(request, provider, waitUntil, {
+            catalog,
+          });
       const body = Buffer.from(await response.arrayBuffer());
       await Promise.all(backgroundTasks);
       if (response.ok) {

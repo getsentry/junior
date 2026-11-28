@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../fixtures/app-context";
 
 const originalSkillDirs = process.env["SKILL_DIRS"];
 
@@ -26,13 +27,18 @@ async function writeSkill(
   );
 }
 
+// Setup loads the app modules for its context, so reset them before the
+// `vi.doMock` calls of a test.
+beforeEach(() => {
+  vi.resetModules();
+});
+
 afterEach(() => {
   if (originalSkillDirs === undefined) {
     delete process.env["SKILL_DIRS"];
   } else {
     process.env["SKILL_DIRS"] = originalSkillDirs;
   }
-  vi.resetModules();
   vi.doUnmock("@/chat/discovery");
   vi.doUnmock("@/chat/plugins/package-discovery");
 });
@@ -59,7 +65,8 @@ describe("discoverSkills plugin ownership", () => {
 
     process.env["SKILL_DIRS"] = localSkillsRoot;
 
-    vi.doMock("@/chat/discovery", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [pluginsRoot],
       skillRoots: () => [],
     }));
@@ -74,6 +81,7 @@ describe("discoverSkills plugin ownership", () => {
     }));
 
     try {
+      await useFreshAppContext();
       const { discoverSkills, resetSkillDiscoveryCache } =
         await import("@/chat/skills");
       resetSkillDiscoveryCache();

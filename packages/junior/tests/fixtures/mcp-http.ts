@@ -271,7 +271,7 @@ export async function connectMcpTools(
   scope = "",
   appOptions: Parameters<typeof createApp>[0] = {},
 ) {
-  const app = await createApp({
+  const { app } = await createApp({
     ...appOptions,
     allowedDomains: MCP_TEST_ALLOWED_DOMAINS,
   });

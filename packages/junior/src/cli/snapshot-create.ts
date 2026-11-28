@@ -1,12 +1,12 @@
-import { getChatConfig } from "@/chat/config";
-import { getAppContext } from "@/app/context";
+import type { AppContext } from "@/app/context";
 import {
   resolve as resolveSnapshot,
   type ProgressPhase,
 } from "@/chat/sandbox/snapshot/resolve";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import type { JuniorPluginSet } from "@/plugins";
+import { withCliAppContext } from "./context";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -31,10 +31,11 @@ function formatList(values: string[]): string {
 }
 
 function logSnapshotProfile(
+  context: Pick<AppContext, "catalog">,
   runtime: string,
   log: (line: string) => void,
 ): void {
-  const providers = getAppContext().catalog.getProviders();
+  const providers = context.catalog.getProviders();
   const currentProfile = profile.create(runtime);
   const pluginNames = providers.map((plugin) => plugin.manifest.name).sort();
   const snapshotPluginNames = providers
@@ -106,6 +107,7 @@ function logSnapshotProfile(
 /** Resolve or create the default sandbox snapshot and report its progress. */
 export async function runSnapshotCreate(
   log: (line: string) => void = console.log,
+  options: { pluginSet?: JuniorPluginSet | undefined } = {},
 ): Promise<void> {
   if (process.env["JUNIOR_SKIP_SNAPSHOT"] === "1") {
     log("Skipping sandbox snapshot create (JUNIOR_SKIP_SNAPSHOT=1)");
@@ -115,8 +117,8 @@ export async function runSnapshotCreate(
   const runtime = SANDBOX_RUNTIME;
   const timeoutMs = DEFAULT_TIMEOUT_MS;
 
-  try {
-    logSnapshotProfile(runtime, log);
+  await withCliAppContext({ pluginSet: options.pluginSet }, async (context) => {
+    logSnapshotProfile(context, runtime, log);
     const emitted = new Set<ProgressPhase>();
     const snapshot = await resolveSnapshot({
       runtime,
@@ -135,7 +137,7 @@ export async function runSnapshotCreate(
       `resolve_outcome=${snapshot.resolveOutcome}`,
       `cache_hit=${snapshot.cacheHit}`,
       `dependency_count=${snapshot.dependencyCount}`,
-      `state=${getChatConfig().state.adapter}`,
+      `state=${context.config.state.adapter}`,
       ...(snapshot.profileHash ? [`profile_hash=${snapshot.profileHash}`] : []),
       ...(snapshot.snapshotId ? [`snapshot_id=${snapshot.snapshotId}`] : []),
       ...(snapshot.rebuildReason
@@ -143,7 +145,5 @@ export async function runSnapshotCreate(
         : []),
     ];
     log(`Sandbox snapshot create complete: ${fields.join(" ")}`);
-  } finally {
-    await disconnectStateAdapter();
-  }
+  });
 }

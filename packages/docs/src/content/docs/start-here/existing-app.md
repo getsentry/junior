@@ -13,7 +13,7 @@ related:
 
 Use this path when you already have a Hono or Nitro app and want Junior to own the Slack runtime routes inside it.
 
-The safest integration is still the scaffolded shape: a dedicated server entrypoint that exports the Hono app returned by `createApp()`, plus `juniorNitro()` in Nitro config.
+The safest integration is still the scaffolded shape: a dedicated server entrypoint that exports the `app` that `createApp()` returns, plus `juniorNitro()` in Nitro config.
 
 ## Add the server entrypoint
 
@@ -26,7 +26,7 @@ initSentry();
 import { createApp } from "@sentry/junior";
 import { plugins } from "./plugins.ts";
 
-const app = await createApp({
+const { app } = await createApp({
   allowedDomains: ["example.com"],
   plugins,
 });

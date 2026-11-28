@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../../fixtures/app-context";
 
 const originalCwd = process.cwd();
 
@@ -23,9 +24,14 @@ async function writeSkill(pluginDir: string, name: string) {
   return skillDir;
 }
 
+// Setup loads the app modules for its context, so reset them before the
+// `vi.doMock` calls of a test.
+beforeEach(() => {
+  vi.resetModules();
+});
+
 afterEach(() => {
   process.chdir(originalCwd);
-  vi.resetModules();
   vi.doUnmock("@/chat/discovery");
   vi.doUnmock("@/chat/plugins/package-discovery");
 });
@@ -50,7 +56,8 @@ describe("loadSkill tool", () => {
     );
     await writeSkill(pluginDir, "sentry");
 
-    vi.doMock("@/chat/discovery", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [pluginDir],
       skillRoots: () => [],
     }));
@@ -64,6 +71,7 @@ describe("loadSkill tool", () => {
       }),
     }));
 
+    await useFreshAppContext();
     const { discoverSkills } = await import("@/chat/skills");
     const { createLoadSkillTool } =
       await import("@/chat/tools/skill/load-skill");

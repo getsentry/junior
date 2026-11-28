@@ -15,7 +15,7 @@ import * as readline from "node:readline/promises";
 import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
 import { installChatConfig } from "@/chat/config";
-import { loadConfig, type ConfigInput } from "@/config";
+import type { ConfigInput } from "@/config";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import type {
   LocalAgentReply,
@@ -24,7 +24,13 @@ import type {
 } from "@/chat/local/runner";
 import { executeAgentRun } from "@/chat/agent";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
-import type { JuniorPluginSet } from "@/plugins";
+import { pluginCatalogConfigFromEnv, type JuniorPluginSet } from "@/plugins";
+import {
+  validatePluginEgressCredentialHooks,
+  validatePluginRegistrations,
+} from "@/chat/plugins/validation";
+import type { AppContext } from "@/app/context";
+import { withCliAppContext } from "./context";
 
 export const CHAT_USAGE =
   "usage: junior chat\n       junior chat -p <message>\n       junior chat --engine core -p <message>";
@@ -125,25 +131,6 @@ function writeStream(
   });
 }
 
-/**
- * Install the config of a local chat run. Local chat is ephemeral by default:
- * it uses the memory state adapter unless `JUNIOR_STATE_ADAPTER` is set, so
- * Redis is opt-in.
- */
-function installLocalChatConfig(options: ConfigInput = {}): void {
-  installChatConfig(
-    loadConfig({
-      env: process.env,
-      options: {
-        ...options,
-        state: {
-          adapter: process.env["JUNIOR_STATE_ADAPTER"] ? undefined : "memory",
-        },
-      },
-    }),
-  );
-}
-
 /** Load the app plugin module so source-mode local chat matches server wiring. */
 async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
   return await loadAppPluginSet(process.cwd(), async (moduleRef) =>
@@ -151,46 +138,44 @@ async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
   );
 }
 
-/** Configure plugin hooks after local chat has selected its state adapter. */
-async function configureLocalChatPlugins(
-  pluginSet?: JuniorPluginSet | null,
-): Promise<void> {
-  const [pluginsModule, appContextModule, validationModule, databaseModule] =
-    await Promise.all([
-      import("@/plugins"),
-      import("@/app/context"),
-      import("@/chat/plugins/validation"),
-      import("@/chat/db"),
-    ]);
+/**
+ * Run a local chat command with its app context. Local chat is ephemeral by
+ * default: it uses the memory state adapter unless `JUNIOR_STATE_ADAPTER` is
+ * set, so Redis is opt-in.
+ */
+async function withLocalChatContext<T>(
+  pluginSet: JuniorPluginSet | null | undefined,
+  options: ConfigInput,
+  run: (context: AppContext) => Promise<T>,
+): Promise<T> {
   const resolvedPluginSet =
     pluginSet === undefined
       ? await loadLocalPluginSet()
       : (pluginSet ?? undefined);
-  const plugins =
-    pluginsModule.pluginRuntimeRegistrationsFromPluginSet(resolvedPluginSet);
-  const pluginConfig = resolvedPluginSet
-    ? pluginsModule.pluginCatalogConfigFromPluginSet(resolvedPluginSet)
-    : pluginsModule.pluginCatalogConfigFromEnv();
-  const shouldValidatePluginCatalog =
-    Boolean(pluginConfig) || Boolean(resolvedPluginSet?.registrations.length);
-  const previousAppContext = appContextModule.installAppContext(
-    appContextModule.createAppContext({ plugins, pluginConfig }),
+  const config: ConfigInput = {
+    ...options,
+    state: {
+      adapter: process.env["JUNIOR_STATE_ADAPTER"] ? undefined : "memory",
+    },
+  };
+  return await withCliAppContext(
+    { config, pluginSet: resolvedPluginSet },
+    async (context) => {
+      const previousChatConfig = installChatConfig(context.config);
+      try {
+        if (resolvedPluginSet || pluginCatalogConfigFromEnv()) {
+          const registrations = resolvedPluginSet?.registrations ?? [];
+          context.catalog.getSignature();
+          validatePluginRegistrations(context.catalog, registrations);
+          validatePluginEgressCredentialHooks(context.catalog, registrations);
+        }
+        context.sql.db();
+        return await run(context);
+      } finally {
+        installChatConfig(previousChatConfig);
+      }
+    },
   );
-  try {
-    if (shouldValidatePluginCatalog) {
-      appContextModule.getAppContext().catalog.getSignature();
-      validationModule.validatePluginRegistrations(
-        resolvedPluginSet?.registrations ?? [],
-      );
-      validationModule.validatePluginEgressCredentialHooks(
-        resolvedPluginSet?.registrations ?? [],
-      );
-    }
-    databaseModule.getDb();
-  } catch (error) {
-    appContextModule.installAppContext(previousAppContext);
-    throw error;
-  }
 }
 
 function parseChatArgs(argv: string[]): ChatCommandOptions | undefined {
@@ -240,10 +225,8 @@ function localDevServerUrl(): string {
 /** Wire the shared local-turn setup so prompt and interactive runs stay identical. */
 async function prepareLocalChatRun(
   io: ChatIo,
-  pluginSet: JuniorPluginSet | null | undefined,
+  context: Pick<AppContext, "catalog">,
 ) {
-  installLocalChatConfig({ eventEmbeddings: { enabled: true } });
-  await configureLocalChatPlugins(pluginSet);
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
@@ -293,7 +276,7 @@ async function prepareLocalChatRun(
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: localConversationWork.queue }),
   });
-  const oauthCallback = await startLocalOAuthCallbackServer();
+  const oauthCallback = await startLocalOAuthCallbackServer(context.catalog);
   const deps: LocalAgentTurnDeps = {
     agentRunner,
     authorization: {
@@ -334,25 +317,34 @@ async function prepareLocalChatRun(
   };
 }
 
+// Prompt and interactive runs embed events, like a deployed app can.
+const LOCAL_RUN_CONFIG: ConfigInput = { eventEmbeddings: { enabled: true } };
+
 async function runPrompt(
   options: Extract<ChatCommandOptions, { mode: "prompt" }>,
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<number> {
-  const { close, conversationId, runLocalAgentTurn, deps } =
-    await prepareLocalChatRun(io, pluginSet);
-  try {
-    const result = await runLocalAgentTurn(
-      {
-        conversationId,
-        message: options.message,
-      },
-      deps,
-    );
-    return result.outcome === "success" ? 0 : 1;
-  } finally {
-    await close();
-  }
+  return await withLocalChatContext(
+    pluginSet,
+    LOCAL_RUN_CONFIG,
+    async (context) => {
+      const { close, conversationId, runLocalAgentTurn, deps } =
+        await prepareLocalChatRun(io, context);
+      try {
+        const result = await runLocalAgentTurn(
+          {
+            conversationId,
+            message: options.message,
+          },
+          deps,
+        );
+        return result.outcome === "success" ? 0 : 1;
+      } finally {
+        await close();
+      }
+    },
+  );
 }
 
 async function runCorePrompt(
@@ -360,62 +352,64 @@ async function runCorePrompt(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<number> {
-  installLocalChatConfig();
-  await configureLocalChatPlugins(pluginSet);
-  const { runCoreEnginePrompt } = await import("./chat-core-engine");
-  const result = await runCoreEnginePrompt({
-    conversationId: newRunConversationId(),
-    message: options.message,
+  return await withLocalChatContext(pluginSet, {}, async (context) => {
+    const { runCoreEnginePrompt } = await import("./chat-core-engine");
+    const result = await runCoreEnginePrompt(context.config, {
+      conversationId: newRunConversationId(),
+      message: options.message,
+    });
+    if (result.outcome !== "completed") {
+      await reportStatus(io, `Turn ${result.outcome}: ${result.reason}`);
+      return 1;
+    }
+    await deliverReply(io, { text: result.reply });
+    return 0;
   });
-  if (result.outcome !== "completed") {
-    await reportStatus(io, `Turn ${result.outcome}: ${result.reason}`);
-    return 1;
-  }
-  await deliverReply(io, { text: result.reply });
-  return 0;
 }
 
 async function runInteractive(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<void> {
-  const { close, conversationId, runLocalAgentTurn, deps } =
-    await prepareLocalChatRun(io, pluginSet);
-  const rl = readline.createInterface({
-    input: io.input,
-    output: io.output,
-    terminal: true,
-  });
-  try {
-    /* oxlint-disable no-await-in-loop -- The REPL reads and runs one message at a time. */
-    while (true) {
-      const message = (await rl.question("junior> ")).trim();
-      if (!message) {
-        continue;
-      }
-      if (message === "/exit" || message === "/quit") {
-        break;
-      }
-      try {
-        await runLocalAgentTurn(
-          {
-            conversationId,
-            message,
-          },
-          deps,
-        );
-      } catch (error) {
-        if (error instanceof ChatOutputError) {
-          throw error;
+  await withLocalChatContext(pluginSet, LOCAL_RUN_CONFIG, async (context) => {
+    const { close, conversationId, runLocalAgentTurn, deps } =
+      await prepareLocalChatRun(io, context);
+    const rl = readline.createInterface({
+      input: io.input,
+      output: io.output,
+      terminal: true,
+    });
+    try {
+      /* oxlint-disable no-await-in-loop -- The REPL reads and runs one message at a time. */
+      while (true) {
+        const message = (await rl.question("junior> ")).trim();
+        if (!message) {
+          continue;
         }
-        await reportStatus(io, errorMessage(error));
+        if (message === "/exit" || message === "/quit") {
+          break;
+        }
+        try {
+          await runLocalAgentTurn(
+            {
+              conversationId,
+              message,
+            },
+            deps,
+          );
+        } catch (error) {
+          if (error instanceof ChatOutputError) {
+            throw error;
+          }
+          await reportStatus(io, errorMessage(error));
+        }
       }
+      /* oxlint-enable no-await-in-loop */
+    } finally {
+      rl.close();
+      await close();
     }
-    /* oxlint-enable no-await-in-loop */
-  } finally {
-    rl.close();
-    await close();
-  }
+  });
 }
 
 /** Run the local Junior chat command. */

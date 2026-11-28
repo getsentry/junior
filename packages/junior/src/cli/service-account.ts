@@ -16,9 +16,10 @@ import {
   serviceAccountPlugins,
   startServiceAccountSignIn,
 } from "@/chat/credentials/service-account";
-import { getAppContext } from "@/app/context";
+import type { AppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import type { JuniorPluginSet } from "@/plugins";
+import { withCliAppContext } from "./context";
 import { CLI_USAGE } from "./run";
 
 const SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -79,15 +80,16 @@ async function listenForCallback(): Promise<LoopbackCallback> {
 }
 
 function requireServiceAccountPlugin(
+  catalog: AppContext["catalog"],
   name: string,
 ): PluginDefinition | undefined {
-  const plugin = getAppContext().catalog.getDefinition(name);
+  const plugin = catalog.getDefinition(name);
   if (plugin?.manifest.accounts?.serviceAccount) {
     return plugin;
   }
-  const supported = serviceAccountPlugins(
-    getAppContext().catalog.getProviders(),
-  ).map((candidate) => candidate.manifest.name);
+  const supported = serviceAccountPlugins(catalog.getProviders()).map(
+    (candidate) => candidate.manifest.name,
+  );
   console.error(
     `Plugin "${name}" does not support a service account.` +
       (supported.length ? ` Supported plugins: ${supported.join(", ")}.` : ""),
@@ -157,7 +159,10 @@ async function runDisconnect(plugin: PluginDefinition): Promise<number> {
 }
 
 /** Run `junior service-account connect|status|disconnect <plugin>`. */
-export async function runServiceAccount(argv: string[]): Promise<number> {
+export async function runServiceAccount(
+  argv: string[],
+  options: { pluginSet?: JuniorPluginSet | undefined } = {},
+): Promise<number> {
   const [subcommand, name, ...rest] = argv;
   const run =
     subcommand === "connect"
@@ -171,13 +176,11 @@ export async function runServiceAccount(argv: string[]): Promise<number> {
     console.error(CLI_USAGE);
     return 1;
   }
-  const plugin = requireServiceAccountPlugin(name.trim());
-  if (!plugin) {
-    return 1;
-  }
-  try {
-    return await run(plugin);
-  } finally {
-    await disconnectStateAdapter();
-  }
+  return await withCliAppContext(
+    { pluginSet: options.pluginSet },
+    async (context) => {
+      const plugin = requireServiceAccountPlugin(context.catalog, name.trim());
+      return plugin ? await run(plugin) : 1;
+    },
+  );
 }

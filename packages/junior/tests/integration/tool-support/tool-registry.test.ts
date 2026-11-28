@@ -5,7 +5,7 @@ import {
   createWebSource,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { promptPlatform } from "@/chat/agent/prompt";
 import { bindTurnTools } from "@/chat/agent/tools";
@@ -15,7 +15,6 @@ import {
   promptModeTurnTools,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
-import { closeDb } from "@/chat/db";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { buildTurnContextPrompt } from "@/chat/prompt";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -218,10 +217,6 @@ function turnInputFact(turn: SentTurn) {
 describe("static tool registry", () => {
   beforeAll(async () => {
     await createApp({ plugins: plugins() });
-  });
-
-  afterAll(async () => {
-    await closeDb();
   });
 
   it.each(

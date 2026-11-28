@@ -45,7 +45,7 @@ const ISSUE_ID = 4254000;
 const BOT = "sentry-junior[bot]";
 const person = slackSpawnInput.actor;
 
-let app: Awaited<ReturnType<typeof createApp>>;
+let app: Awaited<ReturnType<typeof createApp>>["app"];
 
 /** Send a signed GitHub webhook through the app route. */
 async function sendGitHubWebhook(
@@ -228,7 +228,9 @@ describe("the Inbox item of an issue that Junior created", () => {
   });
 
   it("follows the GitHub assignees, and a dismiss unassigns only the person who dismissed it", async () => {
-    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    ({ app } = await createApp({
+      plugins: defineJuniorPlugins([githubPlugin()]),
+    }));
     await seedLinkedPerson({
       email: "pat@example.com",
       linked: { handle: "pat", provider: "github", subjectId: "2002" },
@@ -502,7 +504,9 @@ describe("the Inbox item of an issue that Junior created", () => {
     }
   });
   it("puts an assignee from outside a private Conversation on the item, without the Conversation", async () => {
-    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    ({ app } = await createApp({
+      plugins: defineJuniorPlugins([githubPlugin()]),
+    }));
     await seedLinkedPerson({
       email: "pat@example.com",
       linked: { handle: "pat", provider: "github", subjectId: "2002" },

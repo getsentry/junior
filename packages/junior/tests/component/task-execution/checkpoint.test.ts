@@ -8,10 +8,11 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { historyItemFromPiMessage } from "@/core/history/items";
 import { buildAgentsInstructionsMessage } from "@/chat/repository-instructions";
+import { loadConfig } from "@/config";
+import { useFreshAppContext } from "../../fixtures/app-context";
 // Warm the module cache so the first test's timeout doesn't include the cold load.
 import "@/chat/task-execution/checkpoint";
 
-const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -83,21 +84,20 @@ function failingConversationStore(): ConversationStore {
 }
 
 describe("turn checkpoint", () => {
+  // Tests mock modules with `vi.doMock`, so each starts with fresh modules.
   beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      JUNIOR_STATE_ADAPTER: "memory",
-    };
     vi.resetModules();
+    await useFreshAppContext({
+      config: loadConfig({
+        env: process.env,
+        options: { state: { adapter: "memory" } },
+      }),
+    });
   });
 
-  afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
+  afterEach(() => {
     vi.doUnmock("@/chat/logging");
     vi.doUnmock("@/chat/task-execution/turn-cursor");
-    vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
   });
 
   it("keeps unfinished turn sessions for one day and terminal sessions for one hour", async () => {

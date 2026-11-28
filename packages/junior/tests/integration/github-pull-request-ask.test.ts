@@ -74,7 +74,7 @@ function cardNode(fields: Record<string, unknown>) {
   };
 }
 
-let app: Awaited<ReturnType<typeof createApp>>;
+let app: Awaited<ReturnType<typeof createApp>>["app"];
 
 /** Send a signed GitHub webhook through the app route. */
 async function sendGitHubWebhook(
@@ -192,7 +192,9 @@ describe("the ask of a Junior pull request", () => {
   });
 
   it("closes the ask when the pull request merges, and changes no Annotation", async () => {
-    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    ({ app } = await createApp({
+      plugins: defineJuniorPlugins([githubPlugin()]),
+    }));
     // A pull request item needs a person Junior knows: one for nobody is
     // not added.
     await seedLinkedPerson({
@@ -308,10 +310,10 @@ describe("the ask of a Junior pull request", () => {
   });
   it("asks for the review, then the merge, on one item that reads its title from GitHub", async () => {
     const tasks = createPluginTaskQueueTestAdapter();
-    app = await createApp({
+    ({ app } = await createApp({
       plugins: defineJuniorPlugins([githubPlugin()]),
       pluginTaskQueue: tasks.pluginTaskQueue,
-    });
+    }));
     await seedLinkedPerson({
       email: "pat@example.com",
       linked: { handle: "pat", provider: "github", subjectId: "2002" },
@@ -555,7 +557,9 @@ describe("the ask of a Junior pull request", () => {
     }
   });
   it("removes the person who dismisses from the requested reviewers, and a GitHub refusal keeps them", async () => {
-    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    ({ app } = await createApp({
+      plugins: defineJuniorPlugins([githubPlugin()]),
+    }));
     await seedLinkedPerson({
       email: "pat@example.com",
       linked: { handle: "pat", provider: "github", subjectId: "2002" },
@@ -755,7 +759,9 @@ describe("the ask of a Junior pull request", () => {
     }
   });
   it("puts a requested reviewer from outside a private Conversation on the item, without the Conversation", async () => {
-    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    ({ app } = await createApp({
+      plugins: defineJuniorPlugins([githubPlugin()]),
+    }));
     await seedLinkedPerson({
       email: "pat@example.com",
       linked: { handle: "pat", provider: "github", subjectId: "2002" },

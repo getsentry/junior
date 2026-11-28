@@ -1,4 +1,5 @@
-import { getChatConfig, type SqlDriver } from "@/chat/config";
+import { getAppContext } from "@/app/context";
+import type { ChatConfig } from "@/chat/config";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -8,87 +9,80 @@ import type { ConversationMessageSearchStore } from "@/chat/conversations/messag
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
 import { createJuniorSqlExecutor } from "@/db/executor";
 
-let current:
-  | {
-      databaseUrl: string;
-      db: JuniorSqlExecutor;
-      driver: SqlDriver;
-      statementTimeoutMs: number | false;
-      store: ConversationStore;
-      eventStore: ConversationEventStore;
-      searchStore: ConversationMessageSearchStore;
-    }
-  | undefined;
-
-function createDb(args: {
-  databaseUrl: string;
-  driver: SqlDriver;
-  statementTimeoutMs: number | false;
-}): JuniorSqlExecutor {
-  return createJuniorSqlExecutor({
-    connectionString: args.databaseUrl,
-    driver: args.driver,
-    statementTimeoutMs: args.statementTimeoutMs,
-  });
-}
-
-/** Return the process SQL executor for SQL-specific queries and transactions. */
-export function getSqlExecutor(): JuniorSqlExecutor {
-  const { sql } = getChatConfig();
-  if (
-    current?.databaseUrl !== sql.databaseUrl ||
-    current.driver !== sql.driver ||
-    current.statementTimeoutMs !== sql.statementTimeoutMs
-  ) {
-    if (current) {
+/**
+ * Build the SQL executor of an app context. It opens its pool on first use.
+ * After `close`, the next use opens a new pool.
+ */
+export function createAppSql(config: ChatConfig["sql"]): JuniorSqlExecutor {
+  let current: JuniorSqlExecutor | undefined;
+  const open = (): JuniorSqlExecutor =>
+    (current ??= createJuniorSqlExecutor({
+      connectionString: config.databaseUrl,
+      driver: config.driver,
+      statementTimeoutMs: config.statementTimeoutMs,
+    }));
+  return {
+    close: async () => {
       const previous = current;
       current = undefined;
-      void previous.db.close().catch(() => undefined);
-    }
-    const db = createDb({
-      databaseUrl: sql.databaseUrl,
-      driver: sql.driver,
-      statementTimeoutMs: sql.statementTimeoutMs,
-    });
-    current = {
-      databaseUrl: sql.databaseUrl,
-      driver: sql.driver,
-      statementTimeoutMs: sql.statementTimeoutMs,
-      db,
-      store: createSqlStore(db),
-      eventStore: createSqlConversationEventStore(db),
-      searchStore: createSqlConversationMessageSearchStore(db),
-    };
-  }
-  return current.db;
+      await previous?.close();
+    },
+    db: () => open().db(),
+    execute: (statement, params) => open().execute(statement, params),
+    migrate: (migration) => open().migrate(migration),
+    query: <T>(statement: string, params?: readonly unknown[]) =>
+      open().query<T>(statement, params),
+    queryIsolated: <T>(statement: string, params?: readonly unknown[]) =>
+      open().queryIsolated<T>(statement, params),
+    transaction: (callback) => open().transaction(callback),
+    withLock: (lockName, callback) => open().withLock(lockName, callback),
+    withMigrationLock: (migrationTable, callback) =>
+      open().withMigrationLock(migrationTable, callback),
+  };
 }
 
-/** Return the process Drizzle database. */
+/** The SQL-backed stores of an app context, built once on its executor. */
+export interface AppStores {
+  conversations: ConversationStore;
+  events: ConversationEventStore;
+  search: ConversationMessageSearchStore;
+}
+
+/** Build the SQL-backed stores of an app context. */
+export function createAppStores(sql: JuniorSqlExecutor): AppStores {
+  return {
+    conversations: createSqlStore(sql),
+    events: createSqlConversationEventStore(sql),
+    search: createSqlConversationMessageSearchStore(sql),
+  };
+}
+
+/** Return the app SQL executor for SQL-specific queries and transactions. */
+export function getSqlExecutor(): JuniorSqlExecutor {
+  return getAppContext().sql;
+}
+
+/** Return the app Drizzle database. */
 export function getDb(): JuniorDatabase {
   return getSqlExecutor().db();
 }
 
 /** Return the SQL-backed conversation store. */
 export function getConversationStore(): ConversationStore {
-  getSqlExecutor();
-  return current!.store;
+  return getAppContext().stores.conversations;
 }
 
 /** Return the canonical SQL-backed conversation event store. */
 export function getConversationEventStore(): ConversationEventStore {
-  getSqlExecutor();
-  return current!.eventStore;
+  return getAppContext().stores.events;
 }
 
 /** Return the SQL-backed public provider-tenant conversation search store. */
 export function getConversationMessageSearchStore(): ConversationMessageSearchStore {
-  getSqlExecutor();
-  return current!.searchStore;
+  return getAppContext().stores.search;
 }
 
-/** Close the process SQL database when it has been opened. */
+/** Close the app SQL pool when it has been opened. */
 export async function closeDb(): Promise<void> {
-  const previous = current;
-  current = undefined;
-  await previous?.db.close();
+  await getSqlExecutor().close();
 }

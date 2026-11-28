@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { loadConfig } from "@/config";
+import { useAppContext } from "../../fixtures/app-context";
 
-const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -33,21 +34,13 @@ function buildSession(
 }
 
 describe("MCP auth session store", () => {
-  beforeEach(async () => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      JUNIOR_STATE_ADAPTER: "memory",
-    };
-    vi.resetModules();
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
-  });
-
-  afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-    await disconnectStateAdapter();
-    vi.resetModules();
-    process.env = { ...ORIGINAL_ENV };
+  beforeEach(() => {
+    useAppContext({
+      config: loadConfig({
+        env: process.env,
+        options: { state: { adapter: "memory" } },
+      }),
+    });
   });
 
   it("deletes every pending auth session for one user/provider pair", async () => {

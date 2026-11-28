@@ -59,7 +59,7 @@ describe("HTTP route names on request spans", () => {
     const { defineJuniorPlugin } = await import("@sentry/junior-plugin-api");
     const notes = new Hono();
     notes.get("/memories", (c) => c.json({ ok: true }));
-    const app = await createApp({
+    const { app } = await createApp({
       allowedDomains: ["sentry.io"],
       // Mock reports keep the conversation route off the database.
       dashboard: { authRequired: false, mockConversations: true },

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../fixtures/app-context";
 import { signedInViewer } from "../fixtures/user";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
@@ -39,6 +40,7 @@ describe("dashboard canonical event reporting", () => {
       JUNIOR_STATE_ADAPTER: "memory",
     });
     vi.resetModules();
+    await useFreshAppContext();
   });
 
   afterEach(async () => {

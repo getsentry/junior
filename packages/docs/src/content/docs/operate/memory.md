@@ -23,7 +23,7 @@ Provision a Postgres database with pgvector support before running migrations. T
 Pass Memory options to `createApp({ memory: { ... } })`. Set deployment variables in the Junior environment, then redeploy.
 
 ```ts title="server.ts"
-const app = await createApp({
+const { app } = await createApp({
   memory: { modelId: "anthropic/claude-sonnet-4-5" },
 });
 ```

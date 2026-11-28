@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useFreshAppContext } from "../fixtures/app-context";
 import { resetTestEnv } from "../fixtures/stub-env";
 
 describe("sandbox egress signal route", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetTestEnv({
       JUNIOR_SECRET: "test-secret",
       JUNIOR_STATE_ADAPTER: "memory",
       NODE_ENV: "development",
     });
     vi.resetModules();
+    await useFreshAppContext();
   });
 
   afterEach(async () => {
