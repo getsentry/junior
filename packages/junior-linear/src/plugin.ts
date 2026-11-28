@@ -71,6 +71,19 @@ async function annotateSavedIssue(
   };
 }
 
+/**
+ * Tell the current Guardian, which reads no call target, which teams sync to
+ * public repositories.
+ */
+function publicTeamsReviewContext(keys: string[]): string | undefined {
+  if (keys.length === 0) return undefined;
+  const list =
+    keys.length === 1
+      ? keys[0]
+      : `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`;
+  return `Issues in the Linear ${keys.length === 1 ? "team" : "teams"} ${list} sync to public GitHub repositories. Other teams are internal.`;
+}
+
 /** Install options for the Linear plugin. */
 export interface LinearPluginOptions {
   /**
@@ -140,6 +153,8 @@ export function linearPlugin(
   options: LinearPluginOptions = {},
 ): PluginRegistration {
   const publicTeams = new Set(options.publicTeams);
+  const reviewContext =
+    options.reviewContext ?? publicTeamsReviewContext([...publicTeams]);
   return defineJuniorPlugin({
     packageName: "@sentry/junior-linear",
     events: {
@@ -191,9 +206,7 @@ export function linearPlugin(
         guardian: { skipReview: [...LINEAR_READ_TOOLS] },
       },
       name: "linear",
-      ...(options.reviewContext
-        ? { reviewContext: options.reviewContext }
-        : undefined),
+      ...(reviewContext ? { reviewContext } : undefined),
     },
     inboxSubjects: linearInboxSubjectKinds,
     hooks: {

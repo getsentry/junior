@@ -64,4 +64,13 @@ describe("Linear plugin package", () => {
     // A read has no entry, so it keeps the manifest default.
     expect(Object.keys(tools)).toEqual(["save_issue", "save_comment"]);
   });
+
+  it("tells the current Guardian the public teams when the host gives no text", () => {
+    expect(
+      linearPlugin({ publicTeams: ["SDK", "DOCS"] }).manifest.reviewContext,
+    ).toBe(
+      "Issues in the Linear teams SDK and DOCS sync to public GitHub repositories. Other teams are internal.",
+    );
+    expect(linearPlugin().manifest.reviewContext).toBeUndefined();
+  });
 });
