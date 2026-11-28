@@ -112,9 +112,12 @@ export function buildSlackUserInputForm(
   const inputs: InputBlock[] = request.fields.map((field) => ({
     type: "input",
     block_id: `${FIELD_BLOCK_ID_PREFIX}${field.id}`,
-    label: plainText(field.label),
+    // Slack shows a hint under the choices, so the question goes in the
+    // label, above them, as on the dashboard.
+    label: plainText(
+      field.description ? `${field.label}: ${field.description}` : field.label,
+    ),
     optional: true,
-    ...(field.description ? { hint: plainText(field.description) } : undefined),
     element:
       field.kind === "text"
         ? {

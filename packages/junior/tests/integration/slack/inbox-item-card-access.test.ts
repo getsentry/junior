@@ -144,7 +144,14 @@ describe("Slack webhook: who answers an Inbox item card", () => {
       itemId: item.id,
       userId: "U456",
     });
-    expect(slackApiOutbox.calls("views.open")).toHaveLength(1);
+    const opened = slackApiOutbox.calls("views.open");
+    expect(opened).toHaveLength(1);
+    // The question shows above its choices, not under them as a hint.
+    const [question] = (opened[0]!.params["view"] as any).blocks;
+    expect(question).toMatchObject({
+      label: { text: "Decision: Ship release 1.2.3?" },
+    });
+    expect(question.hint).toBeUndefined();
     await choose("U456", "1712345.0006");
 
     const closed = await getInboxItem(getDb(), item.id);
