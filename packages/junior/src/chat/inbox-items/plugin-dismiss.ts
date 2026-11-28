@@ -1,6 +1,7 @@
 import { and, eq, gte, isNull, ne, notExists } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
@@ -111,6 +112,8 @@ export async function leavePluginInboxItem(args: {
           eq(juniorInboxItemAssignees.userId, userId),
         ),
       );
+    const owner = ownerConversationId(item);
+    await touchConversationDetail(tx, owner ? [owner] : []);
     return "left";
   });
   if (outcome === "left") {
@@ -132,36 +135,40 @@ export async function takeOverPluginClose(args: {
   userId: string;
 }): Promise<boolean> {
   const { item, userId } = args;
-  const db = getDb();
-  const taken = await db
-    .update(juniorInboxItems)
-    .set({
-      closeReason: null,
-      closedByUserId: userId,
-      status: "dismissed",
-      updatedAt: new Date(args.nowMs),
-    })
-    .where(
-      and(
-        eq(juniorInboxItems.id, item.id),
-        eq(juniorInboxItems.status, "done"),
-        isNull(juniorInboxItems.closedByUserId),
-        gte(juniorInboxItems.closedAt, new Date(args.sinceMs)),
-        // A close keeps its assignees, so another one means that this
-        // removal did not leave the item empty.
-        notExists(
-          db
-            .select({ userId: juniorInboxItemAssignees.userId })
-            .from(juniorInboxItemAssignees)
-            .where(
-              and(
-                eq(juniorInboxItemAssignees.itemId, item.id),
-                ne(juniorInboxItemAssignees.userId, userId),
+  return await getDb().transaction(async (tx) => {
+    const taken = await tx
+      .update(juniorInboxItems)
+      .set({
+        closeReason: null,
+        closedByUserId: userId,
+        status: "dismissed",
+        updatedAt: new Date(args.nowMs),
+      })
+      .where(
+        and(
+          eq(juniorInboxItems.id, item.id),
+          eq(juniorInboxItems.status, "done"),
+          isNull(juniorInboxItems.closedByUserId),
+          gte(juniorInboxItems.closedAt, new Date(args.sinceMs)),
+          // A close keeps its assignees, so another one means that this
+          // removal did not leave the item empty.
+          notExists(
+            tx
+              .select({ userId: juniorInboxItemAssignees.userId })
+              .from(juniorInboxItemAssignees)
+              .where(
+                and(
+                  eq(juniorInboxItemAssignees.itemId, item.id),
+                  ne(juniorInboxItemAssignees.userId, userId),
+                ),
               ),
-            ),
+          ),
         ),
-      ),
-    )
-    .returning({ id: juniorInboxItems.id });
-  return taken.length > 0;
+      )
+      .returning({ id: juniorInboxItems.id });
+    if (!taken[0]) return false;
+    const owner = ownerConversationId(item);
+    await touchConversationDetail(tx, owner ? [owner] : []);
+    return true;
+  });
 }

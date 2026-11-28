@@ -3,14 +3,14 @@ import { defineRule } from "@oxlint/plugins";
 import type { Context, ESTree } from "@oxlint/plugins";
 
 // Tables that the Conversation detail report reads. Keep this list in sync
-// with `readConversationDetail`. The status reads questions.
+// with `readConversationDetail`. The status reads Inbox items.
 const detailTables = new Set([
   "juniorAttachments",
   "juniorConversationAnnotations",
   "juniorConversationEvents",
   "juniorConversationParticipants",
   "juniorConversations",
-  "juniorQuestions",
+  "juniorInboxItems",
 ]);
 const detailTableNames = [
   "junior_attachments",
@@ -18,7 +18,7 @@ const detailTableNames = [
   "junior_conversation_events",
   "junior_conversation_participants",
   "junior_conversations",
-  "junior_questions",
+  "junior_inbox_items",
 ];
 const writeMethods = new Set(["delete", "insert", "update"]);
 const touchFunction = "touchConversationDetail";

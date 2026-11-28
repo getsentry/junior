@@ -250,7 +250,7 @@ function conversationWaitsOnStarterSql(
 
 /**
  * SQL: one of the Conversation's questions waits for an answer, through
- * `junior_questions_open_form_idx`.
+ * `junior_questions_waiting_idx`.
  */
 export function questionWaitsSql(conversationId: AnyPgColumn): SQL<boolean> {
   return sql<boolean>`exists (select 1 from ${juniorQuestions} where ${juniorQuestions.conversationId} = ${conversationId} and ${questionWaits(juniorQuestions)})`;

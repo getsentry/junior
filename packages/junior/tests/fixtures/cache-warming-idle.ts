@@ -15,9 +15,7 @@ import { runCacheWarmup } from "@/chat/cache-warming/warmup";
 import { spawnChildAgent } from "@/chat/child-agents/create";
 import { IDLE_HORIZON_MS, WARMUP_MARGIN_MS } from "@/chat/cache-warming/model";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { getConversationStore, getDb } from "@/chat/db";
-import { insertQuestion } from "@/chat/questions/store";
-import { questionContent } from "@/chat/questions/tool-input";
+import { getConversationStore } from "@/chat/db";
 import { resolveGatewayModel } from "@/chat/pi/gateway-models";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { PromptMode } from "@/chat/system-prompt-rules";
@@ -135,31 +133,6 @@ export async function endTurnWithAnswerTool(
 }
 
 /** Start a child agent that still runs when the parent's Turn ends. */
-/** Ask an open question in the Conversation, as `askUserQuestion` does. */
-export async function askQuestion(askingConversationId: string) {
-  await getConversationStore().recordActivity({
-    conversationId: askingConversationId,
-    destination: { platform: "local", conversationId: askingConversationId },
-    source: "internal",
-  });
-  await insertQuestion(getDb(), {
-    content: questionContent([
-      {
-        header: "Release",
-        multiSelect: false,
-        options: [
-          { description: "Ship it now.", label: "Ship" },
-          { description: "Wait a day.", label: "Wait" },
-        ],
-        question: "Ship the release?",
-      },
-    ]),
-    conversationId: askingConversationId,
-    id: `ask:${askingConversationId}:cache-warming`,
-    nowMs: Date.now(),
-  });
-}
-
 export async function startChildAgent() {
   const parentDestination = {
     platform: "local",

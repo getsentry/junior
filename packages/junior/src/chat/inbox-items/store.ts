@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { ProviderTenant } from "@/api/conversations/access";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { updateQuestionContent } from "@/chat/questions/store";
 import { inboxItemSnoozedBy } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
@@ -105,6 +106,24 @@ export function ownerConversationId(
   item: Pick<InboxItem, "owner">,
 ): string | undefined {
   return item.owner.kind === "conversation" ? item.owner.id : undefined;
+}
+
+/** The owner Conversations, whose detail versions an item change moves. */
+function ownerConversationIds(
+  owners: readonly { ownerConversationId: string | null }[],
+): string[] {
+  return [
+    ...new Set(
+      owners.flatMap((owner) =>
+        owner.ownerConversationId ? [owner.ownerConversationId] : [],
+      ),
+    ),
+  ];
+}
+
+// Read in RETURNING, so a change moves the detail version of its owner.
+function ownerColumns() {
+  return { ownerConversationId: inboxItemOwnerConversationId() };
 }
 
 /** An Inbox item with its assignees and linked Conversations. */
@@ -514,6 +533,9 @@ export async function insertInboxItem(
       );
     }
     await replaceLinks(tx, inserted[0].id, input);
+    if (input.owner.kind === "conversation") {
+      await touchConversationDetail(tx, [input.owner.id]);
+    }
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -574,9 +596,10 @@ export async function updateInboxItemContent(
           eq(juniorInboxItems.status, "open"),
         ),
       )
-      .returning({ id: juniorInboxItems.id });
+      .returning({ ...ownerColumns(), id: juniorInboxItems.id });
     if (!updated[0]) return false;
     await replaceLinks(tx, updated[0].id, input);
+    await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });
 }
@@ -619,6 +642,7 @@ export async function closeInboxItem(
         ),
       )
       .returning({
+        ...ownerColumns(),
         subjectId: juniorInboxItems.subjectId,
         subjectKind: juniorInboxItems.subjectKind,
       });
@@ -629,6 +653,7 @@ export async function closeInboxItem(
         : undefined),
       now,
     });
+    await touchConversationDetail(tx, ownerConversationIds(closed));
     return closed;
   });
   if (updated.length === 0) return false;
@@ -678,11 +703,13 @@ export async function dismissOpenInboxItems(
       ),
     )
     .returning({
+      ...ownerColumns(),
       id: juniorInboxItems.id,
       subjectId: juniorInboxItems.subjectId,
       subjectKind: juniorInboxItems.subjectKind,
     });
   await closeItemQuestions(db, dismissed, { now });
+  await touchConversationDetail(db, ownerConversationIds(dismissed));
   await clearInboxItemDeliveries(
     db,
     dismissed.map((item) => item.id),
@@ -708,7 +735,7 @@ export async function takeInboxItem(
           eq(juniorInboxItems.status, "open"),
         ),
       )
-      .returning({ id: juniorInboxItems.id });
+      .returning(ownerColumns());
     if (!updated[0]) return false;
     await tx
       .delete(juniorInboxItemAssignees)
@@ -723,6 +750,7 @@ export async function takeInboxItem(
       skipReason: "taken",
       userId: input.userId,
     });
+    await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });
 }

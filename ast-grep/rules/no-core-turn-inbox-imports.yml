@@ -3,8 +3,7 @@
 # after the commit, through `reactToConversationChange` in
 # `chat/conversations/change-reactions.ts`. The core Turn flow is the agent
 # loop and what runs a Turn: its tools and prompt inputs, its Conversation
-# state and questions, its cache warming, its stop, and the ingress that
-# records a person's message.
+# state and questions, and its stop.
 id: no-core-turn-inbox-imports
 language: TypeScript
 severity: error
@@ -15,14 +14,11 @@ files:
   - packages/junior/src/chat/task-execution/**/*.ts
   - packages/junior/src/chat/providers/**/*.ts
   - packages/junior/src/chat/runtime/**/*.ts
-  - packages/junior/src/chat/cache-warming/**/*.ts
   - packages/junior/src/chat/questions/**/*.ts
   - packages/junior/src/chat/state/**/*.ts
   - packages/junior/src/chat/tool-support/**/*.ts
   - packages/junior/src/chat/conversations/change-reactions.ts
   - packages/junior/src/chat/conversations/session-stop.ts
-  - packages/junior/src/chat/ingress/slack-webhook.ts
-  - packages/junior/src/api/conversations/create.ts
 ignores:
   # The tool composition roots. `tool-composition-inbox-tools-only` limits
   # them to the Inbox tools.
