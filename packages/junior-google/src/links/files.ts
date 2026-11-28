@@ -141,11 +141,12 @@ function parseFileLink(url: URL): FileLink | undefined {
     : undefined;
 }
 
-// Long enough that the access check and the card of a live read share one
-// Drive read. A page load reads only the cache, so the entry stays as the
-// last good file after it. Every read checks `trashed`, so a trashed file
-// never shows.
-const FILE_READ_TTL_MS = 10_000;
+// The access check and the card share this read of the file. Each live
+// check still asks Drive whether the viewer can open the file, with
+// `trashed = false`, so only card fields can be five minutes old. A page
+// load shows the last good file after that. Every read checks `trashed`,
+// so a trashed file never shows.
+const FILE_READ_TTL_MS = 300_000;
 
 async function fetchFile(
   ctx: ViewerReadContext,

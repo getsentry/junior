@@ -26,10 +26,10 @@ import {
   type SentryIssueLink,
 } from "./urls.js";
 
-// The same time as the card cache, so a changed issue shows within a minute
-// on a live read. A page load reads only the cache, so the entry stays as
-// the last good card after it.
-const ISSUE_CACHE_TTL_MS = 60_000;
+// The entry holds only card fields: each live read checks the viewer's
+// access with their own token, apart from it. So a live card can be five
+// minutes old, and a page load shows the last good card after that.
+const ISSUE_CACHE_TTL_MS = 300_000;
 
 const issueSchema = z.object({
   assignedTo: z.object({ name: z.string() }).nullish(),

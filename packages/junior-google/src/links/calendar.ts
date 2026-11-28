@@ -116,10 +116,9 @@ function viewerIsOnEvent(event: LinkedEvent, viewer: string): boolean {
   ].some((email) => email?.toLowerCase() === viewer);
 }
 
-// Long enough that the access check and the card of a live read share one
-// Calendar read. A page load reads only the cache, so the entry stays as the
-// last good event after it.
-const EVENT_READ_TTL_MS = 10_000;
+// A live access check always reads the event again, so only card fields
+// can be five minutes old. A page load shows the last good event after that.
+const EVENT_READ_TTL_MS = 300_000;
 
 /**
  * Read the linked event from Junior's calendar. Nothing for an event on

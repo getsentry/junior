@@ -312,9 +312,9 @@ describe("conversation detail annotations", () => {
         viewer: bob,
       });
       expect(outsider?.annotations).toEqual(cached);
-      // After the live read's minute, the page shows the last good issue.
+      // After the entry's five minutes, the page shows the last good issue.
       vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(Date.now() + 61_000);
+      vi.setSystemTime(Date.now() + 301_000);
       const later = await readConversationDetail(conversationId, {
         viewer: bob,
       });
