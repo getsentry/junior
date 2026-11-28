@@ -25,7 +25,7 @@ import { processConversationQueueMessage } from "@/chat/task-execution/vercel-ca
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { loadMessageEvents } from "../fixtures/child-agents";
-import { stoppedConversationMessageTexts } from "../fixtures/conversation";
+import { heldInputNoteTexts } from "../fixtures/conversation";
 import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
@@ -544,7 +544,7 @@ describe("child agent identity and concurrency", () => {
       await harness.drainQueuedWork();
       expect(harness.requests()).toHaveLength(2);
       await expect(
-        stoppedConversationMessageTexts(child.childConversationId),
+        heldInputNoteTexts(child.childConversationId),
       ).resolves.toEqual([
         expect.stringContaining("Check once more."),
         expect.stringContaining("Check much later."),

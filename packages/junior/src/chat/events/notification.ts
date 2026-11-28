@@ -409,6 +409,19 @@ export async function addQuietEventNote(args: {
 }
 
 /**
+ * Write the Conversation note for input that a stopped Conversation held.
+ * Like a Quiet Event note, the rule comes first, so the note limit never
+ * cuts it.
+ */
+export function heldInputNoteText(message: InboundMessage): string {
+  const saved = readEventTaskFacts(message);
+  const facts = saved
+    ? `${saved.facts.about}, ${saved.metadata.event.eventType}: ${saved.facts.trustedSummary} ${saved.facts.instructions}`
+    : message.input.text;
+  return `This Conversation was stopped when this input arrived, so it started no Turn, and nobody was told. Use it as current state. ${facts}`;
+}
+
+/**
  * Enqueue a event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation

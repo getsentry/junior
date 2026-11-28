@@ -116,8 +116,9 @@ end-of-Turn contract. A person can see and steer each agent.
 - `tree-stop` One stop stops the whole tree below it. When a parent stops a
   child, it gets no result. When a person stops a child, the parent gets
   `stopped`. New work from the parent, or a person's input, ends the stop.
-  While stopped, a Conversation keeps its Watches and saves automated input
-  as skipped Messages that start no Turn. Only a stop holds input.
+  While stopped, a Conversation keeps its Watches. Automated input that it
+  gets starts no Turn and is kept as Conversation notes for the next Turn.
+  Only a stop holds input.
 - `stopped-parent` A stopped parent gives no new work. Its message to a
   child becomes a note that the child sees when it next runs, and it
   cannot start a child.

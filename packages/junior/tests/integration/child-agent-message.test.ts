@@ -19,7 +19,7 @@ import {
 } from "@/chat/task-execution/store";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { stoppedConversationMessageTexts } from "../fixtures/conversation";
+import { heldInputNoteTexts } from "../fixtures/conversation";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import {
   slackSpawnInput,
@@ -292,7 +292,7 @@ describe("messageAgent", () => {
       // The stop holds the message as a skipped Message, so it starts no
       // work.
       expect(await eventMessages(childId)).toEqual([]);
-      await expect(stoppedConversationMessageTexts(childId)).resolves.toEqual([
+      await expect(heldInputNoteTexts(childId)).resolves.toEqual([
         expect.stringContaining("Late finding."),
       ]);
       const runCount = harness.runs.length;

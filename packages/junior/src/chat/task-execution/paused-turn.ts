@@ -7,7 +7,6 @@
  * pause, or another safe pause boundary.
  */
 import { instructionActorFor } from "@/chat/agent/prompt";
-import { withHeldInput } from "@/chat/conversations/held-input";
 import { savedInputInstruction } from "@/chat/inbox-items/prompt-input";
 import { logException, logWarn, withLogContext } from "@/chat/logging";
 import { resumeSlackTurn } from "@/chat/providers/slack/resume";
@@ -612,23 +611,14 @@ async function runPausedTurnInContext(
               ...(instructionActor ? { actor: instructionActor } : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
-              // A pause before the first prompt checkpoint saves no prompt,
-              // so held input is added again here.
-              ...(await withHeldInput(
-                {
-                  conversation,
-                  conversationId: payload.conversationId,
-                  turnId: payload.turnId,
-                },
-                await savedInputInstruction({
-                  runtime:
-                    Boolean(dispatchId) ||
-                    isEventConversationMessage(userMessage),
-                  requestText: userMessage.meta?.requestText,
-                  reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
-                  text: userMessage.text,
-                }),
-              )),
+              ...(await savedInputInstruction({
+                runtime:
+                  Boolean(dispatchId) ||
+                  isEventConversationMessage(userMessage),
+                requestText: userMessage.meta?.requestText,
+                reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
+                text: userMessage.text,
+              })),
             },
             // A dispatch reads only history saved for this Turn. Other input
             // must not become part of a system Turn. Other Turns read
