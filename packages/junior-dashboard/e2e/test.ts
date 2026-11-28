@@ -7,6 +7,7 @@ import {
   trackOpenRequests,
   type DashboardE2eServer,
 } from "./harness";
+import { trackReactRoots } from "./screenshot";
 
 /** Options that a Playwright project or a spec can set. */
 export type DashboardOptions = {
@@ -41,6 +42,7 @@ export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
     // state before every test so archive/restore and profile-update tests
     // cannot leak into unrelated specs.
     await resetDashboardMockState();
+    await trackReactRoots(page);
     await mockDashboardApis(page, { controlTimers });
     const requests = trackOpenRequests(page);
     await use(page);

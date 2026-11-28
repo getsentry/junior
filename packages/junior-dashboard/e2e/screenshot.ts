@@ -6,7 +6,7 @@ import {
   type Page,
   type Request,
 } from "@playwright/test";
-import { waitForRequestsToEnd } from "./harness";
+import { waitForRender, waitForRequestsToEnd } from "./harness";
 
 /** Default desktop browser size for route shots. */
 export const desktop = { height: 900, name: "desktop", width: 1440 } as const;
@@ -47,19 +47,62 @@ const SCREENSHOT_ORIGIN = "http://127.0.0.1:3000";
 // settle shares it.
 const SETTLE_TIMEOUT_MS = 5_000;
 
-// Frames in a row with no DOM change or scroll before the page counts as
-// still. React commits, chart resizes, and scroll restores land within a
-// frame or two of the change that causes them.
+// Frames in a row with no DOM change, scroll, or React work before the page
+// counts as still. React commits, chart resizes, and scroll restores land
+// within a frame or two of the change that causes them.
 const QUIET_FRAMES = 3;
-
-// How long the page must also stay still. React holds a Suspense boundary's
-// content for up to 300ms after it last showed a fallback, such as a lazy
-// button that loaded, so the DOM can sit still that long before it changes.
-const QUIET_MS = 350;
 
 // Resizes to the page height before a shot fails. One resize fits most
 // pages. A second fits a page that a tall viewport makes taller.
 const MAX_FIT_RESIZES = 3;
+
+// React fiber tag of a Suspense boundary. React reveals a boundary's content
+// up to 300ms after its fallback last showed, so the DOM can sit still that
+// long before it changes.
+const SUSPENSE_TAG = 13;
+
+/** The parts of a React root that settle reads. */
+type FiberRoot = { current: Fiber; pendingLanes: number };
+type Fiber = {
+  child: Fiber | null;
+  memoizedState: unknown;
+  sibling: Fiber | null;
+  tag: number;
+};
+
+declare global {
+  interface Window {
+    /** React reports each commit here. See `trackReactRoots`. */
+    __REACT_DEVTOOLS_GLOBAL_HOOK__?: Record<string, unknown> & {
+      roots: Set<FiberRoot>;
+    };
+  }
+}
+
+/**
+ * Collect the page's React roots, so a shot waits until React has no work
+ * left: no scheduled render, and no Suspense boundary that shows its
+ * fallback. React reports each commit to the DevTools hook, also in
+ * production builds. Call it before the page loads.
+ */
+export async function trackReactRoots(page: Page) {
+  await page.addInitScript(() => {
+    const roots = new Set<FiberRoot>();
+    window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+      checkDCE() {},
+      inject: () => 1,
+      isDisabled: false,
+      onCommitFiberRoot(_renderer: number, root: FiberRoot) {
+        roots.add(root);
+      },
+      onCommitFiberUnmount() {},
+      onPostCommitFiberRoot() {},
+      renderers: new Map(),
+      roots,
+      supportsFiber: true,
+    };
+  });
+}
 
 type ScreenshotOptions = {
   clip?: {
@@ -116,12 +159,7 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
       // tooltip. Move the pointer off the page, which sends mouseleave.
       await page.mouse.move(-1, -1);
     }
-    await page.setViewportSize({
-      height: view.height,
-      width: view.width,
-    });
-    await settle(page);
-    if (!options.clip) await fitPage(page, view.width);
+    await fitPage(page, view, Boolean(options.clip));
     const restoreOrigin = await page.evaluateHandle((origin) => {
       const changed: Array<[Text, string]> = [];
       const walker = document.createTreeWalker(
@@ -157,27 +195,34 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
 }
 
 /**
- * Make the viewport as tall as the page, so the capture fits it.
- *
- * For a page that does not fit, Playwright asks Chrome to capture beyond the
- * viewport. Chrome then resizes the page during the capture, sometimes to
- * 1x1, and the page's resize handlers run before it paints: charts measure
- * a few pixels, and a pinned transcript scrolls. The image shows that state.
- *
- * A taller viewport can make the page taller, such as the top bar that tall
- * windows show, so measure again until the page fits.
+ * Make the viewport as tall as the page, so the capture fits it, and settle
+ * at that size. Chrome resizes a page that does not fit during the capture,
+ * and its resize handlers run first: charts shrink to a few pixels, and a
+ * pinned transcript scrolls. A page can change height as it settles, such as
+ * a list that loads, so then fit and settle again.
  */
-async function fitPage(page: Page, width: number) {
-  for (let resizes = 0; ; resizes += 1) {
-    const height = await page.evaluate(pageHeight);
-    if (height <= (page.viewportSize()?.height ?? 0)) return;
-    if (resizes === MAX_FIT_RESIZES) {
-      throw new Error(
-        `The page kept growing with the viewport after ${MAX_FIT_RESIZES} resizes.`,
-      );
+async function fitPage(page: Page, view: ViewSize, clip: boolean) {
+  await page.setViewportSize({ height: view.height, width: view.width });
+  // Let the page render at the new width before it is measured.
+  await waitForRender(page);
+  let settled = false;
+  for (let resizes = 0; ;) {
+    const height = clip
+      ? view.height
+      : Math.max(view.height, await page.evaluate(pageHeight));
+    if (height !== page.viewportSize()?.height) {
+      if (resizes === MAX_FIT_RESIZES) {
+        throw new Error(
+          `The page kept changing height with the viewport after ${MAX_FIT_RESIZES} resizes.`,
+        );
+      }
+      resizes += 1;
+      await page.setViewportSize({ height, width: view.width });
+    } else if (settled) {
+      return;
     }
-    await page.setViewportSize({ height, width });
     await settle(page);
+    settled = true;
   }
 }
 
@@ -209,7 +254,8 @@ async function boxOf(target: Locator) {
 
 /**
  * Wait until the page is done: no request in flight, every font, image, and
- * first video frame loaded, and no DOM change or scroll for a few frames.
+ * first video frame loaded, no React work left, and no DOM change or scroll
+ * for a few frames.
  * A page that does not get there within a few seconds fails the test here,
  * not later as a Frameshift change on an unrelated pull request.
  */
@@ -241,8 +287,7 @@ async function settle(page: Page) {
       started = [];
       await waitForRequestsToEnd(page, remaining());
       await loadAssets(page, remaining());
-      await waitForMarksToEnd(page, remaining());
-      await waitForQuiet(page, remaining());
+      await waitForStill(page, remaining());
     } while (started.length > 0);
   } finally {
     page.off("request", onStart);
@@ -300,49 +345,60 @@ async function loadAssets(page: Page, timeout: number) {
 }
 
 /**
- * Wait until no row shows a jump mark. A jump marks the row it lands on for
- * a moment on a real timer, so a shot could catch the mark in one view and
- * miss it in the next.
+ * Wait for frames in a row in which nothing can still change the page: no
+ * DOM change, scroll, jump mark, or React work. Finish each animation that
+ * ends, as the capture would. Throws with what kept the page busy, so the
+ * spec can wait for what moves it.
  */
-async function waitForMarksToEnd(page: Page, timeout: number) {
-  await page
-    .waitForFunction(
-      // Menus also set data-highlighted on the active item, and keep it.
-      () =>
-        !document.querySelector(
-          "[data-transcript-seq][data-highlighted], [data-inbox-item-ask][data-highlighted]",
-        ),
-      undefined,
-      { timeout },
-    )
-    .catch(() => {
-      throw new Error(
-        `A jump mark (data-highlighted) was still showing after ${SETTLE_TIMEOUT_MS}ms.`,
-      );
-    });
-}
-
-/**
- * Wait for frames in a row, and `QUIET_MS`, with no DOM change and no
- * scroll. Throws with the element that kept changing, so the spec can wait
- * for what moves it.
- */
-async function waitForQuiet(page: Page, timeout: number) {
+async function waitForStill(page: Page, timeout: number) {
   const busy = await page.evaluate(
-    ({ frames, quietMs, timeout }) =>
+    ({ frames, suspenseTag, timeout }) =>
       new Promise<string | null>((resolve) => {
-        let last = "";
+        const roots = window.__REACT_DEVTOOLS_GLOBAL_HOOK__?.roots;
+        if (!roots) {
+          resolve("no React hook: the page fixture installs it before load");
+          return;
+        }
+        let last: string | null = null;
         let quiet = 0;
-        // The frame time of the first still frame. Frame times are real
-        // even when a spec pins Date.
-        let stillSince: number | undefined;
         const changed = (target: EventTarget | null) => {
           quiet = 0;
-          stillSince = undefined;
-          if (!(target instanceof Element)) return;
-          last = target.id
-            ? `#${target.id}`
-            : `${target.tagName.toLowerCase()}.${[...target.classList].slice(0, 3).join(".")}`;
+          last =
+            target instanceof Element
+              ? `DOM change at ${
+                  target.id
+                    ? `#${target.id}`
+                    : `${target.tagName.toLowerCase()}.${[...target.classList].slice(0, 3).join(".")}`
+                }`
+              : "DOM change";
+        };
+        // Why the page is not still in this frame, or null.
+        const pending = () => {
+          // A jump marks the row it lands on for a moment on a real timer,
+          // so a shot could catch the mark in one view and miss it in the
+          // next. Menus also set data-highlighted on the active item, and
+          // keep it.
+          if (
+            document.querySelector(
+              "[data-transcript-seq][data-highlighted], [data-inbox-item-ask][data-highlighted]",
+            )
+          ) {
+            return "a jump mark (data-highlighted) still shows";
+          }
+          for (const root of roots) {
+            if (root.pendingLanes !== 0) {
+              return `React has scheduled work (lanes ${root.pendingLanes.toString(2)})`;
+            }
+            const fibers = [root.current];
+            for (let fiber = fibers.pop(); fiber; fiber = fibers.pop()) {
+              if (fiber.tag === suspenseTag && fiber.memoizedState !== null) {
+                return "a Suspense boundary still shows its fallback";
+              }
+              if (fiber.child) fibers.push(fiber.child);
+              if (fiber.sibling) fibers.push(fiber.sibling);
+            }
+          }
+          return null;
         };
         const observer = new MutationObserver((records) => {
           for (const record of records) changed(record.target);
@@ -361,20 +417,31 @@ async function waitForQuiet(page: Page, timeout: number) {
           clearTimeout(timer);
           resolve(result);
         };
-        const timer = setTimeout(() => done(last || "document"), timeout);
-        const frame = (time: number) => {
-          quiet += 1;
-          stillSince ??= time;
-          if (quiet > frames && time - stillSince >= quietMs) done(null);
+        const timer = setTimeout(() => done(last ?? "unknown"), timeout);
+        const frame = () => {
+          for (const animation of document.getAnimations()) {
+            const { endTime } = animation.effect?.getComputedTiming() ?? {};
+            if (animation.playState === "running" && endTime !== Infinity) {
+              animation.finish();
+            }
+          }
+          const reason = pending();
+          if (reason) {
+            quiet = 0;
+            last = reason;
+          } else {
+            quiet += 1;
+          }
+          if (quiet > frames) done(null);
           else requestAnimationFrame(frame);
         };
         requestAnimationFrame(frame);
       }),
-    { frames: QUIET_FRAMES, quietMs: QUIET_MS, timeout },
+    { frames: QUIET_FRAMES, suspenseTag: SUSPENSE_TAG, timeout },
   );
   if (busy) {
     throw new Error(
-      `The page was still changing after ${SETTLE_TIMEOUT_MS}ms. Last change: ${busy}`,
+      `The page was still changing after ${SETTLE_TIMEOUT_MS}ms. Last: ${busy}`,
     );
   }
 }
