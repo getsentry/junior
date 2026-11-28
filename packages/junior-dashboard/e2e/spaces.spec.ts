@@ -54,7 +54,7 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
     name: "Conversation details",
   });
   const work = details.getByRole("region", { exact: true, name: "Agents" });
-  await work.getByRole("button", { name: "Show finished" }).click();
+  await work.getByRole("button", { name: "Show more" }).click();
   await expect(
     work.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
@@ -198,7 +198,7 @@ test("another Space's page does not show the last Space's Threads", async ({
   });
   await details
     .getByRole("region", { exact: true, name: "Agents" })
-    .getByRole("button", { name: "Show finished" })
+    .getByRole("button", { name: "Show more" })
     .click();
   await expect(billingRow).toBeVisible();
 
@@ -226,7 +226,7 @@ test("another Space's page does not show the last Space's Threads", async ({
   // Each Space's details start with finished Threads folded.
   await details
     .getByRole("region", { exact: true, name: "Agents" })
-    .getByRole("button", { name: "Show finished" })
+    .getByRole("button", { name: "Show more" })
     .click();
   await expect(
     details.getByRole("link", { name: /SDK changelog summary 8/ }),

@@ -718,6 +718,11 @@ test.describe("new UI", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
     );
     const linkedWork = page.getByTestId("conversation-side-panel");
+    // A Doc needs nobody, so it waits behind "Show more".
+    const showMore = linkedWork
+      .getByRole("region", { name: "Linked work" })
+      .getByRole("button", { name: "Show more" });
+    await showMore.click();
     await expect(
       linkedWork.getByRole("link", { name: /Release 4\.2 checklist/ }),
     ).toBeVisible();
@@ -732,6 +737,7 @@ test.describe("new UI", () => {
       (route) => route.fulfill({ json: { objects: [] } }),
     );
     await page.reload();
+    await showMore.click();
     await expect(linkedWork.getByRole("link", { name: DOC_URL })).toBeVisible();
     await expect(linkedWork).not.toContainText("Release 4.2 checklist");
     await screenshot(page, "conversation-attached-linked-work-denied", {

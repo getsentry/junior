@@ -103,9 +103,10 @@ export function conversationLinks(
 }
 
 /**
- * Show the outside work that a Conversation links to, one row each. Merged
- * and closed work hides behind "Show finished". A ref in the conversation's
- * own repository drops the repository, so `#91` stands for
+ * Show the outside work that a Conversation links to, one row each. Only
+ * work that can need the reader leads; the rest, such as Tickets and merged
+ * code changes, hides behind "Show more". A ref in the conversation's own
+ * repository drops the repository, so `#91` stands for
  * `getsentry/payments#91`.
  */
 export function ConversationLinkedWork(props: {
@@ -122,16 +123,26 @@ export function ConversationLinkedWork(props: {
   return (
     <MessageObjectsProvider>
       <DetailsSection
-        finished={props.links.filter(linkFinished).map(row)}
-        rows={props.links.filter((link) => !linkFinished(link)).map(row)}
+        more={props.links.filter((link) => !linkPending(link)).map(row)}
+        rows={props.links.filter(linkPending).map(row)}
         title="Linked work"
       />
     </MessageObjectsProvider>
   );
 }
 
-function linkFinished(link: ConversationLink): boolean {
-  return link.status === "merged" || link.status === "closed";
+/**
+ * An open code change, a Conversation that needs input, or work that failed
+ * or needs attention.
+ */
+function linkPending(link: ConversationLink): boolean {
+  if (link.objectType === "code_change") {
+    return link.status !== "merged" && link.status !== "closed";
+  }
+  // Conversation cards say "needs input" for a failed Turn or an open ask.
+  if (link.objectType === "conversation") return link.status === "needs input";
+  const { tone } = objectPresentation(link);
+  return tone === "danger" || tone === "warning";
 }
 
 // Ask for the card at once: the row has no other way to start the request.
@@ -182,8 +193,12 @@ function LinkRow(props: {
     />
   );
   // An object link names its ref in the label and its title in the
-  // description. Other links have only the label.
-  const ref = link.description ? shortRef(link, props.repository) : undefined;
+  // description. A Conversation's label is its title and its description a
+  // summary, so it shows the label alone, as other links do.
+  const ref =
+    link.description && link.objectType !== "conversation"
+      ? shortRef(link, props.repository)
+      : undefined;
   return (
     <DetailsRow
       href={link.url}

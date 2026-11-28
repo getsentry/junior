@@ -52,19 +52,19 @@ export function DetailsCard(props: {
 
 /**
  * Title one section of Conversation details with its rows, and an optional
- * "Show finished" disclosure for rows that are done. The section hides when
- * it has no rows at all.
+ * "Show more" disclosure for rows that do not need the reader, such as done
+ * work. The section hides when it has no rows at all.
  */
 export function DetailsSection(props: {
   /** Rows that stay hidden until the reader asks for them. */
-  finished?: readonly ReactElement[];
-  /** Keyed rows. The key stays with a row when it moves to finished. */
+  more?: readonly ReactElement[];
+  /** Keyed rows. The key stays with a row when it moves to more. */
   rows: readonly ReactElement[];
   title: string;
 }) {
-  const [showFinished, setShowFinished] = useState(false);
-  const finished = props.finished ?? [];
-  if (props.rows.length === 0 && finished.length === 0) return null;
+  const [showMore, setShowMore] = useState(false);
+  const more = props.more ?? [];
+  if (props.rows.length === 0 && more.length === 0) return null;
   return (
     <section aria-label={props.title} className="grid min-w-0 gap-2">
       <SectionTitle>{props.title}</SectionTitle>
@@ -74,15 +74,13 @@ export function DetailsSection(props: {
         {props.rows.map((row) => (
           <li key={row.key}>{row}</li>
         ))}
-        {showFinished
-          ? finished.map((row) => <li key={row.key}>{row}</li>)
-          : null}
-        {finished.length > 0 ? (
+        {showMore ? more.map((row) => <li key={row.key}>{row}</li>) : null}
+        {more.length > 0 ? (
           <li>
             <Button
-              aria-expanded={showFinished}
+              aria-expanded={showMore}
               className="group flex min-h-8 w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs leading-5 text-dashboard-text-muted focus-visible:-outline-offset-2"
-              onClick={() => setShowFinished((value) => !value)}
+              onClick={() => setShowMore((value) => !value)}
               size="bare"
               variant="ghost"
             >
@@ -92,7 +90,7 @@ export function DetailsSection(props: {
                   className={dashboardDisclosureChevronClass}
                 />
               </span>
-              {showFinished ? "Hide finished" : "Show finished"}
+              {showMore ? "Show less" : "Show more"}
             </Button>
           </li>
         ) : null}
@@ -102,9 +100,10 @@ export function DetailsSection(props: {
 }
 
 /**
- * Lay out one details row: a 16px icon, a title that wraps, and optional
- * muted lines under it. A row with `href` opens that link in a new tab, a
- * row with `to` opens a dashboard page, and an `onClick` row is a button.
+ * Lay out one details row: a 16px icon, a title of up to two lines, and
+ * optional muted lines under it. A row with `href` opens that link in a new
+ * tab, a row with `to` opens a dashboard page, and an `onClick` row is a
+ * button.
  * `menu` shows at the end of the row on hover or focus.
  */
 export function DetailsRow(props: {
@@ -143,7 +142,7 @@ export function DetailsRow(props: {
     >
       <ItemMedia>{props.icon}</ItemMedia>
       <ItemContent>
-        <span className="min-w-0 break-words text-sm font-medium leading-5 text-dashboard-text">
+        <span className="line-clamp-2 min-w-0 break-words text-sm font-medium leading-5 text-dashboard-text">
           {props.title}
           {props.href ? <OutboundIcon /> : null}
         </span>
