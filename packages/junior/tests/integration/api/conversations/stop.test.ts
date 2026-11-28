@@ -26,8 +26,13 @@ import {
   resumeConversationTree,
 } from "@/chat/conversations/stop-state";
 import { stopConversation } from "@/chat/conversations/stop";
+import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import { createEngineContext } from "@/turn-steps/engine-context";
+import { turnStepConsumer } from "@/turn-steps/consumer";
 import { getChatConfig } from "@/chat/config";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { getConversationEventStore } from "@/chat/db";
+import { getQueueProvider } from "@/chat/queue/provider";
 import {
   startLocalVercelQueueServer,
   type LocalVercelQueueServer,
@@ -61,6 +66,8 @@ import {
   deferred,
 } from "../../../fixtures/conversation-work";
 import { patchConfig } from "../../../fixtures/config";
+import { fakeModelClient } from "../../../fixtures/model-stream";
+import { staticTools } from "../../../fixtures/turn-engine";
 import { finishRun } from "../../../fixtures/thread-input";
 import { signedInViewer } from "../../../fixtures/user";
 
@@ -676,6 +683,78 @@ describe("conversation stop API on the core Turn engine", () => {
       status: "no_work",
       stoppedInboundMessageIds: [],
       stoppedMessages: [],
+    });
+  });
+
+  it("does not return the input that the running core Turn already shows in the transcript", async () => {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+    const fixture = await createConversationFixture();
+    const { actor, conversationStore, queue, state } = fixture;
+    // The queue server has no consumer, so the test runs the step itself
+    // with the message that core sent.
+    const send = vi.spyOn(getQueueProvider(), "send");
+    const created = await createAndEnqueueConversation(
+      {
+        actor,
+        idempotencyKey: "core-stop-claimed",
+        message: "Check the deploy.",
+      },
+      { conversationStore, queue, state },
+    );
+    const [, stepMessage] = send.mock.calls.find(
+      ([topic]) => topic === TURN_STEP_TOPIC,
+    )!;
+    let queued: Awaited<ReturnType<typeof appendAndEnqueueWebMessage>>;
+    let stopped: unknown;
+    const model = fakeModelClient([{ type: "text", text: "Too late." }]);
+    const step = await turnStepConsumer(createEngineContext(getChatConfig()), {
+      client: {
+        // The step has claimed its input and shown it when the model runs.
+        complete: async (request, signal) => {
+          queued = await appendAndEnqueueWebMessage(
+            {
+              actor,
+              conversationId: created.conversationId,
+              idempotencyKey: "core-stop-queued",
+              message: "Also check the canary.",
+            },
+            { conversationStore, queue, state },
+          );
+          stopped = await (
+            await stopRequest(fixture, created.conversationId, actor.email)
+          ).json();
+          return model.complete(request, signal);
+        },
+      },
+      bot: getChatConfig().bot,
+      tools: staticTools([]),
+    });
+
+    await step.handler(stepMessage, {
+      consumerGroup: "test",
+      createdAt: new Date(),
+      deliveryCount: 1,
+      messageId: "core-stop-claimed-step",
+      topicName: TURN_STEP_TOPIC,
+    });
+
+    expect(
+      projectConversationMessages(
+        await getConversationEventStore().loadMessageHistory(
+          created.conversationId,
+        ),
+      ).map((message) => message.text),
+    ).toEqual(["Check the deploy."]);
+    expect(stopConversationTurnResponseSchema.parse(stopped)).toEqual({
+      conversationId: created.conversationId,
+      status: "requested",
+      stoppedInboundMessageIds: [queued!.messageId],
+      stoppedMessages: [
+        { inboundMessageId: queued!.messageId, text: "Also check the canary." },
+      ],
     });
   });
 });

@@ -201,10 +201,10 @@ export async function stopConversationTree(
 
 /**
  * Cancel the queued and running core Turns of a Conversation by sent time.
- * The person input that the stop drops comes back as main's pending
- * messages. Person input sent after the stop moved to a new Turn, so it ends
- * the stop, as it does when it arrives later. The first stopped Turn stands
- * in for main's run.
+ * The person input that the stop drops, and no attempt claimed, comes back
+ * as main's pending messages. Person input sent after the stop moved to a
+ * new Turn, so it ends the stop, as it does when it arrives later. The first
+ * stopped Turn stands in for main's run.
  */
 async function stopCoreTurns(
   conversationId: string,
@@ -235,7 +235,11 @@ async function stopCoreTurns(
   return {
     status: "requested",
     runId: turnId,
-    pendingMessages: compat__stoppedMessages(conversationId, dropped),
+    // A claimed input is in the transcript already, as main's drained one is.
+    pendingMessages: compat__stoppedMessages(
+      conversationId,
+      dropped.filter((input) => input.attemptedAt === null),
+    ),
   };
 }
 
