@@ -3,58 +3,53 @@ import {
   createContext,
   use,
   useCallback,
-  useEffect,
   useMemo,
   useSyncExternalStore,
 } from "react";
-import type { InboxItemPayload } from "@sentry/junior/api/schema";
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
+import {
+  questionWaits,
+  transcriptAsks,
+  useConversationQuestions,
+} from "../conversations/conversationQuestions";
 import { scrollRootFor } from "../conversations/transcriptScrollRoot";
-import { useInboxItemsData, useWaitingConversations } from "./queries";
-import { itemConversationId, inboxItemWaitsForAnswer } from "./inboxItemFormat";
+
+/** A question card in the transcript that waits for an answer. */
+export type WaitingQuestion = {
+  itemId: string;
+  /** The Turn that asked it, so the page can load the rows around it. */
+  turnId?: string | undefined;
+};
 
 /**
- * Return the open questions that a Conversation's own Turns asked and that
- * wait on the viewer, oldest first. Each has a card in the transcript. An
- * Everyone question that the viewer has not taken does not count.
+ * Return the open questions of a Conversation's loaded transcript, oldest
+ * first. Each has a card there.
  */
-export function useWaitingQuestions(conversationId: string | undefined) {
-  // Every page reads which Conversations wait on the viewer, so a
-  // Conversation that waits on no one sends no list read of its own.
-  const waiting = useWaitingConversations();
-  const { items, query } = useInboxItemsData({
-    conversationId,
-    enabled: Boolean(conversationId && waiting.has(conversationId)),
-  });
-  // The list keeps the items of the last Conversation while the new one
-  // loads. Those questions are not for this Conversation.
-  const stale = query.isPlaceholderData;
-  // The list pages through every open item, notices too, so a question can
-  // sit past the first page. Load every page so the count is right. A
-  // failed page stops the loop, so it does not retry without end.
-  const { fetchNextPage, hasNextPage, isFetching } = query;
-  const failed = query.isFetchNextPageError;
-  // Each page that lands asks for the next one. The fetch flags alone can
-  // end where they started, so the loop would not run again.
-  const pageCount = query.data?.pages.length ?? 0;
-  useEffect(() => {
-    if (stale || failed || !hasNextPage || isFetching) return;
-    void fetchNextPage();
-  }, [failed, fetchNextPage, hasNextPage, isFetching, pageCount, stale]);
-  // A plugin item and an item of another Conversation have no card here.
+export function useWaitingQuestions(
+  conversationId: string | undefined,
+  events: readonly ConversationReportEvent[] | undefined,
+): WaitingQuestion[] {
+  const asks = useMemo(
+    () => (conversationId ? transcriptAsks(events) : []),
+    [conversationId, events],
+  );
+  // The cards read the same questions, so this adds no read.
+  const questions = useConversationQuestions(conversationId ?? "", {
+    enabled: asks.length > 0,
+  }).data?.questions;
   return useMemo(
     () =>
-      stale
-        ? []
-        : items.filter(
-            (item) =>
-              inboxItemWaitsForAnswer(item) &&
-              !item.assignedToEveryone &&
-              item.addedByTurnId !== undefined &&
-              itemConversationId(item) === conversationId,
-          ),
-    [conversationId, items, stale],
+      asks.flatMap((ask) => {
+        const question = questions?.find(
+          (entry) => entry.id === ask.questionId,
+        );
+        return question && questionWaits(question)
+          ? [{ itemId: ask.itemId, turnId: question.turnId }]
+          : [];
+      }),
+    [asks, questions],
   );
 }
 
@@ -129,18 +124,20 @@ export function useQuestionInViewRef(itemId: string, waiting: boolean) {
 }
 
 /**
- * Say how many questions wait on the viewer while one of their cards is not
+ * Say how many questions wait for an answer while one of their cards is not
  * in full view. A click shows the oldest such card, so the next
  * click goes on to the next one.
  */
 export function WaitingQuestionsPill(props: {
-  onShow(item: InboxItemPayload): void;
-  questions: readonly InboxItemPayload[];
+  onShow(question: WaitingQuestion): void;
+  questions: readonly WaitingQuestion[];
   store: ReturnType<typeof createQuestionsInViewStore>;
 }) {
   const { store } = props;
   useSyncExternalStore(store.subscribe, store.version, store.version);
-  const next = props.questions.find((item) => !store.shows(item.id));
+  const next = props.questions.find(
+    (question) => !store.shows(question.itemId),
+  );
   if (!next) return null;
   const count = props.questions.length;
   const label = `${count} ${count === 1 ? "question" : "questions"} waiting`;

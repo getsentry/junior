@@ -166,18 +166,6 @@ function waitingItemsQuery(db: JuniorDatabase, userId: string) {
 }
 
 /**
- * Return a query for the ids of the root Conversations that wait on a User,
- * as `listWaitingConversations` lists them, to filter another query by.
- */
-export function waitingConversationIdsQuery(
-  db: JuniorDatabase,
-  userId: string,
-) {
-  const items = waitingItemsQuery(db, userId).as("waiting_items");
-  return db.select({ conversationId: items.conversationId }).from(items);
-}
-
-/**
  * Return whether a root Conversation waits on a User, as
  * `listWaitingConversations` decides it.
  */

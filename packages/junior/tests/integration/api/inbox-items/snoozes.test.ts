@@ -9,7 +9,7 @@ import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getDb } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { getInboxItem } from "@/chat/inbox-items/store";
-import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
+import { listWaitingConversations } from "@/chat/inbox-items/waiting";
 import {
   juniorInboxItemAssignees,
   juniorInboxSnoozes,
@@ -52,10 +52,10 @@ async function storedStates() {
   return rows.map((row) => row.state);
 }
 
-/** The roots that the Conversations feed's Needs you section pins. */
+/** The roots that wait on the User, as the dashboard's Needs you shows. */
 async function feedWaitingIds(userId: string) {
-  const rows = await waitingConversationIdsQuery(getDb(), userId);
-  return [...new Set(rows.map((row) => row.conversationId))];
+  const rows = await listWaitingConversations(getDb(), userId);
+  return rows.map((row) => row.conversationId);
 }
 
 /** A GitHub Event about `PULL_REQUEST`, or another pull request. */

@@ -492,10 +492,27 @@ describe("transcript bottom pinning", () => {
     ).toBe(true);
   });
 
+  it("ignores the scroll event of a pin that content grew past", () => {
+    // The pin left scrollTop at 540, then rows rewrapped and grew the
+    // content before the scroll event arrived.
+    expect(
+      programmaticSettleScrollAction({
+        intent: "pause",
+        pinnedScrollTop: 540,
+        snapshot: {
+          clientHeight: 692,
+          scrollHeight: 1_480,
+          scrollTop: 540,
+        },
+      }),
+    ).toBe("ignore");
+  });
+
   it("lets a real leave-bottom scroll pause follow during a pin settle window", () => {
     expect(
       programmaticSettleScrollAction({
         intent: "pause",
+        pinnedScrollTop: null,
         snapshot: {
           clientHeight: 800,
           scrollHeight: 2_000,
@@ -507,6 +524,7 @@ describe("transcript bottom pinning", () => {
     expect(
       programmaticSettleScrollAction({
         intent: "pause",
+        pinnedScrollTop: null,
         snapshot: {
           clientHeight: 800,
           scrollHeight: 2_000,
@@ -517,6 +535,7 @@ describe("transcript bottom pinning", () => {
     expect(
       programmaticSettleScrollAction({
         intent: "follow",
+        pinnedScrollTop: null,
         snapshot: {
           clientHeight: 800,
           scrollHeight: 2_000,
@@ -527,6 +546,7 @@ describe("transcript bottom pinning", () => {
     expect(
       programmaticSettleScrollAction({
         intent: "preserve",
+        pinnedScrollTop: null,
         snapshot: {
           clientHeight: 800,
           scrollHeight: 2_000,

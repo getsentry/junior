@@ -68,15 +68,25 @@ export function inboxItemStatusLabel(item: InboxItemPayload): string {
 }
 
 /** Return an item's title as text, with the names of the people it mentions. */
-export function inboxItemTitleText(item: InboxItemPayload): string {
+export function inboxItemTitleText(
+  item: Pick<InboxItemPayload, "mentions" | "title">,
+): string {
   return displayPlainText(item.title, item.mentions);
 }
 
 const executeToolInputSchema = z.object({ tool_name: z.string() });
-const addedItemSchema = z.object({ item: z.object({ id: z.string().min(1) }) });
+const addedItemSchema = z.object({
+  item: z.object({
+    id: z.string().min(1),
+    subject: z.object({ id: z.string().min(1) }).optional(),
+  }),
+});
 
-/** Read the item id from a tool result, which can be JSON text. */
-function addedItemId(output: unknown): string | undefined {
+/** The Inbox item that a tool call added, and the question it shows. */
+export type InboxItemAsk = { itemId: string; questionId: string };
+
+/** Read the added item from a tool result, which can be JSON text. */
+function addedItemAsk(output: unknown): InboxItemAsk | undefined {
   let value = output;
   if (typeof output === "string") {
     try {
@@ -85,41 +95,38 @@ function addedItemId(output: unknown): string | undefined {
       return undefined;
     }
   }
-  return addedItemSchema.safeParse(value).data?.item.id;
+  const item = addedItemSchema.safeParse(value).data?.item;
+  // A result from before items had subjects names none. Its question took
+  // the item's id.
+  return item && { itemId: item.id, questionId: item.subject?.id ?? item.id };
 }
 
 /**
- * Return the id of the Inbox item that one completed tool call added. The
- * agent calls `askUserQuestion` directly or through `executeTool`. Returns
- * undefined when the transcript hides the tool result.
+ * Return the Inbox item that one completed tool call added, and its
+ * question. The agent calls `askUserQuestion` directly or through
+ * `executeTool`. Returns undefined when the transcript hides the tool
+ * result.
  */
-export function inboxItemIdFromToolCall(call: {
+export function inboxItemAskFromToolCall(call: {
   input?: unknown;
   name: string;
   output?: unknown;
   status: string;
-}): string | undefined {
+}): InboxItemAsk | undefined {
   if (call.status !== "completed") return undefined;
   const toolName =
     call.name === "executeTool"
       ? executeToolInputSchema.safeParse(call.input).data?.tool_name
       : call.name;
   if (!toolName || !ASK_TOOL_NAMES.has(toolName)) return undefined;
-  return addedItemId(call.output);
+  return addedItemAsk(call.output);
 }
 
-/**
- * True when an open item asks a question that the viewer can answer, and
- * they did not snooze it.
- */
-export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
-  return (
-    item.status === "open" &&
-    item.kind === "action" &&
-    Boolean(inboxItemQuestion(item.request)) &&
-    item.canAnswer &&
-    !item.snoozedByViewer
-  );
+/** Return the id of the Inbox item that one completed tool call added. */
+export function inboxItemIdFromToolCall(
+  call: Parameters<typeof inboxItemAskFromToolCall>[0],
+): string | undefined {
+  return inboxItemAskFromToolCall(call)?.itemId;
 }
 
 /**

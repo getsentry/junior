@@ -51,7 +51,7 @@ async function seedThreads(page: Page) {
               treeState: "working",
             }),
             row(2, "Backfill invoice IDs", { watching: true }),
-            row(3, "Approve the cutover window", { treeState: "needs_you" }),
+            row(3, "Approve the cutover window", { treeState: "needs_input" }),
             row(4, "Reconcile Stripe balances", { lastResult: "failed" }),
             row(5, "Migrate tax settings", {
               status: "running",

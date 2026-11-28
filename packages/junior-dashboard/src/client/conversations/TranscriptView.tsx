@@ -7,7 +7,6 @@ import {
 } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDown } from "lucide-react";
-import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import type {
   ConversationTranscript,
@@ -44,6 +43,7 @@ import {
   createQuestionsInViewStore,
   useWaitingQuestions,
   WaitingQuestionsPill,
+  type WaitingQuestion,
 } from "../inbox/WaitingQuestions";
 import type { TranscriptHistory } from "./transcriptAroundHistory";
 import { useMessageLinkJump } from "./useMessageLinkJump";
@@ -78,7 +78,7 @@ export function Transcript(props: {
    * Show the card of a question, such as one that an answer row quotes or
    * one that the questions pill names.
    */
-  onShowQuestion?(item: InboxItemPayload): void;
+  onShowQuestion?(question: WaitingQuestion): void;
   /** The reader acted outside the transcript, such as in the composer. */
   readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
@@ -157,6 +157,7 @@ export function Transcript(props: {
     showQuestion && view === "rich"
       ? props.transcript?.conversationId
       : undefined,
+    props.transcript?.events,
   );
   const [questionsInView] = useState(createQuestionsInViewStore);
 

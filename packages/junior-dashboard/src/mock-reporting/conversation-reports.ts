@@ -9,12 +9,14 @@ import type { z } from "zod";
 import { filterMockConversationsByRepository } from "./code-repository";
 import { mockConversationFeedPage } from "./feed-page";
 import {
+  NOW_MS,
   readMockConversationChildAgents,
   readMockConversationDetail,
   readMockConversationFeed,
   readMockConversationPendingMessages,
   withMockImageOrigin,
 } from "./fixtures";
+import { withMockQuestionWaits } from "./inbox-items";
 import { withMockReadPosition } from "./read-positions";
 import { mockLeadSpaceId } from "./sends";
 import {
@@ -55,7 +57,10 @@ export function readMockConversationFeedPage(
   const { spaceId } = query;
   const readFeed = (status: "active" | "archived") => {
     const feed = withMockSpaces(
-      readMockConversationFeed(query.actorEmail, status),
+      withMockQuestionWaits(
+        readMockConversationFeed(query.actorEmail, status),
+        NOW_MS,
+      ),
     );
     if (repositoryId)
       return filterMockConversationsByRepository(feed, repositoryId);
@@ -118,7 +123,10 @@ export function readMockChildAgentsReport(
   const spaceId = mockLeadSpaceId(conversationId);
   if (!spaceId) return readMockConversationChildAgents(conversationId);
   const rows = filterMockConversationsBySpace(
-    readMockConversationFeed(undefined, "active"),
+    withMockQuestionWaits(
+      readMockConversationFeed(undefined, "active"),
+      NOW_MS,
+    ),
     spaceId,
   ).conversations;
   return {

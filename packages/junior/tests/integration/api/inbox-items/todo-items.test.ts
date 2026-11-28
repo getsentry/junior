@@ -6,7 +6,7 @@ import { inboxItemCountSchema, inboxItemListSchema } from "@/api/schema";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { getInboxItem } from "@/chat/inbox-items/store";
-import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
+import { listWaitingConversations } from "@/chat/inbox-items/waiting";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createSpace } from "@/chat/spaces/store";
 import { setTodoStatusByUser } from "@/chat/todos/store";
@@ -127,7 +127,7 @@ describe("To-dos for a person in the Inbox", () => {
       }),
     );
     expect(
-      (await waitingConversationIdsQuery(getDb(), ana.id)).map(
+      (await listWaitingConversations(getDb(), ana.id)).map(
         (row) => row.conversationId,
       ),
     ).toContain(ROOT);
@@ -141,16 +141,20 @@ describe("To-dos for a person in the Inbox", () => {
     expect(await asBob.count()).toEqual(
       expect.objectContaining({ needsViewer: 0 }),
     );
-    // The Conversation waits on Ana alone. Its shared status does not
-    // change, so it does not show as waiting to Bob.
+    // The Conversation waits on Ana alone, and only her Inbox says so. The
+    // Conversation's own data does not change for anyone.
     const detail = async (viewer: typeof asAna) =>
       await (await viewer.request(`/conversations/${ROOT}`)).json();
-    expect(await detail(asAna)).toEqual(
-      expect.objectContaining({ status: "done", treeState: "needs_you" }),
-    );
-    expect(await detail(asBob)).toEqual(
-      expect.objectContaining({ status: "done", treeState: "done" }),
-    );
+    for (const viewer of [asAna, asBob]) {
+      expect(await detail(viewer)).toEqual(
+        expect.objectContaining({ status: "done", treeState: "done" }),
+      );
+    }
+    expect(
+      (await listWaitingConversations(getDb(), bob.id)).map(
+        (row) => row.conversationId,
+      ),
+    ).toEqual([]);
 
     // Done or Dismiss closes it. Take and answers are for other items.
     expect((await asAna.act(item!.id, { action: "take" })).status).toBe(400);

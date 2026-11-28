@@ -154,3 +154,21 @@ export async function expectSqlBudget<T>(
   expect(sql.serialRounds).toBeLessThanOrEqual(budget.serialRounds);
   return result;
 }
+
+/**
+ * Assert that `call` sends no SQL that reads an Inbox table. Conversation
+ * reads hold only Conversation data; the client overlays what waits on the
+ * viewer from the Inbox's own route.
+ */
+export async function expectNoInboxSql<T>(
+  call: () => T | Promise<T>,
+): Promise<T> {
+  const { result, statements } = await measureSql(call);
+  expect(statements.length, "no SQL statement was measured").toBeGreaterThan(0);
+  expect(
+    statements
+      .map(({ text }) => text)
+      .filter((text) => /junior_inbox_item/.test(text)),
+  ).toEqual([]);
+  return result;
+}

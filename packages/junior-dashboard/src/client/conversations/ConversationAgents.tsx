@@ -44,7 +44,7 @@ import { FeedThreads } from "./feedThreads";
 
 /** Where a child Conversation stands, from its own run only. */
 export type ChildState =
-  | "needs_you"
+  | "needs_input"
   | "blocked"
   | "failed"
   | "running"
@@ -61,7 +61,7 @@ export type ChildState =
 export function childState(child: ConversationChildAgent): ChildState {
   if (child.archivedAt) return "done";
   const { lastResult, status, treeState } = child;
-  if (treeState === "needs_you") return "needs_you";
+  if (treeState === "needs_input") return "needs_input";
   if (status === "running" || status === "pending") return "running";
   if (status === "failed") return "failed";
   if (status === "idle" && lastResult === "failed") return "failed";
@@ -117,7 +117,7 @@ const stateLabels: Record<ChildState, string> = {
   blocked: "Blocked",
   done: "Done",
   failed: "Failed",
-  needs_you: "Waiting on you",
+  needs_input: "Needs input",
   paused: "Paused",
   running: "Running",
   stopped: "Stopped",
@@ -125,7 +125,7 @@ const stateLabels: Record<ChildState, string> = {
 };
 
 const stateIcons: Record<
-  Exclude<ChildState, "needs_you" | "running">,
+  Exclude<ChildState, "needs_input" | "running">,
   LucideIcon
 > = {
   blocked: CircleAlert,
@@ -143,8 +143,8 @@ const stateIcons: Record<
  */
 function ChildStateIcon(props: { state: ChildState }) {
   const label = stateLabels[props.state];
-  if (props.state === "needs_you") {
-    return <ConversationStateIcon className="size-4" state="needs_you" />;
+  if (props.state === "needs_input") {
+    return <ConversationStateIcon className="size-4" state="needs_input" />;
   }
   if (props.state === "running") {
     return (
@@ -210,7 +210,7 @@ export function ConversationAgents(props: {
   // The children to look at lead, then running ones, then waiting ones.
   // `sort` is stable, so each state keeps the loaded order.
   const rank = (state: ChildState) =>
-    state === "needs_you" || state === "blocked" || state === "failed"
+    state === "needs_input" || state === "blocked" || state === "failed"
       ? 0
       : state === "running"
         ? 1

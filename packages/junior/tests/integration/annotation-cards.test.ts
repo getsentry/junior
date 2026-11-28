@@ -1,8 +1,5 @@
 import { readConversationDetail } from "@/api/conversations/detail";
-import { signedInViewer, testViewer } from "../fixtures/user";
-import { getSpaceLead } from "@/chat/lead/conversation";
-import { setConversationSpace } from "@/chat/spaces/conversations";
-import { createSpace } from "@/chat/spaces/store";
+import { testViewer } from "../fixtures/user";
 import {
   defineJuniorPlugin,
   definePluginTool,
@@ -588,25 +585,23 @@ it("saves plugin object results once per reply, rejects them from reads, leaves 
   expect(last?.data).not.toHaveProperty("meta.objectCards");
 });
 
-it("reads each delivered card once with the access of the person who started the Conversation, and posts only the title, label, and link when it cannot read it", async () => {
+it("posts each delivered card from its stored Annotation and reads no provider", async () => {
   stubGitHubApp();
-  let githubUp = false;
+  let githubReads = 0;
   mswServer.use(
-    http.get(`${GITHUB_API}/pulls/38`, () =>
-      githubUp
-        ? HttpResponse.json(
-            pullRequest(38, {
-              merged: true,
-              state: "closed",
-              title: "Retry uploads",
-            }),
-          )
-        : HttpResponse.json({ message: "Unavailable" }, { status: 503 }),
-    ),
+    http.get(`${GITHUB_API}/pulls/38`, () => {
+      githubReads += 1;
+      return HttpResponse.json(
+        pullRequest(38, {
+          merged: true,
+          state: "closed",
+          title: "Retry uploads",
+        }),
+      );
+    }),
   );
   try {
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    // Alice starts the Conversation. She sees the repository on GitHub.
     await linkGitHubMember();
     const conversationId = "slack:CALICE:1712345.0038";
     await getConversationStore().recordActivity({
@@ -652,45 +647,12 @@ it("reads each delivered card once with the access of the person who started the
       },
     ]);
 
-    // GitHub is down, so the card posts the title, GitHub's label, and the
-    // link that Junior saved.
+    // The tool just wrote the pull request, so the card posts what it
+    // saved: the title, GitHub's label, and the link.
     await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
       { ...saved, label: "getsentry/junior#38", plugin: "github" },
     ]);
-    githubUp = true;
-    await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
-      expect.objectContaining({
-        key: saved.key,
-        label: "getsentry/junior#38",
-        plugin: "github",
-        status: "merged",
-        title: "Retry uploads",
-      }),
-    ]);
-    // Bo moves the thread into a Space that Bo created. Bo cannot see the
-    // repository, but the card still reads with Alice's access.
-    const bo = await signedInViewer("bo@example.com");
-    const space = await createSpace({
-      creator: bo,
-      description: null,
-      name: "Uploads",
-      visibility: "public",
-    });
-    const lead = await getSpaceLead(space.id);
-    await expect(
-      setConversationSpace(
-        conversationId,
-        { leadConversationId: lead.conversationId, spaceId: space.id },
-        null,
-      ),
-    ).resolves.toBeUndefined();
-    await expect(loadPendingMessageCards(conversationId)).resolves.toEqual([
-      expect.objectContaining({ status: "merged", title: "Retry uploads" }),
-    ]);
-    // Delivery stores nothing: the Annotation keeps what the tool saved.
-    await expect(
-      listConversationAnnotations(getDb(), conversationId),
-    ).resolves.toMatchObject([{ title: saved.title }]);
+    expect(githubReads).toBe(0);
   } finally {
     vi.unstubAllEnvs();
   }

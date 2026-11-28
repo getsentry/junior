@@ -1,0 +1,54 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "a19a65e9-5896-4e6d-9df0-6945546c6640",
+  "prevIds": ["5a464bcb-56a9-4a55-97ea-9fd9b2d6a250"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_questions",
+        "junior_questions_waiting_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_questions_waiting_idx",
+        "n|idx|public.junior_questions_waiting_idx",
+        "e|idx|public.junior_questions_waiting_idx",
+        "n|rel|public.junior_questions_waiting_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_questions",
+        "n|sch|public",
+        "n|col|public.junior_questions.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "junior_questions_waiting_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "(\"closed_at\" is null and \"request\" ? 'fields')",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

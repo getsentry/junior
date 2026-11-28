@@ -138,7 +138,7 @@ test("each pane row shows what its Space's Conversations need", async ({
 }) => {
   // One state for each Space, as the API rolls them up for the viewer.
   const states: Record<string, object> = {
-    "Billing migration": { latestTurnFailed: true, treeState: "needs_you" },
+    "Billing migration": { latestTurnFailed: true, treeState: "needs_input" },
     "Mobile app": { latestTurnFailed: true, treeState: "working" },
     "Pricing launch": { latestTurnFailed: false, treeState: "working" },
   };
@@ -157,7 +157,9 @@ test("each pane row shows what its Space's Conversations need", async ({
   const row = (name: string) => spaces.getByRole("link", { name });
   const expectStates = async () => {
     await expect(
-      row("Billing migration").getByRole("img", { name: "Waiting on you" }),
+      row("Billing migration").getByRole("img", {
+        name: "Needs input",
+      }),
     ).toBeVisible();
     // A failure outranks work that still runs.
     await expect(

@@ -91,6 +91,7 @@ import {
   conversationDisplayState,
 } from "../../conversations/ConversationStateIcon";
 import { useInboxItemData } from "../../inbox/queries";
+import type { WaitingQuestion } from "../../inbox/WaitingQuestions";
 import {
   itemConversationId,
   inboxItemIdFromToolCall,
@@ -193,7 +194,7 @@ export function ConversationPage(props: {
   // The question whose transcript card shows, and the Turn that
   // asked it, so a row outside the loaded pages can load.
   const [askReveal, setAskReveal] = useState<
-    TranscriptAskReveal & { turnId?: string }
+    TranscriptAskReveal & { turnId?: string | undefined }
   >();
   // The page stays mounted across Conversations. Reveal state belongs to one.
   const [revealConversationId, setRevealConversationId] = useState(
@@ -490,18 +491,12 @@ export function ConversationPage(props: {
     return Boolean(start);
   });
   const showQuestion = useCallback(
-    (item: InboxItemPayload) =>
+    (question: WaitingQuestion) =>
       setAskReveal((current) => ({
-        itemId: item.id,
-        // A child Conversation can add an item to this one. Its Turn is not
-        // in this transcript.
-        turnId:
-          itemConversationId(item) === conversationId
-            ? item.addedByTurnId
-            : undefined,
+        ...question,
         version: (current?.version ?? 0) + 1,
       })),
-    [conversationId],
+    [],
   );
   // A question that the reader moves to can sit outside the loaded rows.
   // Then the transcript opens at the page around its Turn, like a link.
@@ -525,7 +520,15 @@ export function ConversationPage(props: {
   const askLinkId = searchParams.get(CONVERSATION_ASK_PARAM) ?? undefined;
   const askLink = useInboxItemData(askLinkId).data;
   const showAskLink = useEffectEvent((item: InboxItemPayload) => {
-    showQuestion(item);
+    showQuestion({
+      itemId: item.id,
+      // A child Conversation can add an item to this one. Its Turn is not
+      // in this transcript.
+      turnId:
+        itemConversationId(item) === conversationId
+          ? item.addedByTurnId
+          : undefined,
+    });
     setSearchParams(
       (params) => {
         params.delete(CONVERSATION_ASK_PARAM);

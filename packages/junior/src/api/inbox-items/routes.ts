@@ -52,9 +52,11 @@ import {
   ownerConversationId,
   searchInboxItems,
   type InboxItem,
-  type InboxItemFilters,
-  type InboxItemPosition,
 } from "@/chat/inbox-items/store";
+import type {
+  InboxItemFilters,
+  InboxItemPosition,
+} from "@/chat/inbox-items/search-filters";
 import {
   countInboxItemsNeedingUserBySubject,
   listWaitingConversations,

@@ -10,12 +10,20 @@ import { getSpaceLead } from "@/chat/lead/conversation";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { setConversationSpace } from "@/chat/spaces/conversations";
 import { createSpace } from "@/chat/spaces/store";
-import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import {
+  closeInboxItem,
+  dismissOpenInboxItems,
+  insertInboxItem,
+} from "@/chat/inbox-items/store";
 import {
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
 } from "@/chat/conversations/projection";
-import { juniorConversations, juniorInboxItems } from "@/db/schema";
+import {
+  juniorConversations,
+  juniorInboxItems,
+  juniorQuestions,
+} from "@/db/schema";
 import {
   spawnChildAgent,
   startRunningChildAgent,
@@ -41,6 +49,7 @@ import {
   recordTurnFailure,
   recordTurnStart,
 } from "../../../fixtures/turn-start";
+import { expectNoInboxSql } from "../../../fixtures/sql-budget";
 
 describe("conversation status", () => {
   afterEach(async () => {
@@ -106,10 +115,13 @@ describe("conversation status", () => {
       request: REQUEST,
       title: "Pick a release name",
     });
-    // Only the item changed, and a poll with the old version reloads.
-    const polled = await fixture.request(detailPath(conversationId), {
-      headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: version! },
-    });
+    // Only the item changed, and a poll with the old version reloads. The
+    // detail reads the question, not its Inbox item.
+    const polled = await expectNoInboxSql(() =>
+      fixture.request(detailPath(conversationId), {
+        headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: version! },
+      }),
+    );
     expect(polled.status).toBe(200);
     expect(
       conversationDetailReportSchema.parse(await polled.json()).status,
@@ -125,11 +137,22 @@ describe("conversation status", () => {
       ...ACTION_ITEM,
       assignees: ["everyone"],
     });
+    // askUserQuestion stores only `fields`, with no shared `question`.
+    const [item] = await getDb()
+      .select({ subjectId: juniorInboxItems.subjectId })
+      .from(juniorInboxItems)
+      .where(eq(juniorInboxItems.id, everyone));
+    const [asked] = await getDb()
+      .select({ request: juniorQuestions.request })
+      .from(juniorQuestions)
+      .where(eq(juniorQuestions.id, item!.subjectId));
+    expect(Object.keys(asked?.request ?? {})).toEqual(["fields"]);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    await closeInboxItem(getDb(), {
-      id: everyone,
+    // A dismiss with no person, such as an archive's, closes the question too.
+    await dismissOpenInboxItems(getDb(), {
+      ids: [everyone],
       nowMs: Date.now(),
-      status: "dismissed",
+      reason: "archived",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("done");
 
@@ -398,7 +421,7 @@ describe("conversation status", () => {
     await recordAnswer(dashboard, 1);
     await expect(fixture.status(dashboard)).resolves.toBe("needs_input");
     await expect(fixture.tree(dashboard)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await recordStarterMessage(dashboard);
     await expect(fixture.status(dashboard)).resolves.toBe("done");
@@ -412,7 +435,7 @@ describe("conversation status", () => {
     });
     await recordAnswer(thread, 1);
     await expect(fixture.tree(thread)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
 
     // A Slack thread that moves into the Space drops its Location, so only

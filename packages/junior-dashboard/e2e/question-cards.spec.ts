@@ -2,7 +2,6 @@ import type { Page } from "@playwright/test";
 import { openAsk } from "./askSheet";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
-import { mockInboxItemList } from "./mock-reports";
 
 // Mock Conversations with open Inbox items that wait on the viewer.
 const ONE_QUESTION_ID = "internal:question-qa";
@@ -35,7 +34,7 @@ for (const view of [desktop, mobile]) {
     const card = page.getByRole("region", {
       name: "Asked Approve the payments-v42 rollout",
     });
-    await expect(card).toContainText("Waiting on you");
+    await expect(card).toContainText("Waiting");
     if (view === desktop) {
       // The answered question above reads its closed item after the list,
       // and its row then grows. A click while the transcript follows that
@@ -186,38 +185,6 @@ test("the questions pill goes to each waiting question", async ({
   await expect(
     page.getByRole("button", { name: "2 questions waiting" }),
   ).toBeVisible();
-});
-
-test("the questions pill skips an Everyone question the viewer has not taken", async ({
-  dashboard,
-  page,
-}) => {
-  await page.setViewportSize(desktop);
-  // The list marks one of the three questions as asked of everyone.
-  await page.route("**/api/inbox-items?*", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.searchParams.get("conversationId") !== THREE_QUESTIONS_ID) {
-      await route.fallback();
-      return;
-    }
-    const body = await mockInboxItemList(route);
-    await route.fulfill({
-      json: {
-        items: body.items.map((item) =>
-          item.title === "Pick the billing migration window"
-            ? { ...item, assignedToEveryone: true }
-            : item,
-        ),
-      },
-    });
-  });
-  await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
-  await expect(
-    page.getByRole("button", { name: "2 questions waiting" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "3 questions waiting" }),
-  ).toHaveCount(0);
 });
 
 test("a typed message still answers the question", async ({

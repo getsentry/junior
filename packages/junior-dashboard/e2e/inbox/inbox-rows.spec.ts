@@ -342,7 +342,9 @@ test.describe("new UI", () => {
     // The actions take their own room in the meta's cell, so they cover
     // neither the title nor the summary, and the state stays in view.
     await meta.getByRole("button", { name: /^Pin Triage Sentaur/ }).click();
-    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
+    // Its Threads have questions that wait, and that state outranks the pin.
+    const state = meta.getByRole("img", { name: "Needs input" });
+    await expect(state).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
     await expect(meta.getByRole("button", { name: /^Unpin / })).toHaveAttribute(
       "aria-pressed",
@@ -350,7 +352,7 @@ test.describe("new UI", () => {
     );
     // With the pointer on the row's own Threads, the row keeps its state.
     await row.getByRole("link", { name: /Read the canary agent logs/ }).hover();
-    await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
+    await expect(state).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
   });
 

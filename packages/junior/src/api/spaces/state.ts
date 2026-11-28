@@ -25,7 +25,7 @@ export type SpaceStateRead = {
 const spaceLead = alias(juniorConversations, "state_space_lead");
 
 const TREE_STATE_ORDER: readonly ConversationTreeState[] = [
-  "needs_you",
+  "needs_input",
   "working",
   "done",
 ];

@@ -41,11 +41,11 @@ The **viewer state** covers the conversation and all of its child agents, and it
 
 | Viewer state | Icon          | Meaning                                                                                                        |
 | ----------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
-| `needs_you` | Question mark | A conversation in the tree waits on you: an Inbox item for you or for everyone, a sign-in that you must do, or an unread answer or a failed turn in work that you started. |
+| `needs_input` | Question mark | A question in the tree is still open, the same for everyone. Or a sign-in that you must do, or an unread answer or a failed turn in work that you started, waits on you. |
 | `working`   | Spinner       | A turn runs or waits to start anywhere in the tree.                                                            |
 | `done`      | None          | Anything else.                                                                                                 |
 
-A wait on the starter counts only for the starter, and it counts for each conversation above the one that waits. For example, a failed Thread shows `needs_you` to its starter on the Thread and on its Lead. Input that waits on another person does not show as `needs_you` for you. Archived child agents do not count. When more than one state applies, the first in the table wins.
+A wait on the starter counts only for the starter, and it counts for each conversation above the one that waits. For example, a failed Thread shows `needs_input` to its starter on the Thread and on its Lead. A sign-in that waits on another person does not show as `needs_input` for you. Archived child agents do not count. When more than one state applies, the first in the table wins.
 
 A separate `watching` flag is true when a conversation in the tree watches for an event or has a pending timer. The dashboard shows it as an eye icon when the tree is otherwise `done`. A watch is not work, so it does not change the status or make the tree `working`.
 

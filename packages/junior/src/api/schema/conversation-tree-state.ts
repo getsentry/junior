@@ -5,7 +5,7 @@ import * as z from "zod";
  * See "Viewer state" in `TERMINOLOGY.md`.
  */
 export const conversationTreeStateSchema = z.enum([
-  "needs_you",
+  "needs_input",
   "working",
   "done",
 ]);

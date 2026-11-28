@@ -1,0 +1,37 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "5a464bcb-56a9-4a55-97ea-9fd9b2d6a250",
+  "prevIds": ["bc65ab56-c83c-4ce7-b610-ce709ad7c3e8"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_questions", "closed_at"],
+      "writes": [
+        "s|col|public.junior_questions.closed_at",
+        "n|col|public.junior_questions.closed_at",
+        "e|col|public.junior_questions.closed_at"
+      ],
+      "reads": ["n|tbl|public.junior_questions", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_questions",
+        "name": "closed_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

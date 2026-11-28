@@ -11,6 +11,7 @@ import {
   withRequestedMailbox,
 } from "../harness";
 import { pickOption } from "../pick-option";
+import { conversationQuestions } from "./inbox-fixture";
 
 test.describe("new UI", () => {
   test.use({ locale: "en-US", timezoneId: "America/New_York" });
@@ -882,9 +883,16 @@ test.describe("new UI", () => {
         dismissed = true;
         return route.fulfill({ json: current() });
       });
-      // The Conversation also lists the open item above the message box.
+      // The Inbox and the Conversation's Details list the open item.
       await page.route(`**/api/inbox-items?*`, (route) =>
         route.fulfill({ json: { items: dismissed ? [] : [item] } }),
+      );
+      // The transcript reads the question, which waits until the dismiss
+      // closes it.
+      await page.route(`**${api}/questions`, (route) =>
+        route.fulfill({
+          json: conversationQuestions(conversationId, [current()]),
+        }),
       );
       report.events = [
         ...Array.from({ length: 20 }, (_, seq) => ({
@@ -937,7 +945,7 @@ test.describe("new UI", () => {
       // The question shows in its card in the transcript. Nothing docks, so
       // the message box and the queued messages stay below the transcript.
       const record = page.getByRole("region", { name: `Asked ${item.title}` });
-      await expect(record).toContainText("Waiting on you");
+      await expect(record).toContainText("Waiting");
       await expect(
         page.getByRole("region", { name: `Question: ${item.title}` }),
       ).toHaveCount(0);
@@ -956,11 +964,11 @@ test.describe("new UI", () => {
         view: view.name,
       });
 
-      // Dismiss closes the question, and its record says so.
+      // Dismiss closes the question, and its record stops waiting.
       await ask.getByRole("button", { name: "Dismiss", exact: true }).click();
       await expect(question).toHaveCount(0);
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await expect(record).toContainText("Dismissed");
+      await expect(record).not.toContainText("Waiting");
       await screenshot(page, "conversation-question-dismissed", {
         view: view.name,
       });

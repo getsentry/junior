@@ -25,7 +25,7 @@ export const mcpConversationSchema = z
       .optional()
       .describe("What was asked and what happened, as of the last Turn."),
     status: conversationReportStatusSchema.describe(
-      "`needs_input` while it waits on a person: an Inbox item it added, a sign-in, a failed latest Turn, or an answer its starter has not read. `working` while a Turn runs or waits to start. `done` otherwise, also after a stop.",
+      "`needs_input` while it waits on a person: a sign-in, a failed latest Turn, or an answer its starter has not read. Inbox items are not part of it: `searchInboxItems` lists them. `working` while a Turn runs or waits to start. `done` otherwise, also after a stop.",
     ),
     turnActive: z
       .boolean()
@@ -35,7 +35,7 @@ export const mcpConversationSchema = z
     treeState: conversationTreeStateSchema
       .optional()
       .describe(
-        "Your viewer state, over this Conversation and all its child agents. `needs_you` when one of them waits on you or on everyone. `working` while a Turn runs or waits to start in any of them. `done` otherwise. Show this in a list, not `status`.",
+        "Your viewer state, over this Conversation and all its child agents. `needs_input` when one of them has an open question, or waits on you to sign in or to read its answer. Inbox items are not part of it: `searchInboxItems` lists them. `working` while a Turn runs or waits to start in any of them. `done` otherwise. Show this in a list, not `status`.",
       ),
     watching: z
       .boolean()

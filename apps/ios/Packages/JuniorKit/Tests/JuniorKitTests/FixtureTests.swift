@@ -17,7 +17,7 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     // `status` reads `needs_input` for a Conversation that waits on someone,
     // but only `treeState` says whether that is you.
     #expect(list.conversations.contains { $0.status == .needsInput && $0.treeState == .done })
-    #expect(list.conversations.contains { $0.status != .needsInput && $0.treeState == .needsYou })
+    #expect(list.conversations.contains { $0.status != .needsInput && $0.treeState == .needsInput })
     let state = try fixture("getConversation", as: ConversationState.self)
     #expect(state.conversation.summary?.isEmpty == false)
     #expect(state.lastReply?.isAssistant == true)
@@ -61,7 +61,7 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     }
     #expect(try row("active").turnActive)
     #expect(try !row("completed").turnActive)
-    #expect(try row("needs_input").treeState == .needsYou)
+    #expect(try row("needs_input").treeState == .needsInput)
     #expect(try row("active").treeState == .working)
     #expect(try row("completed").treeState == .done)
   }

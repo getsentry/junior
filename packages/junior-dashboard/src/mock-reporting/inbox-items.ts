@@ -5,6 +5,9 @@
  */
 import {
   inboxItemQuestion,
+  type ConversationFeed,
+  type ConversationFeedItem,
+  type ConversationQuestionsReport,
   type InboxItemActionBody,
   type InboxItemPayload,
   type InboxSnoozeCreateBody,
@@ -356,6 +359,93 @@ export function actOnMockInboxItem(
     ...(closeAction ? { closeAction } : undefined),
   });
   return readMockInboxItem(nowMs, id);
+}
+
+/**
+ * List the questions that agents asked in one mock Conversation, with the
+ * viewer's answers, like `GET /api/conversations/:id/questions`. A mock
+ * question has its item's id, so the mock tool results name no subject.
+ */
+export function readMockConversationQuestions(
+  nowMs: number,
+  conversationId: string,
+): ConversationQuestionsReport {
+  const all = seeds(nowMs);
+  return {
+    conversationId,
+    questions: all
+      .filter(
+        (seed) =>
+          seed.conversationId === conversationId &&
+          subjectOf(seed).kind === "question",
+      )
+      .map((seed) => payload(seed, all, nowMs))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .map((item) => ({
+        body: item.body,
+        createdAt: item.createdAt,
+        id: item.id,
+        title: item.title,
+        updatedAt: item.updatedAt,
+        ...(item.closedAt ? { closedAt: item.closedAt } : undefined),
+        ...(item.answer
+          ? {
+              answer: item.answer,
+              answeredAt: item.closedAt ?? item.updatedAt,
+              ...(item.answeredBy
+                ? {
+                    answeredBy: {
+                      email: item.answeredBy.email,
+                      userId: item.answeredBy.userId,
+                      ...(item.answeredBy.displayName
+                        ? { displayName: item.answeredBy.displayName }
+                        : undefined),
+                    },
+                  }
+                : undefined),
+            }
+          : undefined),
+        ...(item.mentions ? { mentions: item.mentions } : undefined),
+        ...(item.request ? { request: item.request } : undefined),
+        ...(item.addedByTurnId ? { turnId: item.addedByTurnId } : undefined),
+      })),
+  };
+}
+
+/**
+ * Mark the mock feed rows whose Conversations have a question that waits
+ * for an answer, like `questionWaitsSql`: the asking Conversation needs
+ * input, and its tree needs input, for every viewer.
+ */
+export function withMockQuestionWaits(
+  feed: ConversationFeed,
+  nowMs: number,
+): ConversationFeed {
+  const all = seeds(nowMs);
+  const waiting = all
+    .filter((seed) => subjectOf(seed).kind === "question")
+    .map((seed) => payload(seed, all, nowMs))
+    .filter(
+      (item) => item.status === "open" && inboxItemQuestion(item.request),
+    );
+  const askingIds = new Set(waiting.map((item) => item.owner.id));
+  const treeIds = new Set([
+    ...askingIds,
+    ...waiting.flatMap((item) =>
+      item.rootConversationId ? [item.rootConversationId] : [],
+    ),
+  ]);
+  const mark = (row: ConversationFeedItem): ConversationFeedItem => ({
+    ...row,
+    ...(askingIds.has(row.conversationId)
+      ? { status: "needs_input" as const }
+      : undefined),
+    ...(treeIds.has(row.conversationId)
+      ? { treeState: "needs_input" as const }
+      : undefined),
+    ...(row.threads ? { threads: row.threads.map(mark) } : undefined),
+  });
+  return { ...feed, conversations: feed.conversations.map(mark) };
 }
 
 /**

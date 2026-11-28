@@ -19,6 +19,8 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import { setConversationArchive } from "@/api/conversations/archive";
+import { conversationVersionsQuery } from "@/api/conversations/detail-etag";
+import { conversationFeedVersionQuery } from "@/api/conversations/list";
 import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
@@ -242,14 +244,21 @@ describe("versions API", () => {
       },
       title: "Approve",
     });
-    // An open item is a status input, so the detail moves too. The feed row
-    // moves from `working` to `needs_input`, which outranks it.
+    // An open question is a status input, so the detail moves too. The feed
+    // row moves from `working` to `needs_input`, which outranks it. Neither
+    // token reads an Inbox table: they read the question.
     const withItem = await read();
     expect(changed(withPin, withItem)).toEqual([
       "conversation",
       "conversations",
       "inboxItems",
     ]);
+    for (const query of [
+      conversationFeedVersionQuery(getDb(), viewer.id),
+      conversationVersionsQuery(getDb(), [OWN], viewer.id),
+    ]) {
+      expect(query.toSQL().sql).not.toMatch(/junior_inbox_item/);
+    }
     await closeInboxItem(getDb(), {
       id: item!.id,
       nowMs: Date.parse("2026-10-01T12:01:00.000Z"),
@@ -449,9 +458,9 @@ describe("versions API", () => {
     };
     const taskRunning = await taskTurn("running", nowMs + 300_000);
     expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
-    // A take changes whom a running Task's item up for grabs waits on. The
-    // Conversation is private, so the item has no assignees: it cannot name
-    // Everyone yet.
+    // A take changes whom a running Task's item up for grabs waits on. That
+    // is the Inbox's fact; the question still waits, so the feed stays. The
+    // Conversation is private, so the item has no assignees.
     const everyone = await insertInboxItem(getDb(), {
       owner: { id: `${OWN}:child`, kind: "conversation" },
       assignedToEveryone: false,
@@ -484,7 +493,7 @@ describe("versions API", () => {
       }),
     ).toBe(true);
     const taken = await read();
-    expect(feedMoved(withEveryone, taken)).toEqual(["threads"]);
+    expect(feedMoved(withEveryone, taken)).toEqual([]);
     await closeInboxItem(getDb(), {
       id: everyone!.id,
       nowMs: nowMs + 302_000,

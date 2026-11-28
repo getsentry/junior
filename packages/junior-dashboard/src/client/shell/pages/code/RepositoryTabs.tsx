@@ -69,11 +69,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
   ).filter(
     (conversation) =>
       (!pinnedOnly || conversation.pinnedAt) &&
-      inConversationState(
-        conversation,
-        waitingConversations.has(conversation.id),
-        state,
-      ),
+      inConversationState(conversation, state),
   );
   return (
     <section aria-label="Conversations" className="grid gap-3">

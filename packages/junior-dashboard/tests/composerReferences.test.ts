@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 
 import {
+  composerReferenceSchema,
   hashTokenAt,
   linkedWorkUrls,
   referenceText,
@@ -147,4 +148,12 @@ it("lists the links that a message sends, once each", () => {
       ORIGIN,
     ),
   ).toEqual([conversation, pull, doc, page]);
+});
+
+it("reads a draft reference saved with the old needs_you state", () => {
+  const reference = { kind: "conversation", title: "Plan", url: "/c/1" };
+  expect(
+    composerReferenceSchema.parse({ ...reference, state: "needs_you" }),
+  ).toEqual({ ...reference, state: "needs_input" });
+  expect(composerReferenceSchema.parse(reference)).toEqual(reference);
 });

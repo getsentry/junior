@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { getDb } from "@/chat/db";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { insertInboxItem } from "@/chat/inbox-items/store";
 import { juniorConversations } from "@/db/schema";
 import { storeConversationMetadataFixture } from "../../../../fixtures/conversation-metadata";
@@ -115,7 +115,6 @@ describe("getConversation MCP tool", () => {
       email: MCP_TEST_VIEWER,
       title: "Viewer incident",
     });
-    const other = await resolveViewerUser(MCP_TEST_OTHER_VIEWER);
     const ask = {
       owner: { id: CONVERSATION_ID, kind: "conversation" as const },
       body: "Pick one.",
@@ -136,25 +135,28 @@ describe("getConversation MCP tool", () => {
       title: "Ship the release?",
       visibility: "public" as const,
     };
+    // A sign-in waits on another person, so it does not need the viewer.
+    await recordAuthorizationRequested({
+      actorId: "UOTHER",
+      authorizationId: "mcp-sign-in",
+      conversationId: CONVERSATION_ID,
+      delivery: "private_link_sent",
+      kind: "mcp",
+      provider: "notion",
+    });
+    const call = await connectMcpTools();
+
+    const forOther = await call("getConversation", {
+      conversationId: CONVERSATION_ID,
+    });
+    // A waiting question needs every viewer, whoever it asks.
     await insertInboxItem(getDb(), {
       subject: { id: "other-ask", kind: "question" },
       ...ask,
       assignedToEveryone: false,
-      assigneeUserIds: [other!.id],
-    });
-    const call = await connectMcpTools();
-
-    // It waits on another person, so it does not need the viewer.
-    const forOther = await call("getConversation", {
-      conversationId: CONVERSATION_ID,
-    });
-    await insertInboxItem(getDb(), {
-      subject: { id: "everyone-ask", kind: "question" },
-      ...ask,
-      assignedToEveryone: true,
       assigneeUserIds: [],
     });
-    const forEveryone = await call("getConversation", {
+    const asked = await call("getConversation", {
       conversationId: CONVERSATION_ID,
     });
     const list = await call("searchConversations");
@@ -166,12 +168,12 @@ describe("getConversation MCP tool", () => {
         watching: false,
       },
     });
-    expect(forEveryone.structuredContent).toMatchObject({
-      conversation: { status: "needs_input", treeState: "needs_you" },
+    expect(asked.structuredContent).toMatchObject({
+      conversation: { status: "needs_input", treeState: "needs_input" },
     });
     expect(list.structuredContent).toMatchObject({
       conversations: [
-        { conversationId: CONVERSATION_ID, treeState: "needs_you" },
+        { conversationId: CONVERSATION_ID, treeState: "needs_input" },
       ],
     });
   });

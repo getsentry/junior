@@ -13,7 +13,7 @@ import {
   type SQL,
   type SQLWrapper,
 } from "drizzle-orm";
-import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { listedConversation } from "@/chat/conversations/sql/listed";
@@ -26,11 +26,8 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
-  juniorInboxItems,
   juniorUsers,
 } from "@/db/schema";
-import { inboxItemNeedsInput } from "@/chat/inbox-items/access";
-import { inboxItemOwnedByThroughSubject } from "@/chat/inbox-items/owner";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -54,10 +51,10 @@ import {
 import {
   conversationIsActiveSql,
   conversationTurnFailedSql,
+  questionWaitsSql,
 } from "@/chat/conversations/sql/status";
 import { nestFeedThreads, readFeedThreadRecords } from "./threads";
 import {
-  CONVERSATION_FEED_WAITING_LIMIT,
   type ConversationFeed,
   type ConversationFeedInclude,
 } from "../schema/conversation-feed";
@@ -71,7 +68,6 @@ import { readLiveAnnotationsById } from "@/api/objects/live-annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { readConversationTrees } from "@/chat/conversations/sql/conversation-tree";
-import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
 import {
   hasUnexpiredAuthorizationRequest,
   treeAwaitsAuthorization,
@@ -192,7 +188,6 @@ async function conversationRows(
     querySubjects = [],
     space,
     status,
-    waitingForUserId,
   }: {
     codeRepository?: { id: string; viewerUserId?: string };
     /** Read only these root conversations. */
@@ -212,8 +207,6 @@ async function conversationRows(
     /** Read only the roots of this Space, in place of membership. */
     space?: { id: string; viewerUserId?: string };
     status: "active" | "archived" | "all";
-    /** Read only the root conversations that wait on this user. */
-    waitingForUserId?: string;
   },
 ) {
   const rows = db
@@ -251,12 +244,6 @@ async function conversationRows(
             ),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
-          : undefined,
-        waitingForUserId
-          ? inArray(
-              juniorConversations.conversationId,
-              waitingConversationIdsQuery(db, waitingForUserId),
-            )
           : undefined,
         pinnedForUserId
           ? pinnedForUserId.pinned
@@ -373,17 +360,12 @@ export function conversationFeedVersionQuery(
 ) {
   const pin = juniorConversationParticipants;
   const conversationId = juniorConversations.conversationId;
-  // The open Inbox items that a running Conversation added. A take or a
-  // reassign writes `updated_at`, and it changes whom the item waits on.
-  const ownedItemsVersion = (conversation: AnyPgColumn) =>
-    sql`(select concat(count(*), '/', max(${juniorInboxItems.updatedAt})) from ${juniorInboxItems} where ${and(
-      inboxItemOwnedByThroughSubject(conversation),
-      inboxItemNeedsInput(),
-    )})`;
+  // A running Conversation hides its version, so its state holds whether a
+  // question waits. An ask or a close moves the version of any other one.
   const rowState = (row: typeof juniorConversations) =>
     sql`case
       when ${conversationIsActiveSql(row)}
-      then concat('active:', ${ownedItemsVersion(row.conversationId)})
+      then concat('active:', ${questionWaitsSql(row.conversationId)})
       else ${row.detailVersion}::text
     end`;
   // The tree's members, and the state of each one but the root, which its
@@ -400,9 +382,7 @@ export function conversationFeedVersionQuery(
         count(*),
         sum(${feedTree.detailVersion}) filter (where ${child} and not ${active}),
         count(*) filter (where ${child} and ${active}),
-        md5(string_agg(${ownedItemsVersion(feedTree.conversationId)}, ',' order by ${feedTree.conversationId}) filter (
-          where ${child} and ${active}
-        )),
+        count(*) filter (where ${child} and ${active} and ${questionWaitsSql(feedTree.conversationId)}),
         count(*) filter (where ${child} and ${active} and ${feedTree.archivedAt} is not null),
         md5(string_agg(${feedTree.title}, ',' order by ${feedTree.conversationId}) filter (
           where ${child} and ${active} and ${feedTree.kind} = 'thread'
@@ -540,8 +520,6 @@ export async function readConversationFeedFromSql(
     /** Extra row content that costs a query. */
     include?: readonly ConversationFeedInclude[];
     limit?: number;
-    /** Receives how many waiting rows from outside the page were added. */
-    onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     spaceId?: string | undefined;
     status?: "active" | "archived";
@@ -600,7 +578,7 @@ export async function readConversationFeedFromSql(
     status,
   };
   const firstPage = pinsFirst && !cursor;
-  const [pinnedRows, pageRows, waitingRows] = await Promise.all([
+  const [pinnedRows, pageRows] = await Promise.all([
     firstPage
       ? conversationRows(db, {
           ...feedQuery,
@@ -616,36 +594,10 @@ export async function readConversationFeedFromSql(
         ? { pinnedForUserId: { pinned: false, userId: filter.userId } }
         : undefined),
     }),
-    // Needs you shows every conversation that waits on the viewer, so the
-    // first page also holds the waiting ones that fall outside it.
-    firstPage
-      ? conversationRows(db, {
-          filter,
-          include,
-          includePrivateMatches: true,
-          // Pins already show. The waiting rows inside the page sort first,
-          // so this reads past them to one more row than the cap.
-          limit: limit + CONVERSATION_FEED_WAITING_LIMIT + 1,
-          pinnedForUserId: { pinned: false, userId: filter.userId },
-          status: "active",
-          waitingForUserId: filter.userId,
-        })
-      : [],
   ]);
   const page = pageRows.slice(0, limit);
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
-  let waitingRowsTruncated = false;
-  if (firstPage) {
-    const loaded = new Set(rows.map((row) => row.conversation.conversationId));
-    const outsidePage = waitingRows.filter(
-      (row) => !loaded.has(row.conversation.conversationId),
-    );
-    waitingRowsTruncated = outsidePage.length > CONVERSATION_FEED_WAITING_LIMIT;
-    const waiting = outsidePage.slice(0, CONVERSATION_FEED_WAITING_LIMIT);
-    options.onWaitingRows?.(waiting.length);
-    rows.push(...waiting);
-  }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
     (conversation) => conversation.conversationId,
@@ -906,9 +858,6 @@ export async function readConversationFeedFromSql(
         }
       : undefined),
     source: "conversation_index",
-    ...(waitingRowsTruncated
-      ? { waitingRowsTruncated: true as const }
-      : undefined),
   };
 }
 
@@ -926,7 +875,6 @@ export async function readConversationFeed(
     codeRepositoryId?: string;
     cursor?: string;
     include?: readonly ConversationFeedInclude[];
-    onWaitingRows?: (count: number) => void;
     q?: string | undefined;
     spaceId?: string | undefined;
     status?: "active" | "archived";

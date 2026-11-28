@@ -1,7 +1,13 @@
 import type { Page } from "@playwright/test";
 
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
-import { expandRow, mockInboxItems, rollout, rowHead } from "./inbox-fixture";
+import {
+  conversationQuestions,
+  expandRow,
+  mockInboxItems,
+  rollout,
+  rowHead,
+} from "./inbox-fixture";
 import { expect, test } from "../test";
 import { waitForRequestsToEnd, waitForSettingsReads } from "../harness";
 import { desktop, mobile, screenshot } from "../screenshot";
@@ -150,36 +156,21 @@ test.describe("new UI", () => {
   }) => {
     await page.setViewportSize({ height: 800, width: 1280 });
     await routeAsParticipant(page, CLOSED_ISSUE_ID, question.id);
-    // The question sits on a second page that loads after the reply box
-    // shows, and a third page loads after the reader starts to type.
+    // The question loads after the reply box shows and the reader starts
+    // to type.
     let releaseQuestion = () => {};
     const questionHeld = new Promise<void>((resolve) => {
       releaseQuestion = resolve;
     });
-    let lastPageSent = false;
-    let releaseLastPage = () => {};
-    const lastPageHeld = new Promise<void>((resolve) => {
-      releaseLastPage = resolve;
-    });
-    await page.route(`**/api/inbox-items?*`, async (route) => {
-      const url = new URL(route.request().url());
-      if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
-        return route.fallback();
-      }
-      const cursor = url.searchParams.get("cursor");
-      if (!cursor) {
-        return route.fulfill({ json: { items: [], nextCursor: "page-2" } });
-      }
-      if (cursor === "page-2") {
+    await page.route(
+      `**/api/conversations/${encodeURIComponent(CLOSED_ISSUE_ID)}/questions`,
+      async (route) => {
         await questionHeld;
-        return route.fulfill({
-          json: { items: [question], nextCursor: "page-3" },
+        await route.fulfill({
+          json: conversationQuestions(CLOSED_ISSUE_ID, [question]),
         });
-      }
-      await lastPageHeld;
-      await route.fulfill({ json: { items: [] } });
-      lastPageSent = true;
-    });
+      },
+    );
     await page.goto(`${dashboard.baseURL}/inbox`);
 
     await page.keyboard.press("ControlOrMeta+k");
@@ -192,19 +183,13 @@ test.describe("new UI", () => {
     await expect(composer).toBeVisible();
 
     // The message box takes the focus at once. The question shows in the
-    // transcript when its page loads, and does not take the focus.
+    // transcript when it loads, and does not take the focus.
     await expect(composer).toBeFocused();
     await composer.pressSequentially("Hold on");
     releaseQuestion();
-    releaseLastPage();
-    await expect.poll(() => lastPageSent).toBe(true);
-    // Let the app render the last page before the next keys.
-    await page.evaluate(
-      () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        ),
-    );
+    await expect(
+      page.getByRole("region", { name: `Asked ${question.title}` }),
+    ).toContainText("Waiting");
     await composer.pressSequentially(" 1");
     await expect(composer).toBeFocused();
     await expect(composer).toHaveText("Hold on 1", { useInnerText: true });

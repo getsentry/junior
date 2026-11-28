@@ -40,7 +40,7 @@ export type InboxTypeFilter = AskType | "all";
 export type ConversationStateFilter =
   | "all"
   | "done"
-  | "needs_you"
+  | "needs_input"
   | "watching"
   | "working";
 
@@ -68,7 +68,7 @@ const STATE_FILTERS: readonly Filter<ConversationStateFilter>[] = [
   { icon: Check, key: "done", label: "Done" },
   { icon: Eye, key: "watching", label: "Watching" },
   { icon: LoaderCircle, key: "working", label: "Working" },
-  { icon: CircleHelp, key: "needs_you", label: "Needs you" },
+  { icon: CircleHelp, key: "needs_input", label: "Needs input" },
   { key: "all", label: "All" },
 ];
 
@@ -235,14 +235,12 @@ export function listFiltersOf(
 }
 
 /**
- * Say whether a Conversation is in a state, as its row shows it. Needs you
- * is an ask that waits on the viewer, `waitsOnViewer`, or a tree that needs
- * them. Done is a tree with nothing running, watching, or waiting on the
- * viewer, also when it is pinned.
+ * Say whether a Conversation is in a state, as its row icon shows it. Done
+ * is a tree with nothing that needs input, runs, or watches, also when it is
+ * pinned.
  */
 export function inConversationState(
   conversation: Conversation | undefined,
-  waitsOnViewer: boolean,
   state: ConversationStateFilter,
 ): boolean {
   if (state === "all") return true;
@@ -250,11 +248,9 @@ export function inConversationState(
     ? conversationDisplayState(conversation)
     : undefined;
   const current =
-    waitsOnViewer || shown === "needs_you"
-      ? "needs_you"
-      : shown === "working" || shown === "watching"
-        ? shown
-        : "done";
+    shown === "needs_input" || shown === "working" || shown === "watching"
+      ? shown
+      : "done";
   return current === state;
 }
 

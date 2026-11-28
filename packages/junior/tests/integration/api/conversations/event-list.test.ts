@@ -15,6 +15,7 @@ import {
   getConversationStore,
 } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
+import { expectNoInboxSql } from "../../../fixtures/sql-budget";
 
 async function recordConversation(conversationId: string): Promise<void> {
   await getConversationStore().recordActivity({
@@ -175,8 +176,11 @@ describe("conversation event list API", () => {
     const pages: ConversationReportEvent[][] = [detail.events];
     let before = detail.previousCursor;
     while (before) {
-      const response = await app.request(
-        `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(before)}&limit=2`,
+      // A page reads only Conversation data.
+      const response = await expectNoInboxSql(() =>
+        app.request(
+          `http://localhost/api/conversations/${conversationId}/events?before=${encodeURIComponent(before!)}&limit=2`,
+        ),
       );
       expect(response.status).toBe(200);
       const page = conversationEventPageSchema.parse(await response.json());

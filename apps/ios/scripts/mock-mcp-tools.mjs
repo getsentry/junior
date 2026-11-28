@@ -180,7 +180,7 @@ export function createMockMcpTools({ app, origin }) {
   }
 
   // The Conversations that wait on the viewer. The dashboard mock has no
-  // viewer state, so this stands in for the server's `needs_you`. It checks
+  // viewer state, so this stands in for the server's `needs_input`. It checks
   // only each Conversation, not its child agents.
   async function readWaitingIds() {
     const waiting = await apiJson("GET", "/inbox-items/waiting-conversations");
@@ -197,7 +197,7 @@ export function createMockMcpTools({ app, origin }) {
       status: stopped.has(id) ? "done" : summary.status,
       turnActive: running,
       treeState: waitingIds.has(id)
-        ? "needs_you"
+        ? "needs_input"
         : running
           ? "working"
           : "done",

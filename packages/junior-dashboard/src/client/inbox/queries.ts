@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -112,36 +112,6 @@ export function inboxItemListQueryKey(filters: InboxItemListFilters) {
 }
 
 /**
- * Refresh the Inbox item lists that show an item that one Conversation
- * added. The item's subject card reads that Conversation's detail, so a
- * change there, such as a merged pull request, can come with a change to
- * the item. Only mounted lists refetch.
- */
-export function invalidateInboxItemListsOfConversation(
-  queryClient: QueryClient,
-  conversationId: string,
-) {
-  const lists = [...INBOX_ITEMS_QUERY_KEY, "list"];
-  // Each list key ends with the search of its filters.
-  const searches = new Set(
-    queryClient
-      .getQueriesData<InboxItemListCache>({ queryKey: lists })
-      .filter(([, list]) =>
-        list?.pages?.some((page) =>
-          page.items.some(
-            (item) => itemConversationId(item) === conversationId,
-          ),
-        ),
-      )
-      .map(([queryKey]) => queryKey.at(-1)),
-  );
-  return queryClient.invalidateQueries({
-    predicate: (query) => searches.has(query.queryKey.at(-1)),
-    queryKey: lists,
-  });
-}
-
-/**
  * List the open Inbox items that the viewer can see, one page at a time.
  * A search also finds archived items, with the first page. `items` holds the
  * items of every loaded page, and `query` loads more. `forViewer` drops the
@@ -229,34 +199,6 @@ export function useInboxItemStates(ids: readonly string[]): InboxItemState[] {
     })),
     combine: inboxItemStates,
   });
-}
-
-/**
- * Read one Inbox item that a Conversation's transcript shows. An item in
- * the Conversation's list comes from there, so it refreshes with the list
- * and needs no read of its own. The list holds only open items, so a
- * closed item, or one on a later page, loads by itself.
- */
-export function useConversationInboxItemData(
-  conversationId: string,
-  id: string,
-) {
-  const { items, query } = useInboxItemsData({ conversationId });
-  const listed = items.find((item) => item.id === id);
-  // An item that closes leaves the list, and a list read that starts again,
-  // such as Try again after a failed page, turns the item read off. The row
-  // keeps the last item until a read finishes, so it does not blank.
-  const lastShown = useRef(listed);
-  // Wait for this Conversation's list before reading the item by itself.
-  const waiting = query.isPending || query.isPlaceholderData;
-  const direct = useInboxItemData(
-    listed || waiting ? undefined : id,
-    lastShown.current,
-  );
-  const data =
-    listed ?? direct.data ?? (waiting ? lastShown.current : undefined);
-  if (data) lastShown.current = data;
-  return { data, isError: listed ? false : direct.isError };
 }
 
 /**
@@ -501,11 +443,18 @@ export function useInboxItemAction(options: { optimistic?: boolean } = {}) {
     onSuccess: async (item) => {
       if (item.status !== "open") clearAnswerDraft(item.id);
       queryClient.setQueryData(inboxItemQueryKey(item.id), item);
-      // A To-do item's action can change the To-do, which Details lists.
+      // A To-do item's action can change the To-do, which Details lists,
+      // and an answer changes the question that the transcript shows.
       const conversationId = itemConversationId(item);
-      if (item.todoId !== undefined && conversationId) {
+      const sideRead =
+        item.todoId !== undefined
+          ? "todos"
+          : item.subject.kind === "question"
+            ? "questions"
+            : undefined;
+      if (sideRead && conversationId) {
         await queryClient.invalidateQueries({
-          queryKey: conversationSideReadQueryKey(conversationId, "todos"),
+          queryKey: conversationSideReadQueryKey(conversationId, sideRead),
         });
       }
     },

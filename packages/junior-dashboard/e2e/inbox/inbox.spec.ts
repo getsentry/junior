@@ -95,6 +95,10 @@ test.describe("new UI", () => {
         /Billing migration$/,
         /Mobile app$/,
         /Pricing launch$/,
+        // In flight: the trees whose questions wait, then the running one.
+        /^Roll out payments-v42$/,
+        /^Triage Sentaur GoCD deployment failures$/,
+        /^Quarterly reliability review$/,
         new RegExp(checkout),
       ]);
       // Like the badge: the "Pull request ready for review" notice does not

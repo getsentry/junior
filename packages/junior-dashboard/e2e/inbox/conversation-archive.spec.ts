@@ -1,10 +1,18 @@
 import { conversationMenuRow, viewAsParticipant } from "./conversationMenu";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { mockInboxItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { mockFeedPage } from "../mock-reports";
+
+/**
+ * The Conversations list. In flight in the sidebar also links a row that
+ * waits on the viewer.
+ */
+function conversationList(page: Page) {
+  return page.getByRole("region", { exact: true, name: "Conversations" });
+}
 
 /**
  * Rest the pointer on an Inbox row's head until the row stops moving, so
@@ -128,7 +136,7 @@ test.describe("new UI", () => {
       });
     });
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-    const conversationLink = page.getByRole("link", {
+    const conversationLink = conversationList(page).getByRole("link", {
       name: /Dashboard QA edge cases/,
     });
     const archiveButton = page.getByRole("button", {
@@ -197,7 +205,9 @@ test.describe("new UI", () => {
       });
       await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       await openRow(
-        page.getByRole("link", { name: /Dashboard QA edge cases/ }),
+        conversationList(page).getByRole("link", {
+          name: /Dashboard QA edge cases/,
+        }),
       );
       await expect(
         page.getByRole("heading", { name: "Dashboard QA edge cases" }),
@@ -214,7 +224,7 @@ test.describe("new UI", () => {
       await expect(page).toHaveURL(
         `${dashboard.baseURL}/inbox?view=conversations`,
       );
-      const conversationLink = page.getByRole("link", {
+      const conversationLink = conversationList(page).getByRole("link", {
         name: /Dashboard QA edge cases/,
       });
       await expect(conversationLink).toHaveCount(0);
@@ -251,7 +261,11 @@ test.describe("new UI", () => {
       }),
     );
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
-    await openRow(page.getByRole("link", { name: /Dashboard QA edge cases/ }));
+    await openRow(
+      conversationList(page).getByRole("link", {
+        name: /Dashboard QA edge cases/,
+      }),
+    );
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await conversationMenuRow(page, "Archive").click();
 
@@ -329,7 +343,7 @@ test.describe("new UI", () => {
       });
       await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
-      const conversationLink = page.getByRole("link", {
+      const conversationLink = conversationList(page).getByRole("link", {
         name: /Dashboard QA edge cases/,
       });
       await conversationLink.hover();
@@ -386,7 +400,11 @@ test.describe("new UI", () => {
       });
       await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
-      await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+      await conversationList(page)
+        .getByRole("link", {
+          name: /Dashboard QA edge cases/,
+        })
+        .hover();
       // Stop the clock, so the time that the page takes to render the
       // archive does not count against the undo timer. The clock started at
       // NOW_MS within this test's timeout, so this time is still ahead.
@@ -434,7 +452,9 @@ test.describe("new UI", () => {
       await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
       await restOnRow(
-        page.getByRole("link", { name: /Dashboard QA edge cases/ }),
+        conversationList(page).getByRole("link", {
+          name: /Dashboard QA edge cases/,
+        }),
       );
       await page
         .getByRole("button", { name: "Archive Dashboard QA edge cases" })
@@ -491,7 +511,7 @@ test.describe("new UI", () => {
     });
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
-    const conversationLink = page.getByRole("link", {
+    const conversationLink = conversationList(page).getByRole("link", {
       name: /Dashboard QA edge cases/,
     });
     await conversationLink.hover();
@@ -542,7 +562,7 @@ test.describe("new UI", () => {
     });
     await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
-    const firstConversation = page.getByRole("link", {
+    const firstConversation = conversationList(page).getByRole("link", {
       name: /Dashboard QA edge cases/,
     });
     await firstConversation.hover();

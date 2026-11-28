@@ -2473,18 +2473,14 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       // The nested Thread below.
       childAgentTotals: { count: 1, cumulativeDurationMs: 12_000 },
     },
-    {
-      ...threadConversation(
-        nowMs,
-        DASHBOARD_QA_NESTED_THREAD_ID,
-        "Recheck pin order in Safari",
-        "Recheck the pinned row order in Safari.",
-        -2.9 * 60 * 60_000,
-        DASHBOARD_QA_THREAD_ID,
-      ),
-      // QA shows a Thread whose Inbox item waits on a person.
-      status: "needs_input" as const,
-    },
+    threadConversation(
+      nowMs,
+      DASHBOARD_QA_NESTED_THREAD_ID,
+      "Recheck pin order in Safari",
+      "Recheck the pinned row order in Safari.",
+      -2.9 * 60 * 60_000,
+      DASHBOARD_QA_THREAD_ID,
+    ),
     threadConversation(
       nowMs,
       DASHBOARD_QA_ARCHIVED_THREAD_ID,
@@ -2520,8 +2516,6 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Sandbox validation",
       surface: "slack",
       channel: "CQA999",
-      // A root whose Inbox item waits on a person.
-      status: "needs_input",
     }),
     simpleConversation(nowMs, {
       conversationId: SCHEDULER_CONVERSATION_ID,
@@ -3421,12 +3415,12 @@ export function readMockConversationChildAgents(
       conversationId,
     };
   }
-  // Both Sentaur Threads have Inbox items that wait on the viewer.
+  // Both Sentaur Threads have questions that wait for an answer.
   if (conversationId === SENTAUR_CONVERSATION_ID) {
     return {
       agents: [SENTAUR_RUNS_THREAD_ID, SENTAUR_LOGS_THREAD_ID].map((id) => ({
         ...thread(id),
-        treeState: "needs_you" as const,
+        treeState: "needs_input" as const,
       })),
       conversationId,
     };

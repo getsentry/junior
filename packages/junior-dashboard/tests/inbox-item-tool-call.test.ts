@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { inboxItemIdFromToolCall } from "../src/client/inbox/inboxItemFormat";
+import {
+  inboxItemAskFromToolCall,
+  inboxItemIdFromToolCall,
+} from "../src/client/inbox/inboxItemFormat";
 
 const output = JSON.stringify({ created: true, item: { id: "item-1" } });
 
@@ -27,6 +30,30 @@ describe("inboxItemIdFromToolCall", () => {
         inboxItemIdFromToolCall({ name, output, status: "completed" }),
       ).toBe("item-1");
     }
+  });
+
+  it("names the question of the item, or the item's id for an old result", () => {
+    expect(
+      inboxItemAskFromToolCall({
+        name: "addInboxItem",
+        output: {
+          item: {
+            id: "item-1",
+            subject: { id: "question-1", kind: "question" },
+          },
+        },
+        status: "completed",
+      }),
+    ).toEqual({ itemId: "item-1", questionId: "question-1" });
+    // A result from before items had subjects. Its question took the item's
+    // id.
+    expect(
+      inboxItemAskFromToolCall({
+        name: "addInboxItem",
+        output,
+        status: "completed",
+      }),
+    ).toEqual({ itemId: "item-1", questionId: "item-1" });
   });
 
   it("ignores other tools, unfinished calls, and hidden results", () => {

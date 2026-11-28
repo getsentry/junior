@@ -28,8 +28,9 @@ groups and acts on its rows.
   answer carries the authority of the person who gives
   it. Junior, an Event, or a trigger never answers or approves for a
   person.
-- "Needs you" means one thing on every surface: an ask or a Conversation
-  tree that waits on you.
+- In the Inbox, "Needs you" means an ask that waits on you. On a
+  Conversation, its tree, or a Space, "Needs input" means a question in it
+  is still open, the same for every viewer.
 
 ## Rules
 
@@ -40,9 +41,10 @@ groups and acts on its rows.
   that wait on the viewer, one per ask. The type counts add up to All, and
   All is the Inbox count. A type with nothing waiting hides, but All always
   shows.
-- The Conversation filters use the state that the row shows: Needs you
-  when an ask or the tree waits on the viewer, then Working, then
-  Watching. Done is the rest.
+- The Conversation filters use the state that the row shows: Needs input
+  when a question in the tree is still open, or a sign-in or an unread
+  answer waits on the viewer, then Working, then Watching. Done is the
+  rest.
 - Pinned, a tab of the same control, shows only the rows of the viewer's pinned Conversations.
   Pins have no section of their own: a pin stays in its place, with a pin
   marker.
@@ -60,7 +62,10 @@ groups and acts on its rows.
   right above the card. On a phone, the sheet that a transcript card opens shows
   the message, because the sheet covers the transcript. The card has no subject
   preview: the row head and Related link the subject. In the transcript, a
-  waiting card spans the transcript width.
+  waiting card spans the transcript width. The transcript reads the card
+  from the Conversation's question: it waits, with its form, until the
+  question closes, and an answer names who answered. It shows no
+  assignees, snooze, or closer.
 - A click on a choice picks it, and a click on the picked choice of a
   single-choice question clears it. A card has one Additional notes box,
   where the person can also write an answer that no choice fits: Enter adds
@@ -177,8 +182,6 @@ groups and acts on its rows.
   available, is an action that asks no question, not a notice. It counts
   as needing the creator. This breaks "a notice tells a person about
   something that they must fix" and "there is one way to ask a person".
-- The "Needs you" list of Conversations also shows actions for Everyone
-  and actions with no assignees. This breaks "'Needs you' means one thing".
 - A "To do for you" item has no Slack card. In Slack, the person learns of
   the To-do only from the reply. This breaks "its assignees see it in the
   Inbox and in its linked Slack threads".

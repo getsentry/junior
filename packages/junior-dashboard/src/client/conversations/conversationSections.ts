@@ -54,7 +54,7 @@ export function pinnedFirst(conversations: Conversation[]): Conversation[] {
 }
 
 /** What a row needs, in the order that attention lists show it. */
-const ATTENTION_GROUPS = ["needs_you", "working", "waiting", "done"] as const;
+const ATTENTION_GROUPS = ["needs_input", "working", "waiting", "done"] as const;
 
 export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
 
@@ -83,8 +83,8 @@ function conversationAttention(conversation: Conversation): Attention {
   const state = conversationDisplayState(conversation);
   return {
     group:
-      state === "needs_you" || conversation.latestTurnFailed
-        ? "needs_you"
+      state === "needs_input" || conversation.latestTurnFailed
+        ? "needs_input"
         : state === "working"
           ? "working"
           : state === "watching"

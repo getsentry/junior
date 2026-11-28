@@ -70,13 +70,6 @@ export const CONVERSATION_FEED_LINK_LIMIT = 3;
  */
 export const CONVERSATION_FEED_THREAD_LIMIT = 100;
 
-/**
- * The most waiting rows from outside the page that the first page adds.
- * Real feeds wait on far fewer at once. The rest come on later pages, by
- * activity like any other row.
- */
-export const CONVERSATION_FEED_WAITING_LIMIT = 50;
-
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
   links?: string[] | undefined;
@@ -117,12 +110,6 @@ export const conversationFeedSchema = z
     generatedAt: z.string(),
     /** Present when older conversations follow this page. */
     nextCursor: z.string().optional(),
-    /**
-     * Present when `CONVERSATION_FEED_WAITING_LIMIT` cut the waiting rows
-     * that this first page adds from outside it. The rest come on later
-     * pages.
-     */
-    waitingRowsTruncated: z.literal(true).optional(),
   })
   .strict();
 

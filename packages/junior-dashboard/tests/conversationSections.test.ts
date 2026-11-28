@@ -151,7 +151,7 @@ describe("attention order", () => {
       treeState: "done",
       watching: true,
     },
-    { ...conversation("needs-old", at(1)), treeState: "needs_you" },
+    { ...conversation("needs-old", at(1)), treeState: "needs_input" },
     { ...conversation("working-new", at(10)), treeState: "working" },
     { ...conversation("failed", at(8)), latestTurnFailed: true },
     {
@@ -161,7 +161,7 @@ describe("attention order", () => {
     {
       ...conversation("tool-only", at(12)),
       lastMessageAt: at(3),
-      treeState: "needs_you",
+      treeState: "needs_input",
     },
     conversation("done-old", at(4)),
   ];

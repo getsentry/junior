@@ -185,11 +185,7 @@ export function InboxList(props: {
       ? data.conversationRows.filter(
           (row) =>
             (!pinnedOnly || row.conversation?.pinnedAt) &&
-            inConversationState(
-              row.conversation,
-              row.bundle?.needsYou ?? false,
-              conversationState,
-            ),
+            inConversationState(row.conversation, conversationState),
         )
       : [];
   const streamRows = heldRows(latestStreamRows, held);

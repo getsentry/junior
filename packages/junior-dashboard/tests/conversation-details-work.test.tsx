@@ -85,10 +85,10 @@ describe("a child Conversation's state", () => {
       childState(
         thread("Retry the export", {
           lastResult: "failed",
-          treeState: "needs_you",
+          treeState: "needs_input",
         }),
       ),
-    ).toBe("needs_you");
+    ).toBe("needs_input");
   });
 
   it("reads why a child is blocked from its latest blocked update", () => {

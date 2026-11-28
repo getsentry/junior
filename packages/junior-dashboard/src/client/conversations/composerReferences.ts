@@ -17,7 +17,13 @@ export const composerReferenceSchema = z.discriminatedUnion("kind", [
       // The same-origin link, as it is in the message text.
       url: z.string().min(1),
       title: z.string().min(1),
-      state: z.enum(["needs_you", "working", "watching", "pinned"]).optional(),
+      // Drafts saved before the rename store `needs_you`.
+      state: z
+        .preprocess(
+          (value) => (value === "needs_you" ? "needs_input" : value),
+          z.enum(["needs_input", "working", "watching", "pinned"]),
+        )
+        .optional(),
     })
     .strict(),
   z

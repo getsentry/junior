@@ -2,6 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import { conversationQuestionsReportSchema } from "@/api/schema";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
 import { ask } from "../../../fixtures/questions";
@@ -15,6 +16,7 @@ import {
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
+import { measureSql } from "../../../fixtures/sql-budget";
 
 /** A person signed in to the dashboard, linked to Slack workspace T123. */
 async function user(email: string): Promise<User> {
@@ -49,6 +51,10 @@ function api(fixture: ConversationFixture, viewer: User) {
       }),
     get: (path: string) =>
       app.request(`http://localhost/api/inbox-items${path}`),
+    questions: (conversationId: string) =>
+      app.request(
+        `http://localhost/api/conversations/${conversationId}/questions`,
+      ),
   };
 }
 
@@ -158,6 +164,47 @@ describe("inbox items of a Conversation", () => {
       closedBy: { email: "cal@example.com" },
       status: "done",
     });
+    // The transcript reads the question and its answer from the
+    // Conversation alone. It sends no SQL to the Inbox.
+    const read = await measureSql(() =>
+      api(fixture, ana).questions("local:web:shared"),
+    );
+    expect(read.result.status).toBe(200);
+    expect(
+      conversationQuestionsReportSchema.parse(await read.result.json())
+        .questions,
+    ).toEqual([
+      expect.objectContaining({
+        answer: expect.objectContaining({
+          values: { q1: ["Yes"] },
+        }),
+        answeredAt: expect.any(String),
+        answeredBy: expect.objectContaining({ userId: cal.id }),
+        body: "Close the tracking issue?",
+        closedAt: expect.any(String),
+        id: item.subject.id,
+        request: expect.objectContaining({ fields: expect.any(Array) }),
+        title: "Close the tracking issue?",
+      }),
+      // A dismissed question closes with no answer.
+      {
+        body: "Delete the release branch?",
+        closedAt: expect.any(String),
+        createdAt: expect.any(String),
+        id: other.subject.id,
+        request: expect.objectContaining({ fields: expect.any(Array) }),
+        title: "Delete the release branch?",
+        updatedAt: expect.any(String),
+      },
+    ]);
+    const tables = read.statements.flatMap(
+      (statement) => statement.text.match(/"junior_\w+"/g) ?? [],
+    );
+    expect(tables).toContain('"junior_questions"');
+    expect(tables.filter((table) => table.includes("inbox"))).toEqual([]);
+    expect(
+      (await api(fixture, ana).questions("local:web:missing")).status,
+    ).toBe(404);
     // The answer reaches the Conversation as Cal's own message, so his
     // Turn runs as him.
     const [message] = await pendingMessages("local:web:shared");

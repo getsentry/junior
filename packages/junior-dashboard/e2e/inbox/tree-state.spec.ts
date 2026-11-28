@@ -12,8 +12,11 @@ test.describe("new UI", () => {
     const release = "slack:CQA456:1770021600.000600";
     const treeStates: Record<string, object> = {
       [release]: { treeState: "working", watching: true },
-      "slack:CQA456:1770025200.000700": { treeState: "needs_you" },
+      "slack:CQA456:1770025200.000700": { treeState: "needs_input" },
       "internal:dashboard-qa": { treeState: "done", watching: true },
+      // Their mock questions wait, but here their trees are done.
+      "internal:question-qa": { treeState: "done" },
+      "slack:CQA456:1770028800.000900": { treeState: "done" },
     };
     await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
       const feed = await mockFeedPage(route);
@@ -53,7 +56,7 @@ test.describe("new UI", () => {
     ).toBeVisible();
     await expect(
       flightRow(/Quarterly reliability review/).getByRole("img", {
-        name: "Waiting on you",
+        name: "Needs input",
       }),
     ).toBeVisible();
     // A done tree that watches for an Event or a Timer shows an eye.
@@ -92,9 +95,7 @@ test.describe("new UI", () => {
       })
       .first();
     const meta = row.locator('[data-inbox-slot="meta"]').first();
-    await expect(
-      meta.getByRole("img", { name: "Waiting on you" }),
-    ).toBeVisible();
+    await expect(meta.getByRole("img", { name: "Needs input" })).toBeVisible();
 
     // So does the Conversation header.
     await flightRow(/Package release and self-update/)

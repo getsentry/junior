@@ -151,6 +151,7 @@ export const audit = {
   createdAt: "2026-08-07T09:10:00.000Z",
   id: "item-audit",
   title: "Review the globex license entry",
+  subject: { id: "item-audit", kind: "question" as const },
 };
 
 export const prReady = {
@@ -181,6 +182,7 @@ export const answered = {
   id: "item-initech",
   status: "done" as const,
   title: "Review the initech license entry",
+  subject: { id: "item-initech", kind: "question" as const },
 };
 
 const dismissedNotice = {
@@ -206,6 +208,7 @@ export const migration = {
   createdAt: "2026-08-07T10:20:00.000Z",
   id: "item-migration",
   title: "Pick the billing migration window",
+  subject: { id: "item-migration", kind: "question" as const },
 };
 
 // The Events of a GitHub pull request subject, as the API lists them.
@@ -380,6 +383,69 @@ export function failedRunAlert(automationId: string, title: string) {
         },
       ],
     },
+  };
+}
+
+/** The fields of an item that its question comes from. */
+type AskItem = {
+  answer?: unknown;
+  answeredBy?: { displayName?: string; email: string; userId: string };
+  body: string;
+  closedAt?: string;
+  createdAt: string;
+  id: string;
+  owner: { id: string };
+  request?: unknown;
+  status?: string;
+  subject?: { id?: string; kind?: string };
+  title: string;
+  updatedAt: string;
+};
+
+/**
+ * The questions that `items` ask in `conversationId`, as
+ * `/api/conversations/:id/questions` sends them.
+ */
+export function conversationQuestions(
+  conversationId: string,
+  items: readonly AskItem[],
+) {
+  return {
+    conversationId,
+    questions: items
+      .filter(
+        (item) =>
+          item.subject?.kind === "question" && item.owner.id === conversationId,
+      )
+      .map((item) => ({
+        body: item.body,
+        createdAt: item.createdAt,
+        id: item.subject?.id ?? item.id,
+        title: item.title,
+        updatedAt: item.updatedAt,
+        // A closed item closed its question.
+        ...(item.status && item.status !== "open"
+          ? { closedAt: item.closedAt ?? item.updatedAt }
+          : undefined),
+        ...(item.answer
+          ? {
+              answer: item.answer,
+              answeredAt: item.closedAt ?? item.updatedAt,
+              ...(item.answeredBy
+                ? {
+                    answeredBy: {
+                      email: item.answeredBy.email,
+                      userId: item.answeredBy.userId,
+                      ...(item.answeredBy.displayName
+                        ? { displayName: item.answeredBy.displayName }
+                        : undefined),
+                    },
+                  }
+                : undefined),
+            }
+          : undefined),
+        ...(item.request ? { request: item.request } : undefined),
+      })),
   };
 }
 
@@ -576,6 +642,16 @@ export async function mockInboxItems(
         title: i.title,
       })),
   });
+  // The transcript reads the questions of its Conversation, which hold the
+  // answers given in this test.
+  await page.route("**/api/conversations/*/questions", (route) => {
+    const id = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").at(-2)!,
+    );
+    return route.fulfill({
+      json: conversationQuestions(id, [...open, ...closedNow, ...archived]),
+    });
+  });
   await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
@@ -684,7 +760,14 @@ export async function mockInboxItems(
       }
       if (options.keepOpen) return route.fulfill({ json: item });
       open = open.filter((i) => i.id !== id);
-      if (item) closedNow.push({ ...item, status: "done" });
+      if (item)
+        closedNow.push({
+          ...item,
+          ...(body?.action === "submit"
+            ? { answer: body.answer, answeredBy: viewer }
+            : undefined),
+          status: "done",
+        });
       return route.fulfill({ json: { ...item, status: "done" } });
     }
     const item = [...open, ...closedNow, ...archived].find(

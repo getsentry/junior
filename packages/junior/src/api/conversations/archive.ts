@@ -21,6 +21,7 @@ import type {
 } from "../schema/conversation-archive";
 import { readConversationAccessFromSql } from "./access";
 import { markConversationRead } from "./read-position";
+import { closeReadReplyNotice } from "@/chat/inbox-items/reply-notice";
 
 type ArchiveResult =
   | { status: "conflict" | "missing" }
@@ -233,6 +234,11 @@ export async function archiveConversation(
       // they saw. Other participants keep their read position.
       await markConversationRead(viewer, conversationId, {
         lastReadSeq: Number.MAX_SAFE_INTEGER,
+      });
+      await closeReadReplyNotice(getDb(), {
+        conversationId,
+        nowMs: Date.now(),
+        userId: viewer.id,
       });
       return { archivedAt: result.archivedAt };
     case "restored":

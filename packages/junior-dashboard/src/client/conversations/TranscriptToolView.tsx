@@ -9,7 +9,7 @@ import type {
 } from "../types";
 import { ShimmerText } from "../components/ShimmerText";
 import { InboxItemAskRow } from "../inbox/InboxItemChangeRow";
-import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
+import { inboxItemAskFromToolCall } from "../inbox/inboxItemFormat";
 import { cn } from "../styles";
 import { sentAgentMessage } from "./agentMessage";
 import { ToolFrame } from "./ToolFrame";
@@ -97,14 +97,14 @@ function ToolCallView(props: ToolViewProps) {
   );
 
   // A question that Junior asked shows as its one-line record. The tool call
-  // shows only when the viewer cannot read the item.
-  const inboxItemId = inboxItemIdFromToolCall(props.part);
-  if (inboxItemId) {
+  // shows only when the viewer cannot read the question.
+  const ask = inboxItemAskFromToolCall(props.part);
+  if (ask) {
     return (
       <InboxItemAskRow
+        ask={ask}
         conversationId={props.conversation.conversationId}
         fallback={frame}
-        itemId={inboxItemId}
       />
     );
   }

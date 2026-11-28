@@ -25,7 +25,10 @@ import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/child-agents";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import {
+  expectNoInboxSql,
+  expectSqlBudget,
+} from "../../../fixtures/sql-budget";
 import {
   closeConversationFixture,
   webTestActor,
@@ -60,7 +63,7 @@ describe("conversation tree state", () => {
     await closeConversationFixture();
   });
 
-  it("orders needs_you over working over watching across the whole tree", async () => {
+  it("orders needs_input over working over watching across the whole tree", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
       fixture.conversationStore,
@@ -117,8 +120,9 @@ describe("conversation tree state", () => {
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",
     );
+    // A waiting question shows to every viewer, whoever it asks.
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "working",
+      treeState: "needs_input",
     });
     await closeInboxItem(getDb(), {
       id: forOther!.id,
@@ -132,7 +136,7 @@ describe("conversation tree state", () => {
       assignees: ["everyone"],
     });
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await closeInboxItem(getDb(), {
       id: everyone,
@@ -145,13 +149,13 @@ describe("conversation tree state", () => {
 
     const item = await addItem(asking.childConversationId, ACTION_ITEM);
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.tree(asking.childConversationId)).resolves.toEqual({
-      treeState: "needs_you",
+      treeState: "needs_input",
       watching: false,
     });
 
@@ -204,13 +208,13 @@ describe("conversation tree state", () => {
     await addItem(grandchild.childConversationId, ACTION_ITEM);
 
     await expect(fixture.feedTree(rootId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.tree(rootId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.tree(parent.childConversationId)).resolves.toEqual({
-      treeState: "needs_you",
+      treeState: "needs_input",
       watching: false,
     });
     // The sibling's own spawned Turn still waits in the queue.
@@ -248,7 +252,7 @@ describe("conversation tree state", () => {
         ]),
       ),
     ).toEqual({
-      "agent:feed-ask": { treeState: "needs_you", watching: false },
+      "agent:feed-ask": { treeState: "needs_input", watching: false },
       "agent:feed-done": DONE,
     });
   });
@@ -282,7 +286,7 @@ describe("conversation tree state", () => {
     // The request names the viewer by their Slack user id.
     await signIn(SLACK_VIEWER.slackUserId, "tree-sign-in-viewer");
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
   });
 
@@ -302,10 +306,10 @@ describe("conversation tree state", () => {
     // them too, until they read it.
     await recordAnswer(threadId, 1);
     await expect(fixture.tree(threadId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     const read = await fixture.request(
       `${detailPath(threadId)}/read-position`,
@@ -319,7 +323,7 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
     await recordAnswer(conversationId, 1);
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
 
     // An answer that another person has not read is not shown.
@@ -409,7 +413,7 @@ describe("conversation tree state", () => {
     });
     await addItem(grandchildConversationId, ACTION_ITEM);
     await watchDeployment(childConversationId);
-    const needsYou = { treeState: "needs_you", watching: true };
+    const needsYou = { treeState: "needs_input", watching: true };
     await expect(fixture.tree(conversationId)).resolves.toEqual(needsYou);
 
     const [child] = await getDb()
@@ -440,18 +444,14 @@ describe("conversation tree state", () => {
       fixture.conversationStore,
       "1700000000.000590",
     );
-    const other = await resolveViewerUser("bob@example.com");
-    await insertInboxItem(getDb(), {
-      subject: { id: "token-for-other", kind: "question" },
-      owner: { id: conversationId, kind: "conversation" },
-      assignedToEveryone: false,
-      assigneeUserIds: [other!.id],
-      body: "Bob decides.",
-      conversationIds: [conversationId],
-      kind: "action",
-      nowMs: Date.now(),
-      request: REQUEST,
-      title: "Bob's call",
+    // Bob's sign-in is a wait that the viewer does not see.
+    await recordAuthorizationRequested({
+      actorId: "UBOB",
+      authorizationId: "token-sign-in-bob",
+      conversationId,
+      delivery: "private_link_sent",
+      kind: "mcp",
+      provider: "notion",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
@@ -461,7 +461,7 @@ describe("conversation tree state", () => {
     await recordAnswer(conversationId, 1);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     const waiting = await feedToken(fixture);
     expect(waiting).not.toBe(before);
@@ -504,7 +504,7 @@ describe("conversation tree state", () => {
       watching: boolean;
     }) => {
       const feed = await expectSqlBudget(
-        () => fixture.request("/api/conversations"),
+        () => expectNoInboxSql(() => fixture.request("/api/conversations")),
         { statements: 17, serialRounds: 3 },
       );
       const row = conversationFeedSchema
@@ -514,7 +514,8 @@ describe("conversation tree state", () => {
         tree,
       );
       const detail = await expectSqlBudget(
-        () => fixture.request(detailPath(conversationId)),
+        () =>
+          expectNoInboxSql(() => fixture.request(detailPath(conversationId))),
         { statements: 19, serialRounds: 5 },
       );
       const report = conversationDetailReportSchema.parse(await detail.json());
@@ -533,7 +534,7 @@ describe("conversation tree state", () => {
       "agent:tree-budget-d",
     ]);
     await addItem("agent:tree-budget-d", ACTION_ITEM);
-    await expectBudget({ treeState: "needs_you", watching: true });
+    await expectBudget({ treeState: "needs_input", watching: true });
   });
 
   it("rolls up a Space's Conversations into its Space list row", async () => {
@@ -574,7 +575,9 @@ describe("conversation tree state", () => {
         treeState: row?.treeState,
       };
     };
-    const asViewer = () => spaceRow((path) => fixture.request(path));
+    // The Space list reads no Inbox table.
+    const asViewer = () =>
+      expectNoInboxSql(() => spaceRow((path) => fixture.request(path)));
     const asBob = () =>
       spaceRow(async (path) => await bobApp.request(`http://localhost${path}`));
     const idle = { latestTurnFailed: false, treeState: "done" };
@@ -604,7 +607,7 @@ describe("conversation tree state", () => {
     // sees that it failed.
     await expect(asViewer()).resolves.toEqual({
       latestTurnFailed: true,
-      treeState: "needs_you",
+      treeState: "needs_input",
     });
     // The failure starts a Turn of the Lead, which Bob sees as working.
     await expect(asBob()).resolves.toEqual({

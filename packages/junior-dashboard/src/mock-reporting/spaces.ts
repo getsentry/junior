@@ -30,6 +30,7 @@ import {
   readMockConversationFeed,
   setMockConversationArchived,
 } from "./fixtures";
+import { withMockQuestionWaits } from "./inbox-items";
 import { mockLeadEvents } from "./lead-transcript";
 import { createMockLead, mockLeadId, mockLeadSpaceId } from "./sends";
 
@@ -225,7 +226,7 @@ export function mockTreeState(row: ConversationFeed["conversations"][number]) {
   return (
     row.treeState ??
     (row.status === "needs_input"
-      ? "needs_you"
+      ? "needs_input"
       : row.turnActive || row.status === "working"
         ? "working"
         : "done")
@@ -520,7 +521,7 @@ function createMockLeads(viewer: User): void {
   }
 }
 
-const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
+const TREE_STATE_ORDER = ["needs_input", "working", "done"] as const;
 
 /**
  * Roll up the state of a Space's active feed rows, as the API's Space list
@@ -529,7 +530,10 @@ const TREE_STATE_ORDER = ["needs_you", "working", "done"] as const;
 function spaceState(
   spaceId: string,
 ): Pick<SpaceReport, "latestTurnFailed" | "treeState"> {
-  const rows = readMockConversationFeed().conversations.filter(
+  const rows = withMockQuestionWaits(
+    readMockConversationFeed(),
+    NOW_MS,
+  ).conversations.filter(
     (row) =>
       !row.archivedAt &&
       mockConversationSpaces.get(row.conversationId) === spaceId,

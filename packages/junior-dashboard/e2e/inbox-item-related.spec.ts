@@ -7,10 +7,10 @@ import { expect, test } from "./test";
 
 // The mock rollout question suggests Roll out. Its links support that,
 // and two other open items on the same release say p95 rose and ask to
-// hold the deploy.
+// hold the deploy. Only the Inbox reads those items.
 const QUESTION_CONVERSATION_ID = "internal:question-qa";
 
-async function expectRelated(question: Locator) {
+async function expectRelated(question: Locator, items: boolean) {
   // One list: the question's links first, then the related items and
   // Conversations.
   const related = question.getByRole("region", { name: "Related" });
@@ -21,7 +21,7 @@ async function expectRelated(question: Locator) {
   await expect(related).toContainText("Flat for 30 minutes.");
   await expect(
     related.getByRole("link", { name: "Hold the payments-v42 deploy" }),
-  ).toBeVisible();
+  ).toHaveCount(items ? 1 : 0);
   // The question links a Conversation that is also related, so it shows
   // once, with the question's note.
   await expect(
@@ -32,7 +32,7 @@ async function expectRelated(question: Locator) {
 }
 
 for (const view of [desktop, mobile]) {
-  test(`shows a question's related links and items above its choices (${view.name})`, async ({
+  test(`shows a question's related links above its choices (${view.name})`, async ({
     dashboard,
     page,
   }) => {
@@ -55,7 +55,7 @@ for (const view of [desktop, mobile]) {
       )
       .toBeLessThanOrEqual(1);
     // A phone opens the question in a sheet.
-    await expectRelated(await openAsk(question, view === mobile));
+    await expectRelated(await openAsk(question, view === mobile), false);
     if (view === desktop) {
       // The pill shows until the card reports that it is in full view.
       await question.scrollIntoViewIfNeeded();
@@ -78,6 +78,7 @@ test("an Inbox question row shows its related links and items", async ({
   await page.goto(`${dashboard.baseURL}/inbox?view=inbox&item=qa-rollout`);
   const related = await expectRelated(
     page.getByRole("region", { name: "Approve the payments-v42 rollout" }),
+    true,
   );
   // The list shows two rows until the reader asks for the rest.
   await related.getByRole("button", { name: "Show 1 more" }).click();
