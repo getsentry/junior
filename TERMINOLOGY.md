@@ -109,7 +109,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Leave**: a Participant takes a Conversation out of their feed, and Join
   puts it back. In a private Conversation with its own Participant list,
   Leave also ends access until someone Invites them again. Nobody removes
-  another person.
+  another person. A person who leaves a private Slack channel, or is
+  removed from it, stops being a Participant of its private Conversations.
 - **Work owner**: who a Turn's work is credited to, for attribution only: the
   person Actor of the Turn, else the root Actor if it is a person, else the
   system record that started the root, such as an Automation run.

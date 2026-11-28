@@ -77,6 +77,7 @@ Subscribe to the events that match your usage:
 | `agent_session_stopped`       | Slack's stop button for a running Junior Turn.       |
 | `channel_created`             | Optional auto-join of new public channels.           |
 | `link_shared`                 | Previews of dashboard conversation links.            |
+| `member_left_channel`         | Ends access to a private channel's conversations.    |
 
 If your app relies on subscribed-thread follow-ups in shared channels, enable the channel message events required by that Slack app model and confirm the bot is present in those channels.
 
