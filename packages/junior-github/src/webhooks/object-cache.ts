@@ -34,12 +34,15 @@ const pullRequestEventSchema = z.object({
 });
 const pullRequestReviewEventSchema = z.object({
   action: z.string().optional(),
-  pull_request: z.object({ number: z.number().int().positive() }),
+  pull_request: z.object({
+    head: z.object({ sha: z.string().min(1) }).optional(),
+    number: z.number().int().positive(),
+  }),
   repository: repositorySchema,
 });
 
 // Webhook actions that can change GitHub's review decision. They clear the
-// cached decision, so the next page read asks GitHub for it.
+// cached decision, and a patch reads it again.
 const REVIEW_ACTIONS = {
   pull_request: new Set(["review_requested", "review_request_removed"]),
   pull_request_review: new Set(["dismissed", "submitted"]),
@@ -159,7 +162,7 @@ async function refreshPullRequest(
   }
   // GitHub names the head commit in each pull request webhook.
   const sha = payload.head?.sha;
-  if (patch && sha) {
+  if (sha && (patch || reviewChanged)) {
     await startGitHubPullRequestPatch({
       key,
       nowMs: args.nowMs,
@@ -170,7 +173,8 @@ async function refreshPullRequest(
 }
 
 // A check event carries no counts, so the checks of that head commit turn
-// pending until a patch counts them.
+// pending until a patch counts them. A pull request with no entry gets a
+// patch that stores its card.
 async function refreshChecks(
   args: RefreshArgs,
   pulls: Array<{ key: string; subject?: ObjectSubject }>,
@@ -181,6 +185,11 @@ async function refreshChecks(
     let changed = false;
     // oxlint-disable-next-line no-await-in-loop -- A check event names one or a few pull requests.
     await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
+      // A patch stores the whole card of a pull request with no entry.
+      if (current === undefined) {
+        patch = true;
+        return undefined;
+      }
       if (current?.state !== "open" || current.head?.sha !== sha)
         return undefined;
       patch = true;
@@ -239,9 +248,9 @@ function checkEventTarget(
 /**
  * Write the issue or pull request of an `issues` or `pull_request` webhook
  * into its cache entry, so the next card read needs no GitHub call. A
- * webhook that can change the review decision clears it. A check webhook
- * marks its pull requests' checks pending, which gets a patch
- * (`pull-request-patches.ts`). A write that changes an entry calls
+ * review webhook clears the review decision, and a check webhook marks the
+ * checks pending. Both get a patch that reads them again, or stores a whole
+ * card (`pull-request-patches.ts`). A write that changes an entry calls
  * `objectChanged`.
  */
 export async function refreshGitHubObjectCache(
@@ -265,7 +274,9 @@ export async function refreshGitHubObjectCache(
     );
     await markGitHubReviewCleared(args.cache, key);
     let changed = false;
+    let sha = event.data.pull_request.head?.sha;
     await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
+      sha ??= current?.head?.sha;
       if (current?.review === undefined) return undefined;
       changed = true;
       return {
@@ -275,6 +286,14 @@ export async function refreshGitHubObjectCache(
     });
     const subject = webhookSubject(args.body, "pull_request");
     if (changed && subject) await args.objectChanged(subject);
+    if (sha) {
+      await startGitHubPullRequestPatch({
+        key,
+        nowMs: args.nowMs,
+        sha,
+        tasks: args.tasks,
+      });
+    }
     return;
   }
   if (args.eventName === "issues") {
