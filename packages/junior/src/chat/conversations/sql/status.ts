@@ -35,6 +35,7 @@ export interface ConversationStatusColumns {
   kind: AnyPgColumn;
   location: AnyPgColumn;
   parentConversationId: AnyPgColumn;
+  rootConversationId: AnyPgColumn;
   stoppedAt: AnyPgColumn;
 }
 
@@ -143,18 +144,26 @@ function isLeadSql(conversationId: SQL | AnyPgColumn): SQL<boolean> {
 function conversationTopLevelIdSql(
   conversation: ConversationStatusColumns,
 ): SQL<string> {
-  // The walk goes up one parent at a time and stops at a Top-level
-  // Conversation. UNION, not UNION ALL, so that bad parent links cannot
-  // loop forever; such a loop has no Top-level Conversation.
+  // Status runs for each row of a tree. Each member stores the tree's root,
+  // and only a Space's root is a Lead, so outside a Space the root is the
+  // Top-level Conversation. Other rows walk up to the root, or to the top
+  // with no stored root, and read a Lead only for the rows that they pass.
+  // UNION, not UNION ALL, so that bad parent links cannot loop forever.
+  const { conversationId, parentConversationId, rootConversationId } =
+    conversation;
   const ancestorParent = sql`status_ancestor.parent_conversation_id`;
-  return sql<string>`(case when ${conversation.parentConversationId} is null then ${conversation.conversationId} else (
+  const belowRoot = sql`${ancestorParent} is not distinct from ${rootConversationId}`;
+  return sql<string>`(case
+    when ${parentConversationId} is null then ${conversationId}
+    when ${rootConversationId} <> ${conversationId} and not ${isLeadSql(rootConversationId)} then ${rootConversationId}
+    else (
     with recursive status_ancestor(conversation_id, parent_conversation_id) as (
-      select ${conversation.conversationId}::text, ${conversation.parentConversationId}::text
+      select ${conversationId}::text, ${parentConversationId}::text
       union
       select parent.conversation_id, parent.parent_conversation_id
       from status_ancestor
       join junior_conversations parent on parent.conversation_id = ${ancestorParent}
-      where not ${isLeadSql(ancestorParent)}
+      where not ${belowRoot}
     )
     select conversation_id from status_ancestor
     where ${ancestorParent} is null or ${isLeadSql(ancestorParent)}

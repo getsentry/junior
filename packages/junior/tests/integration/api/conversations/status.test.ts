@@ -403,6 +403,18 @@ describe("conversation status", () => {
     await recordStarterMessage(dashboard);
     await expect(fixture.status(dashboard)).resolves.toBe("done");
 
+    // Its Thread's answer waits on the same starter.
+    const thread = `${dashboard}:thread`;
+    await fixture.conversationStore.createChild({
+      childConversationId: thread,
+      kind: "thread",
+      parentConversationId: dashboard,
+    });
+    await recordAnswer(thread, 1);
+    await expect(fixture.tree(thread)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+
     // A Slack thread that moves into the Space drops its Location, so only
     // the starter's read of an answer counts, as for any child.
     const slack = await recordSlackRoot(
