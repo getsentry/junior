@@ -96,9 +96,12 @@ const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     facts: {
       type: "code_change",
       additions: 48,
+      approvers: ["avery"],
+      assignees: ["morgan"],
       author: "junior",
       changedFiles: 3,
       deletions: 9,
+      reviewers: ["riley"],
       sourceBranch: "release/pin-payments-4.2",
       targetBranch: "main",
       mergeable: false,

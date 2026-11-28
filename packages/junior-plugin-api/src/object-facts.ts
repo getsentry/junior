@@ -43,7 +43,11 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     author: text.optional(),
     sourceBranch: text.optional(),
     targetBranch: text.optional(),
+    /** People whose review the change waits for. */
     reviewers: z.array(text).max(5).optional(),
+    /** People whose latest review approves the change. */
+    approvers: z.array(text).max(5).optional(),
+    assignees: z.array(text).max(5).optional(),
     review: z.enum(["required", "approved", "changes_requested"]).optional(),
     /** `pending` while the provider counts the checks of a new head. */
     checks: z
@@ -372,6 +376,21 @@ function list(values: string[] | undefined): string | undefined {
     : undefined;
 }
 
+// Approvers first, then the people the change still waits for.
+function codeChangeReviewers(
+  facts: FactsOf<"code_change">,
+): string | undefined {
+  const approvers = facts.approvers ?? [];
+  const waiting = (facts.reviewers ?? []).filter(
+    (login) => !approvers.includes(login),
+  );
+  return (
+    [...approvers.map((login) => `${login} (approved)`), ...waiting].join(
+      ", ",
+    ) || undefined
+  );
+}
+
 function dateTime(value: string | undefined): string | undefined {
   return (
     value &&
@@ -385,7 +404,12 @@ function dateTime(value: string | undefined): string | undefined {
 // The card attributes of each facts type, in priority order.
 const FACT_FIELDS = {
   // Keep cards minimal. Review, checks, and conflicts can become stale.
-  code_change: (facts) => [["sourceBranch", "Branch", facts.sourceBranch]],
+  code_change: (facts) => [
+    ["sourceBranch", "Branch", facts.sourceBranch],
+    ["author", "Author", facts.author],
+    ["reviewers", "Reviewers", codeChangeReviewers(facts)],
+    ["assignees", "Assignees", list(facts.assignees)],
+  ],
   task: (facts) => [
     [
       "assignees",

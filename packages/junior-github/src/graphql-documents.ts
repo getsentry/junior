@@ -538,6 +538,7 @@ const PULL_REQUEST_CARD = githubGraphql(`
     additions
     deletions
     changedFiles
+    assignees(first: 5) { nodes { login } }
     reviewRequests(first: 5) {
       nodes {
         requestedReviewer {
@@ -548,7 +549,7 @@ const PULL_REQUEST_CARD = githubGraphql(`
     }
     reviewDecision
     latestOpinionatedReviews(first: 5, writersOnly: true) {
-      nodes { state }
+      nodes { state author { login } }
     }
     commits(last: 1) {
       nodes {
@@ -589,7 +590,7 @@ const PULL_REQUEST_HEAD_FACT = githubGraphql(`
     }
     reviewDecision
     latestOpinionatedReviews(first: 5, writersOnly: true) {
-      nodes { state }
+      nodes { state author { login } }
     }
     commits(last: 1) {
       nodes {

@@ -581,6 +581,7 @@ describe("GitHub pull request cache refresh", () => {
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
     const card = (mergeable: string) => ({
       additions: 34,
+      assignees: { nodes: [] },
       author: { login: "junior-test[bot]" },
       baseRefName: "main",
       body: "Cache GitHub objects.",
@@ -824,10 +825,19 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: true,
     });
   });
-  it("keeps known checks, merge state and review when a webhook on the same head says mergeable null", async () => {
+  it("keeps known checks, merge state, review and approvers when a webhook on the same head says mergeable null", async () => {
     stubGitHubApp();
     const queries = stubGraphql({
-      cards: [{ ...cardNode(34), reviewDecision: "APPROVED" }],
+      cards: [
+        {
+          ...cardNode(34),
+          assignees: { nodes: [{ login: "sam" }] },
+          latestOpinionatedReviews: {
+            nodes: [{ author: { login: "riley" }, state: "APPROVED" }],
+          },
+          reviewDecision: "APPROVED",
+        },
+      ],
     });
     const tasks = createPluginTaskQueueTestAdapter();
     const app = await createGitHubApp(tasks);
@@ -855,8 +865,11 @@ describe("GitHub pull request cache refresh", () => {
     expect(queries.map((query) => query.operationName)).toEqual([
       "PullRequestCards",
     ]);
-    // Only the page read has the review decision, and webhooks keep it.
+    // Only the page read has the review decision and approvers, and
+    // webhooks keep them.
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      approvers: ["riley"],
+      assignees: ["sam"],
       checks: { failed: 0, passed: 2, pending: 0 },
       mergeable: true,
       review: "approved",
