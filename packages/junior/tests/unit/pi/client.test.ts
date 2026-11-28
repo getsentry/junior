@@ -12,10 +12,12 @@ const mocks = vi.hoisted(() => ({
   completeSimple: vi.fn(),
   createGatewayProvider: vi.fn(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
+    decisionModel: vi.fn((modelId: string) => ({ modelId })),
     embeddingModel: vi.fn((modelId: string) => ({ modelId })),
     rerankingModel: vi.fn((modelId: string) => ({ modelId })),
     transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
   })),
+  decide: vi.fn(),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
   getModels: vi.fn((): Array<{ id: string; maxTokens?: number }> => [
@@ -67,6 +69,7 @@ vi.mock("@ai-sdk/gateway", () => ({
 
 vi.mock("ai", () => ({
   embedMany: mocks.embedMany,
+  experimental_decide: mocks.decide,
   generateObject: mocks.generateObject,
   NoObjectGeneratedError: {
     isInstance: mocks.noObjectGeneratedErrorIsInstance,
@@ -454,6 +457,7 @@ describe("completeText", () => {
     });
     mocks.createGatewayProvider.mockReturnValueOnce({
       chat: vi.fn(() => model),
+      decisionModel: vi.fn((modelId: string) => ({ modelId })),
       embeddingModel: vi.fn((modelId: string) => ({ modelId })),
       rerankingModel: vi.fn((modelId: string) => ({ modelId })),
       transcriptionModel: vi.fn((modelId: string) => ({ modelId })),
@@ -654,6 +658,26 @@ describe("completeText", () => {
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "app.cost.total_usd": 0.0000074,
     });
+  });
+
+  it("records decision content only in public Conversations", async () => {
+    mocks.decide.mockResolvedValue({ answers: {}, usage: {} });
+    const { completeDecision } = await import("@/chat/pi/client");
+    const { runWithConversationPrivacy } =
+      await import("@/chat/conversation-privacy");
+    const call = () =>
+      completeDecision({
+        modelId: "typesafe-ai/jev",
+        state: "thread text",
+        questions: {},
+      });
+    await call();
+    await runWithConversationPrivacy("public", call);
+    const [privateSpan, publicSpan] = mocks.withSpan.mock.calls.map((args) =>
+      JSON.stringify(args[4]),
+    );
+    expect(privateSpan).not.toContain("thread text");
+    expect(publicSpan).toContain("thread text");
   });
 });
 

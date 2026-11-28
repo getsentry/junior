@@ -38,7 +38,6 @@ import {
   type GeneratedFile,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
-  type Experimental_DecisionState,
   type GenerateObjectResult,
   type LanguageModelUsage,
 } from "ai";
@@ -443,7 +442,7 @@ export async function completeDecision<
   const TQuestions extends Record<string, Experimental_DecisionQuestion>,
 >(params: {
   modelId: string;
-  state: Experimental_DecisionState;
+  state: string;
   questions: TQuestions;
   signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
@@ -454,6 +453,7 @@ export async function completeDecision<
 }> {
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
+  const content = getCurrentConversationPrivacy() === "public";
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
@@ -472,11 +472,21 @@ export async function completeDecision<
           params.modelId,
           result.usage.inputTokens,
         );
-        setSpanAttributes(
-          extractGenAiUsageAttributes(result.usage, {
+        const answers = JSON.stringify(result.answers);
+        setSpanAttributes({
+          ...extractGenAiUsageAttributes(result.usage, {
             cost: { input: costUsd, total: costUsd },
           }),
-        );
+          "app.decision.answers": answers,
+          "gen_ai.output.messages": content
+            ? serializeGenAiAttribute([
+                {
+                  role: "assistant",
+                  parts: [{ type: "text", content: answers }],
+                },
+              ])
+            : undefined,
+        });
         return { answers: result.answers, costUsd };
       },
       {
@@ -486,6 +496,19 @@ export async function completeDecision<
         "gen_ai.prompt.name": params.promptName,
         "server.address": GEN_AI_SERVER_ADDRESS,
         "gen_ai.provider.auth_mode": credential.mode,
+        "gen_ai.input.messages": content
+          ? serializeGenAiAttribute([
+              {
+                role: "user",
+                parts: [{ type: "text", content: params.state }],
+              },
+            ])
+          : undefined,
+        "gen_ai.system_instructions": content
+          ? serializeGenAiAttribute([
+              { type: "text", content: JSON.stringify(params.questions) },
+            ])
+          : undefined,
       },
     );
     return {
