@@ -41,14 +41,15 @@ function cacheKey(ref: PullRequestRef): string {
 }
 
 // Whether a fresh entry still needs a read: an open pull request whose
-// review decision is not read yet. Webhooks have no review decision, and a
-// review webhook clears it (`webhooks/object-cache.ts`).
+// review decision is not read yet, or any pull request whose approvers are
+// not. Webhooks and REST reads have neither, and a review webhook clears
+// the decision (`webhooks/object-cache.ts`).
 function needsReview(entry: unknown): boolean {
   const fields = githubPullRequestFieldsSchema.safeParse(entry);
   return (
     fields.success &&
-    fields.data.state === "open" &&
-    fields.data.review === undefined
+    (fields.data.approved_by === undefined ||
+      (fields.data.state === "open" && fields.data.review === undefined))
   );
 }
 

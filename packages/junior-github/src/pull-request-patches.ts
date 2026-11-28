@@ -37,6 +37,7 @@ import {
 } from "./merge-conflict-checks/resolved.js";
 import {
   aliasedPullRequests,
+  githubApprovers,
   githubCheckCounts,
   githubMergeable,
   githubPullRequestFieldsFromNode,
@@ -134,6 +135,7 @@ async function writeHeadFacts(
     written = true;
     const value = {
       ...current,
+      approved_by: githubApprovers(node),
       checks: githubCheckCounts(node.commits),
       // A check event leaves a known merge state as it is.
       mergeable: mergeable ?? current.mergeable,

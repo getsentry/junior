@@ -92,6 +92,10 @@ const githubCheckCountsSchema = z.object({
 export const githubPullRequestFieldsSchema = z.object({
   ...objectFields,
   additions: count.optional(),
+  // The writers whose latest review approves. Only GraphQL reads have it,
+  // so a webhook merge keeps it, and a review webhook's patch reads it.
+  approved_by: z.array(person).optional(),
+  assignees: z.array(person).optional(),
   base: z.object({ ref: z.string() }).optional(),
   changed_files: count.optional(),
   checks: z.union([githubCheckCountsSchema, z.literal("pending")]).optional(),

@@ -93,6 +93,7 @@ function stubMergeState(
       const card = {
         ...node,
         additions: 1,
+        assignees: { nodes: [] },
         author: { login: "byk" },
         baseRefName: "main",
         body: "",
