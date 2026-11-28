@@ -42,18 +42,29 @@ function names are part of the interface.
 
 - Passing services as parameters or in an options object is dependency
   injection.
-- Keep work data separate from services. Import stable app services from their
-  owner. Pass a service only when the caller must choose it (model execution,
-  transport, time). Do not thread an app store through callers that do not
-  own it.
+- Keep work data separate from services.
+- The app context owns app services, such as config, the database, state, the
+  plugin catalog, and the clock. `createAppContext` builds it once at the
+  composition root: `createApp`, a CLI command, or a test. That is the owner.
+  Do not read an app service from a module getter or a global.
+- Pass the context whole or as a `Pick` of the fields that a function uses.
+  Carry it on a context that callers already pass, such as `EngineContext` or
+  the tool context. Do not add a new parameter to every function on a chain.
+- The context is required. Do not add an optional per-service override, such
+  as `deps.x ?? realX`, or a one-off deps object for Junior's own services.
+  Tests build a real context.
+- A seam exists only for a real external edge: model execution, transport, or
+  time. Do not add a seam, an override, or a mock to work around a design
+  problem so that a test passes. Fix the design.
 - Do not use a one-field service options object. Pass the service.
 - When the host chooses all the edges of an engine, the engine takes them as
   one context object, such as core's `EngineContext`. Each function
   destructures only the fields that it uses in its parameters, typed with
   `Pick`.
 - Do not add a factory, wrapper, alias, or helper that only forwards
-  arguments or hides parameter threading. Call the owner directly, unless the
-  layer enforces a rule, translates an edge, or owns a lifecycle change.
+  arguments or hides parameter threading. Pass the context or the service,
+  unless the layer enforces a rule, translates an edge, or owns a lifecycle
+  change.
 
 ### Layout
 
