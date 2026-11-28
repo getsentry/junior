@@ -15,6 +15,7 @@ import {
 import {
   activeParticipantUserIds,
   automationCreatorUserId,
+  conversationParticipantUserIds,
   resolveAssignees,
   type ResolvedAssignees,
 } from "@/chat/inbox-items/assignees";
@@ -70,6 +71,26 @@ async function defaultAssignees(
   };
 }
 
+/**
+ * Return the Watch creator as a default assignee only when they pass the
+ * check that any assignee of a private item passes: they still take part in
+ * its Conversation. Someone who lost access gets nothing that shows its
+ * content, and the item goes to the usual default assignees.
+ */
+async function watchCreatorAssignee(
+  userId: string | undefined,
+  conversationId: string,
+  visibility: InboxItemVisibility,
+): Promise<string | undefined> {
+  if (!userId || visibility === "public") return userId;
+  const participants = await conversationParticipantUserIds(
+    getDb(),
+    [conversationId],
+    [userId],
+  );
+  return participants.has(userId) ? userId : undefined;
+}
+
 export const addInboxItemToolDefinition = zodToolDefinition({
   description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes in the Inbox and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<inbox-item-answer>\` with the item id. A dismiss comes as a note. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
   annotations: {
@@ -123,9 +144,6 @@ export function createAddInboxItemTool(
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
       const watchCreator = context.watchCreator?.actor;
-      const watchCreatorUserId = watchCreator
-        ? (await readActorIdentity(watchCreator))?.user?.id
-        : undefined;
       // Each call asks a new question. A retry of the same tool call keeps
       // the same question id, so it cannot add a second item.
       const subject = questionSubject(
@@ -135,6 +153,13 @@ export function createAddInboxItemTool(
       const visibility: InboxItemVisibility = scope.inPrivateConversation
         ? "private"
         : "public";
+      const watchCreatorUserId = watchCreator
+        ? await watchCreatorAssignee(
+            (await readActorIdentity(watchCreator))?.user?.id,
+            context.conversationId,
+            visibility,
+          )
+        : undefined;
       const conversationIds = [
         ...new Set([context.conversationId, ...(input.conversation_ids ?? [])]),
       ];
@@ -181,7 +206,6 @@ export function createAddInboxItemTool(
       await requireInboxItemAssignees({
         assignees,
         automationId: scope.reader.automationId,
-        watchCreatorUserId,
         conversationIds: [context.conversationId],
         scope,
         visibility,

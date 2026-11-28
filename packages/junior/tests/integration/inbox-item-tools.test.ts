@@ -534,6 +534,14 @@ describe("inbox item tools", () => {
     const watched = await execute(watchTurn.add, ask);
     expect(watched.item.assignees).toEqual([ana.email]);
 
+    // A creator who no longer takes part in the private Conversation gets
+    // nothing that shows it. The item goes to the usual default assignees.
+    await getDb()
+      .delete(juniorConversationParticipants)
+      .where(eq(juniorConversationParticipants.userId, ana.id));
+    const noAccess = await execute(watchTurn.add, ask);
+    expect(noAccess.item.assignees).toEqual([ben.email]);
+
     // With no Participant, no person would see the item.
     await conversation("slack:CPUB:1.000001", "CPUB", "public");
     await expect(

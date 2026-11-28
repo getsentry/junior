@@ -632,8 +632,6 @@ export async function requireInboxItemLinks(args: {
 export async function requireInboxItemAssignees(args: {
   assignees: ResolvedAssignees;
   automationId: string | undefined;
-  /** The creator of the Watch of this Turn, who set its work. */
-  watchCreatorUserId?: string | undefined;
   conversationIds: readonly string[];
   scope: InboxItemAgentScope;
   visibility: InboxItemVisibility;
@@ -648,10 +646,7 @@ export async function requireInboxItemAssignees(args: {
     ? await automationCreatorUserId(getDb(), args.automationId)
     : undefined;
   const others = args.assignees.userIds.filter(
-    (id) =>
-      id !== args.scope.user?.id &&
-      id !== creatorId &&
-      id !== args.watchCreatorUserId,
+    (id) => id !== args.scope.user?.id && id !== creatorId,
   );
   const inConversation = await conversationParticipantUserIds(
     getDb(),
