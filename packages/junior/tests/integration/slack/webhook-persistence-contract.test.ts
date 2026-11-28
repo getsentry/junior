@@ -13,7 +13,7 @@ import {
   startLocalVercelQueueServer,
   type LocalVercelQueueServer,
 } from "@/chat/queue/local-server";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { claimTurn } from "@/core/turn/state";
 import { juniorIdentities, juniorTurnInbox, juniorTurns } from "@/db/schema";

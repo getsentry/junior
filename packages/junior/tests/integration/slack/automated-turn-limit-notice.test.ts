@@ -4,7 +4,7 @@ import {
   resumeConversationDelivery,
 } from "@/chat/conversations/delivery-pause";
 import { closeDb, getConversationStore } from "@/chat/db";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";

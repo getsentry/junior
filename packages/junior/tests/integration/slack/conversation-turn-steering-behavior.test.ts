@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getConversationStoppedAtMs,
   resumeConversationTree,
-} from "@/chat/conversations/session-stop";
+} from "@/chat/conversations/stop-state";
 import {
   SLACK_BOT_USER_ID,
   createConversationWorkQueueTestAdapter,

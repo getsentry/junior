@@ -722,10 +722,12 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(readEnd(next)).resolves.toMatchObject({ state: "queued" });
     await expect(readEnd(after)).resolves.toMatchObject({ state: "queued" });
     expect(ended).toEqual([running.turnId, queued.turnId]);
-    expect(publishes).toEqual([
-      { turnId: next, committed: true },
-      { turnId: next, committed: true },
-    ]);
+    // The new Turns share a commit, and so a created_at, so either can be
+    // next. Each stopped Turn's reconcile publishes that one.
+    const [published] = publishes;
+    expect([next, after]).toContain(published?.turnId);
+    expect(publishes).toEqual([published, published]);
+    expect(published?.committed).toBe(true);
   });
 
   it("drops every unread input of a stop with no cutoff", async () => {

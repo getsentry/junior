@@ -20,11 +20,11 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
 import {
   getConversationStoppedAtMs,
   resumeConversationTree,
-  stopConversationTree,
-} from "@/chat/conversations/session-stop";
+} from "@/chat/conversations/stop-state";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getChatConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";

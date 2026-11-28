@@ -6,7 +6,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import {
   getConversationStoppedAtMs,
   resumeConversationTree,
-} from "@/chat/conversations/session-stop";
+} from "@/chat/conversations/stop-state";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { logWarn } from "@/chat/logging";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { messageChildAgent } from "@/chat/child-agents/create";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { stopConversation } from "@/chat/conversations/stop";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { createWatch, takeDueTimerWatches } from "@/chat/events/store";

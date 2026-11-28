@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { eq } from "drizzle-orm";
 import { addConversationNote } from "@/chat/conversations/notes";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
 import type { CredentialContext } from "@/chat/credentials/context";

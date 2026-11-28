@@ -15,11 +15,11 @@ import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import type { AgentRun } from "@/chat/agent/types";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
 import {
   getConversationStoppedAtMs,
   resumeConversationTree,
-  stopConversationTree,
-} from "@/chat/conversations/session-stop";
+} from "@/chat/conversations/stop-state";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";

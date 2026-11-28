@@ -5,10 +5,8 @@ import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
-import {
-  enqueueAutomatedInput,
-  getConversationStoppedAtMs,
-} from "@/chat/conversations/session-stop";
+import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
 import { parentResultActor } from "@/chat/conversations/kind-behavior";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getConversationStore } from "@/chat/db";

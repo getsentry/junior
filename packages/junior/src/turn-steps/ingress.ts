@@ -20,7 +20,7 @@ import { isPersonInput, isTopLevel } from "@/chat/conversations/kind-behavior";
 import {
   getConversationStoppedAtMs,
   resumeConversationTree,
-} from "@/chat/conversations/session-stop";
+} from "@/chat/conversations/stop-state";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";

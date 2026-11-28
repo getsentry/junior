@@ -166,6 +166,7 @@ ignores:
   - packages/junior/src/chat/conversations/projection.ts
   - packages/junior/src/chat/conversations/root.ts
   - packages/junior/src/chat/conversations/session-stop.ts
+  - packages/junior/src/chat/conversations/stop-state.ts
   - packages/junior/src/chat/conversations/sql/annotation-filter.ts
   - packages/junior/src/chat/conversations/thread-context.ts
   - packages/junior/src/chat/conversations/tool-replies.ts
@@ -571,7 +572,8 @@ metadata:
     packages/junior/src/chat/conversations/plugin-search.ts: 2
     packages/junior/src/chat/conversations/projection.ts: 17
     packages/junior/src/chat/conversations/root.ts: 2
-    packages/junior/src/chat/conversations/session-stop.ts: 14
+    packages/junior/src/chat/conversations/session-stop.ts: 11
+    packages/junior/src/chat/conversations/stop-state.ts: 3
     packages/junior/src/chat/conversations/sql/annotation-filter.ts: 2
     packages/junior/src/chat/conversations/thread-context.ts: 3
     packages/junior/src/chat/conversations/tool-replies.ts: 2
