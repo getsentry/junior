@@ -29,6 +29,7 @@ import {
   PULL_REQUEST_CONFLICT_HISTORY,
   PULL_REQUEST_NEXT_ACTION,
   PULL_REQUEST_REVIEWS_BEFORE,
+  pullRequestCards,
   pullRequestHeadFacts,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
@@ -383,6 +384,27 @@ export async function loadPullRequestHeadFacts(
   });
 }
 
+/**
+ * Read the cards of pull requests by repository and number, in one aliased
+ * query, with a read-only token.
+ */
+export async function loadPullRequestCards(
+  env: GitHubInstallationEnv,
+  refs: PullRequestRef[],
+): Promise<unknown> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { checks: "read", pull_requests: "read" },
+  });
+  return await githubGraphqlRequest({
+    body: {
+      ...pullRequestCards(refs.length),
+      variables: pullRequestVariables(refs),
+    },
+    token: token.token,
+  });
+}
+
 /** Read the merge conflict history of one pull request, with a read-only token. */
 export async function loadPullRequestConflictHistory(
   env: GitHubInstallationEnv,
@@ -658,9 +680,13 @@ const nextActionSchema = z.object({
             z.object({ commit: z.object({ committedDate: timestampSchema }) }),
           ),
         }),
+        headRefOid: z.string(),
         isDraft: z.boolean(),
         isInMergeQueue: z.boolean(),
         mergeStateStatus: z.string(),
+        reviewDecision: z
+          .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
+          .nullish(),
         reviewRequests: z.object({
           nodes: nodesSchema(z.object({ requestedReviewer: userLoginSchema })),
         }),
@@ -689,6 +715,7 @@ const nextActionSchema = z.object({
           ),
         }),
         title: z.string(),
+        updatedAt: timestampSchema,
         url: z.string().url(),
       }),
     }),
@@ -740,6 +767,7 @@ export interface GitHubPullRequestMergeState {
   draft: boolean;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: Date;
+  headSha: string;
   /** A person added it to the merge queue, so GitHub merges it. */
   inMergeQueue: boolean;
   /**
@@ -774,8 +802,11 @@ export interface GitHubPullRequestMergeState {
    * open and not a draft.
    */
   reviewOutcome?: "approved" | "changesRequested";
+  /** GitHub's review decision, which a repository with no rule lacks. */
+  reviewDecision?: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED";
   state: "closed" | "merged" | "open";
   title: string;
+  updatedAt: string;
   url: string;
 }
 
@@ -896,6 +927,7 @@ export async function loadPullRequestMergeState(
     ...(headCommittedAt
       ? { headCommittedAt: new Date(headCommittedAt) }
       : undefined),
+    headSha: pull.headRefOid,
     inMergeQueue: pull.isInMergeQueue,
     ...(mergeableState ? { mergeableState } : undefined),
     requesterApproved: false,
@@ -905,6 +937,9 @@ export async function loadPullRequestMergeState(
         ? [request.requestedReviewer.login]
         : [],
     ),
+    ...(pull.reviewDecision
+      ? { reviewDecision: pull.reviewDecision }
+      : undefined),
     reviewPending: pull.reviewRequests.nodes.length > 0,
     reviewedBy: [],
     state:
@@ -914,6 +949,7 @@ export async function loadPullRequestMergeState(
           ? "open"
           : "closed",
     title: pull.title,
+    updatedAt: pull.updatedAt,
     url: pull.url,
   };
   // GitHub lists reviews oldest first, so a later one replaces an earlier.

@@ -232,11 +232,12 @@ export function stubGraphql(answers: {
       );
       queries.push({ numbers, operationName });
       // A patch read also names each pull request by GitHub's id, as the
-      // `pullRequest` payloads do.
+      // `pullRequest` payloads do, and has its review requests.
       const cards =
         operationName === "PullRequestHeadFacts"
           ? (answers.patches?.shift() ?? []).map((node) => ({
               databaseId: (node as { number: number }).number * 1000,
+              reviewRequests: { nodes: [] },
               ...(node as object),
             }))
           : typeof answers.cards === "function"

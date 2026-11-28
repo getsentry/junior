@@ -40,6 +40,7 @@ import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { signedInViewer } from "../fixtures/user";
 import { mswServer } from "../msw/server";
 import { patchConfig } from "../fixtures/config";
+import { createPluginTaskQueueTestAdapter } from "../fixtures/plugin-task-queue";
 
 const API = "https://api.github.com/repos/getsentry/junior/pulls/1592";
 const PULL_URL = "https://github.com/getsentry/junior/pull/1592";
@@ -234,6 +235,7 @@ describe("the ask of a Junior pull request", () => {
                   },
                   state: github.merged ? "MERGED" : "OPEN",
                   timelineItems: { nodes: [] },
+                  updatedAt: "2026-07-02T12:00:00Z",
                   title: "fix: Check",
                   url: PULL_URL,
                 },
@@ -280,7 +282,11 @@ describe("the ask of a Junior pull request", () => {
     }
   });
   it("asks for the review, then the merge, on one item that reads its title from GitHub", async () => {
-    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const tasks = createPluginTaskQueueTestAdapter();
+    app = await createApp({
+      plugins: defineJuniorPlugins([githubPlugin()]),
+      pluginTaskQueue: tasks.pluginTaskQueue,
+    });
     await seedLinkedPerson({
       email: "pat@example.com",
       linked: { handle: "pat", provider: "github", subjectId: "2002" },
@@ -295,12 +301,13 @@ describe("the ask of a Junior pull request", () => {
           pluginName: "github",
         },
       ]);
-      const github = { approved: false };
+      // GitHub requests Pat's review until Pat reviews.
+      const github = { approved: false, requested: true };
       // The title on GitHub changed after Junior opened the pull request.
       const title = "fix: Check the build";
       let cardReads = 0;
-      // Runs once while a card read waits on GitHub.
-      let duringCardRead: (() => Promise<void>) | undefined;
+      // Runs once while a patch read waits on GitHub.
+      let duringPatchRead: (() => Promise<void>) | undefined;
       mswServer.use(
         http.get(API, () =>
           HttpResponse.json({
@@ -323,12 +330,29 @@ describe("the ask of a Junior pull request", () => {
         ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { query } = (await request.json()) as { query: string };
+          const reviewDecision = github.approved ? "APPROVED" : null;
+          if (query.includes("PullRequestHeadFacts")) {
+            const during = duringPatchRead;
+            duringPatchRead = undefined;
+            await during?.();
+            return HttpResponse.json({
+              data: {
+                p0: {
+                  pullRequest: {
+                    commits: { nodes: [] },
+                    databaseId: Number(PULL_ID),
+                    headRefOid: "head-1",
+                    mergeable: "MERGEABLE",
+                    reviewDecision,
+                    reviewRequests: { nodes: [] },
+                    updatedAt: "2026-07-02T12:00:00Z",
+                  },
+                },
+              },
+            });
+          }
           if (query.includes("PullRequestCards")) {
             cardReads += 1;
-            const reviewDecision = github.approved ? "APPROVED" : null;
-            const during = duringCardRead;
-            duringCardRead = undefined;
-            await during?.();
             return HttpResponse.json({
               data: {
                 p0: {
@@ -372,7 +396,7 @@ describe("the ask of a Junior pull request", () => {
                   isInMergeQueue: false,
                   mergeStateStatus: "CLEAN",
                   reviewRequests: {
-                    nodes: github.approved
+                    nodes: !github.requested
                       ? []
                       : [
                           {
@@ -398,6 +422,7 @@ describe("the ask of a Junior pull request", () => {
                   },
                   state: "OPEN",
                   timelineItems: { nodes: [] },
+                  updatedAt: "2026-07-02T12:00:00Z",
                   title,
                   url: PULL_URL,
                 },
@@ -421,12 +446,21 @@ describe("the ask of a Junior pull request", () => {
         .select({ id: juniorInboxItems.id })
         .from(juniorInboxItems)
         .where(eq(juniorInboxItems.subjectId, PULL_ID));
+      const viewer = await signedInViewer("pat@example.com");
+      // A live read, such as the Inbox tools make, stores the card before
+      // the review.
+      await readLiveCards(viewer, [PULL_URL]);
+      expect(cardReads).toBe(1);
+      // A review webhook names the head commit of the pull request.
+      const sendReview = async (state: string, login: string) =>
+        await sendGitHubWebhook("pull_request_review", {
+          action: state === "dismissed" ? "dismissed" : "submitted",
+          pull_request: { head: { sha: "head-1" }, number: 1592 },
+          review: { state, user: { login } },
+        });
       github.approved = true;
-      await sendGitHubWebhook("pull_request_review", {
-        action: "submitted",
-        pull_request: { number: 1592, user: { login: BOT } },
-        review: { state: "approved", user: { login: "pat" } },
-      });
+      github.requested = false;
+      await sendReview("approved", "pat");
 
       // The item stores no link, and its Slack card title still links to
       // the pull request, from the code change records.
@@ -450,17 +484,14 @@ describe("the ask of a Junior pull request", () => {
         { id: review!.id, status: "open", subjectKind: "github:pull_request" },
       ]);
 
-      const viewer = await signedInViewer("pat@example.com");
       const api = new Hono<JuniorApiEnv>();
       api.use("*", async (context, next) => {
         context.set("viewer", viewer);
         await next();
       });
       api.route("/", createJuniorApi());
-      // A page reads only the caches. A live read, such as the Inbox tools
-      // make, keeps the card.
-      const readCard = () => readLiveCards(viewer, [PULL_URL]);
-      await readCard();
+      // A page reads only the caches. The next-action read of the review
+      // webhook wrote the approval into the card, before its patch runs.
       const outbound = recordOutboundRequests();
       const response = await api.request(
         "http://localhost/api/inbox-items?for=viewer",
@@ -472,7 +503,7 @@ describe("the ask of a Junior pull request", () => {
         items: Array<{ id: string; subject: Record<string, unknown> }>;
       };
       // The label is the viewer's ask on the cached pull request. The
-      // title is GitHub's title from the last read, and no Inbox column
+      // title is GitHub's title from the card read, and no Inbox column
       // stores it.
       expect(items).toMatchObject([
         {
@@ -491,48 +522,30 @@ describe("the ask of a Junior pull request", () => {
       expect(items[0]!.subject).not.toHaveProperty("dismissNote");
       expect(cardReads).toBe(1);
 
-      // Pat's approval is dismissed while a live read waits on the card
-      // read that a new review started. GitHub answered that read before
-      // the dismissal, so its approval does not stay, and the next read
-      // asks for the decision again.
-      await sendGitHubWebhook("pull_request_review", {
-        action: "submitted",
-        pull_request: { number: 1592, user: { login: BOT } },
-        review: { state: "commented", user: { login: "sam" } },
-      });
-      duringCardRead = async () => {
+      // Pat's approval is dismissed while the patch that the approval
+      // started waits on GitHub. GitHub answered that read before the
+      // dismissal, so its approval does not stay.
+      await sendReview("commented", "sam");
+      duringPatchRead = async () => {
         github.approved = false;
-        await sendGitHubWebhook("pull_request_review", {
-          action: "dismissed",
-          pull_request: { number: 1592, user: { login: BOT } },
-          review: { state: "dismissed", user: { login: "pat" } },
-        });
+        await sendReview("dismissed", "pat");
       };
-      const label = async () => {
-        await readCard();
-        const page = await api.request(
-          "http://localhost/api/inbox-items?for=viewer",
-        );
-        const read = (await page.json()) as {
-          items: Array<{ id: string; subject: { label?: string } }>;
-        };
-        return read.items.find((item) => item.id === review!.id)?.subject.label;
-      };
-      await label();
-      expect(cardReads).toBe(2);
-      expect(await label()).toBe("Review requested");
-      expect(cardReads).toBe(3);
-      // Pat's item asks for a review again, but GitHub asks no review of
-      // Pat, so their dismiss still says nothing more.
+      await tasks.deliver();
+      const after = recordOutboundRequests();
       const again = (await (
         await api.request("http://localhost/api/inbox-items?for=viewer")
       ).json()) as {
         items: Array<{ id: string; subject: Record<string, unknown> }>;
       };
+      after.stop();
+      expect(after.urls).toEqual([]);
+      // Pat's item asks for a review again, but GitHub asks no review of
+      // Pat, so their dismiss still says nothing more.
       expect(again.items[0]!.subject).toMatchObject({
         label: "Review requested",
       });
       expect(again.items[0]!.subject).not.toHaveProperty("dismissNote");
+      expect(cardReads).toBe(1);
     } finally {
       await fixture.close();
     }
@@ -640,6 +653,7 @@ describe("the ask of a Junior pull request", () => {
                   },
                   state: "OPEN",
                   timelineItems: { nodes: [] },
+                  updatedAt: "2026-07-02T12:00:00Z",
                   title: "fix: Check",
                   url: PULL_URL,
                 },
@@ -875,6 +889,7 @@ describe("the ask of a Junior pull request", () => {
                   },
                   state: "OPEN",
                   timelineItems: { nodes: [] },
+                  updatedAt: "2026-07-02T12:00:00Z",
                   title: "fix: Check",
                   url: PULL_URL,
                 },

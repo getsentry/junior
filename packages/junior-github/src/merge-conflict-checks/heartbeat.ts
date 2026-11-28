@@ -26,7 +26,7 @@ import {
   closeGitHubConflictItems,
   GITHUB_CONFLICT_GONE_REASON,
 } from "./policy.js";
-import { clearGitHubCachedConflict } from "../object-cache.js";
+import { writeGitHubCachedMergeable } from "../object-cache.js";
 import {
   markGitHubConflict,
   publishGitHubConflictResolved,
@@ -135,11 +135,17 @@ async function checkRepository(
     for (const node of search.nodes) {
       if (!node || !("number" in node) || node.state !== "OPEN") continue;
       const ref = { number: node.number, repositoryFullName };
-      if (node.mergeable === "UNKNOWN") unknown = true;
+      if (node.mergeable === "UNKNOWN") {
+        unknown = true;
+      } else {
+        // oxlint-disable-next-line no-await-in-loop -- One entry write per pull request with a known merge state.
+        await writeGitHubCachedMergeable(args.cache, ref, {
+          headSha: node.headRefOid,
+          mergeable: node.mergeable === "MERGEABLE",
+        });
+      }
       if (node.mergeable === "MERGEABLE") {
         mergeable.push(node.number);
-        // oxlint-disable-next-line no-await-in-loop -- One entry write per mergeable pull request.
-        await clearGitHubCachedConflict(args.cache, ref, node.headRefOid);
         // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
         await publishGitHubConflictResolved({
           events: args.events,
@@ -181,7 +187,7 @@ async function checkRepository(
 }
 
 interface CheckArgs {
-  /** The plugin cache, whose entry a mergeable pull request clears of a conflict. */
+  /** The plugin cache, whose entries take the merge state that a check reads. */
   cache: PluginCache;
   codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;

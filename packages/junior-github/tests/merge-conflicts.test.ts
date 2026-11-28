@@ -375,20 +375,30 @@ describe("merge conflict check on webhook events", () => {
       vi.useRealTimers();
     });
 
-    it("clears a conflict that the cache entry still knows when the pull request is mergeable", async () => {
-      const key = "pulls:getsentry/junior#947";
-      await h.cache.update(key, () => ({
-        ttlMs: 60 * minute,
-        value: { head: { sha: headSha }, mergeable: false, state: "open" },
-      }));
+    it("writes the merge state that it reads into cache entries of the same head commit", async () => {
+      const entry = (mergeable: boolean) => ({
+        head: { sha: headSha },
+        mergeable,
+        state: "open",
+      });
+      // The entry of #946 says mergeable, and the one of #947 still knows
+      // a fixed conflict.
+      for (const [number, mergeable] of [
+        [946, true],
+        [947, false],
+      ] as const) {
+        await h.cache.update(`pulls:getsentry/junior#${number}`, () => ({
+          ttlMs: 60 * minute,
+          value: entry(mergeable),
+        }));
+      }
       await deliver("push-1", pushRequest("refs/heads/main"));
       await heartbeat(pushedAt + 2 * minute);
 
-      expect(await h.cache.get(key)).toEqual({
-        head: { sha: headSha },
-        mergeable: true,
-        state: "open",
-      });
+      expect([
+        await h.cache.get("pulls:getsentry/junior#946"),
+        await h.cache.get("pulls:getsentry/junior#947"),
+      ]).toEqual([entry(false), entry(true)]);
     });
 
     it("publishes a conflict with one search for a burst of pushes", async () => {

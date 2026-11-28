@@ -23,7 +23,7 @@ import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
-import { clearGitHubCachedConflict } from "../object-cache.js";
+import { writeGitHubCachedMergeable } from "../object-cache.js";
 import { applyGitHubConflictPolicy } from "../merge-conflict-checks/policy.js";
 import {
   gitHubConflictResolvedEvents,
@@ -194,7 +194,10 @@ export async function loadGitHubMergeConflictEvents(args: {
       if (loaded.mergeable === true) {
         // Like the patch and the heartbeat, every clean read drops the mark,
         // so a later waiter does not wake on a fix that came before it.
-        await clearGitHubCachedConflict(args.cache, ref, loaded.head.sha);
+        await writeGitHubCachedMergeable(args.cache, ref, {
+          headSha: loaded.head.sha,
+          mergeable: true,
+        });
         await publishGitHubConflictResolved({
           events: args.publisher,
           headSha: loaded.head.sha,

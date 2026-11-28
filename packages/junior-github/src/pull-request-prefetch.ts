@@ -7,15 +7,11 @@
  */
 import type { ObjectLinkContext } from "@sentry/junior-plugin-api";
 import pLimit, { type LimitFunction } from "p-limit";
-import type * as z from "zod";
 import { pullRequestCards } from "./graphql-documents.js";
 import {
-  clearGitHubReviewAfterRead,
-  type GitHubPullRequestFields,
   githubObjectCacheKey,
-  githubPullRequestEntry,
   githubPullRequestFieldsSchema,
-  isOlderGitHubObject,
+  storeGitHubPullRequestFields,
 } from "./object-cache.js";
 import {
   aliasedPullRequests,
@@ -70,30 +66,6 @@ async function missingRefs(
   return refs.filter((_, index) => missing[index]);
 }
 
-async function storeCard(
-  ctx: ObjectLinkContext,
-  key: string,
-  node: z.output<typeof pullRequestCardNodeSchema>,
-  startedAtMs: number,
-): Promise<void> {
-  const fields = githubPullRequestFieldsFromNode(node);
-  let stored = false;
-  await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) => {
-    stored = !isOlderGitHubObject(current, fields);
-    return stored
-      ? githubPullRequestEntry({ ...current, ...fields })
-      : undefined;
-  });
-  // A review webhook during the read changes the decision after GitHub
-  // answered, often with the same `updated_at`.
-  if (stored) {
-    await clearGitHubReviewAfterRead(ctx.cache, key, {
-      review: fields.review,
-      startedAtMs,
-    });
-  }
-}
-
 async function loadChunk(
   ctx: ObjectLinkContext,
   refs: PullRequestRef[],
@@ -124,7 +96,14 @@ async function loadChunk(
   );
   await pLimit(PREFETCH_CONCURRENCY).map(refs, async (ref, index) => {
     const node = nodes[index];
-    if (node) await storeCard(ctx, cacheKey(ref), node, startedAtMs);
+    if (node) {
+      await storeGitHubPullRequestFields(
+        ctx.cache,
+        cacheKey(ref),
+        githubPullRequestFieldsFromNode(node),
+        startedAtMs,
+      );
+    }
   });
 }
 
