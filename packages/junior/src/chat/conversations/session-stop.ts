@@ -211,13 +211,16 @@ async function stopCoreTurns(
   options: {
     onStopSaved?: (() => void) | undefined;
     sentAtOrBeforeMs?: number | undefined;
+    stoppedAtMs: number;
   },
 ): Promise<StopConversationWorkResult> {
   const { turnIds, dropped, moved } = await stopTurns(
     createEngineContext(getChatConfig()),
     conversationId,
     {
-      sentAtOrBeforeMs: options.sentAtOrBeforeMs,
+      // The stop is saved before this runs, so person input sent after it
+      // can be admitted in between. It keeps running.
+      sentAtOrBeforeMs: options.sentAtOrBeforeMs ?? options.stoppedAtMs,
       // Automated input sent after the stop drops: it would run while the
       // Conversation stays stopped.
       canMove: (input) => isPersonInput(input.source.kind),

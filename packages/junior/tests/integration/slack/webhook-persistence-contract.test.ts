@@ -1,6 +1,14 @@
 import type { StateAdapter } from "chat";
 import { and, eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { getChatConfig } from "@/chat/config";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -768,5 +776,54 @@ describe("Slack webhook Turn engine switch", () => {
     await expect(getConversationStoppedAtMs(conversationId)).resolves.toBe(
       1_712_345_002,
     );
+  });
+
+  it("keeps a mention that core intake admits after a stop with no cutoff saves", async () => {
+    useCoreEngine();
+    const { queue } = await sendSlack(mention);
+    const locked = deferred();
+    const release = deferred();
+    // The test holds the Conversation lock. Intake waits for it first, then
+    // the stop saves and waits behind intake to cancel the Turns.
+    const holder = withConversationEventLock(
+      getSqlExecutor(),
+      conversationId,
+      async () => {
+        locked.resolve();
+        await release.promise;
+      },
+    );
+    await locked.promise;
+    const sending = sendSlack(
+      slackEnvelope({
+        text: `<@${SLACK_BOT_USER_ID}> check the canary`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0030",
+      }),
+      queue,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const stopping = stopConversationTree([conversationId], {
+      stoppedAtMs: 1_712_345_002,
+    });
+    await vi.waitFor(async () => {
+      expect(await getConversationStoppedAtMs(conversationId)).toBe(
+        1_712_345_002,
+      );
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    release.resolve();
+    await Promise.all([holder, sending, stopping]);
+
+    const { turns, inputs } = await coreRows(conversationId);
+    const later = inputs.find((input) =>
+      input.idempotencyKey.endsWith("1712345.0030"),
+    );
+    expect(turns.find((turn) => turn.id === later?.turnId)?.state).toBe(
+      "queued",
+    );
+    await expect(
+      getConversationStoppedAtMs(conversationId),
+    ).resolves.toBeUndefined();
   });
 });
