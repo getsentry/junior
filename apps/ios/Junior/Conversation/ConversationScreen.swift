@@ -6,6 +6,8 @@ import SwiftUI
 struct ConversationScreen: View {
   @Environment(AppModel.self) private var app
   @Environment(WindowModel.self) private var window
+  @Environment(\.splitColumn) private var column
+  @Environment(\.verticalBarEdge) private var verticalBarEdge
   @State private var model: ConversationModel
   @State private var showDetails = false
   @State private var shareURL: URL?
@@ -24,7 +26,8 @@ struct ConversationScreen: View {
       ConversationComposer(model: model)
     }
     .background(Tokens.bg)
-    .toolbar(.hidden, for: .navigationBar)
+    // With vertical bars, the system Back replaces the header's.
+    .toolbar(verticalBarEdge != nil && column != .detailRoot ? .visible : .hidden, for: .navigationBar)
     .inspector(isPresented: Binding(get: { showDetails && detailsBeside }, set: { showDetails = $0 })) {
       details
         .background(Tokens.bgElevated)
@@ -218,6 +221,8 @@ private struct SubscriptionResult: Decodable, Sendable { var subscribed: Bool }
 /// The Slack Location under the title, linked to the thread.
 private struct LocationTag: View {
   let conversation: MCPConversation?
+  @Environment(\.splitColumn) private var column
+  @Environment(\.verticalBarEdge) private var verticalBarEdge
 
   var body: some View {
     if let conversation, let label = conversation.locationLabel {
@@ -229,7 +234,9 @@ private struct LocationTag: View {
         }
         Spacer(minLength: 0)
       }
-      .padding(.leading, 60)
+      // Under the title: past the header's 40pt leading slot and its 8pt
+      // spacing, unless the system Back in the vertical bar replaces it.
+      .padding(.leading, verticalBarEdge != nil && column != .detailRoot ? 12 : 60)
       .padding(.trailing, 12)
       // The web pulls the tags up under the title (`-mt-1.5 pb-0.5` in a
       // single `py-2` header).

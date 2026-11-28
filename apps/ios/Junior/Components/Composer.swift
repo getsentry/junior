@@ -8,6 +8,8 @@ struct ComposerDock<Above: View, Content: View>: View {
   var hasAbove = false
   @ViewBuilder var above: Above
   @ViewBuilder var content: Content
+  @Environment(\.verticalBarEdge) private var verticalBarEdge
+  @State private var occluded: CGFloat = 0
 
   var body: some View {
     VStack(spacing: 0) {
@@ -18,8 +20,36 @@ struct ComposerDock<Above: View, Content: View>: View {
         .padding(.bottom, 6)
         .readableWidth()
     }
+    .padding(barSide, occluded)
     .background(Tokens.bg)
     .hairline(.top, hasAbove ? .clear : Tokens.borderSubtle)
+    // The vertical bar's controls sit at its top, so the dock spans the bar's
+    // column and stays clear only of what the hardware covers, such as a camera.
+    .ignoresSafeArea(.container, edges: barSide)
+    .onGeometryChange(for: CGFloat.self) { [edge = verticalBarEdge] proxy in
+      edge.map { proxy.occlusionDepth(from: $0) } ?? 0
+    } action: {
+      occluded = $0
+    }
+  }
+
+  private var barSide: Edge.Set {
+    switch verticalBarEdge {
+    case .leading: .leading
+    case .trailing: .trailing
+    case nil: []
+    }
+  }
+}
+
+extension GeometryProxy {
+  /// How far occlusion regions, such as a camera, reach into the view from
+  /// one edge. Regions that do not overlap the view are not counted.
+  fileprivate func occlusionDepth(from edge: HorizontalEdge) -> CGFloat {
+    guard #available(iOS 27.1, *) else { return 0 }
+    let frames = reservedRegions(kind: .occlusion).map(\.frame)
+    let depths = frames.map { edge == .leading ? $0.maxX : size.width - $0.minX }
+    return max(0, depths.max() ?? 0)
   }
 }
 

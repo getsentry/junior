@@ -9,8 +9,8 @@ struct AppHeader<Trailing: View, Below: View>: View {
   }
 
   @Environment(WindowModel.self) private var window
-  @Environment(\.dismiss) private var dismiss
   @Environment(\.splitColumn) private var column
+  @Environment(\.verticalBarEdge) private var verticalBarEdge
   var title: String
   var leading: Leading = .menu
   /// Outfit 14 medium (Conversation titles) instead of Inter 14 semibold.
@@ -39,11 +39,14 @@ struct AppHeader<Trailing: View, Below: View>: View {
           // The open item beside the list has nothing to go back to, and the
           // list's header has the menu. The slot keeps titles aligned.
           Color.clear.frame(width: 40, height: 40)
+        } else if leading == .back && verticalBarEdge != nil {
+          // The system Back shows at the top of the vertical bar instead.
         } else {
           Button {
             switch leading {
             case .menu: withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = true }
-            case .back: dismiss()
+            // Pops the window's path: `dismiss()` here leaves the Conversation open.
+            case .back: if !window.path.isEmpty { window.path.removeLast() }
             }
           } label: {
             Icon(leading == .menu ? "menu" : "arrow-left", size: 20)
@@ -79,6 +82,15 @@ struct AppHeader<Trailing: View, Below: View>: View {
   }
 
   private var repeatsListTitle: Bool { column == .detailRoot && leading == .menu }
+}
+
+extension EnvironmentValues {
+  /// The side where the system places bars, as on iPhone Duo closed or open
+  /// in landscape. A pushed screen then shows the navigation bar for its Back.
+  var verticalBarEdge: HorizontalEdge? {
+    guard #available(iOS 27.1, *) else { return nil }
+    return toolbarVerticalEdge
+  }
 }
 
 extension AppHeader where Trailing == Color, Below == EmptyView {
