@@ -16,7 +16,11 @@ import {
   selectedAblations,
   type AblationAudit,
 } from "./guardian-design-ablation";
-import { agentGuardianArm, currentGuardianArm } from "./guardian-design-arms";
+import {
+  agentGuardianArm,
+  agentOneStepGuardianArm,
+  currentGuardianArm,
+} from "./guardian-design-arms";
 
 const SAMPLE_TIMEOUT_MS = 60_000;
 
@@ -36,16 +40,11 @@ export type GuardianOutcome = "allow" | "ask" | "deny" | "unavailable";
  */
 export interface GuardianDesignFacts {
   /**
-   * Lines of the person whose instruction the action serves: from the
-   * request that started the work (`instruction`), or as a message from the
-   * person's linked account. The request builds them as core does: an Event
-   * Turn reads the root Conversation only for a Watch with a creator, and a
-   * linked-account message is the Event's own text.
+   * Lines of the person whose instruction the action serves, from the
+   * request that started the work. They reach Guardian only where core reads
+   * the root Conversation (`withPersonLines`).
    */
-  personLines?: Array<{
-    text: string;
-    via: "instruction" | "linked-account";
-  }>;
+  personLines?: Array<{ text: string }>;
   /**
    * Pull requests that this work created, as `owner/repo#number`: what
    * core's code-change records hold.
@@ -92,9 +91,12 @@ export type GuardianArm = (
 const ARMS: Record<string, GuardianArm> = {
   current: currentGuardianArm,
   agent: agentGuardianArm,
+  // The agent Guardian with no first-tier screen.
+  "agent-one-step": agentOneStepGuardianArm,
 };
 
-function selectedArm(): { arm: GuardianArm; name: string } {
+/** The arm that `GUARDIAN_DESIGN_ARM` selects, `current` by default. */
+export function selectedArm(): { arm: GuardianArm; name: string } {
   const name = process.env["GUARDIAN_DESIGN_ARM"]?.trim() || "current";
   const arm = ARMS[name];
   if (!arm) {
@@ -162,6 +164,13 @@ export interface GuardianDesignInput {
 export interface GuardianDesignOutput extends Record<string, JsonValue> {
   arm: string;
   category: FailureCategory;
+  /**
+   * What each sample decided for each action, such as `ask (unrequested)`,
+   * so a comparison of arms shows where they disagree.
+   */
+  decisions: string[][];
+  /** The accepted outcomes of each action, such as `allow|ask`. */
+  expected: string[];
   /** Why each failed sample failed. */
   failures: string[];
   passes: number;
@@ -243,9 +252,20 @@ export const guardianDesignHarness = createHarness<
           : mismatch(input.expected, result.value);
       return failure ? [`sample ${sample + 1}: ${failure}`] : [];
     });
+    const decisions = results.map((result) =>
+      result.status === "rejected"
+        ? ["threw"]
+        : result.value.actions.map(({ outcome, rule }) =>
+            rule ? `${outcome} (${rule})` : outcome,
+          ),
+    );
     const output: GuardianDesignOutput = {
       arm: name,
       category: input.category,
+      decisions,
+      expected: input.expected.outcomes.map((outcome) =>
+        [outcome].flat().join("|"),
+      ),
       failures,
       passes: samples - failures.length,
       rule: input.rule,

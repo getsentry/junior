@@ -7,7 +7,7 @@ import type { GuardianFactsContext } from "@sentry/junior-plugin-api";
 import { pluginGuardianContext } from "@/chat/plugins/guardian-context";
 import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
-import type { Action, Message, ReviewRequest } from "@/chat/guardian/guardian";
+import type { Action, ReviewRequest } from "@/chat/guardian/guardian";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import { guardianMessages } from "@/chat/guardian/request";
 import { credentialPlaceholders } from "@/chat/guardian/sandbox-facts";
@@ -16,36 +16,31 @@ import type { GuardianDesignFacts } from "./guardian-design-harness";
 import { designGuardianContext } from "./guardian-facts-context";
 import { agentActionFacts, agentHasTool } from "./guardian-tools";
 /**
- * The messages of the work, as core builds them. A line of the person from
- * the request that started the work is a message of the root Conversation,
- * which core reads for a Run of a person, and for a Watch Turn as the
- * Watch's creator: another Event Turn gets none.
+ * The proposal with the person's request lines in its root Conversation, as
+ * core reads them: for a Run of a person, for both Guardians, and for a
+ * Watch Turn as the Watch's creator, only when the agent Guardian reviews
+ * (`agent/tools.ts`). Any other Event Turn gets none.
  */
-function designMessages(
+export function withPersonLines(
   proposal: ToolActionProposal,
   facts: GuardianDesignFacts | undefined,
-): Message[] {
-  const lines = facts?.personLines ?? [];
-  const requested = lines.flatMap((line) =>
-    line.via === "instruction"
-      ? [{ author: "user" as const, text: line.text }]
-      : [],
-  );
-  const root =
-    requested.length > 0 &&
-    (proposal.context.actor.platform !== "system" || proposal.context.watch)
-      ? {
-          messages: [
-            ...requested,
-            ...(proposal.rootConversation?.messages ?? []),
-          ],
-          truncated: proposal.rootConversation?.truncated ?? false,
-        }
-      : proposal.rootConversation;
-  return guardianMessages({
+  agentReviews: boolean,
+): ToolActionProposal {
+  const requested = (facts?.personLines ?? []).map((line) => ({
+    author: "user" as const,
+    text: line.text,
+  }));
+  const reads =
+    proposal.context.actor.platform !== "system" ||
+    (agentReviews && proposal.context.watch !== undefined);
+  if (requested.length === 0 || !reads) return proposal;
+  return {
     ...proposal,
-    ...(root ? { rootConversation: root } : undefined),
-  });
+    rootConversation: {
+      messages: [...requested, ...(proposal.rootConversation?.messages ?? [])],
+      truncated: proposal.rootConversation?.truncated ?? false,
+    },
+  };
 }
 
 const mcpArguments = z.record(z.string(), z.unknown()).catch(() => ({}));
@@ -110,7 +105,7 @@ export async function designGuardianRequest(
   const ctx = designGuardianContext(facts);
   const sandbox = designSandbox(proposals);
   return {
-    messages: designMessages(proposals[0]!, facts),
+    messages: guardianMessages(proposals[0]!),
     actions: await mapBounded(proposals, async (proposal) =>
       designAction(proposal, ctx),
     ),

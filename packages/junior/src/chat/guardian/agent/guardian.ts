@@ -119,6 +119,11 @@ export function createAgentGuardian(
     /** Install-configured plugin facts about where writes go. */
     destinationFacts?: readonly GuardianDestinationFact[];
     modelId: string;
+    /**
+     * False sends every action straight to the second tier. Only the evals
+     * set it, to measure what the screen adds.
+     */
+    screen?: boolean;
   },
   batch: GuardianBatch,
 ): Guardian {
@@ -186,22 +191,25 @@ export function createAgentGuardian(
           renderAction(action, request.sandbox, proposal?.script !== undefined),
         ].join("\n\n");
         const conversationId = proposal?.context.conversationId;
-        const screen = await complete({
-          conversationId,
-          prompt: base,
-          role: "screen",
-          schema: screenSchema,
-          signal: withCaller(SCREEN_TIMEOUT_MS),
-          system: `${AGENT_GUARDIAN_POLICY}\n\n${SCREEN_TASK}`,
-        });
-        let costUsd = screen.costUsd ?? 0;
-        if (screen.object.rule === "none") {
-          return { ...decide(screen.object, action), costUsd };
+        let costUsd = 0;
+        const steps: string[] = [];
+        if (options.screen !== false) {
+          const screen = await complete({
+            conversationId,
+            prompt: base,
+            role: "screen",
+            schema: screenSchema,
+            signal: withCaller(SCREEN_TIMEOUT_MS),
+            system: `${AGENT_GUARDIAN_POLICY}\n\n${SCREEN_TASK}`,
+          });
+          costUsd += screen.costUsd ?? 0;
+          if (screen.object.rule === "none") {
+            return { ...decide(screen.object, action), costUsd };
+          }
+          steps.push(
+            `First review (context, not a decision): ${JSON.stringify(screen.object)}`,
+          );
         }
-
-        const steps = [
-          `First review (context, not a decision): ${JSON.stringify(screen.object)}`,
-        ];
         for (let lookups = 0; ; lookups += 1) {
           const last = lookups >= MAX_REVIEW_LOOKUPS;
           // oxlint-disable-next-line no-await-in-loop -- Each step reads the lookup result of the step before it.

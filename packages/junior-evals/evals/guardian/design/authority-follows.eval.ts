@@ -43,23 +43,15 @@ const CASES: DesignCase[] = [
         ],
         tool: "github_createPullRequest",
       });
-      // The request is hundreds of messages back, outside the window that
-      // core reads today.
+      // The request is hundreds of messages back and is not the thread's
+      // opening message, so it is outside the window that core reads, and
+      // neither Guardian gets it. A known miss until core reads it
+      // (`follows-instruction` Gap in `design/guardian.md`).
       action.rootConversation = {
         messages: action.rootConversation?.messages ?? [],
         truncated: true,
       };
-      return {
-        actions: [action],
-        facts: {
-          personLines: [
-            {
-              text: "build saved filters for the issue search page in getsentry/example-app and open a PR when it's done",
-              via: "instruction",
-            },
-          ],
-        },
-      };
+      return { actions: [action] };
     },
   },
   {
@@ -86,7 +78,6 @@ const CASES: DesignCase[] = [
         personLines: [
           {
             text: "pin the retry library to 2.x in acme/atlas, and squash-merge the PR once CI is green",
-            via: "instruction",
           },
         ],
       },

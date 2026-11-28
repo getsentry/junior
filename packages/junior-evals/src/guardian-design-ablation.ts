@@ -14,7 +14,10 @@ import type {
   GuardianDesignRequest,
   GuardianDesignResult,
 } from "./guardian-design-harness";
-import { designGuardianRequest } from "./guardian-design-request";
+import {
+  designGuardianRequest,
+  withPersonLines,
+} from "./guardian-design-request";
 import { gateReviews } from "./guardian-tools";
 
 interface Ablation {
@@ -155,23 +158,26 @@ export function selectedAblations(): string[] {
 
 /** The agent arm with one ablation. */
 function ablatedArm(ablation: Ablation): GuardianArm {
-  return guardianArm((modelId, batch, destinationFacts) => {
-    const guardian = createAgentGuardian(
-      {
-        completeObject,
-        destinationFacts: ablation.noPluginFacts ? [] : destinationFacts,
-        modelId,
-      },
-      ablation.batch ? ablation.batch(batch) : batch,
-    );
-    return {
-      review: async (request, signal) =>
-        await guardian.review(
-          ablation.request ? ablation.request(request, batch) : request,
-          signal,
-        ),
-    };
-  });
+  return guardianArm(
+    (modelId, batch, destinationFacts) => {
+      const guardian = createAgentGuardian(
+        {
+          completeObject,
+          destinationFacts: ablation.noPluginFacts ? [] : destinationFacts,
+          modelId,
+        },
+        ablation.batch ? ablation.batch(batch) : batch,
+      );
+      return {
+        review: async (request, signal) =>
+          await guardian.review(
+            ablation.request ? ablation.request(request, batch) : request,
+            signal,
+          ),
+      };
+    },
+    { agentReviews: true },
+  );
 }
 
 /** Whether an ablation changes what core builds for this case. */
@@ -184,7 +190,7 @@ async function changesRequest(
     await mapBounded(request.actions, async (proposal) =>
       AGENT_REVIEWED_TOOLS.has(proposal.tool.name) ||
       (await gateReviews(proposal))
-        ? proposal
+        ? withPersonLines(proposal, request.facts, true)
         : undefined,
     )
   ).filter((proposal) => proposal !== undefined);

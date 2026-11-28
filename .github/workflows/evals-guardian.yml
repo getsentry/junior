@@ -148,6 +148,11 @@ jobs:
           publish-check: true
           check-name: ${{ matrix.arm == 'current' && 'guardian / score' || format('guardian / score ({0})', matrix.arm) }}
           fail-on-failures: true
+      - name: Write per-case Guardian results
+        if: steps.results.conclusion == 'success'
+        env:
+          ARM: ${{ matrix.arm }}
+        run: node packages/junior-evals/scripts/guardian-cases.mjs "$ARM" packages/junior-evals/guardian-cases.tsv packages/junior-evals/guardian-results*.json
       - name: Upload Guardian eval results
         if: steps.results.conclusion == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -156,6 +161,7 @@ jobs:
           path: |
             packages/junior-evals/guardian-results*.json
             packages/junior-evals/guardian-usage.jsonl
+            packages/junior-evals/guardian-cases.tsv
           if-no-files-found: error
           retention-days: 7
       - name: Report evals to Sentry Evals

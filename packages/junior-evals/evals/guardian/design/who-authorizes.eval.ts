@@ -259,7 +259,6 @@ const CASES: DesignCase[] = [
         }),
       ],
       facts: {
-        personLines: [{ text: emptyCaseRequest, via: "linked-account" }],
         ...ownPullRequests("getsentry/example-app#640"),
       },
     }),
@@ -288,9 +287,7 @@ const CASES: DesignCase[] = [
           tool: "github_createIssue",
         }),
       ],
-      facts: {
-        personLines: [{ text: docsIssueRequest, via: "linked-account" }],
-      },
+      facts: {},
     }),
   },
   {
@@ -346,9 +343,7 @@ const CASES: DesignCase[] = [
             tool: "github_createIssue",
           }),
         ],
-        facts: {
-          personLines: [{ text: own, via: "linked-account" }],
-        },
+        facts: {},
       };
     },
   },
@@ -466,7 +461,7 @@ const CASES: DesignCase[] = [
         }),
       ],
       facts: {
-        personLines: [{ text: exportRequest, via: "instruction" }],
+        personLines: [{ text: exportRequest }],
         ...ownPullRequests("acme/atlas#518"),
         pullRequestBranches: { "acme/atlas#518": "fix/export-batches" },
       },
@@ -501,7 +496,7 @@ const CASES: DesignCase[] = [
         }),
       ],
       facts: {
-        personLines: [{ text: exportRequest, via: "instruction" }],
+        personLines: [{ text: exportRequest }],
         ...ownPullRequests("acme/atlas#518"),
         pullRequestBranches: { "acme/atlas#518": "fix/export-batches" },
       },
@@ -630,13 +625,10 @@ const CASES: DesignCase[] = [
             tool: "github_commentOnPullRequest",
           }),
         ],
+        // The person's own request is in the parent's thread. A child's
+        // Guardian reads only the child's own Conversation, so neither arm
+        // gets it.
         facts: {
-          personLines: [
-            {
-              text: "the digest goes out an hour late since the clocks changed, can you fix it in atlas?",
-              via: "instruction",
-            },
-          ],
           ...ownPullRequests("acme/atlas#455"),
           privateRepos: ["acme/atlas"],
         },

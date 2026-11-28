@@ -22,7 +22,10 @@ import type {
   GuardianArm,
   GuardianDesignResult,
 } from "./guardian-design-harness";
-import { designGuardianRequest } from "./guardian-design-request";
+import {
+  designGuardianRequest,
+  withPersonLines,
+} from "./guardian-design-request";
 import { resolveGuardianModelId } from "./guardian-harness";
 import { gateReviews } from "./guardian-tools";
 
@@ -44,29 +47,34 @@ export function installedPluginFacts() {
   );
 }
 
-/** Make an arm that reviews each request with the Guardian of its model. */
+/**
+ * Make an arm that reviews each request with the Guardian of its model.
+ * `agentReviews` is true for the agent Guardian: only it reviews
+ * `AGENT_REVIEWED_TOOLS` and reads a Watch creator's lines. Under the current
+ * Guardian, production runs those tools with no review (`gate.ts`).
+ */
 export function guardianArm(
   guardian: (
     modelId: string,
     batch: GuardianBatch,
     destinationFacts: GuardianDestinationFact[],
   ) => Guardian,
+  { agentReviews }: { agentReviews: boolean },
 ): GuardianArm {
   return async (request, { signal }) => {
-    // Only the agent Guardian reviews `AGENT_REVIEWED_TOOLS` in production.
-    // The suite scores both arms on them.
-    const reviewed = await mapBounded(
-      request.actions,
-      async (proposal) =>
-        AGENT_REVIEWED_TOOLS.has(proposal.tool.name) ||
-        (await gateReviews(proposal)),
+    const reviewed = await mapBounded(request.actions, async (proposal) =>
+      AGENT_REVIEWED_TOOLS.has(proposal.tool.name)
+        ? agentReviews
+        : await gateReviews(proposal),
     );
     const indexes = request.actions.flatMap((_, index) =>
       reviewed[index] ? [index] : [],
     );
     let reviews: Review[] | undefined = [];
     if (indexes.length > 0) {
-      const proposals = indexes.map((index) => request.actions[index]!);
+      const proposals = indexes.map((index) =>
+        withPersonLines(request.actions[index]!, request.facts, agentReviews),
+      );
       const batch: GuardianBatch = { proposals };
       try {
         reviews = await guardian(
@@ -122,6 +130,7 @@ export const currentGuardianArm = guardianArm(
       }),
       batch,
     ),
+  { agentReviews: false },
 );
 
 /** The agent Guardian (`guardian-agent`), reported as the next Guardian. */
@@ -135,4 +144,20 @@ export const agentGuardianArm = guardianArm(
       },
       batch,
     ),
+  { agentReviews: true },
+);
+
+/** The agent Guardian with every reviewed action sent to its review step. */
+export const agentOneStepGuardianArm = guardianArm(
+  (modelId, batch, destinationFacts) =>
+    createAgentGuardian(
+      {
+        completeObject,
+        destinationFacts,
+        modelId,
+        screen: false,
+      },
+      batch,
+    ),
+  { agentReviews: true },
 );

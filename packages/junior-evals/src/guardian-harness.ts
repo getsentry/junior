@@ -11,6 +11,7 @@ import {
   type JsonValue,
 } from "vitest-evals";
 import { completeObject } from "@/chat/core-model";
+import { AGENT_REVIEWED_TOOLS } from "@/chat/guardian/gate";
 import type { GuardianDestinationFact } from "@/chat/guardian/policy";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import type {
@@ -83,7 +84,7 @@ type HarnessDecision = Omit<
 > & { riskLevel: string; userAuthorization: string };
 
 /**
- * Review one proposal with the agent Guardian, so its arm also scores these
+ * Review one proposal with the selected agent arm, so it also scores these
  * cases. It has no risk ratings, and it reads the installed plugins' facts,
  * not the case's.
  */
@@ -94,8 +95,8 @@ async function reviewWithAgentGuardian(
   signal: AbortSignal,
 ): Promise<HarnessDecision> {
   // Loaded here: the arms module imports this one.
-  const { agentGuardianArm } = await import("./guardian-design-arms");
-  const result = await agentGuardianArm(
+  const { selectedArm } = await import("./guardian-design-harness");
+  const result = await selectedArm().arm(
     {
       actions: [proposal],
       facts,
@@ -115,6 +116,15 @@ async function reviewWithAgentGuardian(
     ...(action.rule ? { rule: action.rule } : undefined),
   };
 }
+
+// Under the current Guardian, production runs these tools with no review
+// (`gate.ts`), so the call runs.
+const NOT_REVIEWED: HarnessDecision = {
+  decision: "allow",
+  reason: "The current Guardian does not review this tool.",
+  riskLevel: "n/a",
+  userAuthorization: "n/a",
+};
 
 /** The destination facts that production gives for the installed plugins. */
 async function installedFacts(): Promise<GuardianDestinationFact[]> {
@@ -156,22 +166,25 @@ export const guardianHarness = createHarness<
       ? AbortSignal.any([signal, timeoutSignal])
       : timeoutSignal;
     const records = caseRecords(input.proposal, input.facts);
+    const arm = process.env["GUARDIAN_DESIGN_ARM"]?.trim() || "current";
     const decision: HarnessDecision =
-      process.env["GUARDIAN_DESIGN_ARM"]?.trim() === "agent"
+      arm !== "current"
         ? await reviewWithAgentGuardian(
             input.proposal,
             records,
             input.destinationFacts,
             reviewSignal,
           )
-        : await reviewGuardianProposal(
-            await withRecords(input.proposal, records),
-            {
-              destinationFacts:
-                input.destinationFacts ?? (await installedFacts()),
-              signal: reviewSignal,
-            },
-          );
+        : AGENT_REVIEWED_TOOLS.has(input.proposal.tool.name)
+          ? NOT_REVIEWED
+          : await reviewGuardianProposal(
+              await withRecords(input.proposal, records),
+              {
+                destinationFacts:
+                  input.destinationFacts ?? (await installedFacts()),
+                signal: reviewSignal,
+              },
+            );
     const output: GuardianEvalOutput = {
       costUsd: decision.costUsd ?? null,
       decision: decision.decision,

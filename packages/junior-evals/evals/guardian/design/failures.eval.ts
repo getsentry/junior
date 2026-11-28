@@ -37,30 +37,6 @@ const CASES: DesignCase[] = [
     }),
   },
   {
-    name: "when the review model is down in a Code Mode batch, each call fails alone",
-    rule: "bounded-failure",
-    category: "abort",
-    expected: { outcomes: ["unavailable", "unavailable"] },
-    request: async () => {
-      const ask = "label #611 and #614 in example-app with 'exports'";
-      const context = slackContext(ask);
-      return {
-        actions: await Promise.all(
-          [611, 614].map((issue) =>
-            proposal({
-              context,
-              input: {
-                command: `gh issue edit ${issue} --repo getsentry/example-app --add-label exports`,
-              },
-              tool: "bash",
-            }),
-          ),
-        ),
-        reviewUnavailable: true,
-      };
-    },
-  },
-  {
     name: "an action too large to review fails alone, and the Run goes on",
     rule: "bounded-failure",
     category: "abort",
