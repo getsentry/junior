@@ -137,13 +137,16 @@ export async function claimMcpAuthorization(
   return claimed;
 }
 
-/** Build the client redirect for an OAuth authorization response. */
-export function authorizationRedirect(args: {
+/** One OAuth authorization response for the client's redirect URI. */
+export type AuthorizationResponse = {
   issuer: string;
   params: Record<string, string>;
   redirectUri: string;
   state?: string | undefined;
-}): Response {
+};
+
+/** Build the client callback URL for an OAuth authorization response. */
+export function authorizationResponseUrl(args: AuthorizationResponse): URL {
   const url = new URL(args.redirectUri);
   for (const [name, value] of Object.entries(args.params)) {
     url.searchParams.set(name, value);
@@ -151,9 +154,17 @@ export function authorizationRedirect(args: {
   if (args.state !== undefined) url.searchParams.set("state", args.state);
   // RFC 9207 lets the client check which server sent the response.
   url.searchParams.set("iss", args.issuer);
+  return url;
+}
+
+/** Build the client redirect for an OAuth authorization response. */
+export function authorizationRedirect(args: AuthorizationResponse): Response {
   return new Response(null, {
     status: 303,
-    headers: { "cache-control": "no-store", location: url.toString() },
+    headers: {
+      "cache-control": "no-store",
+      location: authorizationResponseUrl(args).toString(),
+    },
   });
 }
 

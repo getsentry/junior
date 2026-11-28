@@ -125,6 +125,8 @@ button:focus-visible, label input:focus-visible { outline: 2px solid var(--focus
  */
 export function renderHtmlPage(page: {
   bodyHtml: string;
+  /** Extra `<head>` elements. The caller escapes every value in them. */
+  headHtml?: string;
   /** Page headers, such as its `content-security-policy`. */
   headers: Record<string, string>;
   status: number;
@@ -137,7 +139,7 @@ export function renderHtmlPage(page: {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(page.title)}</title>
-  <style>${PAGE_STYLE}</style>
+${page.headHtml ? `${page.headHtml}\n` : ""}  <style>${PAGE_STYLE}</style>
 </head>
 <body>
   <main>

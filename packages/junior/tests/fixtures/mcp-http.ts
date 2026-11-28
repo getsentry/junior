@@ -135,13 +135,14 @@ export async function openMcpConsentPage(
 }
 
 /**
- * Approve consent as the viewer who opened the page. The `Origin` header
- * follows the page's referrer policy the way a browser form POST does: under
- * `no-referrer`, browsers send `Origin: null`.
+ * Approve or deny consent as the viewer who opened the page. The `Origin`
+ * header follows the page's referrer policy the way a browser form POST does:
+ * under `no-referrer`, browsers send `Origin: null`.
  */
-export async function approveMcpConsent(
+export async function submitMcpConsent(
   app: Hono,
   args: {
+    action?: "approve" | "deny";
     consentUrl: string;
     csrf: string;
     email: string;
@@ -155,8 +156,26 @@ export async function approveMcpConsent(
       cookie: viewerCookie(args.email),
       origin: args.referrerPolicy === "no-referrer" ? "null" : MCP_TEST_ORIGIN,
     },
-    body: new URLSearchParams({ action: "approve", csrf: args.csrf }),
+    body: new URLSearchParams({
+      action: args.action ?? "approve",
+      csrf: args.csrf,
+    }),
   });
+}
+
+/**
+ * Read the client callback URL from a consent decision: the redirect page's
+ * meta refresh for a web callback, or the `location` of a custom-scheme 303.
+ */
+export async function readMcpCallback(response: Response): Promise<URL> {
+  const location = response.headers.get("location");
+  if (location) return new URL(location);
+  const html = await response.clone().text();
+  const target = html.match(
+    /<meta http-equiv="refresh" content="0;url=([^"]+)"/,
+  )?.[1];
+  if (!target) throw new Error("MCP consent returned no callback");
+  return new URL(target.replaceAll("&amp;", "&"));
 }
 
 /** POST one form-encoded request to the MCP token endpoint. */
@@ -188,15 +207,13 @@ export async function approveMcpClient(
   );
   const consentUrl = authorize.headers.get("location") ?? "";
   const page = await openMcpConsentPage(app, consentUrl, email);
-  const approved = await approveMcpConsent(app, {
+  const approved = await submitMcpConsent(app, {
     consentUrl,
     csrf: page.csrf ?? "",
     email,
     referrerPolicy: page.referrerPolicy,
   });
-  const code = new URL(approved.headers.get("location") ?? "").searchParams.get(
-    "code",
-  );
+  const code = (await readMcpCallback(approved)).searchParams.get("code");
   if (!code) throw new Error("MCP consent returned no code");
   return { code, consentHtml: page.html, verifier: pkce.verifier };
 }
