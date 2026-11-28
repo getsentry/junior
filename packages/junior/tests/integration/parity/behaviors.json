@@ -13362,8 +13362,8 @@
       }
     ],
     "coreFlag": "likely-core-gap",
-    "needsDecision": "design/guardian.md says nothing is denied only because nobody asked for it, but main's policy.ts denies unrequested_destruction and revoked_approval. Docs say a rejected action cannot bypass review by switching tools, but main does not review bash or messageAgent, and publishImage publishes with no review. Which is right?",
-    "note": "policy is shared reviewer code; core passes no ToolActionReview (src/turn-steps/tool-hooks.ts:turnToolHooks calls reviewToolActions([action], undefined)), so a tool with approvalMode review/auto gets 'Required action review is unavailable; the action was not executed.' and Guardian never runs"
+    "note": "policy is shared reviewer code; core passes no ToolActionReview (src/turn-steps/tool-hooks.ts:turnToolHooks calls reviewToolActions([action], undefined)), so a tool with approvalMode review/auto gets 'Required action review is unavailable; the action was not executed.' and Guardian never runs",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main. Core calls the same Guardian interface and keeps main's behavior: the policy.ts deny list and the approvalMode of each wrapped tool, publishImage included. Guardian is being reworked, so the design/guardian.md mismatch stays open."
   },
   {
     "id": "tools-guardian:image-generate",
@@ -14384,8 +14384,8 @@
     "entryPoints": ["publishImage", "unpublishImage"],
     "mainCases": [],
     "coreFlag": "likely-core-gap",
-    "needsDecision": "design/guardian.md says nothing is denied only because nobody asked for it, but main's policy.ts denies unrequested_destruction and revoked_approval. Docs say a rejected action cannot bypass review by switching tools, but main does not review bash or messageAgent, and publishImage publishes with no review. Which is right?",
-    "note": "unit only (tests/unit/tools/publish-image.test.ts). core Turns get only systemTime, bash, readFile, writeFile, editFile (src/turn-steps/tools.ts:turnTools, skills: [])"
+    "note": "unit only (tests/unit/tools/publish-image.test.ts). core Turns get only systemTime, bash, readFile, writeFile, editFile (src/turn-steps/tools.ts:turnTools, skills: [])",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main. Core calls the same Guardian interface and keeps main's behavior: the policy.ts deny list and the approvalMode of each wrapped tool, publishImage included. Guardian is being reworked, so the design/guardian.md mismatch stays open."
   },
   {
     "id": "tools-guardian:read-write-edit-file",
@@ -14558,8 +14558,8 @@
       }
     ],
     "coreFlag": "likely-core-gap",
-    "needsDecision": "design/guardian.md says nothing is denied only because nobody asked for it, but main's policy.ts denies unrequested_destruction and revoked_approval. Docs say a rejected action cannot bypass review by switching tools, but main does not review bash or messageAgent, and publishImage publishes with no review. Which is right?",
-    "note": "core passes no ToolActionReview (src/turn-steps/tool-hooks.ts:turnToolHooks calls reviewToolActions([action], undefined)), so a tool with approvalMode review/auto gets 'Required action review is unavailable; the action was not executed.' and Guardian never runs"
+    "note": "core passes no ToolActionReview (src/turn-steps/tool-hooks.ts:turnToolHooks calls reviewToolActions([action], undefined)), so a tool with approvalMode review/auto gets 'Required action review is unavailable; the action was not executed.' and Guardian never runs",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main. Core calls the same Guardian interface and keeps main's behavior: the policy.ts deny list and the approvalMode of each wrapped tool, publishImage included. Guardian is being reworked, so the design/guardian.md mismatch stays open."
   },
   {
     "id": "tools-guardian:review-unavailable-fails-closed",
