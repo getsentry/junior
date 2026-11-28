@@ -182,7 +182,7 @@ test.describe("new UI", () => {
     const formItem = row(page, form!);
     await formItem.getByRole("radio", { name: "Approve" }).click();
     await formItem.getByLabel("Reason").fill("MIT, no change.");
-    await formItem.getByLabel("Anything else?").fill("Ask legal first.");
+    await formItem.getByLabel("Additional notes").fill("Ask legal first.");
     await formItem.getByRole("button", { name: "Send" }).click();
     const toast = page
       .locator('[data-slot="toast"]')
@@ -194,7 +194,7 @@ test.describe("new UI", () => {
       formItem.getByRole("radio", { name: "Approve" }),
     ).toBeChecked();
     await expect(formItem.getByLabel("Reason")).toHaveValue("MIT, no change.");
-    await expect(formItem.getByLabel("Anything else?")).toHaveValue(
+    await expect(formItem.getByLabel("Additional notes")).toHaveValue(
       "Ask legal first.",
     );
 

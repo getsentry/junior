@@ -1,9 +1,8 @@
 /**
- * Prompt inputs for person answers to Inbox items. An answer is its own
- * prompt content part, keyed by the item id that `addInboxItem` returned.
- * The runtime builds it from the stored change record and the item, so the
- * model never reads status prose. It repeats the question, then one line for
- * each answered field. `input-tags.ts` lists the input tags.
+ * Prompt inputs for person answers to questions. Each answer is its own
+ * prompt part, tied to the `askUserQuestion` call that asked it, and reads
+ * like Claude Code's AskUserQuestion result. The runtime builds it from the
+ * stored change record and the item, so the model never reads status prose.
  */
 import { mapBounded } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";
@@ -23,11 +22,11 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 import type { InboxItemChangeRecord } from "./change-record";
 import { personName } from "./messages";
 import { getInboxItem, type InboxItem } from "./store";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { askToolCallId, inboxItemQuestion } from "@/chat/inbox-items/request";
 
 const QUESTION_MAX_LENGTH = 512;
 
-// The words that the person typed: text fields and the free-text answer.
+// The words that the person typed: text fields and the additional notes.
 // Choice labels and the question are the agent's words.
 function typedAnswerText(
   request: UserInputRequest,
@@ -42,30 +41,63 @@ function typedAnswerText(
   ].join("\n\n");
 }
 
-// Render one answer to an Inbox item as a prompt input. Only an action
-// item with a request takes an answer. It names the person who closed the
-// item, who need not be an assignee, such as anyone who answers a public
-// question. An answer has no `<current-instruction>`, so without the name
-// the model guesses the assignee.
+function shortQuestion(text: string): string {
+  const question = text.trim();
+  return question.length > QUESTION_MAX_LENGTH
+    ? `${question.slice(0, QUESTION_MAX_LENGTH - 1)}…`
+    : question;
+}
+
+// A request whose fields each hold their own question pairs each question
+// with its answer, in the shape of Claude Code's AskUserQuestion result, so
+// the model maps each answer to its question. A question left blank says so,
+// so that the model does not read it as consent.
+function questionAnswerLines(
+  request: UserInputRequest,
+  answer: UserInputAnswer,
+): string[] {
+  const normalized = normalizeUserInputAnswer(request, answer);
+  const { other } = normalized;
+  const pairs = request.fields.map(
+    (field) =>
+      `"${shortQuestion(field.description ?? field.label)}"="${normalized.values[field.id]?.join(", ") || "(no answer)"}"`,
+  );
+  return [
+    `The person has answered your questions: ${pairs.join(", ")}`,
+    ...(other ? [`They also wrote: ${other}`] : []),
+    "You can now continue with their answers in mind.",
+  ];
+}
+
+// The `askUserQuestion` call that asked a question. A question's owner is
+// the Conversation that asked it.
+function askToolUseId(item: InboxItem): string | undefined {
+  return item.owner.kind === "conversation"
+    ? askToolCallId(item.subject.id, item.owner.id)
+    : undefined;
+}
+
+// Render one answer to a question as a prompt input. Only an action item
+// with a request takes an answer. It names the person who closed the item,
+// who need not be an assignee. Without the name the model guesses one.
 function renderInboxItemAnswer(
   item: InboxItem,
 ): RuntimeInstructionInput | undefined {
   const request = inboxItemQuestion(item.request);
   if (!request || !item.answer) return undefined;
-  const question = request.question.trim();
   const requestText = typedAnswerText(request, item.answer);
   const by = item.closedBy;
   const text = renderTag(
-    "inbox-item-answer",
-    { id: item.id },
+    "question-answer",
+    { tool_use_id: askToolUseId(item) },
     [
       ...(by ? [`Answered by: ${personName(by)}`] : []),
-      `Question: ${
-        question.length > QUESTION_MAX_LENGTH
-          ? `${question.slice(0, QUESTION_MAX_LENGTH - 1)}…`
-          : question
-      }`,
-      formatUserInputAnswer(request, item.answer),
+      ...(request.question
+        ? [
+            `Question: ${shortQuestion(request.question)}`,
+            formatUserInputAnswer(request, item.answer),
+          ]
+        : questionAnswerLines(request, item.answer)),
     ].map(escapeTagText),
   );
   return {

@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { conversationQuestionsReportSchema } from "@/api/schema";
 import { getConversationStore, getDb } from "@/chat/db";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
-import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { ask } from "../../../fixtures/questions";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
@@ -17,19 +17,6 @@ import {
 } from "../../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 import { measureSql } from "../../../fixtures/sql-budget";
-
-const REQUEST: UserInputRequest = {
-  question: "Approve or reject this entry?",
-  fields: [
-    {
-      id: "decision",
-      kind: "choice",
-      label: "Decision",
-      options: [{ label: "Approve" }, { label: "Reject" }],
-    },
-    { id: "reason", kind: "text", label: "Reason" },
-  ],
-};
 
 /** A person signed in to the dashboard, linked to Slack workspace T123. */
 async function user(email: string): Promise<User> {
@@ -107,7 +94,7 @@ describe("inbox items of a Conversation", () => {
       });
     // An event Turn asks without naming anyone, so the item goes to the
     // active Participants: only Ben.
-    const tool = createAddInboxItemTool(
+    const tool = createAskUserQuestionTool(
       {
         conversationId: "local:web:shared",
         resolveActorIdentity: async () => undefined,
@@ -116,21 +103,15 @@ describe("inbox items of a Conversation", () => {
       createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
     );
     const { item } = await (tool as any).execute(
-      {
-        kind: "action",
-        title: "Close the tracking issue?",
-        body: "The pull request merged.",
-        request: REQUEST,
-      },
+      (tool as any).prepareArguments({
+        questions: ask("Close the tracking issue?"),
+      }),
       {},
     );
     const { item: other } = await (tool as any).execute(
-      {
-        kind: "action",
-        title: "Delete the release branch?",
-        body: "The release shipped.",
-        request: REQUEST,
-      },
+      (tool as any).prepareArguments({
+        questions: ask("Delete the release branch?"),
+      }),
       {},
     );
     const ids = async (viewer: User, path: string) =>
@@ -176,7 +157,7 @@ describe("inbox items of a Conversation", () => {
     });
     const answered = await api(fixture, cal).act(item.id, {
       action: "submit",
-      answer: { values: { decision: ["Approve"] } },
+      answer: { values: { q1: ["Yes"] } },
     });
     expect(answered.status).toBe(200);
     expect(await answered.json()).toMatchObject({
@@ -195,23 +176,23 @@ describe("inbox items of a Conversation", () => {
     ).toEqual([
       expect.objectContaining({
         answer: expect.objectContaining({
-          values: { decision: ["Approve"] },
+          values: { q1: ["Yes"] },
         }),
         answeredAt: expect.any(String),
         answeredBy: expect.objectContaining({ userId: cal.id }),
-        body: "The pull request merged.",
+        body: "Close the tracking issue?",
         closedAt: expect.any(String),
         id: item.subject.id,
-        request: expect.objectContaining({ question: REQUEST.question }),
+        request: expect.objectContaining({ fields: expect.any(Array) }),
         title: "Close the tracking issue?",
       }),
       // A dismissed question closes with no answer.
       {
-        body: "The release shipped.",
+        body: "Delete the release branch?",
         closedAt: expect.any(String),
         createdAt: expect.any(String),
         id: other.subject.id,
-        request: REQUEST,
+        request: expect.objectContaining({ fields: expect.any(Array) }),
         title: "Delete the release branch?",
         updatedAt: expect.any(String),
       },

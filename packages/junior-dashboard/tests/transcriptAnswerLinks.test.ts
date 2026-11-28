@@ -20,7 +20,7 @@ function ask(itemId: string): TranscriptListRow {
   return row(`ask-${itemId}`, {
     kind: "tool",
     part: {
-      name: "addInboxItem",
+      name: "askUserQuestion",
       output: { item: { id: itemId } },
       status: "completed",
     },

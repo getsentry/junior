@@ -213,13 +213,14 @@ async function storeCard(
     pullRequestCardNodeSchema,
   );
   if (!node) return;
-  const changed = await storeGitHubPullRequestFields(
+  const { changed, stored } = await storeGitHubPullRequestFields(
     ctx.cache,
     ctx.payload.key,
     githubPullRequestFieldsFromNode(node),
     startedAtMs,
   );
-  if (node.state === "OPEN") await observeMergeState(ctx, ref, node);
+  // A newer entry rejects a stale read, whose merge state must not mark.
+  if (stored && node.state === "OPEN") await observeMergeState(ctx, ref, node);
   if (node.databaseId && changed) {
     await ctx.annotations.objectChanged({
       id: String(node.databaseId),

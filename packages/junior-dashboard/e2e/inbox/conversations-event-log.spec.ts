@@ -912,8 +912,19 @@ test.describe("new UI", () => {
             type: "tool_calls",
             calls: [
               {
-                input: { kind: "action", title: item.title },
-                name: "addInboxItem",
+                input: {
+                  questions: [
+                    {
+                      question: item.title,
+                      header: "Decision",
+                      options: [
+                        { label: "Yes", description: "Go ahead." },
+                        { label: "No", description: "Stop here." },
+                      ],
+                    },
+                  ],
+                },
+                name: "askUserQuestion",
                 output: JSON.stringify({ item: { id: item.id } }),
                 status: "completed",
                 toolCallId: "review-1",

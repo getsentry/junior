@@ -29,7 +29,7 @@ import { createReplyTool } from "@/chat/tools/runtime/reply";
 import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/child-agents/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
@@ -372,10 +372,10 @@ const STATIC_TOOL_BINDERS = {
   slackChannelListMessages: (run) =>
     createSlackChannelListMessagesTool(slackOf(run)),
   // Inbox items link to root Conversations, where a person can see them.
-  // `addInboxItem` is how the agent asks a person anything, so it is loaded
-  // in every root Turn. A child agent asks its parent instead.
-  addInboxItem: (run) =>
-    createAddInboxItemTool(run.context, run.inboxItemServices()),
+  // `askUserQuestion` is how the agent asks a person anything, so it is
+  // loaded in every root Turn. A child agent asks its parent instead.
+  askUserQuestion: (run) =>
+    createAskUserQuestionTool(run.context, run.inboxItemServices()),
   searchInboxItems: (run) =>
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
@@ -425,7 +425,7 @@ const TURN_TOOL_LIMITS: Partial<
     turnTools.settings
       ? undefined
       : "Only a person's request changes configuration.",
-  addInboxItem: INBOX_LIMIT,
+  askUserQuestion: INBOX_LIMIT,
   searchInboxItems: INBOX_LIMIT,
   updateInboxItem: INBOX_LIMIT,
 };

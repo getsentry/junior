@@ -227,14 +227,14 @@ export async function writeGitHubCachedMergeable(
  * Store the fields of a full pull request read, such as a card query, in
  * its entry, unless the entry is newer. Then clear a review decision that a
  * review webhook during the read made stale. Returns whether the entry
- * changed.
+ * took the read and whether it changed.
  */
 export async function storeGitHubPullRequestFields(
   cache: PluginCache,
   key: string,
   fields: GitHubPullRequestFields,
   startedAtMs: number,
-): Promise<boolean> {
+): Promise<{ changed: boolean; stored: boolean }> {
   let stored = false;
   let changed = false;
   await cache.update<GitHubPullRequestFields | null>(key, (current) => {
@@ -252,7 +252,7 @@ export async function storeGitHubPullRequestFields(
       startedAtMs,
     });
   }
-  return changed;
+  return { changed, stored };
 }
 
 /**

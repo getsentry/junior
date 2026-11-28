@@ -29,7 +29,8 @@ import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { upsertReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { getInboxItem } from "@/chat/inbox-items/store";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { ask } from "../fixtures/questions";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import {
   saveNotificationSchedule,
@@ -185,7 +186,7 @@ async function turnTools(
     turnId: "turn-1",
   };
   return {
-    add: createAddInboxItemTool(context, services),
+    add: createAskUserQuestionTool(context, services),
     conversationId,
     update: createUpdateInboxItemTool(context, services),
   };
@@ -223,21 +224,26 @@ async function setDelivery(
 }
 
 const ASK = {
-  kind: "action",
-  title: "Approve the deploy?",
-  body: "**Deploy** of `api` waits for you.",
   assignees: ["ana@example.com"],
-  request: {
-    question: "Approve the deploy?",
-    fields: [
-      {
-        id: "decision",
-        kind: "choice",
-        label: "Decision",
-        options: [{ label: "Approve" }, { label: "Reject" }],
-      },
-    ],
-  },
+  questions: [
+    {
+      question: "Approve the **deploy** of `api`?",
+      header: "Decision",
+      options: [
+        { label: "Approve", description: "Deploy it now." },
+        { label: "Reject", description: "Stop the deploy." },
+      ],
+    },
+    {
+      question: "Which regions get it first?",
+      header: "Regions",
+      multiSelect: true,
+      options: [
+        { label: "us", description: "Most traffic." },
+        { label: "eu", description: "Least traffic." },
+      ],
+    },
+  ],
 };
 
 describe("inbox item push", () => {
@@ -286,9 +292,9 @@ describe("inbox item push", () => {
     const added = await execute(tools.add, ASK);
     expect(pushes).toEqual([
       {
-        body: "Deploy of api waits for you.",
+        body: "Approve the deploy of api? Which regions get it first?",
         tag: added.item.id,
-        title: "Approve the deploy?",
+        title: "Decision · Regions",
         url: `https://junior.example.com/inbox?item=${added.item.id}`,
       },
     ]);
@@ -296,7 +302,7 @@ describe("inbox item push", () => {
     // A change of the same ask does not push again.
     await execute(tools.update, {
       id: added.item.id,
-      body: "The deploy still waits.",
+      questions: ask("Approve the deploy now?"),
     });
     // Everyone items and notices show only in the Inbox.
     const everyone = await execute(tools.add, {
@@ -310,13 +316,28 @@ describe("inbox item push", () => {
       id: everyone.item.id,
       user: ana,
     });
-    await execute(tools.add, {
-      kind: "notice",
-      title: "The deploy finished",
-      body: "Nothing to do.",
-      assignees: ["ana@example.com"],
-    });
     expect(pushes).toHaveLength(1);
+    // An ask of one question shows it once, as the title.
+    const single = await execute(tools.add, {
+      assignees: ["ana@example.com"],
+      questions: ask("Roll back the deploy?"),
+    });
+    expect(pushes[1]).toMatchObject({
+      body: "",
+      tag: single.item.id,
+      title: "Roll back the deploy?",
+    });
+    // A question too long for the title shows only its cut title.
+    const long = `Roll back the deploy? ${"It failed its canary checks. ".repeat(10)}`;
+    const longAsk = await execute(tools.add, {
+      assignees: ["ana@example.com"],
+      questions: ask(long.trim()),
+    });
+    expect(pushes[2]).toMatchObject({
+      body: "",
+      tag: longAsk.item.id,
+      title: expect.stringMatching(/…$/),
+    });
 
     // Web Push cannot close a notification by itself. The next push tells
     // the phone to close the push of the ask that closed.
@@ -325,7 +346,7 @@ describe("inbox item push", () => {
       status: "dismissed",
       reason: "Deploy rolled back",
     });
-    expect(pushes).toHaveLength(1);
+    expect(pushes).toHaveLength(3);
     // The close clears its deliveries in its own statement. If that failed,
     // the retry of the close shows the item again, and that clears them.
     await getDb()
@@ -334,7 +355,7 @@ describe("inbox item push", () => {
       .where(eq(juniorInboxItemDeliveries.itemId, added.item.id));
     await syncInboxItemPush(added.item.id);
     const next = await execute(tools.add, ASK);
-    expect(pushes[1]).toMatchObject({
+    expect(pushes[3]).toMatchObject({
       close: [added.item.id],
       tag: next.item.id,
     });
@@ -399,13 +420,15 @@ describe("inbox item push", () => {
     await items.upsert({
       ...review,
       body: "#946 is approved. Merge it.",
-      title: "Ready to merge · #946",
+      title: "#946 is approved…",
     });
     expect(pushes).toEqual([
       expect.objectContaining({ tag: item!.id }),
+      // A title that ends in "…" but is not the cut body keeps the body.
       expect.objectContaining({
+        body: "#946 is approved. Merge it.",
         tag: item!.id,
-        title: "Ready to merge · #946",
+        title: "#946 is approved…",
       }),
     ]);
     expect(
@@ -565,7 +588,10 @@ describe("inbox item push", () => {
       expect.objectContaining({ params: { user: "U0ANA" } }),
     ]);
     expect(pushes).toEqual([
-      expect.objectContaining({ tag: away.item.id, title: ASK.title }),
+      expect.objectContaining({
+        tag: away.item.id,
+        title: "Decision · Regions",
+      }),
     ]);
     await later(5 * 60_000);
     expect(pushes).toHaveLength(1);
@@ -633,10 +659,11 @@ describe("inbox item push", () => {
     ]);
 
     // The detached thread gets no card, so this item waits on the card in
-    // the other thread, until its own Conversation attaches again.
-    const attached = await execute(first.add, {
-      ...ASK,
-      conversation_ids: [second.conversationId],
+    // the other thread, until the detached Conversation attaches again.
+    const attached = await execute(second.add, ASK);
+    await execute(second.update, {
+      id: attached.item.id,
+      conversation_ids: [first.conversationId],
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
@@ -698,8 +725,9 @@ describe("inbox item push", () => {
       occurredAtMs: Date.now(),
       trustedSummary: "Pull request merged.",
     };
+    // The title says it all, so the push repeats no body.
     const wakePush = (id: string) => ({
-      body: "Review acme entry",
+      body: "",
       tag: id,
       title: "Review acme entry",
       url: `https://junior.example.com/inbox?item=${id}`,

@@ -54,5 +54,42 @@ export type InboxItemNoticeRequest = z.output<
 export function inboxItemQuestion(
   request: InboxItemRequest | InboxItemNoticeRequest | null | undefined,
 ): InboxItemRequest | undefined {
-  return request && "question" in request ? request : undefined;
+  return request && "fields" in request ? request : undefined;
+}
+
+/**
+ * Tool names that ask a person a question. Turns from before
+ * `askUserQuestion` have an old name in their history, so readers of a
+ * transcript match every name.
+ */
+export const ASK_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "askUserQuestion",
+  "addInboxItem",
+  "addReviewItem",
+]);
+
+const ASK_SUBJECT_PREFIX = "askUserQuestion:";
+
+/**
+ * Return the question id of an `askUserQuestion` call. Model providers do
+ * not promise unique call ids, so the id also names the Conversation that
+ * asked. A retry of the call in that Conversation finds the same question.
+ */
+export function askQuestionId(conversationId: string, toolCallId: string) {
+  return `${ASK_SUBJECT_PREFIX}${conversationId}:${toolCallId}`;
+}
+
+/**
+ * Return the `askUserQuestion` call id of a question that the Conversation
+ * asked, or undefined. An older `ask:` question came from another tool, or
+ * from a migration, so its id names no `askUserQuestion` call.
+ */
+export function askToolCallId(
+  questionId: string,
+  conversationId: string,
+): string | undefined {
+  const prefix = askQuestionId(conversationId, "");
+  return questionId.startsWith(prefix) && questionId.length > prefix.length
+    ? questionId.slice(prefix.length)
+    : undefined;
 }
