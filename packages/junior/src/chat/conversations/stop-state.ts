@@ -8,6 +8,7 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { juniorConversations } from "@/db/schema";
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
@@ -36,33 +37,37 @@ export async function resumeConversationTree(
 ): Promise<void> {
   const subtree = sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`;
   const executor = getSqlExecutor();
-  await executor.transaction(async () => {
-    // The executor's transaction nests as a savepoint inside a caller's
-    // lock. A Drizzle transaction would commit the caller's.
-    const tx = executor.db();
-    const rows = await tx
-      .select({
-        conversationId: juniorConversations.conversationId,
-        stoppedAt: juniorConversations.stoppedAt,
-      })
-      .from(juniorConversations)
-      .where(inArray(juniorConversations.conversationId, subtree))
-      .orderBy(asc(juniorConversations.conversationId))
-      .for("update");
-    const stoppedAt = rows.find(
-      (row) => row.conversationId === conversationId,
-    )?.stoppedAt;
-    if (!stoppedAt || sentAtMs <= stoppedAt.getTime()) {
-      return;
-    }
-    await tx
-      .update(juniorConversations)
-      .set({ stoppedAt: null, detailVersion: nextDetailVersion })
-      .where(
-        and(
-          inArray(juniorConversations.conversationId, subtree),
-          lte(juniorConversations.stoppedAt, stoppedAt),
-        ),
-      );
-  });
+  // The Conversation lock comes before the rows, as for every writer under
+  // that lock, such as an Event append. Rows first could deadlock with them.
+  await withConversationEventLock(executor, conversationId, () =>
+    executor.transaction(async () => {
+      // The executor's transaction nests as a savepoint inside a caller's
+      // lock. A Drizzle transaction would commit the caller's.
+      const tx = executor.db();
+      const rows = await tx
+        .select({
+          conversationId: juniorConversations.conversationId,
+          stoppedAt: juniorConversations.stoppedAt,
+        })
+        .from(juniorConversations)
+        .where(inArray(juniorConversations.conversationId, subtree))
+        .orderBy(asc(juniorConversations.conversationId))
+        .for("update");
+      const stoppedAt = rows.find(
+        (row) => row.conversationId === conversationId,
+      )?.stoppedAt;
+      if (!stoppedAt || sentAtMs <= stoppedAt.getTime()) {
+        return;
+      }
+      await tx
+        .update(juniorConversations)
+        .set({ stoppedAt: null, detailVersion: nextDetailVersion })
+        .where(
+          and(
+            inArray(juniorConversations.conversationId, subtree),
+            lte(juniorConversations.stoppedAt, stoppedAt),
+          ),
+        );
+    }),
+  );
 }

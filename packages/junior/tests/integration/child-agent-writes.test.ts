@@ -14,7 +14,10 @@ import { stopChildAgentsOf } from "@/chat/child-agents/stop";
 import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import type { AgentRun } from "@/chat/agent/types";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
-import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import {
+  addConversationNote,
+  loadTurnConversationNotes,
+} from "@/chat/conversations/notes";
 import { stopConversationTree } from "@/chat/conversations/session-stop";
 import {
   getConversationStoppedAtMs,
@@ -26,6 +29,7 @@ import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_WORK_MAX_RETRIES,
@@ -433,6 +437,53 @@ describe("spawn and messageAgent", () => {
       await harness.processUntilRun(childId);
       expect(harness.runs).toHaveLength(1);
       expect(harness.runs[0]!.instruction.text).toContain("Check it again.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("ends a stopped child's stop while a writer holds the child's Conversation lock", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1");
+      await createStopAgentTool(slackParentConversationId).execute!(
+        { conversation_id: childId },
+        {},
+      );
+      vi.setSystemTime(1_800_000_001_000);
+      const locked = deferred();
+      const release = deferred();
+      // An Event append writes the child's row under the child's lock.
+      const writer = withConversationEventLock(
+        getSqlExecutor(),
+        childId,
+        async () => {
+          locked.resolve();
+          await release.promise;
+          await addConversationNote({
+            conversationId: childId,
+            createdAtMs: Date.now(),
+            key: "lock-order",
+            text: "Written under the lock.",
+          });
+        },
+      );
+      await locked.promise;
+      const sending = message(harness, childId, "call-2");
+      // Time for the message to reach the child's lock. A message that held
+      // the child's row there would deadlock with the append.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      release.resolve();
+      await writer;
+
+      await expect(sending).resolves.toEqual({
+        conversationId: childId,
+        delivery: "started",
+      });
+      await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
+        undefined,
+      );
     } finally {
       await harness.close();
     }
