@@ -493,7 +493,7 @@ test.describe("new UI", () => {
         .getByRole("region", { exact: true, name: "Agents" })
         .getByRole("listitem")
         .filter({ hasText: "Check the last ten Sentaur pipeline runs" })
-        .getByRole("img", { name: "Waiting on you" }),
+        .getByRole("img", { name: "Waiting for an answer" }),
     ).toBeVisible();
     await card.click();
     await expect(

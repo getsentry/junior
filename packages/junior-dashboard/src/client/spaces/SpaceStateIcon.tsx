@@ -23,7 +23,7 @@ export function spaceDisplayState(
 
 const STATE_LABELS: Record<SpaceDisplayState, string> = {
   failed: "A Thread failed",
-  needs_you: "Waiting on you",
+  needs_you: "Waiting for an answer",
   working: "Working",
 };
 

@@ -116,8 +116,11 @@ test.describe("new UI", () => {
       await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const rows = list.getByRole("listitem");
+      // A row waits on an Inbox ask of the viewer, or an open question.
       const waiting = rows.filter({
-        has: page.getByRole("img", { name: "Waiting on you" }),
+        has: page.getByRole("img", {
+          name: /^Waiting (on you|for an answer)$/,
+        }),
       });
       const working = rowLink(list, "Investigate checkout latency");
       const asking = rowLink(list, "Roll out payments-v42");

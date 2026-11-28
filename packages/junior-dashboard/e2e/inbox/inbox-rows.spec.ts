@@ -343,7 +343,7 @@ test.describe("new UI", () => {
     // neither the title nor the summary, and the state stays in view.
     await meta.getByRole("button", { name: /^Pin Triage Sentaur/ }).click();
     // Its Threads have questions that wait, and that state outranks the pin.
-    const state = meta.getByRole("img", { name: "Waiting on you" });
+    const state = meta.getByRole("img", { name: "Waiting for an answer" });
     await expect(state).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
     await expect(meta.getByRole("button", { name: /^Unpin / })).toHaveAttribute(

@@ -32,7 +32,7 @@ export function conversationDisplayState(
 }
 
 const STATE_LABELS: Record<ConversationDisplayState, string> = {
-  needs_you: "Waiting on you",
+  needs_you: "Waiting for an answer",
   pinned: "Pinned",
   watching: "Watching for an event",
   working: "Working",

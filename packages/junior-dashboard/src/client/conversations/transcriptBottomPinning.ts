@@ -350,8 +350,19 @@ export function transcriptFollowIntent(input: {
  */
 export function programmaticSettleScrollAction(input: {
   intent: TranscriptFollowIntent;
+  /** Where the pin left the scroll root, or null for a smooth pin. */
+  pinnedScrollTop: number | null;
   snapshot: ScrollSnapshot;
 }): "ignore" | "pause" {
+  // Content can grow between the pin and its scroll event, such as a resize
+  // that rewraps rows. The event then reports the pin above the new end, but
+  // the reader did not move. The next layout sync pins again.
+  if (
+    input.pinnedScrollTop !== null &&
+    Math.abs(input.snapshot.scrollTop - input.pinnedScrollTop) < 1
+  ) {
+    return "ignore";
+  }
   // Layout clamps can drop scrollTop while the reader is still at the bottom.
   // Treat only a leave-bottom pause as intentional scroll-away.
   if (input.intent === "pause" && !isNearScrollBottom(input.snapshot)) {
@@ -407,6 +418,7 @@ export function usePinnedTranscriptBottom(input: {
   const terminalPinPendingRef = useRef(false);
   const versionsRef = useRef(input.versions);
   const programmaticScrollGenerationRef = useRef(0);
+  const pinnedScrollTopRef = useRef<number | null>(null);
   const [following, setFollowing] = useState(false);
   const [farFromBottom, setFarFromBottom] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
@@ -508,7 +520,13 @@ export function usePinnedTranscriptBottom(input: {
       // While a pin settle is open, ignore noise from our own bottom scroll and
       // layout clamps, but still honor a real leave from the bottom.
       if (source === "scroll" && programmaticScrollGenerationRef.current > 0) {
-        if (programmaticSettleScrollAction({ intent, snapshot }) === "pause") {
+        if (
+          programmaticSettleScrollAction({
+            intent,
+            pinnedScrollTop: pinnedScrollTopRef.current,
+            snapshot,
+          }) === "pause"
+        ) {
           programmaticScrollGenerationRef.current = 0;
           setFollowingIntent(false);
         }
@@ -541,6 +559,8 @@ export function usePinnedTranscriptBottom(input: {
         ? ++programmaticScrollGenerationRef.current
         : 0;
       setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
+      pinnedScrollTopRef.current =
+        behavior === "smooth" ? null : scrollSnapshot(root).scrollTop;
 
       const settleProgrammaticScroll = () => {
         if (
