@@ -7,7 +7,8 @@ import {
   type SlackChannelId,
 } from "@/chat/slack/ids";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
-import { sleep, untilAborted } from "@/chat/sleep";
+import { untilAborted } from "@sentry/junior-plugin-api";
+import { sleep } from "@/chat/sleep";
 
 // Slack canvas/list methods are not exposed by the current chat adapter public API,
 // so this module owns direct Web API calls for artifact actions.

@@ -1,9 +1,9 @@
 import { mapBounded } from "@/chat/fan-out";
-import { untilAborted } from "@/chat/sleep";
 import { createHash } from "node:crypto";
 import {
   CACHE_LOAD_TIMEOUT_MS,
   type CacheEntry,
+  untilAborted,
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
   type ObjectLinkContext,

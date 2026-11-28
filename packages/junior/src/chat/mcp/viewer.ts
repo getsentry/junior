@@ -8,14 +8,14 @@
  * and that the provider marks read-only.
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import type {
-  PluginMcpContent,
-  PluginViewerMcp,
+import {
+  type PluginMcpContent,
+  type PluginViewerMcp,
+  untilAborted,
 } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import { untilAborted } from "@/chat/sleep";
 import { getMcpStoredOAuthCredentials } from "./auth-store";
 import { McpAuthorizationRequiredError, PluginMcpClient } from "./client";
 import { getMcpOAuthCallbackPath } from "./oauth";

@@ -2,6 +2,7 @@
  * Reuse of GitHub App installation tokens. One webhook burst for a pull
  * request reads it several times, and each read used to mint its own token.
  */
+import { untilAborted } from "@sentry/junior-plugin-api";
 import type { GitHubAppPermissions } from "./permissions.js";
 
 /** A raw installation token and when Junior stops using it. */
@@ -18,26 +19,6 @@ export type InstallationTokens = Map<string, Promise<InstallationToken>>;
 
 /** A token this close to its expiry is minted again. */
 const REUSE_BUFFER_MS = 5 * 60 * 1000;
-
-// Wait for a shared mint until `signal` aborts. The mint goes on for the
-// other callers that share it.
-async function untilAborted<T>(
-  shared: Promise<T>,
-  signal: AbortSignal | undefined,
-): Promise<T> {
-  if (!signal) return await shared;
-  signal.throwIfAborted();
-  let onAbort!: () => void;
-  const aborted = new Promise<never>((_, reject) => {
-    onAbort = () => reject(signal.reason);
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-  try {
-    return await Promise.race([shared, aborted]);
-  } finally {
-    signal.removeEventListener("abort", onAbort);
-  }
-}
 
 /**
  * Return the token of the same permissions and repositories while it has

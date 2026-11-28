@@ -15,9 +15,9 @@ import { and, asc, eq } from "drizzle-orm";
 import {
   CACHE_LOAD_TIMEOUT_MS,
   type PluginLinkedHandleLookup,
+  untilAborted,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { untilAborted } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { cacheKeyPrefix, createCache } from "@/chat/state/cache";
 import type { JuniorDatabase } from "@/db/db";
