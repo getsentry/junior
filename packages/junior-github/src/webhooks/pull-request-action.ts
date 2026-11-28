@@ -410,7 +410,7 @@ async function cacheReviewState(
     {
       draft: state.draft,
       headSha: state.headSha,
-      requestedReviewers: state.requestedReviewers,
+      requestedReviewers: state.reviewRequestLogins,
       ...(review !== undefined && { review }),
       startedAtMs,
       updatedAt: state.updatedAt,
