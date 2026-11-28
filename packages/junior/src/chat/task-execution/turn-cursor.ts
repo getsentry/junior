@@ -212,6 +212,8 @@ export interface TurnRecord {
 
 export interface TurnSummary {
   schemaVersion: 2;
+  /** Provider whose missing account blocked this dispatch Turn. */
+  authorizationProvider?: string | undefined;
   conversationId: string;
   dispatchId?: string | undefined;
   dispatchOutcome?: AgentDispatchOutcome | undefined;
@@ -288,6 +290,7 @@ const storedTurnSummarySchema = z
   .object({
     schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),
+    authorizationProvider: z.string().min(1).optional(),
     conversationId: z.string().min(1),
     dispatchId: z.string().min(1).optional(),
     dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),
@@ -1083,6 +1086,7 @@ async function upsertTurnRecordLocked(
 }
 
 type TurnSummaryWrite = {
+  authorizationProvider?: string | undefined;
   channelName?: string | undefined;
   conversationId: string;
   cumulativeDurationMs?: number | undefined;
@@ -1166,6 +1170,8 @@ async function recordTurnSummaryOwned(
     state: args.state,
     updatedAtMs: nowMs,
     ...definedProps({
+      authorizationProvider:
+        args.authorizationProvider ?? priorSummary?.authorizationProvider,
       dispatchId: args.dispatchId ?? existingDispatchId,
       dispatchOutcome: args.dispatchOutcome ?? existingDispatchOutcome,
       resumeReason: args.resumeReason,
