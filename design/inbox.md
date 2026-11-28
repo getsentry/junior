@@ -28,8 +28,8 @@ groups and acts on its rows.
   answer carries the authority of the person who gives
   it. Junior, an Event, or a trigger never answers or approves for a
   person.
-- "Needs you" means one thing on every surface: an ask or a Conversation
-  tree that waits on you.
+- "Needs you" means one thing on every surface: an open Inbox item that
+  waits on you.
 
 ## Rules
 
@@ -41,7 +41,7 @@ groups and acts on its rows.
   All is the Inbox count. A type with nothing waiting hides, but All always
   shows.
 - The Conversation filters use the state that the row shows: Needs you
-  when an ask or the tree waits on the viewer, then Working, then
+  when an Inbox item in the tree waits on the viewer, then Working, then
   Watching. Done is the rest.
 - Pinned, a tab of the same control, shows only the rows of the viewer's pinned Conversations.
   Pins have no section of their own: a pin stays in its place, with a pin

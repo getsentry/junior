@@ -84,10 +84,10 @@ end-of-Turn contract. A person can see and steer each agent.
   Turn or an Automation run can end quietly.
 - `one-update` Every agent sends one update type, `agent.update`, when a
   Turn ends, waits on a person, is blocked, fails, or stops. Its status is
-  `done`, `waiting`, `blocked`, `failed`, or `stopped`. It holds the reply,
-  the `noReply` note, the question, the missing part, or the failure, so
-  the receiver can act with no read of history. Nothing in it depends on
-  the kind.
+  `done`, `needs_input`, `blocked`, `failed`, or `stopped`. It holds the
+  reply, the `noReply` note, the question, the missing part, or the
+  failure, so the receiver can act with no read of history. Nothing in it
+  depends on the kind.
 - `watch-is-start` An agent that starts another watches it, and a watcher
   gets the same update as the agent that started the target. Each update
   starts a Turn, unless the watch makes it quiet, and then it is a
@@ -108,7 +108,7 @@ end-of-Turn contract. A person can see and steer each agent.
 - `asker-asks` Any agent, also a child, asks a person only with an Inbox
   item, and only for approval, access, or a decision that is the person's.
   The answer goes to the agent that asked, as the person's own input, and
-  to no other Conversation. The agent that started it gets a `waiting`
+  to no other Conversation. The agent that started it gets a `needs_input`
   update and does not ask again.
 
 **Stops**
@@ -124,11 +124,11 @@ end-of-Turn contract. A person can see and steer each agent.
 
 **Done and archive**
 
-- `child-done` A child agent is done when it delivered a completed result
-  for the latest work from its parent, and nothing in it or below it runs,
-  waits on a person, failed in its latest Turn, or has an active Watch.
-  What the agent says does not make it done. A done Thread shows under
-  Done in the Threads panel, and new work takes it out.
+- `child-done` A child agent is done when the roll-up of its tree is
+  `done`, as the `roll-up` rule in
+  [Conversation status](./conversation-status.md) states. What the agent
+  says does not make it done. A done Thread shows under Done in the Threads
+  panel, and new work takes it out.
 - `tree-auto-archive` Auto-archive treats every Conversation in a tree the
   same way. With the root's setting and grace period, it archives a done
   child before its parent. It never archives a Lead.
@@ -136,11 +136,6 @@ end-of-Turn contract. A person can see and steer each agent.
   restores an auto-archived child. Only a person restores a Conversation
   that a person or an agent archived.
 - `archive-stops` Archiving a Conversation stops it and its child agents.
-
-## Open questions
-
-- Can a root Conversation be done, or only idle? A root has no task from a
-  parent, so nothing yet says when its work is complete.
 
 ## Gaps
 
@@ -158,9 +153,11 @@ end-of-Turn contract. A person can see and steer each agent.
 - `asker-asks`: an Inbox answer goes, as the person, to every Conversation
   that the item links, not only to the agent that asked.
 - `asker-asks`: when a person's Turn in a Thread adds an Inbox item, the
-  parent gets no `waiting` update. Only a watcher gets it.
+  parent gets no `needs_input` update. Only a watcher gets it.
 - `one-update`: a Turn that only Watch Events started sends no update to a
   Watch, also when it replies. Only the agent that started it gets one.
+- `one-update`: an update that waits on a person has the status `waiting`,
+  not `needs_input`.
 - `watch-is-start`: a parent cannot make the updates of its child agents
   quiet.
 - `push-not-poll`, `steering`: few agent tool results say the next step for
@@ -180,7 +177,7 @@ end-of-Turn contract. A person can see and steer each agent.
   agent stays until a person or its parent archives it.
   getsentry/junior#4409 tracks it.
 - `auto-restore`: a parent's message does not restore an archived child,
-  and an archived child does not count in its tree's state, so a child
+  and an archived child does not count in its tree's roll-up, so a child
   that needs a person can stay hidden.
 - `archive-stops`: `archiveAgent` refuses a working Thread, and the
   dashboard archives a working Conversation and leaves it running.

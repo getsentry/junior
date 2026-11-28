@@ -41,6 +41,8 @@ Do not list behaviors. The verification map in
   Conversation warm while a return is likely.
 - [Context compaction](./context-compaction.md): summaries that replace old
   history, and the prompt cache of an idle Conversation.
+- [Conversation status](./conversation-status.md): what each
+  Conversation's work needs, and the roll-up of a tree.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
 - [Google Workspace](./google.md): Calendar, Docs, Sheets, and Slides
   through Junior's own Google account.
