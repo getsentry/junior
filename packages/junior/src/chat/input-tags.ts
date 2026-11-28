@@ -30,9 +30,11 @@ const RUNTIME_INPUT_TAGS = [
   "agent-result",
   "agent-message",
   "parent-agent-task",
-  "inbox-item-answer",
+  "question-answer",
   // Only saved Turns have these. Junior no longer writes them, and they keep
-  // the names from before Review items became Inbox items.
+  // the names from before `askUserQuestion` and before Review items became
+  // Inbox items.
+  "inbox-item-answer",
   "review-item-answer",
   "review-item-dismissed",
   "relayed-review-item-answer",

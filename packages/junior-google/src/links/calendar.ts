@@ -116,8 +116,10 @@ function viewerIsOnEvent(event: LinkedEvent, viewer: string): boolean {
   ].some((email) => email?.toLowerCase() === viewer);
 }
 
-// Long enough that the access check and the card share one Calendar read.
-const EVENT_READ_TTL_MS = 10_000;
+// A live access check always reads the event again, and the card shares
+// that read, so a live card is never stale. The entry lives five minutes,
+// and then stays as the last good event for page loads.
+const EVENT_READ_TTL_MS = 300_000;
 
 /**
  * Read the linked event from Junior's calendar. Nothing for an event on
@@ -126,15 +128,27 @@ const EVENT_READ_TTL_MS = 10_000;
 async function readLinkedEvent(
   ctx: ObjectLinkContext,
   url: URL,
+  options?: { refresh: true },
 ): Promise<LinkedEvent | null> {
   const config = readGoogleConfig();
   const link = calendarLink(url);
   const eventId = config && link && parseEventLink(link, config.accountEmail);
   if (!eventId) return null;
-  return await ctx.cache.getOrLoad(`calendar-event:${eventId}`, async () => ({
-    value: await fetchLinkedEvent(ctx, eventId),
-    ttlMs: EVENT_READ_TTL_MS,
-  }));
+  const key = `calendar-event:${eventId}`;
+  if (ctx.cacheOnly) {
+    return (
+      (await ctx.cache.get<LinkedEvent | null>(key, { stale: true })) ?? null
+    );
+  }
+  return await ctx.cache.getOrLoad(
+    key,
+    async () => ({
+      staleIfError: true,
+      value: await fetchLinkedEvent(ctx, eventId),
+      ttlMs: EVENT_READ_TTL_MS,
+    }),
+    options,
+  );
 }
 
 async function fetchLinkedEvent(
@@ -159,7 +173,12 @@ async function canViewGoogleCalendarLink(
   ctx: ObjectLinkContext,
   url: URL,
 ): Promise<boolean> {
-  const event = await readLinkedEvent(ctx, url);
+  // A page load shows the stored card to anyone who can read the
+  // Conversation, so it checks no viewer access.
+  if (ctx.cacheOnly) return true;
+  // The guests decide access, so a live check never uses the last good
+  // event. The card then reads the entry that this check stored.
+  const event = await readLinkedEvent(ctx, url, { refresh: true });
   return !!event && viewerIsOnEvent(event, ctx.viewer.email.toLowerCase());
 }
 
@@ -207,6 +226,7 @@ export const googleCalendarLinks: PluginObjectLinkDefinition = {
       target: { param: "continue", filters: CALENDAR_EVENT_FILTERS },
     },
   ],
+  cacheOnlyReads: true,
   canView: canViewGoogleCalendarLink,
   label: (url) => (calendarLink(url) ? "Calendar event" : undefined),
   objectTypes: ["calendar_event"],

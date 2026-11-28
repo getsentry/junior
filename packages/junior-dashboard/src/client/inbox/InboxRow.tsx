@@ -49,6 +49,7 @@ import {
 } from "./CodeChangeTitle";
 import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
 import { inboxItemKind } from "./inboxModel";
+import { itemKindActions } from "./InboxItemActions";
 import {
   INBOX_ROW_META_CLASS,
   inboxCardClass,
@@ -132,8 +133,6 @@ function rowOpenTarget(props: InboxRowProps): RowOpenTarget {
 }
 
 type InboxRowProps = {
-  /** What the viewer answered, such as "You answered Hold": the summary. */
-  answered?: string;
   bundle?: InboxBundle;
   /** Each card's own actions, in a stack whose cards act by themselves. */
   cardActions?(item: InboxItemPayload): InboxCardActions;
@@ -482,11 +481,7 @@ function InboxRowBody(
   const work = ranked.filter((annotation) => !named.has(annotation.url ?? ""));
   const main = mainRepo(annotations);
   const waiting = bundle?.needsYou ?? false;
-  const found = props.itemTitle ? undefined : rowSummary(conversation);
-  // The viewer's answer replaces the line that asked for it.
-  const summary = props.answered
-    ? { mentions: undefined, text: props.answered }
-    : found;
+  const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
   const media = conversation?.media ?? [];
@@ -572,7 +567,10 @@ function InboxRowBody(
           onAction={props.onItemAction}
           primaryAction={
             props.itemHead ? (
-              <CodeChangeOpenButton head={props.itemHead} />
+              <CodeChangeOpenButton
+                head={props.itemHead}
+                secondary={itemKindActions(item).length > 0}
+              />
             ) : replyNotice ? (
               <ReplyNoticeLink item={item} open={rowOpenTarget(props)} />
             ) : undefined

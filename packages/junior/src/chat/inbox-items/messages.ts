@@ -24,10 +24,15 @@ import type { EventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { EVENT_WAIT_MS } from "@/chat/events/notification";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
-import { formatUserInputAnswer } from "@/chat/inbox-items/user-input-request";
+import {
+  formatUserInputAnswer,
+  userInputQuestionText,
+} from "@/chat/inbox-items/user-input-request";
 import { juniorConversations } from "@/db/schema";
 import type { InboxItemChangeRecord } from "./change-record";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { isPluginInboxItem } from "./access";
+import { subjectKindActionLabel } from "./subjects";
 import type { InboxItem } from "./store";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
@@ -52,7 +57,8 @@ export function inboxItemChangeRecord(
     : undefined;
 }
 
-function personName(user: User): string {
+/** Name a person as the agent reads them: their name and email. */
+export function personName(user: Pick<User, "displayName" | "email">): string {
   return user.displayName ? `${user.displayName} (${user.email})` : user.email;
 }
 
@@ -67,9 +73,19 @@ export function renderInboxItemMessage(
 ): string {
   const label = `inbox item "${item.title}" (${item.id})`;
   const request = inboxItemQuestion(item.request);
-  const question = request ? [`Question: ${request.question}`] : [];
+  const question = request
+    ? [`Question: ${userInputQuestionText(request)}`]
+    : [];
   switch (change.kind) {
-    case "submitted":
+    case "submitted": {
+      const action = subjectKindActionLabel(
+        item.subject.kind,
+        getPlugins(),
+        item.closeAction,
+      );
+      if (action) {
+        return `${personName(change.user)} chose ${action} on ${label}. The item is done.`;
+      }
       return [
         `${personName(change.user)} answered ${label}. The item is done.`,
         "",
@@ -77,6 +93,7 @@ export function renderInboxItemMessage(
           ? formatUserInputAnswer(request, item.answer)
           : "(no answer)",
       ].join("\n");
+    }
     case "dismissed":
       return [
         `${personName(change.user)} dismissed ${label}.`,
@@ -153,7 +170,7 @@ function recordedMessageId(item: InboxItem, change: RecordedChange): string {
  * Message: a take or a dismiss is not a decision, and the plugin does the
  * work of its answer. The dashboard shows the Message from its record. A
  * dismiss also adds a Conversation note, so the next Turn knows the item
- * closed. Without it, the agent only has its own `addInboxItem` result and
+ * closed. Without it, the agent only has its own `askUserQuestion` result and
  * still treats the item as open. A retry is safe, because the Message id and
  * the note key are the change key.
  */

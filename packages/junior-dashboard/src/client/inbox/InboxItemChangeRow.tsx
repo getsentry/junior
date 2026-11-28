@@ -12,6 +12,7 @@ import {
   inboxItemQuestion,
   type InboxItemChangeRecord,
   type InboxItemPayload,
+  userInputQuestionText,
 } from "@sentry/junior/api/schema";
 
 import { HoverPreview } from "../components/ui/hover-preview";
@@ -31,6 +32,7 @@ import {
   InboxItemAssignees,
   InboxItemCloser,
   InboxItemTitle,
+  inboxItemCloser,
 } from "./InboxItemPeople";
 import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
 import { useQuestionInViewRef } from "./WaitingQuestions";
@@ -77,7 +79,7 @@ function InboxItemPreview(props: {
           <InboxItemObjects conversationId={itemConversationId(props.item)}>
             <DisplayText
               mentions={props.item.mentions}
-              text={request?.question ?? props.item.body}
+              text={request ? userInputQuestionText(request) : props.item.body}
             />
           </InboxItemObjects>
           {request && answer ? (
@@ -271,7 +273,7 @@ function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
           ),
         };
   }
-  const by = item.closedBy ? (
+  const by = inboxItemCloser(item) ? (
     <>
       {" "}
       by <InboxItemCloser item={item} />
@@ -289,7 +291,7 @@ function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
     answer:
       !answerShown && question && item.answer
         ? answerLine(question, item.answer)
-        : undefined,
+        : item.closeAction,
     icon: CircleCheck,
     iconClassName: "text-emerald-500",
     label: (
@@ -436,12 +438,9 @@ export function InboxItemAskRow(props: {
           </p>
         </div>
       </div>
-      {waiting && !mobile ? (
-        <InboxItemActions
-          context={<InboxItemTurnMessage item={item} />}
-          item={item}
-        />
-      ) : null}
+      {/* The Turn's message is right above this card, so it shows only in
+          the phone sheet, which covers the transcript. */}
+      {waiting && !mobile ? <InboxItemActions item={item} /> : null}
       {sheet && mobile ? (
         <InboxItemSheet
           context={waiting ? <InboxItemTurnMessage item={item} /> : undefined}

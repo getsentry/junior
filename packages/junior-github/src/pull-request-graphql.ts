@@ -105,26 +105,22 @@ const commitsSchema = z.object({
     .nullable(),
 });
 
+const reviewDecisionSchema = z
+  .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
+  .nullish();
+
 /** One pull request of `pullRequestHeadFacts`. */
 export const pullRequestHeadFactsNodeSchema = z.object({
   commits: commitsSchema,
+  // GitHub's id names the pull request in Annotations. GitHub's schema
+  // lets it be null.
+  databaseId: z.number().int().positive().nullish(),
   headRefOid: z.string(),
+  latestOpinionatedReviews: z
+    .object({ nodes: z.array(z.object({ state: z.string() }).nullable()) })
+    .nullish(),
   mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
-  updatedAt: z.string(),
-});
-
-/** One pull request of `pullRequestCards`. */
-export const pullRequestCardNodeSchema = pullRequestHeadFactsNodeSchema.extend({
-  additions: z.number().int().nonnegative(),
-  author: z.object({ login: z.string() }).nullable(),
-  baseRefName: z.string(),
-  body: z.string(),
-  changedFiles: z.number().int().nonnegative(),
-  deletions: z.number().int().nonnegative(),
-  headRefName: z.string(),
-  isDraft: z.boolean(),
-  merged: z.boolean(),
-  number: z.number().int().positive(),
+  reviewDecision: reviewDecisionSchema,
   reviewRequests: z
     .object({
       nodes: z
@@ -140,33 +136,64 @@ export const pullRequestCardNodeSchema = pullRequestHeadFactsNodeSchema.extend({
         .nullable(),
     })
     .nullable(),
-  reviewDecision: z
-    .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
-    .nullish(),
-  latestOpinionatedReviews: z
-    .object({ nodes: z.array(z.object({ state: z.string() }).nullable()) })
-    .nullish(),
+  updatedAt: z.string(),
+});
+
+type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
+
+/** One pull request of `pullRequestCards`. */
+export const pullRequestCardNodeSchema = pullRequestHeadFactsNodeSchema.extend({
+  additions: z.number().int().nonnegative(),
+  author: z.object({ login: z.string() }).nullable(),
+  baseRefName: z.string(),
+  body: z.string(),
+  changedFiles: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  headRefName: z.string(),
+  isDraft: z.boolean(),
+  merged: z.boolean(),
+  number: z.number().int().positive(),
   state: z.enum(["CLOSED", "MERGED", "OPEN"]),
   title: z.string(),
   url: z.string(),
 });
 
+/** GitHub's review decision as the cache entry keeps it, or undefined. */
+export function githubReviewDecision(
+  decision: z.output<typeof reviewDecisionSchema>,
+): Exclude<GitHubPullRequestFields["review"], null> {
+  if (decision === "APPROVED") return "approved";
+  if (decision === "CHANGES_REQUESTED") return "changes_requested";
+  return decision === "REVIEW_REQUIRED" ? "required" : undefined;
+}
+
 /**
  * Return GitHub's review decision. A repository that requires no review has
  * none, so the latest review of each writer decides: approved when one
- * approves and none asks for changes.
+ * approves and none asks for changes. `null` when there is none, so a read
+ * replaces a decision that GitHub dropped, such as a dismissed review, and
+ * marks the review read.
  */
-function pullRequestReview(
-  node: z.output<typeof pullRequestCardNodeSchema>,
+export function githubPullRequestReview(
+  node: HeadFactsNode,
 ): GitHubPullRequestFields["review"] {
-  if (node.reviewDecision === "APPROVED") return "approved";
-  if (node.reviewDecision === "CHANGES_REQUESTED") return "changes_requested";
-  if (node.reviewDecision === "REVIEW_REQUIRED") return "required";
+  const decision = githubReviewDecision(node.reviewDecision);
+  if (decision) return decision;
   const states = (node.latestOpinionatedReviews?.nodes ?? []).map(
     (review) => review?.state,
   );
   if (states.includes("CHANGES_REQUESTED")) return "changes_requested";
   return states.includes("APPROVED") ? "approved" : null;
+}
+
+/** The logins of the reviewers whose review GitHub requests. */
+export function githubRequestedReviewers(
+  node: HeadFactsNode,
+): Array<{ login: string }> {
+  return (node.reviewRequests?.nodes ?? []).flatMap((request) => {
+    const login = request?.requestedReviewer?.login;
+    return login ? [{ login }] : [];
+  });
 }
 
 const PASSED_CHECK_RUNS = new Set(["NEUTRAL", "SKIPPED", "SUCCESS"]);
@@ -216,15 +243,8 @@ export function githubPullRequestFieldsFromNode(
     mergeable: githubMergeable(node.mergeable),
     merged: node.merged,
     number: node.number,
-    requested_reviewers: (node.reviewRequests?.nodes ?? []).flatMap(
-      (request) => {
-        const login = request?.requestedReviewer?.login;
-        return login ? [{ login }] : [];
-      },
-    ),
-    // `null` when there is none, so a read replaces a decision that GitHub
-    // dropped, such as a dismissed review, and marks the review read.
-    review: pullRequestReview(node),
+    requested_reviewers: githubRequestedReviewers(node),
+    review: githubPullRequestReview(node),
     state: node.state === "OPEN" ? "open" : "closed",
     title: node.title,
     updated_at: node.updatedAt,

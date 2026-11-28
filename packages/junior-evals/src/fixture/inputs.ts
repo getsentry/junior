@@ -90,7 +90,7 @@ export interface WebMessageInput {
 /**
  * A person's answer or dismiss in the Inbox, through
  * `POST /api/inbox-items/:id/actions`. The fixture first links `item` to the
- * web Conversation and assigns it to the person, as `addInboxItem` would.
+ * web Conversation and assigns it to the person, as `askUserQuestion` would.
  */
 export interface InboxItemActionInput {
   kind: "inbox_item_action";
@@ -103,17 +103,22 @@ export interface InboxItemActionInput {
 /** An open item that a `InboxItemActionInput` acts on. */
 export interface InboxItem {
   body: string;
-  /** Without a request, the item is a notice. */
+  /**
+   * Without a request, the item is a notice. A question that
+   * `askUserQuestion` asked has no shared `question`: each field holds its
+   * own question in `description`.
+   */
   request?: {
-    question: string;
+    question?: string;
     fields: (
       | {
+          description?: string;
           id: string;
           kind: "choice";
           label: string;
           options: { label: string }[];
         }
-      | { id: string; kind: "text"; label: string }
+      | { description?: string; id: string; kind: "text"; label: string }
     )[];
   };
   title: string;

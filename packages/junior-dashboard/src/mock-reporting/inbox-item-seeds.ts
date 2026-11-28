@@ -66,7 +66,7 @@ const DAY = 24 * 60;
  */
 export type MockSubject = Pick<
   InboxItemPayload["subject"],
-  "id" | "label" | "objectType" | "resource" | "url"
+  "actions" | "id" | "label" | "objectType" | "resource" | "url"
 > & {
   kind?: string;
   title?: string;
@@ -228,11 +228,13 @@ export function seeds(nowMs: number): MockItemSeed[] {
       createdAt: at(41),
       addedByTurnId: "qa-turn-migration",
       id: "qa-migration-tables",
+      // `askUserQuestion` stores each question as its own field, with no
+      // question that the fields share.
       request: {
-        question: "Which tables go in the first batch?",
         fields: [
           {
-            id: "tables",
+            description: "Which tables go in the first batch?",
+            id: "q1",
             kind: "multi_choice",
             label: "Tables",
             options: [
@@ -242,10 +244,18 @@ export function seeds(nowMs: number): MockItemSeed[] {
             ],
           },
           {
-            description: "This person gets a ping if a batch fails.",
-            id: "owner",
-            kind: "text",
-            label: "On-call owner",
+            description: "Who gets paged if a batch fails?",
+            id: "q2",
+            kind: "choice",
+            label: "Owner",
+            options: [
+              {
+                description: "Owns the billing service.",
+                label: "Billing on-call",
+                recommended: true,
+              },
+              { description: "Ran the dry run.", label: "Avery" },
+            ],
           },
         ],
       },
@@ -260,12 +270,12 @@ export function seeds(nowMs: number): MockItemSeed[] {
       id: "qa-migration-negative",
       shared: true,
       request: {
-        question: "What should happen to the 12 negative invoices?",
         fields: [
           {
-            id: "fix",
+            description: "What should happen to the 12 negative invoices?",
+            id: "q1",
             kind: "choice",
-            label: "Negative invoices",
+            label: "Invoices",
             options: [{ label: "Skip them" }, { label: "Zero them" }],
           },
         ],
@@ -296,25 +306,14 @@ export function seeds(nowMs: number): MockItemSeed[] {
     {
       // The GitHub plugin's last conflict fix of this pull request did not
       // land. Resume starts a fix and the fix count again.
-      body: "#2188 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
+      body: "#2188 conflicts with `main`, and the last fix did not land. Keep fixing tries again. Dismiss stops these asks for this pull request.",
       conversationId: RELEASE_CONVERSATION_ID,
       createdAt: at(40),
       id: "qa-conflict-2188",
       plugin: "github",
-      request: {
-        question:
-          "#2188 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
-        fields: [
-          {
-            id: "choice",
-            kind: "choice",
-            label: "Merge conflict · #2188",
-            options: [{ label: "Resume" }],
-          },
-        ],
-      },
       status: "open",
       subject: {
+        actions: [{ icon: "wrench", id: "resume", label: "Keep fixing" }],
         id: "https://github.com/getsentry/junior/pull/2188",
         kind: "github:merge_conflict",
         label: "Merge conflict",

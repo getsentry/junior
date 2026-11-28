@@ -42,7 +42,7 @@ import type {
   WorkspaceFinalize,
 } from "./tools";
 import type {
-  InboxItemAnsweredHookContext,
+  InboxItemActionHookContext,
   InboxItemDismissedHookContext,
 } from "./inbox-items";
 import type {
@@ -202,11 +202,11 @@ export interface PluginHooks {
     ctx: EgressHookContext,
   ): Promise<PluginGrant | undefined> | PluginGrant | undefined;
   /**
-   * Do the work that a person asked for with a choice on an item that this
-   * plugin added. Junior calls it again when the person retries after a
-   * failure, so it must be safe to repeat.
+   * Do the work of a kind action that a person ran on an item that this
+   * plugin added (`PluginInboxSubjectKind.actions`). Junior calls it again
+   * when the person retries after a failure, so it must be safe to repeat.
    */
-  inboxItemAnswered?(ctx: InboxItemAnsweredHookContext): Promise<void> | void;
+  inboxItemAction?(ctx: InboxItemActionHookContext): Promise<void> | void;
   /**
    * Remove the person who dismissed an item of an `assigneeRoles` subject
    * kind from the object on the provider. Throw when the provider refuses:

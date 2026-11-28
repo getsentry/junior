@@ -4,7 +4,8 @@ import type { StateAdapter } from "chat";
 import { withLock } from "@/chat/state/locks";
 
 const MAX_CACHE_KEY_LENGTH = 512;
-// A caller that waits longer than this loads the value itself.
+// A caller that waits longer than this for another load gets the stale
+// entry, or loads the value itself.
 const LOAD_WAIT_MS = 10_000;
 // How long a `staleIfError` entry outlives its TTL as the last good value.
 const LAST_GOOD_MS = 24 * 60 * 60 * 1000;
@@ -76,7 +77,8 @@ export function cacheKeyPrefix(namespace: string): string {
  * Create a cache in the state adapter under `junior:cache:{namespace}:`.
  * Entries are wrapped, so `null` and `false` values are cache hits. A stale
  * `staleIfError` entry is returned when its reload throws, unless the caller
- * asked for `refresh`. `onStale` then gets the time that it was stored.
+ * asked for `refresh`, or to a `stale` get. `onStale` then gets the time
+ * that it was stored.
  */
 export function createCache(
   state: StateAdapter,
@@ -91,11 +93,18 @@ export function createCache(
     return `${cacheKeyPrefix(namespace)}${key}`;
   };
   return {
-    async get<T>(key: string): Promise<T | undefined> {
+    async get<T>(
+      key: string,
+      options?: { stale?: boolean },
+    ): Promise<T | undefined> {
       const cacheKey = stateKey(key);
       await state.connect();
       const hit = await state.get<StoredEntry<T>>(cacheKey);
-      return hit && isFresh(hit) ? hit.value : undefined;
+      if (!hit) return undefined;
+      if (isFresh(hit)) return hit.value;
+      if (!options?.stale) return undefined;
+      if (hit.storedAtMs !== undefined) hooks.onStale?.(hit.storedAtMs);
+      return hit.value;
     },
     async getOrLoad<T>(
       key: string,
@@ -107,6 +116,12 @@ export function createCache(
         options?.refresh
           ? undefined
           : ((await state.get<StoredEntry<T>>(cacheKey)) ?? undefined);
+
+      // Only a stale `staleIfError` entry is still here after its TTL.
+      const stale = (entry: StoredEntry<T>) => {
+        if (entry.storedAtMs !== undefined) hooks.onStale?.(entry.storedAtMs);
+        return entry.value;
+      };
 
       await state.connect();
       const hit = await cached();
@@ -141,13 +156,14 @@ export function createCache(
           { keepAlive: true, waitMs: LOAD_WAIT_MS },
         );
         if (attempt.acquired) return attempt.value;
-        // The cache only saves work, so a stuck load must not block this caller.
-        return (await load()).value;
+        // A slow load makes every waiter time out together. Loading here too
+        // would send them all to the slow provider at once, so a waiter with
+        // a stale entry takes it. Without one, the cache only saves work, so
+        // a stuck load must not block this caller.
+        return hit ? stale(hit) : (await load()).value;
       } catch (error) {
-        // Only a stale `staleIfError` entry is still here after its TTL.
         if (!hit) throw error;
-        if (hit.storedAtMs !== undefined) hooks.onStale?.(hit.storedAtMs);
-        return hit.value;
+        return stale(hit);
       }
     },
     async update<T>(

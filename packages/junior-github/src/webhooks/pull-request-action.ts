@@ -7,6 +7,7 @@
  */
 import type {
   ConversationInboxItemChange,
+  ObjectSubject,
   PluginCache,
   PluginCodeChanges,
   PluginConversationInboxItems,
@@ -28,6 +29,12 @@ import {
   type EndedState,
 } from "./pull-request-item.js";
 import { GitHubRequestError } from "../credential-support.js";
+import {
+  type GitHubPullRequestFields,
+  githubObjectCacheKey,
+  writeGitHubPullRequestReviewState,
+} from "../object-cache.js";
+import { githubReviewDecision } from "../pull-request-graphql.js";
 import { type GitHubDb, gitHubDbSchema } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
@@ -369,8 +376,52 @@ interface PullRequestActionSyncContext {
     | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   inboxItems: PluginConversationInboxItems;
+  /** Marks the Conversations that annotate a changed pull request. */
+  objectChanged(subject: ObjectSubject): Promise<void>;
   /** Holds the review asks that wait for the required checks. */
   state: PluginState;
+}
+
+// The review state that the pull request's card shows. GitHub's decision
+// wins. Without one, the reviews decide, and they are read only for an
+// open pull request that is not a draft.
+function cardReview(
+  state: GitHubPullRequestMergeState,
+): GitHubPullRequestFields["review"] {
+  const decision = githubReviewDecision(state.reviewDecision);
+  if (decision || state.state !== "open" || state.draft) return decision;
+  if (state.reviewOutcome === "changesRequested") return "changes_requested";
+  return state.reviewOutcome === "approved" ? "approved" : null;
+}
+
+// Page loads show the cached card, so the read also updates its review
+// state and draft.
+async function cacheReviewState(
+  args: Pick<PullRequestActionSyncContext, "cache" | "objectChanged">,
+  target: GitHubPullRequestTarget,
+  pullRequestId: string,
+  state: GitHubPullRequestMergeState,
+  startedAtMs: number,
+): Promise<void> {
+  const review = cardReview(state);
+  const changed = await writeGitHubPullRequestReviewState(
+    args.cache,
+    githubObjectCacheKey("pulls", target.repositoryFullName, target.number),
+    {
+      draft: state.draft,
+      headSha: state.headSha,
+      requestedReviewers: state.reviewRequestLogins,
+      ...(review !== undefined && { review }),
+      startedAtMs,
+      updatedAt: state.updatedAt,
+    },
+  );
+  if (changed) {
+    await args.objectChanged({
+      id: pullRequestId,
+      kind: GITHUB_INBOX_SUBJECTS.pullRequest,
+    });
+  }
 }
 
 /** Read one Junior pull request from GitHub and change its items. */
@@ -434,11 +485,13 @@ async function syncOne(
   const check = async (
     previous: GitHubPullRequestAction | undefined,
   ): Promise<GitHubPullRequestAction | undefined> => {
+    const startedAtMs = Date.now();
     const state = await loadPullRequestMergeState(
       args.env,
       target,
       requesterLogin,
     );
+    await cacheReviewState(args, target, pullRequestId, state, startedAtMs);
     const activity = latestActivity(state.activity, requesterLogin);
     const asked = await askHeldReview(args, target, state, requesterLogin);
     const ask = await askReason(args.state, target, {
@@ -746,6 +799,8 @@ export function startedTaskSyncContext(
       linkedGitHubLogin((await ctx.users.readIdentity(identityId))?.user),
     log: ctx.log,
     inboxItems: ctx.inboxItems,
+    objectChanged: async (subject) =>
+      await ctx.annotations.objectChanged(subject),
     state: ctx.state,
   };
 }

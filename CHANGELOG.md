@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.321.0
+
+Users gain safer tool exemptions, smoother workflow and monitoring operations, plus clearer post-answer feeds and leaner Inbox handling.
+
+### New Features ✨
+
+- (guardian) Let a plugin list MCP tools that skip review by @dcramer with @sentry-junior in [#4570](https://github.com/getsentry/junior/pull/4570)
+
+### Bug Fixes 🐛
+
+- (egress) Stop plugin response reads from hanging past the limit by @BYK with @sentry-junior in [#4630](https://github.com/getsentry/junior/pull/4630)
+- (lead) Act on a child's done signal instead of ending with noReply by @dcramer with @sentry-junior in [#4623](https://github.com/getsentry/junior/pull/4623)
+- (sentry) Allow creating monitors through the project detectors route by @dcramer with @sentry-junior in [#4629](https://github.com/getsentry/junior/pull/4629)
+
+### Internal Changes 🔧
+
+- (dashboard) Remove the viewer's answer from feed rows by @dcramer and @BYK with @sentry-junior in [#4626](https://github.com/getsentry/junior/pull/4626)
+
 ## 0.320.0
 
 Junior users get clearer work views and search, safer thread archiving, consistent product guidance, and more isolated, reliable testing.

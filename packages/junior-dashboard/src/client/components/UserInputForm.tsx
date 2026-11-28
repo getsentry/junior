@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   buttonUserInputField,
+  type ActorIdentity,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
@@ -17,6 +18,7 @@ import {
   type UserInputRequest,
 } from "@sentry/junior/api/schema";
 
+import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { readAnswerDraft, saveAnswerDraft } from "./answerDrafts";
 import { useInBottomSheet } from "./bottomSheetContext";
@@ -31,7 +33,6 @@ import {
   FieldSet,
   FieldTitle,
 } from "./ui/field";
-import { Input } from "./ui/input";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
 
@@ -57,6 +58,14 @@ function SuggestedLabel(props: { className?: string }) {
       Suggested
     </span>
   );
+}
+
+// Text that the agent wrote for a question, with its mentions resolved.
+function QuestionText(props: {
+  mentions: readonly ActorIdentity[] | undefined;
+  text: string;
+}) {
+  return <DisplayText inline mentions={props.mentions} text={props.text} />;
 }
 
 // Each choice is a choice card, so the hit area and the selected state read
@@ -91,6 +100,7 @@ function ChoiceOption(props: {
 function ChoiceField(props: {
   disabled: boolean;
   field: Extract<UserInputField, { kind: "choice" | "multi_choice" }>;
+  mentions: readonly ActorIdentity[] | undefined;
   onChange(values: string[]): void;
   values: string[];
 }) {
@@ -108,7 +118,9 @@ function ChoiceField(props: {
     </FieldLegend>
   );
   const description = field.description ? (
-    <FieldDescription id={`${id}-help`}>{field.description}</FieldDescription>
+    <FieldDescription id={`${id}-help`}>
+      <QuestionText mentions={props.mentions} text={field.description} />
+    </FieldDescription>
   ) : null;
   const describedBy = field.description ? `${id}-help` : undefined;
   if (field.kind === "choice") {
@@ -126,7 +138,18 @@ function ChoiceField(props: {
         >
           {field.options.map((option) => (
             <ChoiceOption
-              control={<RadioGroupItem value={option.label} />}
+              control={
+                <RadioGroupItem
+                  // A click on the picked radio takes the pick back, so a
+                  // person can leave the question for the notes.
+                  onClick={(event) => {
+                    if (props.values[0] !== option.label) return;
+                    event.preventDefault();
+                    props.onChange([]);
+                  }}
+                  value={option.label}
+                />
+              }
               key={option.label}
               option={option}
             />
@@ -169,6 +192,7 @@ function TextField(props: {
   description?: string | undefined;
   disabled: boolean;
   label: string;
+  mentions?: readonly ActorIdentity[] | undefined;
   onChange(value: string): void;
   value: string;
 }) {
@@ -178,7 +202,7 @@ function TextField(props: {
       <FieldLabel htmlFor={id}>{props.label}</FieldLabel>
       {props.description ? (
         <FieldDescription id={`${id}-help`}>
-          {props.description}
+          <QuestionText mentions={props.mentions} text={props.description} />
         </FieldDescription>
       ) : null}
       <Textarea
@@ -195,14 +219,15 @@ function TextField(props: {
 
 /**
  * Render the answer controls of an action item request: one button per
- * choice for a single short choice field, otherwise a form with every field
- * and a note. `draft` fills the form once, on mount. Without it, the form
- * restores the unsent answers saved by `requestId` (the Inbox item id), which
- * clear when the item closes. A failed `onSubmit` lets the reader try again.
+ * choice for a single short choice field, otherwise every field, then the
+ * additional notes. `draft`, or else the unsent answers saved by
+ * `requestId`, fills the form on mount.
  */
 export function UserInputForm(props: {
   /** An answer to start from, such as one that failed to send. */
   draft?: Pick<UserInputAnswer, "other" | "values">;
+  /** People that the question text mentions. */
+  mentions?: readonly ActorIdentity[] | undefined;
   onSubmit(answer: UserInputAnswer): Promise<void>;
   onUnsentChange?(unsent: boolean): void;
   request: UserInputRequest;
@@ -226,7 +251,10 @@ export function UserInputForm(props: {
   const choicesId = useId();
   const [draft] = useState(() =>
     props.draft
-      ? { other: props.draft.other ?? "", values: props.draft.values }
+      ? {
+          other: props.draft.other ?? "",
+          values: props.draft.values,
+        }
       : readAnswerDraft(props.requestId),
   );
   const [values, setValues] = useState(draft.values);
@@ -273,7 +301,9 @@ export function UserInputForm(props: {
   };
   const normalized = normalizeUserInputAnswer(props.request, answer);
   const empty = isEmptyUserInputAnswer(normalized);
-  const answeredCount = Object.keys(normalized.values).length;
+  const answeredCount = props.request.fields.filter(
+    (field) => normalized.values[field.id],
+  ).length;
   const fieldCount = props.request.fields.length;
   // An action sends on click, so only the form can hold unsent input.
   const unsent = !actionField && !sending && !empty;
@@ -328,8 +358,8 @@ export function UserInputForm(props: {
 
   const picked = choiceField ? values[choiceField.id]?.[0] : undefined;
   // A second click on the picked choice takes the pick back.
-  const toggle = (fieldId: string, label: string) =>
-    changeValues(fieldId, picked === label ? [] : [label]);
+  const toggle = (field: UserInputField, label: string) =>
+    changeValues(field.id, picked === label ? [] : [label]);
   const described = choiceField?.options.some((option) => option.description);
   return (
     <form
@@ -354,7 +384,7 @@ export function UserInputForm(props: {
                 data-picked={picked === option.label ? "" : undefined}
                 disabled={sending}
                 key={option.label}
-                onClick={() => toggle(choiceField.id, option.label)}
+                onClick={() => toggle(choiceField, option.label)}
                 type="button"
               >
                 <span className="grid min-w-0 flex-1 gap-0.5 break-words">
@@ -387,7 +417,7 @@ export function UserInputForm(props: {
                 data-picked={picked === option.label ? "" : undefined}
                 disabled={sending}
                 key={option.label}
-                onClick={() => toggle(choiceField.id, option.label)}
+                onClick={() => toggle(choiceField, option.label)}
                 variant="outline"
               >
                 {option.label}
@@ -406,6 +436,7 @@ export function UserInputForm(props: {
               disabled={sending}
               key={field.id}
               label={field.label}
+              mentions={props.mentions}
               onChange={(value) => changeValues(field.id, [value])}
               value={values[field.id]?.[0] ?? ""}
             />
@@ -414,22 +445,22 @@ export function UserInputForm(props: {
               disabled={sending}
               field={field}
               key={field.id}
+              mentions={props.mentions}
               onChange={(next) => changeValues(field.id, next)}
               values={values[field.id] ?? []}
             />
           ),
         )
       )}
-      {choiceField ? null : (
-        <TextField
-          className="min-h-16"
-          description={USER_INPUT_NOTE.description}
-          disabled={sending}
-          label={USER_INPUT_NOTE.label}
-          onChange={changeOther}
-          value={other}
-        />
-      )}
+      {/* Every question card has the same notes box. */}
+      <TextField
+        className="min-h-16"
+        description={USER_INPUT_NOTE.description}
+        disabled={sending}
+        label={USER_INPUT_NOTE.label}
+        onChange={changeOther}
+        value={other}
+      />
       {/* Send is the main action, so it ends the row, on the right. */}
       <div
         className={cn(
@@ -437,18 +468,6 @@ export function UserInputForm(props: {
           inSheet && SHEET_ACTIONS_CLASS,
         )}
       >
-        {choiceField ? (
-          // One line, so the choices stay the answer and the note stays
-          // short.
-          <Input
-            aria-label={USER_INPUT_NOTE.label}
-            className="min-w-48 flex-1"
-            disabled={sending}
-            onChange={(event) => changeOther(event.target.value)}
-            placeholder="Add a note"
-            value={other}
-          />
-        ) : null}
         {/* The actions stay on one row, also on a phone. */}
         <div className="flex items-center gap-1">
           {secondary}

@@ -1,7 +1,7 @@
 /**
- * Patches that read the merge state and check counts of a pull request a
- * short time after a push or a check event, and write only those fields
- * into its cache entry.
+ * Patches that read the merge state, check counts, and review state of a
+ * pull request soon after a push, check, or review event, and write only
+ * those fields into its cache entry, or its whole card when it has none.
  *
  * GitHub computes mergeability shortly after a push, so a webhook often
  * says `mergeable: null`, and check events carry no counts. The entry then
@@ -16,16 +16,19 @@ import type {
   EventPublisher,
   PluginCache,
   PluginLogger,
+  PluginStartedTaskContext,
   PluginStartedTaskDefinition,
   PluginState,
   PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  clearGitHubReviewAfterRead,
   GITHUB_PULL_REQUEST_CACHE,
   GITHUB_PULL_REQUEST_PENDING_CACHE,
   type GitHubPullRequestFields,
   isOlderGitHubObject,
+  storeGitHubPullRequestFields,
 } from "./object-cache.js";
 import { GITHUB_INBOX_SUBJECTS } from "./inbox-subjects.js";
 import {
@@ -36,6 +39,10 @@ import {
   aliasedPullRequests,
   githubCheckCounts,
   githubMergeable,
+  githubPullRequestFieldsFromNode,
+  githubPullRequestReview,
+  githubRequestedReviewers,
+  pullRequestCardNodeSchema,
   pullRequestHeadFactsNodeSchema,
   type PullRequestRef,
   pullRequestRefFromCacheKey,
@@ -87,13 +94,7 @@ export async function startGitHubPullRequestPatch(args: {
   });
 }
 
-// GitHub's id names the pull request in Annotations. GitHub's schema
-// lets it be null, and the patch does not need it.
-const headFactsNodeSchema = pullRequestHeadFactsNodeSchema.extend({
-  databaseId: z.number().int().positive().nullish(),
-});
-
-type HeadFactsNode = z.output<typeof headFactsNodeSchema>;
+type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 
 // Write the read fields, only over an entry of the same head commit that
 // is not newer than the read. Return `again` to read again: GitHub still
@@ -136,10 +137,10 @@ async function writeHeadFacts(
       checks: githubCheckCounts(node.commits),
       // A check event leaves a known merge state as it is.
       mergeable: mergeable ?? current.mergeable,
+      requested_reviewers: githubRequestedReviewers(node),
+      review: githubPullRequestReview(node),
     };
-    changed =
-      JSON.stringify([current.checks, current.mergeable]) !==
-      JSON.stringify([value.checks, value.mergeable]);
+    changed = JSON.stringify(current) !== JSON.stringify(value);
     return {
       ...(computing && last
         ? GITHUB_PULL_REQUEST_PENDING_CACHE
@@ -198,18 +199,49 @@ async function expirePending(cache: PluginCache, key: string): Promise<void> {
   );
 }
 
+// The entry is gone, such as after its TTL, so the patch stores the whole
+// card. A failure throws, and the queue delivers the task again.
+async function storeCard(
+  ctx: PluginStartedTaskContext<z.output<typeof payloadSchema>>,
+  ref: PullRequestRef,
+  loadCards: (refs: PullRequestRef[]) => Promise<unknown>,
+): Promise<void> {
+  const startedAtMs = Date.now();
+  const [node] = aliasedPullRequests(
+    await loadCards([ref]),
+    1,
+    pullRequestCardNodeSchema,
+  );
+  if (!node) return;
+  const { changed, stored } = await storeGitHubPullRequestFields(
+    ctx.cache,
+    ctx.payload.key,
+    githubPullRequestFieldsFromNode(node),
+    startedAtMs,
+  );
+  // A newer entry rejects a stale read, whose merge state must not mark.
+  if (stored && node.state === "OPEN") await observeMergeState(ctx, ref, node);
+  if (node.databaseId && changed) {
+    await ctx.annotations.objectChanged({
+      id: String(node.databaseId),
+      kind: GITHUB_INBOX_SUBJECTS.pullRequest,
+    });
+  }
+}
+
 /**
- * Read the merge state and checks of one pull request and write them into
- * its entry. While the read is not final, the task throws, and the queue
- * delivers it again with backoff. On the last delivery, a merge state
- * that GitHub still computes stays pending only briefly, so the next read
- * asks GitHub. A pull request missing from the answer, of another head
- * commit, or whose query fails on the last delivery, leaves its pending
- * fields fresh only briefly too. A change calls `objectChanged`.
+ * Read the merge state, checks, and review state of one pull request into
+ * its entry, or its whole card when it has none. While the read is not
+ * final, the task throws, and the queue delivers it again with backoff. On
+ * the last delivery, a merge state that GitHub still computes stays pending
+ * only briefly, so the next read asks GitHub. A pull request missing from
+ * the answer, of another head commit, or whose query fails on the last
+ * delivery, leaves its pending fields fresh only briefly too.
  */
-export function githubPullRequestPatchTask(
-  loadHeadFacts: (refs: PullRequestRef[]) => Promise<unknown>,
-): PluginStartedTaskDefinition<typeof payloadSchema> {
+export function githubPullRequestPatchTask(loaders: {
+  loadCards: (refs: PullRequestRef[]) => Promise<unknown>;
+  loadHeadFacts: (refs: PullRequestRef[]) => Promise<unknown>;
+}): PluginStartedTaskDefinition<typeof payloadSchema> {
   return {
     payload: payloadSchema,
     async run(ctx) {
@@ -217,16 +249,23 @@ export function githubPullRequestPatchTask(
       const ref = pullRequestRefFromCacheKey(key);
       if (!ref)
         throw new Error(`GitHub patch key ${key} names no pull request`);
+      const cached = await ctx.cache.get<GitHubPullRequestFields | null>(key, {
+        stale: true,
+      });
+      if (cached === undefined) {
+        await storeCard(ctx, ref, loaders.loadCards);
+        return;
+      }
       // A push since this task started has its own task, which owns the
       // entry now.
-      const cached = await ctx.cache.get<GitHubPullRequestFields | null>(key);
       if (cached && cached.head?.sha !== sha) return;
+      const startedAtMs = Date.now();
       let node: HeadFactsNode | undefined;
       try {
         [node] = aliasedPullRequests(
-          await loadHeadFacts([ref]),
+          await loaders.loadHeadFacts([ref]),
           1,
-          headFactsNodeSchema,
+          pullRequestHeadFactsNodeSchema,
         );
       } catch (error) {
         if (ctx.lastDelivery) await expirePending(ctx.cache, key);
@@ -237,7 +276,14 @@ export function githubPullRequestPatchTask(
         : undefined;
       // A read that the entry rejects is stale: a newer push or webhook
       // came after it, so its merge state must not mark or publish.
-      if (node && write?.written) await observeMergeState(ctx, ref, node);
+      if (node && write?.written) {
+        // A review webhook during the read makes its decision stale.
+        await clearGitHubReviewAfterRead(ctx.cache, key, {
+          review: githubPullRequestReview(node),
+          startedAtMs,
+        });
+        await observeMergeState(ctx, ref, node);
+      }
       if (node?.databaseId && write?.changed) {
         await ctx.annotations.objectChanged({
           id: String(node.databaseId),

@@ -22,7 +22,9 @@ the check first. A rule that only review enforces is a judgment call.
 | No mutable runtime globals. No test-only singleton mutation APIs. | `test-architecture:check` for tests, review elsewhere |
 | Query tables with the Drizzle query builder. Use `sql` only for expressions inside a builder query, or for statements without a table. | oxlint `junior/no-raw-sql-queries` |
 | Store money in Postgres as whole micro-USD: a `bigint` column or an integer metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`. | `money-units:check` |
-| Read GitHub state from GitHub through the plugin cache. Do not copy it into tables. | `provider-state:check` |
+| Junior owns its uptime. Never call a third-party API, such as GitHub, even through a cache, to load or show a Conversation or its transcript, or for state that the agent needs to work, such as Annotations. Store that state from webhooks and tools. Another feature that needs provider state gets its own design. Call a third party rarely, almost always from a tool or a webhook. | Review |
+| Use the Postgres planner defaults. Do not change planner settings, such as `jit_above_cost` or `enable_seqscan`, or shape a query or a test around the plan. When the defaults are too slow, the schema is wrong: fix it. | Review |
+| Isolate each feature, such as To-dos or the Inbox, in its own module. It reaches the core agent loop only through plugin hooks, like `packages/junior/src/chat/todos/registration.ts`, and core does not call it. Extend a hook before you add one. Feature code in core needs a comment that says why it cannot be split out. | Review |
 | A construct in reply content, such as a table or a card, must render on every surface that shows replies: natively, or with a fallback that keeps its content. | `reply-rendering:check` |
 | Group files by feature and name paths by role. No feature-directory barrels. | Review |
 | Exported functions get a brief JSDoc that states intent. A comment says only what the code and the doc that owns the fact do not. | `comment-length:check`, review |

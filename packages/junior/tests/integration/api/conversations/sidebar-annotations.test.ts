@@ -8,6 +8,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { juniorConversationParticipants } from "@/db/schema";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
+import { resolveObjectLinks } from "@/api/objects/resolve";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -19,6 +20,10 @@ import {
   pullRequest,
   stubGitHubApp,
 } from "../../../fixtures/github-objects";
+import {
+  readLiveCards,
+  recordOutboundRequests,
+} from "../../../fixtures/object-cards";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 import { signedInViewer } from "../../../fixtures/user";
 import { mswServer } from "../../../msw/server";
@@ -238,7 +243,7 @@ describe("conversation list sidebar annotations", () => {
     }
   });
 
-  test("shows each row's objects as the viewer can read them now, with its child agents' objects", async () => {
+  test("shows each row's objects from the caches, with its child agents' objects, and reads no provider", async () => {
     stubGitHubApp();
     mswServer.use(
       http.get(`${GITHUB_API}/pulls/36`, () =>
@@ -303,7 +308,28 @@ describe("conversation list sidebar annotations", () => {
         (await readConversationFeedFromSql({ viewer })).conversations.find(
           (row) => row.conversationId === rootId,
         )?.sidebarAnnotations;
-      await expect(chips(alice)).resolves.toEqual([
+      const titleOnly = [
+        {
+          key: "getsentry/junior#36",
+          label: "junior",
+          objectType: "code_change",
+          title: "Draft: retry uploads",
+          url: `${GITHUB_REPO}/pull/36`,
+        },
+      ];
+      const outbound = recordOutboundRequests();
+      // The feed looks up a Slack workspace's domain once a day. No card
+      // reads a provider.
+      const cardReads = () =>
+        outbound.urls.filter((url) => !url.endsWith("/api/team.info"));
+      // Nothing holds the object yet, so the row shows the stored title
+      // and asks GitHub nothing.
+      await expect(chips(alice)).resolves.toEqual(titleOnly);
+      expect(cardReads()).toEqual([]);
+      // A live read keeps the object, as a webhook does.
+      await readLiveCards(alice, [`${GITHUB_REPO}/pull/36`]);
+      outbound.urls.length = 0;
+      const stored = [
         {
           key: "getsentry/junior#36",
           label: "junior",
@@ -312,16 +338,23 @@ describe("conversation list sidebar annotations", () => {
           title: "Retry flaky uploads",
           url: `${GITHUB_REPO}/pull/36`,
         },
-      ]);
-      // A reader who cannot see the repository gets only the label.
-      await expect(chips(bob)).resolves.toEqual([
-        {
-          key: "getsentry/junior#36",
-          label: "junior",
-          objectType: "code_change",
-          url: `${GITHUB_REPO}/pull/36`,
-        },
-      ]);
+      ];
+      await expect(chips(alice)).resolves.toEqual(stored);
+      // A reader who cannot see the repository but can read the
+      // Conversation sees the stored object too.
+      await expect(chips(bob)).resolves.toEqual(stored);
+      // A pull request at its issue URL shows from the pulls cache too.
+      const [atIssueUrl] = await resolveObjectLinks(
+        bob,
+        [`${GITHUB_REPO}/issues/36`],
+        { cacheOnly: true },
+      );
+      expect(atIssueUrl?.object).toMatchObject({
+        status: "merged",
+        title: "Retry flaky uploads",
+      });
+      expect(cardReads()).toEqual([]);
+      outbound.stop();
     } finally {
       vi.unstubAllEnvs();
       await closeDb();
