@@ -1,5 +1,5 @@
 import type { Destination } from "@sentry/junior-plugin-api";
-import type { Delivery } from "@/core/delivery/deliver";
+import type { Delivery } from "@/delivery/deliver";
 
 /** One try of a send, as the recording Delivery saw it. */
 export type RecordedSend = { text: string; destination: Destination };
@@ -18,7 +18,13 @@ export function createRecordingDelivery() {
       if (failure) {
         throw failure;
       }
-      return { providerMessageId: `message-${sends.length}` };
+      return {
+        providerMessageId: `message-${sends.length}`,
+        // A Slack reply with no thread starts one at its post.
+        ...(destination.platform === "slack" && !destination.threadTs
+          ? { providerConversationId: `message-${sends.length}` }
+          : undefined),
+      };
     },
   };
   return {

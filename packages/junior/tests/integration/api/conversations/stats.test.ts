@@ -14,11 +14,8 @@ import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
-import {
-  expectNoFullScan,
-  expectSqlBudget,
-  measureSql,
-} from "../../../fixtures/sql-budget";
+import { expectSqlBudget, measureSql } from "../../../fixtures/sql-budget";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import { createWaitUntilCollector } from "../../../fixtures/wait-until";
 import { recordTurn, turnActorIdentityId } from "../people/fixture";
 
@@ -324,14 +321,11 @@ describe("conversation stats API", () => {
       }
 
       // One round of hour-grained reads when the report is not cached.
-      const response = await expectNoFullScan(() =>
-        expectSqlBudget(
-          () =>
-            createJuniorApi().request(
-              "http://localhost/api/conversations/stats",
-            ),
-          { statements: 5, serialRounds: 1 },
-        ),
+      await seedDashboardScale();
+      const response = await expectSqlBudget(
+        () =>
+          createJuniorApi().request("http://localhost/api/conversations/stats"),
+        { statements: 5, serialRounds: 1 },
       );
       expect(response.status).toBe(200);
       const report = conversationStatsReportSchema.parse(await response.json());

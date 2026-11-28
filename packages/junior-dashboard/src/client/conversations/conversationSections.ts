@@ -59,13 +59,10 @@ const ATTENTION_GROUPS = ["needs_you", "working", "waiting", "done"] as const;
 export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
 
 /** The attention group of one row, and when it last moved. */
-export type Attention = { group: AttentionGroup; time: number };
+type Attention = { group: AttentionGroup; time: number };
 
-/**
- * Sort rows in `ATTENTION_GROUPS` order, each group newest first. In flight
- * and every Threads list use this order.
- */
-export function attentionSort<T>(
+/** Sort rows in `ATTENTION_GROUPS` order, each group newest first. */
+function attentionSort<T>(
   rows: readonly T[],
   attention: (row: T) => Attention,
 ): T[] {

@@ -15,6 +15,7 @@ import * as z from "zod";
 import { readGoogleConfig } from "../config";
 import { googleApiError, googleApiRequest, isTimeZone } from "../google-api";
 import { formatInterval } from "../calendar/events";
+import { GOOGLE_SUBJECT_KINDS } from "../inbox-subjects";
 import { htmlSummary } from "./summary";
 
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
@@ -40,6 +41,21 @@ const linkedEventSchema = z.object({
 });
 
 type LinkedEvent = z.infer<typeof linkedEventSchema>;
+
+const CALENDAR_HOSTS = new Set(["calendar.google.com", "www.google.com"]);
+
+/**
+ * Return the Calendar link itself, or the Calendar link that an
+ * AccountChooser link opens. Workspace event links use AccountChooser so
+ * that they open in the right account.
+ */
+function calendarLink(url: URL): URL | undefined {
+  if (url.hostname !== "accounts.google.com") return url;
+  const link = URL.parse(url.searchParams.get("continue") ?? "");
+  return link?.protocol === "https:" && CALENDAR_HOSTS.has(link.hostname)
+    ? link
+    : undefined;
+}
 
 /**
  * Return the event id when the link points to an event on the calendar of
@@ -100,24 +116,39 @@ function viewerIsOnEvent(event: LinkedEvent, viewer: string): boolean {
   ].some((email) => email?.toLowerCase() === viewer);
 }
 
-// Long enough that the access check and the card share one Calendar read.
-const EVENT_READ_TTL_MS = 10_000;
+// A live access check always reads the event again, and the card shares
+// that read, so a live card is never stale. The entry lives five minutes,
+// and then stays as the last good event for page loads.
+const EVENT_READ_TTL_MS = 300_000;
 
 /**
  * Read the linked event from Junior's calendar. Nothing for an event on
- * another calendar, or a deleted or cancelled one.
+ * another calendar, or one that Google no longer returns.
  */
 async function readLinkedEvent(
   ctx: ObjectLinkContext,
   url: URL,
+  options?: { refresh: true },
 ): Promise<LinkedEvent | null> {
   const config = readGoogleConfig();
-  const eventId = config && parseEventLink(url, config.accountEmail);
+  const link = calendarLink(url);
+  const eventId = config && link && parseEventLink(link, config.accountEmail);
   if (!eventId) return null;
-  return await ctx.cache.getOrLoad(`calendar-event:${eventId}`, async () => ({
-    value: await fetchLinkedEvent(ctx, eventId),
-    ttlMs: EVENT_READ_TTL_MS,
-  }));
+  const key = `calendar-event:${eventId}`;
+  if (ctx.cacheOnly) {
+    return (
+      (await ctx.cache.get<LinkedEvent | null>(key, { stale: true })) ?? null
+    );
+  }
+  return await ctx.cache.getOrLoad(
+    key,
+    async () => ({
+      staleIfError: true,
+      value: await fetchLinkedEvent(ctx, eventId),
+      ttlMs: EVENT_READ_TTL_MS,
+    }),
+    options,
+  );
 }
 
 async function fetchLinkedEvent(
@@ -135,16 +166,19 @@ async function fetchLinkedEvent(
     throw googleApiError("google.calendar.event.get", response);
   }
   const parsed = linkedEventSchema.safeParse(response.body);
-  return parsed.success && parsed.data.status !== "cancelled"
-    ? parsed.data
-    : null;
+  return parsed.success ? parsed.data : null;
 }
 
 async function canViewGoogleCalendarLink(
   ctx: ObjectLinkContext,
   url: URL,
 ): Promise<boolean> {
-  const event = await readLinkedEvent(ctx, url);
+  // A page load shows the stored card to anyone who can read the
+  // Conversation, so it checks no viewer access.
+  if (ctx.cacheOnly) return true;
+  // The guests decide access, so a live check never uses the last good
+  // event. The card then reads the entry that this check stored.
+  const event = await readLinkedEvent(ctx, url, { refresh: true });
   return !!event && viewerIsOnEvent(event, ctx.viewer.email.toLowerCase());
 }
 
@@ -159,10 +193,13 @@ async function resolveGoogleCalendarLink(
     kind: "object",
     objectType: "calendar_event",
     key: event.id,
+    subject: { id: event.id, kind: GOOGLE_SUBJECT_KINDS.calendarEvent },
     label: title.slice(0, 80),
     title: title.slice(0, 512),
     url: url.href,
     sourceUpdatedAt: event.updated,
+    // Google keeps a cancelled event, so its card shows the cancellation.
+    ...(event.status === "cancelled" ? { status: "cancelled" } : undefined),
     facts: {
       type: "calendar_event",
       summary: htmlSummary(event.description),
@@ -171,15 +208,27 @@ async function resolveGoogleCalendarLink(
   };
 }
 
+const CALENDAR_EVENT_FILTERS = [
+  { host: "calendar.google.com", path: "/calendar/event" },
+  { host: "www.google.com", path: "/calendar/event" },
+  { host: "calendar.google.com", pathPattern: "/calendar/r/eventedit/*" },
+  { host: "calendar.google.com", pathPattern: "/calendar/u/*/r/eventedit/*" },
+];
+
 /** Google Calendar event links that resolve to Calendar event cards. */
 export const googleCalendarLinks: PluginObjectLinkDefinition = {
   filters: [
-    { host: "calendar.google.com", path: "/calendar/event" },
-    { host: "www.google.com", path: "/calendar/event" },
-    { host: "calendar.google.com", pathPattern: "/calendar/r/eventedit/*" },
-    { host: "calendar.google.com", pathPattern: "/calendar/u/*/r/eventedit/*" },
+    ...CALENDAR_EVENT_FILTERS,
+    // AccountChooser opens many Google links, so claim only Calendar ones.
+    {
+      host: "accounts.google.com",
+      path: "/AccountChooser",
+      target: { param: "continue", filters: CALENDAR_EVENT_FILTERS },
+    },
   ],
+  cacheOnlyReads: true,
   canView: canViewGoogleCalendarLink,
+  label: (url) => (calendarLink(url) ? "Calendar event" : undefined),
   objectTypes: ["calendar_event"],
   resolve: resolveGoogleCalendarLink,
 };

@@ -13,6 +13,7 @@ const responseSchema = z.object({
   body: z.string().nullable().optional(),
   user: person.nullable().optional(),
   requested_reviewers: z.array(person).optional(),
+  approved_by: z.array(person).optional(),
   assignees: z.array(person).optional(),
   labels: z
     .array(z.union([z.string(), z.object({ name: z.string() })]))
@@ -44,6 +45,12 @@ const short = (value: string | undefined) => {
   const text = value?.trim();
   return text ? (text.length > 64 ? `${text.slice(0, 63)}…` : text) : undefined;
 };
+
+const logins = (people: Array<{ login: string }> | undefined) =>
+  people
+    ?.slice(0, 5)
+    .map((user) => short(user.login)!)
+    .filter(Boolean);
 
 /** Remove Junior's footers and HTML comments from a GitHub body. */
 function visibleBody(body: string | null | undefined): string {
@@ -193,10 +200,9 @@ export function githubObjectFacts(
             {
               type,
               author: short(data.user?.login),
-              reviewers: data.requested_reviewers
-                ?.slice(0, 5)
-                .map((user) => short(user.login)!)
-                .filter(Boolean),
+              reviewers: logins(data.requested_reviewers),
+              approvers: logins(data.approved_by),
+              assignees: logins(data.assignees),
               review: data.review ?? undefined,
               sourceBranch: short(data.head?.ref),
               targetBranch: short(data.base?.ref),
@@ -215,10 +221,7 @@ export function githubObjectFacts(
           )
         : {
             type,
-            assignees: data.assignees
-              ?.slice(0, 5)
-              .map((user) => short(user.login)!)
-              .filter(Boolean),
+            assignees: logins(data.assignees),
             labels: data.labels
               ?.slice(0, 5)
               .map((label) =>

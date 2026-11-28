@@ -91,7 +91,7 @@ describe("Inbox", () => {
 
     // The run's task lists the open question by its id, so the run changes
     // that item, or leaves it, and asks no second question.
-    expect(completedToolCalls("addInboxItem", delivery)).toEqual([]);
+    expect(completedToolCalls("askUserQuestion", delivery)).toEqual([]);
     for (const call of completedToolCalls("updateInboxItem", delivery)) {
       expect(itemOutput(call).item.id).toBe(existing.id);
     }
@@ -158,7 +158,7 @@ describe("Inbox", () => {
     // one Turn handles them all, and the agent does not ask again. The
     // dismiss is not a decision, so the agent never sees it.
     expect(conversation.turns).toHaveLength(1);
-    expect(toolCallsOf("addInboxItem", conversation)).toEqual([]);
+    expect(toolCallsOf("askUserQuestion", conversation)).toEqual([]);
     expect(conversation.replies.map((entry) => entry.text).join("\n")).toMatch(
       /391/,
     );

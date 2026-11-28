@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getDashboardAgentName } from "../agentName";
-import { Ellipsis, LockKeyhole } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
 import {
   conversationTodoSchema,
   conversationTodosReportSchema,
@@ -8,24 +7,19 @@ import {
   type TodoStatusBody,
 } from "@sentry/junior/api/schema";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu";
+import { getDashboardAgentName } from "../agentName";
+import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { DisplayText } from "../display-text/DisplayText";
 import { patch } from "../http";
 import { revalidatedJsonQuery } from "../revalidation";
-import { cn } from "../styles";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
-import { todoStatusIcons } from "./todoStatusIcons";
 import {
-  DetailsCard,
-  DetailsList,
   DetailsRow,
   DetailsRowLine,
+  DetailsRowMenu,
+  DetailsSection,
 } from "./DetailsList";
+import { todoStatusIcons } from "./todoStatusIcons";
 
 /** Load the open To-dos of one Conversation, then the latest closed ones. */
 export function useConversationTodos(conversationId: string) {
@@ -39,99 +33,7 @@ export function useConversationTodos(conversationId: string) {
   });
 }
 
-const statusLabels: Record<ConversationTodo["status"], string> = {
-  open: "Open",
-  in_progress: "In progress",
-  done: "Done",
-  dropped: "Dropped",
-};
-
-function assigneeLabel(todo: ConversationTodo): string {
-  const { assignee } = todo;
-  if (assignee.kind === "self") return getDashboardAgentName();
-  if (assignee.kind === "agent") return assignee.name ?? "Child agent";
-  return assignee.name ?? "Person";
-}
-
-/**
- * Show the To-dos of one Conversation: open ones, then recently closed ones,
- * each with its status and assignee. Participants can start, close, or
- * reopen a To-do. The agent sees that change on its next Turn.
- */
-export function ConversationTodos(props: {
-  canEdit: boolean;
-  conversationId: string;
-}) {
-  const todos = useConversationTodos(props.conversationId).data?.todos ?? [];
-  if (todos.length === 0) return null;
-  const open = todos.filter(
-    (todo) => todo.status === "open" || todo.status === "in_progress",
-  ).length;
-  return (
-    <DetailsCard count={open} title="To-dos">
-      <DetailsList
-        itemKey={(todo) => String(todo.id)}
-        items={todos}
-        renderItem={(todo) => (
-          <TodoRow
-            canEdit={props.canEdit && todo.redacted !== true}
-            conversationId={props.conversationId}
-            todo={todo}
-          />
-        )}
-      />
-    </DetailsCard>
-  );
-}
-
-function TodoRow(props: {
-  canEdit: boolean;
-  conversationId: string;
-  todo: ConversationTodo;
-}) {
-  const { todo } = props;
-  const Icon = todo.redacted ? LockKeyhole : todoStatusIcons[todo.status];
-  const closed = todo.status === "done" || todo.status === "dropped";
-  const row = (
-    <DetailsRow
-      icon={
-        <Icon
-          aria-label={statusLabels[todo.status]}
-          className={cn(
-            "size-3.5",
-            // Same tone as the running Thread and Task status icons.
-            todo.status === "in_progress" && "text-dashboard-accent",
-            closed && "text-dashboard-text-faint",
-          )}
-          role="img"
-        />
-      }
-      meta={assigneeLabel(todo)}
-      title={
-        <span
-          className={cn(closed && "text-dashboard-text-muted line-through")}
-        >
-          {todo.title ?? "Private To-do"}
-        </span>
-      }
-      tooltip={todo.changedBy ? `Changed by ${todo.changedBy}` : undefined}
-    >
-      {todo.notes ? (
-        <DetailsRowLine className="line-clamp-2 break-words">
-          <DisplayText inline text={todo.notes} />
-        </DetailsRowLine>
-      ) : null}
-    </DetailsRow>
-  );
-  if (!props.canEdit) return row;
-  return (
-    <div className="flex min-w-0 items-start gap-0.5">
-      <div className="min-w-0 flex-1">{row}</div>
-      <TodoMenu conversationId={props.conversationId} todo={todo} />
-    </div>
-  );
-}
-
+/** The status changes that a Participant can make from each status. */
 const todoActions: Record<
   ConversationTodo["status"],
   Array<{ label: string; status: TodoStatusBody["status"] }>
@@ -143,39 +45,119 @@ const todoActions: Record<
   ],
   in_progress: [
     { label: "Mark done", status: "done" },
-    { label: "Stop", status: "open" },
+    { label: "Mark not started", status: "open" },
     { label: "Drop", status: "dropped" },
   ],
   done: [{ label: "Reopen", status: "open" }],
   dropped: [{ label: "Reopen", status: "open" }],
 };
 
-function TodoMenu(props: { conversationId: string; todo: ConversationTodo }) {
-  const setStatus = useSetTodoStatus(props.conversationId, props.todo.id);
-  const actions = todoActions[props.todo.status];
+const statusLabels: Record<ConversationTodo["status"], string> = {
+  open: "Not started",
+  in_progress: "In progress",
+  done: "Done",
+  dropped: "Dropped",
+};
+
+/** Name who owns a To-do that Details lists: "You", a person, or the bot. */
+export function todoOwner(todo: ConversationTodo): string {
+  const { assignee } = todo;
+  if (assignee.kind !== "user") return getDashboardAgentName();
+  if (assignee.viewer) return "You";
+  return assignee.name ?? "Person";
+}
+
+/**
+ * List the To-dos of one Conversation, each with its owner and notes. A
+ * To-do for a child agent stays out: Agents shows that child. So does a
+ * viewer's open To-do that Needs you shows. Done and dropped To-dos hide
+ * behind "Show finished". Participants change a To-do's status from its
+ * menu.
+ */
+export function ConversationTodoList(props: {
+  canEdit: boolean;
+  conversationId: string;
+  /** The viewer's To-dos that Needs you shows. */
+  needsYouTodoIds: ReadonlySet<number>;
+}) {
+  const todos = (
+    useConversationTodos(props.conversationId).data?.todos ?? []
+  ).filter((todo) => todo.assignee.kind !== "agent");
+  const row = (todo: ConversationTodo) => (
+    <TodoRow
+      canEdit={props.canEdit && !todo.redacted}
+      conversationId={props.conversationId}
+      key={todo.id}
+      owner={todoOwner(todo)}
+      todo={todo}
+    />
+  );
+  const closed = (todo: ConversationTodo) =>
+    todo.status === "done" || todo.status === "dropped";
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger
-        aria-label={`Change ${props.todo.title ?? "To-do"}`}
-        className="grid size-8 shrink-0 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-        disabled={setStatus.isPending}
-      >
-        <Ellipsis aria-hidden="true" size={15} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-36">
-        {actions.map((action) => (
-          <DropdownMenuItem
-            key={action.status}
-            onClick={() => setStatus.mutate(action.status)}
-          >
-            {action.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <DetailsSection
+      finished={todos.filter(closed).map(row)}
+      rows={todos
+        .filter((todo) => !closed(todo) && !props.needsYouTodoIds.has(todo.id))
+        .map(row)}
+      title="To-dos"
+    />
   );
 }
 
+function TodoRow(props: {
+  canEdit: boolean;
+  conversationId: string;
+  owner: string;
+  todo: ConversationTodo;
+}) {
+  const { todo } = props;
+  const setStatus = useSetTodoStatus(props.conversationId, todo.id);
+  const title = todo.title ?? "Private To-do";
+  const Icon = todo.redacted ? LockKeyhole : todoStatusIcons[todo.status];
+  return (
+    <DetailsRow
+      icon={
+        <Icon
+          aria-label={todo.redacted ? "Private" : statusLabels[todo.status]}
+          className="size-4 text-dashboard-text-muted"
+          role="img"
+        />
+      }
+      menu={
+        props.canEdit ? (
+          <DetailsRowMenu
+            disabled={setStatus.isPending}
+            label={`Change ${title}`}
+          >
+            {todoActions[todo.status].map((action) => (
+              <DropdownMenuItem
+                key={action.status}
+                onClick={() => setStatus.mutate(action.status)}
+              >
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DetailsRowMenu>
+        ) : null
+      }
+      title={title}
+      tooltip={todo.changedBy ? `Changed by ${todo.changedBy}` : undefined}
+    >
+      <DetailsRowLine>
+        {props.owner}
+        {todo.notes ? (
+          <>
+            {" · "}
+            <DisplayText inline text={todo.notes} />
+          </>
+        ) : null}
+      </DetailsRowLine>
+    </DetailsRow>
+  );
+}
+
+/** Set the status of one To-do, then read the To-dos again. */
 function useSetTodoStatus(conversationId: string, todoId: number) {
   const queryClient = useQueryClient();
   return useMutation({

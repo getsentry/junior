@@ -345,6 +345,8 @@ export interface ManagedMcpToolDescriptor {
   outputSchema?: Record<string, unknown>;
   annotations?: ToolAnnotations;
   provider: string;
+  /** The plugin lists this remote tool in `mcp.guardian.skipReview`. */
+  skipReview?: true;
 }
 
 export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
@@ -685,6 +687,9 @@ export class McpToolManager {
       ...(tool.title?.trim() ? { title: tool.title.trim() } : undefined),
       ...(outputSchema ? { outputSchema } : undefined),
       ...(annotations ? { annotations } : undefined),
+      ...(plugin.manifest.mcp?.guardian?.skipReview?.includes(tool.name)
+        ? { skipReview: true }
+        : undefined),
       execute: async (args, options) => {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};
@@ -964,6 +969,7 @@ export class McpToolManager {
       ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : undefined),
       ...(tool.annotations ? { annotations: tool.annotations } : undefined),
       provider: tool.provider,
+      ...(tool.skipReview ? { skipReview: true } : undefined),
     };
   }
 }

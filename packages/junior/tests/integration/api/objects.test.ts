@@ -442,6 +442,97 @@ describe("object links API", () => {
     expect(card?.facts).not.toHaveProperty("titleParts");
   });
 
+  it("ends a card read within the cache load timeout when GitHub stalls", async () => {
+    stubGitHubApp();
+    // GitHub never answers this read.
+    let requested!: () => void;
+    const stalled = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    mswServer.use(
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({ data: {} }),
+      ),
+      http.get(`${GITHUB_API}/pulls/35`, () => {
+        requested();
+        return new Promise<never>(() => {});
+      }),
+    );
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+    const pending = read(`${GITHUB_REPO}/pull/35`).finally(() => {
+      settled = true;
+    });
+    await stalled;
+    // The card read holds the load lock of its cache entries, so it ends
+    // before the reads that wait 10 s for it give up.
+    await vi.advanceTimersByTimeAsync(7_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(settled).toBe(true);
+    const member = await pending;
+    expect(member.objects.has(`${GITHUB_REPO}/pull/35`)).toBe(false);
+  });
+
+  it("ends a card read within the cache load timeout when its web page fallback stalls", async () => {
+    stubGitHubApp();
+    // The access check is slow, then the signed-out page never answers. The
+    // web page read takes no card read signal.
+    let checked!: () => void;
+    const checking = new Promise<void>((resolve) => {
+      checked = resolve;
+    });
+    let requested!: () => void;
+    const stalled = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    mswServer.use(
+      http.get(
+        `${GITHUB_API}/collaborators/:login/permission`,
+        () =>
+          new Promise<Response>((resolve) => {
+            checked();
+            setTimeout(
+              () => resolve(HttpResponse.json({ permission: "none" })),
+              5_000,
+            );
+          }),
+      ),
+      http.get(`${GITHUB_REPO}/issues/36`, () => {
+        requested();
+        return new Promise<never>(() => {});
+      }),
+    );
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const bob = await linkSlackUser("bob@example.com", "UBOB");
+    await upsertLinkedIdentity(getSqlExecutor(), bob.id, {
+      handle: "outsider",
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "1002",
+    });
+    const read = await viewerApi("bob@example.com");
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let settled = false;
+    const pending = read(`${GITHUB_REPO}/issues/36`).finally(() => {
+      settled = true;
+    });
+    await checking;
+    await vi.advanceTimersByTimeAsync(5_000);
+    await stalled;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(settled).toBe(true);
+    const outsider = await pending;
+    expect(outsider.objects.has(`${GITHUB_REPO}/issues/36`)).toBe(false);
+  });
+
   it("shows the GitHub object of a webhook on the next card read, with no GitHub call", async () => {
     stubGitHubApp();
     const reads: string[] = [];
@@ -492,9 +583,12 @@ describe("object links API", () => {
       title: "Move this issue",
     };
     let moved = false;
+    // The validators that each read of the moving issue sends.
+    const validators: Array<string | null> = [];
     mswServer.use(
-      http.get(`${GITHUB_API}/issues/14`, () => {
+      http.get(`${GITHUB_API}/issues/14`, ({ request }) => {
         reads.push("issues/14");
+        validators.push(request.headers.get("if-none-match"));
         return moved
           ? new HttpResponse(null, {
               headers: {
@@ -502,7 +596,7 @@ describe("object links API", () => {
               },
               status: 301,
             })
-          : HttpResponse.json(moving);
+          : HttpResponse.json(moving, { headers: { etag: '"issue-14"' } });
       }),
       // The moved issue, in a repository that the viewer can also see.
       http.get("https://api.github.com/repositories/2002/issues/9", () =>
@@ -646,8 +740,10 @@ describe("object links API", () => {
         `${GITHUB_REPO}/pull/78`,
         `${GITHUB_REPO}/pull/90`,
       );
-      // Only the moved issue is read again.
+      // Only the moved issue is read again. Its webhook deleted the card,
+      // and the read asks GitHub with the saved response's ETag.
       expect(reads.slice(readsBefore)).toEqual(["issues/14"]);
+      expect(validators).toEqual([null, '"issue-14"']);
       expect(next.objects.get(`${GITHUB_REPO}/issues/12`)).toMatchObject({
         status: "closed",
       });

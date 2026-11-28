@@ -1,10 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 
 import {
+  expandRow,
   mockInboxItems,
   prMerge,
   prReview,
   pullRequestSubject,
+  rowHead,
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -28,34 +30,26 @@ const breakingReview = {
   }),
 };
 
-// A merge conflict ask has Resume choices, so its kind is a Question. Its
-// state pill still names the conflict.
+// A merge conflict ask has its kind's Resume action. Its state pill names
+// the conflict.
 const conflict = {
   ...prMerge,
   id: "item-pr-conflict",
-  request: {
-    question: "Resolve the conflict in #57?",
-    fields: [
-      {
-        id: "resume",
-        kind: "choice" as const,
-        label: "Resume",
-        options: [{ label: "Resolve it" }, { label: "Leave it" }],
+  subject: {
+    ...pullRequestSubject({
+      kind: "github:merge_conflict",
+      label: "Merge conflict",
+      resource: prMerge.subject.resource,
+      title: "fix(slack): Keep thread replies in order",
+      titleParts: {
+        scope: "slack",
+        text: "Keep thread replies in order",
+        type: "Fix",
       },
-    ],
+      url: "https://github.com/getsentry/payments/pull/57",
+    }),
+    actions: [{ icon: "wrench", id: "resume", label: "Keep fixing" }],
   },
-  subject: pullRequestSubject({
-    kind: "github:merge_conflict",
-    label: "Merge conflict",
-    resource: prMerge.subject.resource,
-    title: "fix(slack): Keep thread replies in order",
-    titleParts: {
-      scope: "slack",
-      text: "Keep thread replies in order",
-      type: "Fix",
-    },
-    url: "https://github.com/getsentry/payments/pull/57",
-  }),
   title: "Merge conflict · #57",
 };
 
@@ -102,6 +96,60 @@ test.describe("new UI", () => {
     await screenshot(page, "inbox-code-change-rows", { lightTheme: true });
   });
 
+  test("a merge conflict card runs its kind's Keep fixing", async ({
+    dashboard,
+    page,
+  }) => {
+    const actions = await mockInboxItems(page, { open: [conflict] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const conflictRow = row(page, "Keep thread replies in order");
+    await expandRow(rowHead(page, "Keep thread replies in order"));
+    await conflictRow
+      .getByRole("button", { exact: true, name: "Keep fixing" })
+      .click();
+    await expect(conflictRow).toHaveCount(0);
+    expect(actions).toEqual([
+      { body: { action: "done", id: "resume" }, id: conflict.id },
+    ]);
+  });
+
+  test("a merge conflict card from before kind actions shows one Resume", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...conflict,
+          request: {
+            question: conflict.body,
+            fields: [
+              {
+                id: "choice",
+                kind: "choice",
+                label: conflict.title,
+                options: [{ label: "Resume" }],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expandRow(rowHead(page, "Keep thread replies in order"));
+    await expect(
+      row(page, "Keep thread replies in order").getByRole("button", {
+        exact: true,
+        name: "Resume",
+      }),
+    ).toHaveCount(1);
+    await expect(
+      row(page, "Keep thread replies in order").getByRole("button", {
+        name: "Keep fixing",
+      }),
+    ).toHaveCount(0);
+  });
+
   test("a code change row opens its pull request first", async ({
     dashboard,
     page,
@@ -143,6 +191,42 @@ test.describe("new UI", () => {
     expect(order[0]).toBeGreaterThanOrEqual(0);
     expect(actions.at(-1)).toBe("Review on GitHub");
     await screenshot(page, "inbox-code-change-open", { lightTheme: true });
+  });
+
+  test("Dismiss's note shows only in its tooltip", async ({
+    dashboard,
+    page,
+  }) => {
+    const note = "Also removes you from the reviewers on GitHub.";
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...breakingReview,
+          subject: { ...breakingReview.subject, dismissNote: note },
+        },
+      ],
+    });
+    await page.setViewportSize({ height: 844, width: 390 });
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
+    const review = row(page, "Pin the release train");
+    await review.click();
+    // A phone opens the card in a sheet. It has no tooltips, and the note
+    // does not show as text on every card.
+    const card = page.getByRole("dialog", { name: breakingReview.title });
+    await expect(card.getByRole("button", { name: "Dismiss" })).toBeVisible();
+    await expect(page.getByText(note)).toHaveCount(0);
+    await screenshot(page, "inbox-code-change-dismiss-note", {
+      lightTheme: true,
+      view: "mobile",
+    });
+
+    // A desktop shows the note in the Dismiss tooltip.
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    // Closed, the row's only Dismiss is its hover action.
+    await review.hover();
+    await review.getByRole("button", { name: "Dismiss" }).hover();
+    await expect(page.getByRole("tooltip")).toContainText(note);
   });
 });
 

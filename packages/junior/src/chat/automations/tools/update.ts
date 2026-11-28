@@ -390,7 +390,12 @@ export function createUpdateAutomationTool(
           revision: automationRevision(saved.task),
         });
       }
-      return automationToolResult(context.conversationId, saved, catalog);
+      return automationToolResult(
+        context.conversationId,
+        saved,
+        catalog,
+        "changed",
+      );
     },
   });
 }

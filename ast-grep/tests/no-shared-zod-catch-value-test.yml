@@ -1,0 +1,18 @@
+id: no-shared-zod-catch-value
+valid:
+  - "const schema = z.record(z.string(), z.unknown()).catch(() => ({}));"
+  - "const schema = z.array(z.unknown()).catch(() => []);"
+  - "const schema = z.string().optional().catch(undefined);"
+  - "const schema = z.number().catch(0);"
+  - "promise.catch(() => {});"
+invalid:
+  - "const schema = z.record(z.string(), z.unknown()).catch({});"
+  - "const schema = z.object({ byFileId: z.record(z.string(), z.unknown()) }).catch({ byFileId: {} });"
+  - "const schema = z.array(z.unknown()).catch([]);"
+  - 'const schema = z.array(z.string()).catch(["a"]);'
+  - |
+    const schema = z
+      .object({ a: z.string().optional() })
+      .catch({
+        a: undefined,
+      });

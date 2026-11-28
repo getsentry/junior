@@ -9,6 +9,7 @@ import {
   requireInboxItemLinks,
 } from "@/chat/inbox-items/access";
 import { resolveAssignees } from "@/chat/inbox-items/assignees";
+import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 import {
   closeInboxItem,
   ownerConversationId,
@@ -21,17 +22,13 @@ import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   INBOX_TOOL_SOURCE,
   assigneesSchema,
-  bodySchema,
   conversationIdsSchema,
   itemResult,
   ownerLinks,
   readableItem,
   inboxItemDelivery,
-  questionInput,
-  relatedInput,
-  requestInput,
-  requestInputSchema,
-  titleSchema,
+  questionContent,
+  questionsSchema,
   type InboxItemToolContext,
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
@@ -56,13 +53,11 @@ export const updateInboxItemToolDefinition = zodToolDefinition({
   inputSchema: z
     .object({
       id: z.string().trim().min(1),
-      title: titleSchema.nullable().optional(),
-      body: bodySchema.nullable().optional(),
-      request: requestInputSchema
+      questions: questionsSchema
         .nullable()
         .optional()
         .describe(
-          "Replaces the whole request, such as to change the choices of a question. An action needs a `question` and `fields`. A notice may have only `related`. Omit to keep it.",
+          "Replaces every question of an open question item, in the same form as `askUserQuestion`. Omit to keep them.",
         ),
       assignees: assigneesSchema
         .nullable()
@@ -107,11 +102,7 @@ export function createUpdateInboxItemTool(
       const scope = await readInboxItemAgentScope(context);
       const item = await readableItem(input.id, scope);
       const changesContent =
-        input.title ||
-        input.body ||
-        input.request ||
-        input.assignees ||
-        input.conversation_ids;
+        input.questions || input.assignees || input.conversation_ids;
       // A retry of the same agent close finds the item closed. It still sends
       // the close: the message has a key, so only missing messages go.
       const retriesClose =
@@ -123,7 +114,7 @@ export function createUpdateInboxItemTool(
       const closesOnly = !changesContent && input.status && input.reason;
       if (item.status !== "open" && !retriesClose && !closesOnly) {
         throw new ToolInputError(
-          `Inbox item ${item.id} is already closed. To follow up, add a new item with addInboxItem.`,
+          `Inbox item ${item.id} is already closed. To follow up, ask again with askUserQuestion.`,
         );
       }
       if (isPluginInboxItem(item)) {
@@ -150,12 +141,23 @@ export function createUpdateInboxItemTool(
       if (input.status && !input.reason) {
         throw new ToolInputError("Give a `reason` when you close an item.");
       }
+      if (
+        input.questions &&
+        (item.kind !== "action" ||
+          item.subject.kind !== INBOX_SUBJECT_KINDS.question)
+      ) {
+        throw new ToolInputError(
+          "Only an item that askUserQuestion added has questions. To ask, use askUserQuestion.",
+        );
+      }
       if (changesContent) {
-        const related = input.request
-          ? relatedInput(input.request.related)
+        const asked = input.questions
+          ? questionContent(input.questions)
           : undefined;
-        const request = input.request
-          ? requestInput(questionInput(item.kind, input.request), related ?? [])
+        // New questions keep the item's related links.
+        const related = item.request?.related;
+        const request = asked
+          ? { ...asked.request, ...(related ? { related } : undefined) }
           : item.request;
         // The Conversation that added the item always stays linked.
         const conversationIds = [
@@ -172,15 +174,7 @@ export function createUpdateInboxItemTool(
             ...ownerLinks(item),
             ...item.conversationIds,
           ]),
-          // A related Conversation passes the same check as a linked one.
-          conversationIds: [
-            ...new Set([
-              ...conversationIds,
-              ...(related ?? []).flatMap((entry) =>
-                entry.conversationId ? [entry.conversationId] : [],
-              ),
-            ]),
-          ],
+          conversationIds,
           scope,
           tenant: item.tenant,
           visibility,
@@ -208,18 +202,18 @@ export function createUpdateInboxItemTool(
         const updated = await updateInboxItemContent(db, {
           assignedToEveryone: assignees.everyone,
           assigneeUserIds: assignees.userIds,
-          body: input.body ?? item.body,
+          body: asked?.body ?? item.body,
           conversationIds,
           id: item.id,
           kind: item.kind,
           nowMs: Date.now(),
-          title: input.title ?? item.title,
+          title: asked?.title ?? item.title,
           subject: item.subject,
           ...(request ? { request } : undefined),
         });
         if (!updated) {
           throw new ToolInputError(
-            `Inbox item ${item.id} is already closed. To follow up, add a new item with addInboxItem.`,
+            `Inbox item ${item.id} is already closed. To follow up, ask again with askUserQuestion.`,
           );
         }
       }
@@ -236,7 +230,7 @@ export function createUpdateInboxItemTool(
         if (!closed) {
           if (changesContent) {
             throw new ToolInputError(
-              `Inbox item ${item.id} is already closed. To follow up, add a new item with addInboxItem.`,
+              `Inbox item ${item.id} is already closed. To follow up, ask again with askUserQuestion.`,
             );
           }
           return alreadyClosedResult(await readableItem(item.id, scope));

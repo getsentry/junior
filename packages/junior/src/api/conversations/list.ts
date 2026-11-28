@@ -29,10 +29,8 @@ import {
   juniorInboxItems,
   juniorUsers,
 } from "@/db/schema";
-import {
-  inboxItemNeedsInput,
-  inboxItemOwnedByConversation,
-} from "@/chat/inbox-items/access";
+import { inboxItemNeedsInput } from "@/chat/inbox-items/access";
+import { inboxItemOwnedByThroughSubject } from "@/chat/inbox-items/owner";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -69,6 +67,7 @@ import {
 } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
+import { readLiveAnnotationsById } from "@/api/objects/live-annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { readConversationTrees } from "@/chat/conversations/sql/conversation-tree";
@@ -87,8 +86,12 @@ import {
 } from "./activity-preview";
 import { conversationSearchVector } from "@/chat/conversations/metadata/store";
 import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
+import {
+  annotationMatches,
+  resolveAnnotationFilter,
+} from "@/chat/conversations/sql/annotation-filter";
+import type { InboxItemSubject } from "@/chat/inbox-items/subjects";
 import { feedMediaSql } from "./feed-media";
-import { feedViewerAnswer, feedViewerAnswerSql } from "./feed-answer";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { readConversationTreeStates } from "./tree-state";
 import { attachActivityPreviewMentions } from "./mentions";
@@ -186,6 +189,7 @@ async function conversationRows(
     limit,
     pinnedForUserId,
     query,
+    querySubjects = [],
     space,
     status,
     waitingForUserId,
@@ -203,6 +207,8 @@ async function conversationRows(
     /** Read only the rows that this user pinned (`true`) or did not pin. */
     pinnedForUserId?: { pinned: boolean; userId: string };
     query?: string | undefined;
+    /** Objects that `query` names, such as a pull request by its reference. */
+    querySubjects?: readonly InboxItemSubject[];
     /** Read only the roots of this Space, in place of membership. */
     space?: { id: string; viewerUserId?: string };
     status: "active" | "archived" | "all";
@@ -228,10 +234,6 @@ async function conversationRows(
       latestTurnFailed: conversationTurnFailedSql(juniorConversations),
       links: include.includes("links") ? feedLinksSql(db) : sql<null>`null`,
       media: include.includes("media") ? feedMediaSql(db) : sql<null>`null`,
-      viewerAnswer:
-        filter?.kind === "viewer"
-          ? feedViewerAnswerSql(db, filter.userId)
-          : sql<null>`null`,
     })
     .from(juniorConversations)
     .leftJoin(juniorDestinations, conversationRecordJoins.location)
@@ -239,10 +241,14 @@ async function conversationRows(
     .leftJoin(juniorUsers, conversationRecordJoins.user)
     .where(
       and(
-        listedConversation(),
+        // A Space's feed, its Threads panel, lists the Lead's children.
+        // Every other feed lists roots that are not a Lead.
         space
           ? conversationSpaceFilter(space.id, status, space.viewerUserId)
-          : conversationFeedMembershipFilter(status, filter),
+          : and(
+              listedConversation(),
+              conversationFeedMembershipFilter(status, filter),
+            ),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
           : undefined,
@@ -276,7 +282,11 @@ async function conversationRows(
                   : isPublicConversation(juniorConversations),
                 sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
               ),
-              annotationMatch(db, query, includePrivateMatches),
+              annotationMatch(db, {
+                includePrivate: includePrivateMatches,
+                query,
+                subjects: querySubjects,
+              }),
             )
           : undefined,
       ),
@@ -291,16 +301,26 @@ async function conversationRows(
 
 /**
  * Match a top-level Conversation whose tree has an Annotation with the text
- * in its label or title, such as `getsentry/roach#12`. The feed shows the
- * annotations of the whole tree, so search reads the same rows. Private
- * annotations match only where the feed shows them.
+ * in its key or title, such as `getsentry/roach#12`, with the text as its
+ * link, or of an object that the text names. The feed shows the annotations
+ * of the whole tree, so search reads the same rows. Private annotations
+ * match only where the feed shows them.
  */
 function annotationMatch(
   db: JuniorDatabase,
-  query: string,
-  includePrivate: boolean,
+  {
+    includePrivate,
+    query,
+    subjects,
+  }: {
+    includePrivate: boolean;
+    query: string;
+    subjects: readonly InboxItemSubject[];
+  },
 ) {
-  const annotation = juniorConversationAnnotations.annotation;
+  // The link matches only whole, so a word of every link, such as `pull`,
+  // does not match each Conversation.
+  const text = sql`lower(concat_ws(' ', ${juniorConversationAnnotations.key}, ${juniorConversationAnnotations.title}))`;
   return and(
     includePrivate ? undefined : isPublicConversation(juniorConversations),
     sql<boolean>`${juniorConversations.conversationId} IN ${conversationAncestorsOrSelf(
@@ -310,7 +330,13 @@ function annotationMatch(
         })
         .from(juniorConversationAnnotations)
         .where(
-          sql<boolean>`strpos(lower(concat_ws(' ', ${annotation}->>'label', ${annotation}->>'title')), ${query}) > 0`,
+          or(
+            sql<boolean>`strpos(${text}, ${query}) > 0`,
+            sql<boolean>`lower(${juniorConversationAnnotations.url}) = ${query}`,
+            subjects.length > 0
+              ? annotationMatches({ references: [], subjects })
+              : undefined,
+          ),
         )}`,
     )}`,
   );
@@ -337,28 +363,9 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
 
 /**
  * Return a query for a token that changes when the viewer's default feed
- * page can change. It reads the same newest page as the feed, so its cost
- * does not grow with the viewer's history. The token lists a short token
- * for each feed-row input as `name:token`, separated by spaces, so the
- * dashboard can record which inputs moved it.
- *
- * Status and tree state come from stored watermarks, not from the rules
- * that derive them, so a poll reads no Events or read positions.
- * Each write that a status or the tree state reads moves `detail_version` on
- * its Conversation, so the token holds that version for each idle row and
- * tree member. Every Event of a live Turn moves it too, and a running row
- * shows its running state, so a running Conversation adds only that it runs
- * and the open Inbox items that it added. The end of the Turn writes
- * the row. Watches and Timers live outside SQL. A Turn makes or cancels one,
- * and the end of that Turn moves the version, so a read after it sees the
- * change. A Watch that expires on its own moves nothing, so its row shows
- * `watching` until the feed reads again. An authorization request expires
- * with no write, so the token counts the live ones.
- * Idle rows show an age in whole minutes, so the token holds that minute.
- * The rows are in feed order, so a move that reorders them moves the token.
- * The newest Message of each role stands for the preview and participants,
- * and moves the token during a live Turn. Waiting roots outside the page,
- * and the viewer's own Inbox items, move the Inbox items token.
+ * page can change. It reads only the newest page and stored watermarks, so a
+ * poll reads no Events. A Watch that expires on its own moves nothing, so its
+ * row shows `watching` until the next read.
  */
 export function conversationFeedVersionQuery(
   db: JuniorDatabase,
@@ -370,7 +377,7 @@ export function conversationFeedVersionQuery(
   // reassign writes `updated_at`, and it changes whom the item waits on.
   const ownedItemsVersion = (conversation: AnyPgColumn) =>
     sql`(select concat(count(*), '/', max(${juniorInboxItems.updatedAt})) from ${juniorInboxItems} where ${and(
-      inboxItemOwnedByConversation(conversation),
+      inboxItemOwnedByThroughSubject(conversation),
       inboxItemNeedsInput(),
     )})`;
   const rowState = (row: typeof juniorConversations) =>
@@ -380,11 +387,10 @@ export function conversationFeedVersionQuery(
       else ${row.detailVersion}::text
     end`;
   // The tree's members, and the state of each one but the root, which its
-  // row holds. The tree counts the root's live authorization requests too.
-  // A running Thread hides its version, but its row shows its title, which
-  // a Turn can set, and an archive hides it, so the tree holds both.
-  // A Lead's child row reads its Lead's whole tree. That moves the token
-  // for changes in other Space work too, but never misses one in its own.
+  // row holds, plus the root's live authorization requests. A running Thread
+  // hides its version, but a Turn can set its title and an archive hides it,
+  // so the tree holds both. A Lead's child row reads its Lead's whole tree:
+  // that moves the token for other Space work too, but never misses its own.
   const feedRowTreeRoot = sql`coalesce(${juniorConversations.rootConversationId}, ${conversationId})`;
   const child = sql`${feedTree.conversationId} <> ${conversationId}`;
   const active = conversationIsActiveSql(feedTree);
@@ -519,17 +525,11 @@ function conversationFeedFilter(options: {
 }
 
 /**
- * Build a bounded dashboard feed. Prefer the viewer user when present; otherwise
- * keep only roots linked to actorEmail before applying the limit. Membership is
- * root-actor ownership or a materialized participant row for that person.
- *
- * `codeRepositoryId` replaces membership with every root linked to that
- * repository's code changes. Private roots appear only for their members, and
- * per-person archive state does not hide rows.
- *
- * Each page holds up to `limit` rows by activity, and `nextCursor` reads the
- * next one. A row with new activity moves to an earlier page, so clients
- * remove repeats when they join pages.
+ * Build a bounded feed of roots that the viewer, or else `actorEmail`,
+ * started or takes part in. `codeRepositoryId` replaces that with every root
+ * linked to the repository: private roots show only to members, and a
+ * person's archive hides nothing. A row with new activity moves to an
+ * earlier page, so clients remove repeats when they join pages.
  */
 export async function readConversationFeedFromSql(
   options: {
@@ -555,6 +555,11 @@ export async function readConversationFeedFromSql(
       ? undefined
       : conversationFeedFilter(options);
   const query = options.q?.trim().toLowerCase() || undefined;
+  // A reference or a link also finds its object by its subject, such as a
+  // pull request after a rename of its repository.
+  const querySubjects = query
+    ? (await resolveAnnotationFilter(db, query)).subjects
+    : [];
   const status: "active" | "archived" | "all" =
     query || options.codeRepositoryId ? "all" : (options.status ?? "active");
   const cursor = options.cursor
@@ -591,6 +596,7 @@ export async function readConversationFeedFromSql(
     include,
     includePrivateMatches: filter?.kind === "viewer",
     query,
+    querySubjects,
     status,
   };
   const firstPage = pinsFirst && !cursor;
@@ -763,9 +769,12 @@ export async function readConversationFeedFromSql(
         ),
         tenantByConversation,
       ),
-      listConversationSidebarAnnotations(
-        conversationIds,
+      // The chips show each object as the caches hold it for the viewer.
+      readLiveAnnotationsById(
+        options.viewer,
         visibleAnnotationsByConversation,
+      ).then((live) =>
+        listConversationSidebarAnnotations(conversationIds, live),
       ),
     ]);
   const threadsByRoot = nestFeedThreads(
@@ -848,11 +857,6 @@ export async function readConversationFeedFromSql(
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
       const treeRead = treeStateByConversation.get(conversation.conversationId);
-      // The viewer saw the answer as they gave it, but like the summary it
-      // holds private content.
-      const viewerAnswer = access?.canViewPrivateContent
-        ? feedViewerAnswer(row.viewerAnswer)
-        : undefined;
       return {
         ...summary,
         ...work,
@@ -872,7 +876,6 @@ export async function readConversationFeedFromSql(
           ? { participants }
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
-        ...(viewerAnswer ? { viewerAnswer } : undefined),
         ...(media?.length ? { media } : undefined),
         ...(links.length > 0 ? { links } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]

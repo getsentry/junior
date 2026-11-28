@@ -1,5 +1,6 @@
 /** Shared setup for the Conversation status and tree state tests. */
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { ask } from "./questions";
 import { eq, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { expect } from "vitest";
@@ -57,11 +58,8 @@ export const REQUEST = {
 };
 
 export const ACTION_ITEM = {
-  kind: "action",
-  title: "Ship the release?",
-  body: "The release is ready.",
   assignees: [webTestActor.email],
-  request: REQUEST,
+  questions: ask("Ship the release?"),
 };
 
 // Injected fault: the agent runner throws on each delivery, so the final
@@ -260,12 +258,12 @@ export async function recordAnswer(
   ]);
 }
 
-/** Add one Inbox item as the agent of `conversationId` does. */
+/** Ask one question as the agent of `conversationId` does. */
 export async function addItem(
   conversationId: string,
   input: Record<string, unknown>,
 ): Promise<string> {
-  const tool = createAddInboxItemTool(
+  const tool = createAskUserQuestionTool(
     {
       conversationId,
       resolveActorIdentity: async () => undefined,

@@ -1,4 +1,7 @@
-import { vercelQueueProvider } from "@/chat/queue/vercel";
+import {
+  vercelQueueProvider,
+  type VercelQueueClientCache,
+} from "@/chat/queue/vercel";
 
 // Module overview: the one place that names the queue provider.
 //
@@ -65,6 +68,9 @@ export interface QueueProvider {
     consumer: QueueConsumer,
   ): (request: Request) => Promise<Response>;
 }
+
+/** What the queue provider keeps for one app, such as its clients. */
+export type QueueProviderState = VercelQueueClientCache;
 
 /** Return the queue provider for this deployment. */
 export function getQueueProvider(): QueueProvider {

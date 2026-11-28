@@ -5,7 +5,7 @@ import type { KnownBlock, SectionBlock } from "@slack/types";
 import { readConnectedOAuthTokens } from "@/chat/credentials/connections";
 import { homeDir } from "@/chat/discovery";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { discoverSkills } from "@/chat/skills";
 import type {
@@ -107,7 +107,7 @@ export async function buildHomeView(
   const runtimeMetadata = getRuntimeMetadata();
   const descriptionText = loadDescriptionText();
   const skillsSummaryText = await buildSkillsSummaryText();
-  const providers = pluginCatalogRuntime.getProviders();
+  const providers = getAppContext().catalog.getProviders();
   const connections = await mapBounded(providers, async (plugin) => {
     const tokens = await readConnectedOAuthTokens(
       userId,

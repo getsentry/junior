@@ -18,15 +18,18 @@ the check first. A rule that only review enforces is a judgment call.
 | Search every consumer before you change a shared signature, error contract, or name. Use a hard cutover unless compatibility is required. | `pnpm typecheck` |
 | Let unexpected failures reach the owning boundary. Retry only expected transient failures. | `tool-error-classification:check` for tools, review elsewhere |
 | Core owns the runtime and provider-neutral plugin contracts. Plugins own provider routes, API fields, permissions, errors, and formatting. | ast-grep `no-core-plugin-*` |
+| Code that exists only so main's readers keep working beside the core Turn engine is named `compat__*` and lives in `compat__*.ts` files; delete it when those readers read `junior_turns`. Code that reads rows from main's retired features is named `legacy*` and stays until no such rows remain. | ast-grep `no-compat-rows-outside-compat-files` |
 | No mutable runtime globals. No test-only singleton mutation APIs. | `test-architecture:check` for tests, review elsewhere |
 | Query tables with the Drizzle query builder. Use `sql` only for expressions inside a builder query, or for statements without a table. | oxlint `junior/no-raw-sql-queries` |
 | Store money in Postgres as whole micro-USD: a `bigint` column or an integer metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`. | `money-units:check` |
-| Read GitHub state from GitHub through the plugin cache. Do not copy it into tables. | `provider-state:check` |
+| Junior owns its uptime. Never call a third-party API, such as GitHub, even through a cache, to load or show a Conversation or its transcript, or for state that the agent needs to work, such as Annotations. Store that state from webhooks and tools. Another feature that needs provider state gets its own design. Call a third party rarely, almost always from a tool or a webhook. | Review |
+| Use the Postgres planner defaults. Do not change planner settings, such as `jit_above_cost` or `enable_seqscan`, or shape a query or a test around the plan. When the defaults are too slow, the schema is wrong: fix it. | Review |
+| Isolate each feature, such as To-dos or the Inbox, in its own module. It reaches the core agent loop only through plugin hooks, like `packages/junior/src/chat/todos/registration.ts`, and core does not call it. Extend a hook before you add one. Feature code in core needs a comment that says why it cannot be split out. | Review |
 | A construct in reply content, such as a table or a card, must render on every surface that shows replies: natively, or with a fallback that keeps its content. | `reply-rendering:check` |
 | Group files by feature and name paths by role. No feature-directory barrels. | Review |
-| Exported functions get a brief JSDoc that states intent. | Review |
+| Exported functions get a brief JSDoc that states intent. A comment says only what the code and the doc that owns the fact do not. | `comment-length:check`, review |
 | Docs use ASD-STE100 English: common words, active voice, short sentences. | Review |
-| A check baseline may only shrink. Fix the new violation. Do not add or raise an entry. | `baseline-growth:check` |
+| A check baseline may only shrink, except the files in `GROWABLE` in `scripts/check-baseline-growth.mjs`. Fix the new violation. Do not add or raise an entry in any other baseline. | `baseline-growth:check` |
 | Dashboard E2E waits for a state that it names and ends only after the reads and writes it causes. Do not retry steps with `toPass`, wait for network idle, forward a route to the mock server and edit its response, ignore route handler errors, or let a read stay open when the test ends. | `test-architecture:check`, the open-request check in `e2e/test.ts` |
 | A Frameshift screenshot change that your diff did not cause is a bug. Find why the shot changed and fix it, or open an issue with the before and after. Do not ignore it or call it noise. | Review, `e2e/screenshot.ts` fails a shot that keeps changing |
 | This is the only `AGENTS.md`. Do not add one in a directory. Put intent in a code comment next to the code that it governs. | `file-length:check` |

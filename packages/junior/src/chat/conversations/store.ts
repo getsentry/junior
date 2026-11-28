@@ -94,11 +94,6 @@ export interface Conversation {
    */
   spaceId?: string;
   /**
-   * Set on a child whose Location is its own, not a copy of its parent's,
-   * such as a Slack Conversation that moved into a Space.
-   */
-  ownLocation?: true;
-  /**
    * When the Conversation was archived for everyone. Only archive, auto-archive,
    * pin, and a person's message write it; `upsertConversation` does not.
    */

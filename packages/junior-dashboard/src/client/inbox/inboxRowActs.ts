@@ -173,11 +173,12 @@ export function inboxCardActions(input: {
             putAway(() => input.snoozeItem(item, end));
           };
       const close = (action: "dismiss" | "done") =>
-        item.status === "open" && item.canAct
+        item.status === "open" && item.canAnswer
           ? () => void act(row, [item], { action }).catch(() => {})
           : undefined;
       const todo = item.todoId !== undefined;
       return {
+        dismissNote: item.subject.dismissNote,
         eventSnooze: eventSnoozeOf([item], snooze),
         onDismiss: close("dismiss"),
         onDone: todo ? close("done") : undefined,
@@ -207,6 +208,7 @@ export function inboxStackActions(input: {
   title: string;
 }): {
   dismissCount?: number;
+  dismissNote?: string;
   eventSnooze?: EventSnooze | undefined;
   onDismiss?(): void;
   onSnooze?(untilMs: number): void;
@@ -224,8 +226,14 @@ export function inboxStackActions(input: {
       : undefined),
     title: input.title,
   };
+  // Dismiss closes each of these asks, so it says each other change that
+  // it makes, such as on GitHub.
+  const notes = [
+    ...new Set(open.flatMap((item) => item.subject.dismissNote ?? [])),
+  ];
   return {
     dismissCount: open.length,
+    ...(notes.length > 0 ? { dismissNote: notes.join(" ") } : undefined),
     eventSnooze: eventSnoozeOf(input.items, input.snooze),
     onDismiss:
       open.length > 0

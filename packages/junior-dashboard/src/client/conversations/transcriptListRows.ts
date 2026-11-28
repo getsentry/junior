@@ -66,8 +66,13 @@ export function transcriptListRows(input: {
   const { entries, search } = input;
   const quietKeys = quietTurnEntryKeys(entries);
   const routineKeys = routineEventEntryKeys(entries);
+  const cardChildIds = new Set(
+    entries.flatMap((entry) =>
+      entry.kind === "subagent" ? [entry.part.childConversationId] : [],
+    ),
+  );
   const collapsible = (entry: RenderedTranscriptEntry) =>
-    isCollapsibleActivityEntry(entry) ||
+    isCollapsibleActivityEntry(entry, cardChildIds) ||
     quietKeys.has(entry.key) ||
     routineKeys.has(entry.key);
   const matches = (entry: RenderedTranscriptEntry) =>

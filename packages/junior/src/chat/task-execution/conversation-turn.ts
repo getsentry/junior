@@ -3,7 +3,6 @@ import { blockRunAutomation } from "@/chat/automations/block-run";
 import {
   isPersonInput,
   isTopLevel,
-  ownsLocation,
   parentResultActor,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
@@ -379,14 +378,13 @@ export function createConversationTurnWorker(
     const disabledFeatures: AgentFeature[] = signInActor
       ? []
       : ["interactive-auth"];
-    // A child whose Location is its own, such as a Slack Conversation in a
-    // Space, still delivers to it. A gated Turn posts only its `reply`.
+    // A gated Turn posts only its `reply`.
     const deliverToProvider =
       postsToProvider &&
       (behavior.delivery === "location" ||
         (!behavior.gated &&
           storedConversation !== undefined &&
-          ownsLocation(storedConversation)));
+          isTopLevel(storedConversation)));
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
     const surface = postsToProvider ? ("slack" as const) : ("api" as const);

@@ -141,6 +141,12 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
   );
   setDefined(result, "allowed-tools", mcp.allowedTools);
   setDefined(result, "wrapped-tools", mcp.wrappedTools);
+  setDefined(result, "viewer-tools", mcp.viewerTools);
+  setDefined(
+    result,
+    "guardian",
+    mcp.guardian && { skipReview: mcp.guardian.skipReview },
+  );
   return result;
 }
 

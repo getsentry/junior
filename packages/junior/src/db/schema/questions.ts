@@ -13,6 +13,7 @@ import type {
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
+import { juniorUsers } from "./users";
 
 /**
  * The words of a question for search: its title, ranked above its body.
@@ -32,9 +33,10 @@ export function questionFuzzyTitle(table: { title: AnyPgColumn }): SQL {
 
 /**
  * One question or notice that an agent gave a person in a Conversation. It
- * belongs to that Conversation, and it holds its own title, body, request
- * (the form and the related links), and the answer. Its Inbox item has
- * the subject `{ kind: "question", id }` and stores none of these.
+ * belongs to that Conversation and holds its title, body, request (the form
+ * and the related links), and its answer, who gave it, and when. Its Inbox
+ * item has the subject `{ kind: "question", id }` and keeps only its own
+ * open, done, or dismissed state.
  */
 export const juniorQuestions = pgTable(
   "junior_questions",
@@ -53,6 +55,11 @@ export const juniorQuestions = pgTable(
       InboxItemRequest | InboxItemNoticeRequest
     >(),
     answer: jsonb("answer").$type<UserInputAnswer>(),
+    answeredByUserId: text("answered_by_user_id").references(
+      () => juniorUsers.id,
+      { onDelete: "set null" },
+    ),
+    answeredAt: timestamptz("answered_at"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

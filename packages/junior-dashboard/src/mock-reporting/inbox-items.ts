@@ -4,14 +4,12 @@
  * like the API.
  */
 import {
-  answeredChoices,
   inboxItemQuestion,
-  type ConversationFeed,
-  type ConversationFeedViewerAnswer,
   type InboxItemActionBody,
   type InboxItemPayload,
   type InboxSnoozeCreateBody,
   type InboxSnoozeSubjectBody,
+  type InboxViewerSnooze,
 } from "@sentry/junior/api/schema";
 import type {
   ObjectFacts,
@@ -25,15 +23,28 @@ import {
   viewer,
 } from "./inbox-item-seeds";
 import { readMockObjectLinks } from "./objects";
+import { mockViewerSnooze } from "./snooze-resources";
 
 type MockItemChange = Pick<
   InboxItemPayload,
-  "answer" | "closeReason" | "closedAt" | "closedBy" | "status"
+  | "answer"
+  | "answeredBy"
+  | "closeAction"
+  | "closeReason"
+  | "closedAt"
+  | "closedBy"
+  | "status"
 >;
 
 const changes = new Map<string, MockItemChange>();
-/** When each snoozed item wakes, by item id, like the server's snoozes. */
-const snoozes = new Map<string, number>();
+/**
+ * Each snoozed item's snooze, and when it wakes, by item id, like the
+ * server's snoozes.
+ */
+const snoozes = new Map<
+  string,
+  { snooze: InboxViewerSnooze; wakeAtMs: number }
+>();
 
 /** The woken items that the viewer opened or acted on, by id. */
 const openedWakes = new Set<string>();
@@ -55,7 +66,7 @@ export function openMockWakes(inboxItemIds: readonly string[]): void {
 /** The items that a snooze hides now. */
 function snoozedItemIds(nowMs: number): Set<string> {
   return new Set(
-    [...snoozes].flatMap(([itemId, wakeAtMs]) =>
+    [...snoozes].flatMap(([itemId, { wakeAtMs }]) =>
       wakeAtMs > nowMs ? [itemId] : [],
     ),
   );
@@ -66,18 +77,22 @@ function snoozedItemIds(nowMs: number): Set<string> {
  * and returns the open items that it hides.
  */
 export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
-  const inboxItemIds = seeds(nowMs)
-    .filter(
-      (seed) =>
-        (!("conversationId" in body) || rootOf(seed) === body.conversationId) &&
-        isOpen(seed) &&
-        (!body.inboxItemId || seed.id === body.inboxItemId),
-    )
-    .map((seed) => seed.id);
+  const snoozed = seeds(nowMs).filter(
+    (seed) =>
+      (!("conversationId" in body) || rootOf(seed) === body.conversationId) &&
+      isOpen(seed) &&
+      (!body.inboxItemId || seed.id === body.inboxItemId),
+  );
+  const inboxItemIds = snoozed.map((seed) => seed.id);
   // A snooze with no time waits for its Event, which mock data never sends,
   // or with `untilClosed`, for its item to close.
   const wakeAtMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
-  for (const id of inboxItemIds) snoozes.set(id, wakeAtMs);
+  for (const seed of snoozed) {
+    snoozes.set(seed.id, {
+      snooze: mockViewerSnooze(body, seed.subject?.id, nowMs),
+      wakeAtMs,
+    });
+  }
   openMockWakes(inboxItemIds);
   return { inboxItemIds };
 }
@@ -226,12 +241,15 @@ function payload(
   const item = { ...rest, ...change };
   const everyone = seed.assignedToEveryone ?? false;
   const relatedWork = related(seed, all);
+  const snooze = snoozes.get(seed.id);
   const snoozedByViewer =
-    item.status === "open" && (snoozes.get(seed.id) ?? -Infinity) > nowMs;
+    item.status === "open" && snooze && snooze.wakeAtMs > nowMs
+      ? snooze.snooze
+      : undefined;
   return {
     ...item,
     ...(childLabel ? { addedByLabel: childLabel } : undefined),
-    ...(snoozedByViewer ? { snoozedByViewer: true as const } : undefined),
+    ...(snoozedByViewer ? { snoozedByViewer } : undefined),
     assignedToEveryone: everyone,
     assignees: everyone ? [] : shared ? [viewer, teammate] : [viewer],
     canAct: item.status === "open",
@@ -263,6 +281,7 @@ function payload(
           closedBy: item.closedBy ?? viewer,
         }
       : undefined),
+    ...(item.answer ? { answeredBy: item.answeredBy ?? viewer } : undefined),
   };
 }
 
@@ -323,52 +342,20 @@ export function actOnMockInboxItem(
   if (!item || item.status !== "open") return item;
   openMockWakes([id]);
   if (body.action === "take") return readMockInboxItem(nowMs, id);
+  const closeAction =
+    body.action === "done"
+      ? item.subject.actions?.find((action) => action.id === body.id)?.label
+      : undefined;
   changes.set(id, {
     closedAt: new Date(nowMs).toISOString(),
     closedBy: viewer,
     status: body.action === "dismiss" ? "dismissed" : "done",
     ...(body.action === "submit"
-      ? { answer: { ...body.answer, requestId: id } }
+      ? { answer: { ...body.answer, requestId: id }, answeredBy: viewer }
       : undefined),
+    ...(closeAction ? { closeAction } : undefined),
   });
   return readMockInboxItem(nowMs, id);
-}
-
-/**
- * Put the viewer's newest answer on each feed row of the Conversation that
- * added it, like the API.
- */
-export function withMockViewerAnswers(
-  feed: ConversationFeed,
-  nowMs: number,
-): ConversationFeed {
-  const answers = new Map<string, ConversationFeedViewerAnswer>();
-  // Closed items come newest closed first, so the first one wins.
-  for (const item of readMockInboxItems(nowMs, { closed: true })) {
-    const conversationId =
-      item.owner.kind === "conversation" ? item.owner.id : undefined;
-    const question = inboxItemQuestion(item.request);
-    if (
-      !conversationId ||
-      !item.answer ||
-      !question ||
-      !item.closedAt ||
-      item.closedBy?.userId !== viewer.userId ||
-      answers.has(conversationId)
-    )
-      continue;
-    answers.set(conversationId, {
-      choices: answeredChoices(question, item.answer),
-      closedAt: item.closedAt,
-    });
-  }
-  return {
-    ...feed,
-    conversations: feed.conversations.map((conversation) => {
-      const viewerAnswer = answers.get(conversation.conversationId);
-      return viewerAnswer ? { ...conversation, viewerAnswer } : conversation;
-    }),
-  };
 }
 
 /**
@@ -387,6 +374,7 @@ export function answerMockInboxItemByReply(
   if (!item) return;
   changes.set(item.id, {
     answer: { other: text, requestId: item.id, values: {} },
+    answeredBy: viewer,
     closeReason: "Replied in the conversation.",
     closedAt: new Date(nowMs).toISOString(),
     closedBy: viewer,

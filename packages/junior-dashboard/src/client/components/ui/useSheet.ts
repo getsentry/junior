@@ -1,5 +1,6 @@
 import type { Dialog } from "@base-ui/react/dialog";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -56,17 +57,21 @@ export function useSheet(
     setOpen(nextOpen);
   };
 
+  // Stable, so a sheet stack can hold it in context.
+  const shut = useCallback(() => {
+    closingRef.current = true;
+    setOpen(false);
+  }, []);
+
   return {
     /** Close from the sheet's own controls, with the exit animation. */
     close: () => onOpenChange(false, { cancel() {} }),
     /**
      * Close because the sheet's owner closed it, also while another modal is
-     * in front, as when a dialog over the sheet finishes the sheet's item.
+     * in front, as when a dialog over the sheet finishes the sheet's item,
+     * or a sheet in front closes the stack.
      */
-    shut: () => {
-      closingRef.current = true;
-      setOpen(false);
-    },
+    shut,
     rootProps: {
       open,
       modal: topmost ? "trap-focus" : false,

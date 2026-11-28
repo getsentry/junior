@@ -7,6 +7,9 @@
  */
 import type {
   ObjectAnnotation,
+  PluginInboxKindAction,
+  PluginInboxSubjectKind,
+  PluginInboxViewer,
   PluginRegistration,
   User,
 } from "@sentry/junior-plugin-api";
@@ -86,6 +89,26 @@ export function subjectLink(subject: InboxItemSubject): string | undefined {
   return webLink(subject.id);
 }
 
+// The registered plugin kind of a stored kind, and the viewer's handle on
+// that plugin's provider. A plugin's provider Identities carry its name,
+// such as `github`.
+function registeredSubjectKind(
+  kind: string,
+  plugins: readonly PluginRegistration[],
+  viewer: User | undefined,
+): { registered?: PluginInboxSubjectKind; viewer: PluginInboxViewer } {
+  const plugin = subjectKindPlugin(kind);
+  if (!plugin) return { viewer: {} };
+  const own = kind.slice(plugin.length + 1);
+  const registered = plugins
+    .find((registration) => registration.manifest.name === plugin)
+    ?.inboxSubjects?.find((subject) => subject.kind === own);
+  const handle = viewer?.identities.find(
+    (identity) => identity.provider === plugin,
+  )?.handle;
+  return { registered, viewer: handle ? { handle } : {} };
+}
+
 /**
  * Return the label of a stored plugin kind: the ask of the viewer that the
  * plugin reads from the object's live card, such as `Ready to merge` for
@@ -98,20 +121,53 @@ export function subjectKindLabel(
   object?: ObjectAnnotation,
   viewer?: User,
 ): string | undefined {
-  const plugin = subjectKindPlugin(kind);
-  if (!plugin) return undefined;
-  const own = kind.slice(plugin.length + 1);
-  const registered = plugins
-    .find((registration) => registration.manifest.name === plugin)
-    ?.inboxSubjects?.find((subject) => subject.kind === own);
-  // A plugin's provider Identities carry its name, such as `github`.
-  const handle = viewer?.identities.find(
-    (identity) => identity.provider === plugin,
-  )?.handle;
-  return (
-    (object && registered?.ask?.(object, handle ? { handle } : {})) ??
-    registered?.label
+  const { registered, viewer: reader } = registeredSubjectKind(
+    kind,
+    plugins,
+    viewer,
   );
+  return (object && registered?.ask?.(object, reader)) ?? registered?.label;
+}
+
+/**
+ * Return what else the viewer's dismiss of a stored plugin kind changes on
+ * the provider, or undefined when it changes nothing there.
+ */
+export function subjectKindDismissNote(
+  kind: string,
+  plugins: readonly PluginRegistration[],
+  object: ObjectAnnotation | undefined,
+  viewer: User,
+): string | undefined {
+  const { registered, viewer: reader } = registeredSubjectKind(
+    kind,
+    plugins,
+    viewer,
+  );
+  return registered?.dismissNote?.(object, reader);
+}
+
+/**
+ * Return the actions that a plugin kind puts on its open items, such as
+ * Resume. Core kinds have none here: a To-do closes with Mark done.
+ */
+export function subjectKindActions(
+  kind: string,
+  plugins: readonly PluginRegistration[],
+): readonly PluginInboxKindAction[] {
+  return (
+    registeredSubjectKind(kind, plugins, undefined).registered?.actions ?? []
+  );
+}
+
+/** Return the label of a kind action by its id, such as Resume. */
+export function subjectKindActionLabel(
+  kind: string,
+  plugins: readonly PluginRegistration[],
+  id: string | undefined,
+): string | undefined {
+  return subjectKindActions(kind, plugins).find((action) => action.id === id)
+    ?.label;
 }
 
 /**

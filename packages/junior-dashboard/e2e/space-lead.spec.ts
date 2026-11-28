@@ -54,11 +54,15 @@ test("a Space page shows its Lead and the Conversations it started", async ({
     transcript.getByText('"Deployment investigation failed" failed.'),
   ).toBeVisible();
 
-  // The Lead's details show its Threads, and its Participants are its
-  // Space's members.
+  // The Lead's details show its Threads, finished ones behind "Show
+  // finished", and its Participants are its Space's members.
   const details = page.getByRole("complementary", {
     name: "Conversation details",
   });
+  await details
+    .getByRole("region", { exact: true, name: "Agents" })
+    .getByRole("button", { name: "Show finished" })
+    .click();
   await expect(
     details.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
@@ -179,7 +183,7 @@ test("a new Lead opens as an empty Conversation", async ({
   await screenshot(page, "space-lead-empty");
 });
 
-test("a non-member reads and can message a public Lead", async ({
+test("a non-member reads a public Lead and joins it to message", async ({
   page,
   dashboard,
 }) => {
@@ -191,8 +195,11 @@ test("a non-member reads and can message a public Lead", async ({
       "Which onboarding pages still describe the old setup flow?",
     ),
   ).toBeVisible();
-  // As in any public Conversation, a message joins them.
-  await expect(page.getByLabel("Continue this conversation")).toBeVisible();
+  // As in any public Conversation, only a Participant posts, so they Join.
+  await expect(
+    page.getByRole("button", { name: "Join", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Continue this conversation")).toHaveCount(0);
   await screenshot(page, "space-lead-non-member");
 });
 
@@ -214,6 +221,10 @@ test.describe("on a touch screen", () => {
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await conversationMenuRow(page, "Conversation details").click();
     const sheet = page.getByRole("dialog", { name: "Conversation details" });
+    await sheet
+      .getByRole("region", { exact: true, name: "Agents" })
+      .getByRole("button", { name: "Show finished" })
+      .click();
     await expect(
       sheet.getByRole("link", { name: /Plan the billing migration/ }),
     ).toBeVisible();

@@ -162,7 +162,7 @@ async function sentTurn(
     {
       ...fullContext("slack", behavior.promptMode),
       // No Turn here is a Lead's child.
-      ...bindTurnTools(run, behavior, false),
+      ...bindTurnTools(run, behavior),
     },
   );
   return {
@@ -268,7 +268,7 @@ describe("static tool registry", () => {
 
       expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toContain("reportBlocked");
-      expect(person.disabled).not.toContain("addInboxItem");
+      expect(person.disabled).not.toContain("askUserQuestion");
       expect(person.disabled).not.toContain("moveConversationToSpace");
       // A person's Turn starts and messages child agents, as an agent's does.
       expect(person.disabled).not.toContain("startAgent");
@@ -279,7 +279,7 @@ describe("static tool registry", () => {
         expect.arrayContaining([
           "setConversationSubscription",
           "moveConversationToSpace",
-          "addInboxItem",
+          "askUserQuestion",
           "searchInboxItems",
           "updateInboxItem",
         ]),
@@ -300,8 +300,8 @@ describe("static tool registry", () => {
       ).rejects.toThrow(
         "setConversationSubscription is disabled in this Turn.",
       );
-      await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
-        "addInboxItem is disabled in this Turn.",
+      await expect(callTool(agent, "askUserQuestion")).rejects.toThrow(
+        "askUserQuestion is disabled in this Turn.",
       );
       // A person's Turn can end with no post. An agent's Turn reports to the
       // parent with its final text, and the parent decides what to do.
@@ -364,7 +364,7 @@ describe("static tool registry", () => {
       expect.arrayContaining(["reply", "reportBlocked"]),
     );
     expect(person.disabled).not.toContain("startAgent");
-    expect(person.disabled).not.toContain("addInboxItem");
+    expect(person.disabled).not.toContain("askUserQuestion");
     expect(automation.disabled).not.toContain("reply");
     expect(automation.disabled).not.toContain("reportBlocked");
     expect(silent.disabled).toContain("reply");
@@ -412,7 +412,7 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
-        "addInboxItem",
+        "askUserQuestion",
         "archiveAgent",
         "listAgents",
         "listSpaces",

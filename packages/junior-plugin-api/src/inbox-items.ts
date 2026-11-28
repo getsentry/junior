@@ -1,3 +1,4 @@
+import type { PluginAnnotations } from "./annotations";
 import type { PluginCodeChanges } from "./code";
 import type { PluginContext } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
@@ -24,20 +25,60 @@ export interface PluginInboxSubjectKind {
     viewer: PluginInboxViewer,
   ) => string | undefined;
   /**
+   * Say what else a dismiss by the person who reads the item changes on
+   * the provider, such as `Also removes you from the reviewers on GitHub.`
+   * The Inbox shows it on Dismiss. `object` is the live card, unset when
+   * the kind has none or its read failed. Return undefined when their
+   * dismiss changes nothing there.
+   */
+  dismissNote?: (
+    object: ObjectAnnotation | undefined,
+    viewer: PluginInboxViewer,
+  ) => string | undefined;
+  /**
    * The subject id is the provider id of a code change that this plugin
    * records (`codeLinks`), such as a GitHub pull request id. Junior then
    * reads the item's link and its search title from the code change.
    */
   codeChange?: boolean;
   /**
-   * Where the owner Conversation of an item is. Each item belongs to one
-   * Conversation, which decides who can see it. Junior finds it in the row
-   * of `table` whose `subjectId` column holds the item's subject id, and
-   * reads the `conversationId` column of that row. Name a table of this
-   * plugin and its columns in snake_case. At most one row can have the
-   * subject id and a set Conversation: add a unique index for it.
+   * Where the owner Conversation of an item is, which decides who can see
+   * it. A table maps the subject id to a `conversationId`, with a unique
+   * index (columns in snake_case). `annotation` names the Conversation that
+   * first saved an Annotation of the subject, so register each kind that an
+   * object Annotation uses.
    */
-  owner: PluginInboxSubjectOwner;
+  owner: PluginInboxSubjectOwner | "annotation";
+  /**
+   * Buttons on each open item of the kind, in display order, such as
+   * Keep fixing. An item of a kind with actions waits on its assignees. The
+   * first click closes it as done, records the action's `id`, and calls the
+   * plugin's `inboxItemAction` hook. It starts no Turn: the plugin does the
+   * work.
+   */
+  actions?: PluginInboxKindAction[];
+  /**
+   * Each assignee holds a role on the object, such as a GitHub assignee, so
+   * they are on the item without the owner Conversation. Nobody can take it.
+   * A dismiss first calls `inboxItemDismissed` to remove the person's role,
+   * and fails when the hook fails. With nobody left, the item closes.
+   */
+  assigneeRoles?: boolean;
+}
+
+/**
+ * The icons that a kind action can show next to its label. The dashboard
+ * maps each name to one of its icons, so add a name there too.
+ */
+export const PLUGIN_INBOX_ACTION_ICONS = ["wrench"] as const;
+
+/** One button on the open items of a subject kind. */
+export interface PluginInboxKindAction {
+  /** Stable id, recorded on the item that it closes, such as `resume`. */
+  id: string;
+  label: string;
+  /** The dashboard shows it before the label. Slack shows no icons. */
+  icon?: (typeof PLUGIN_INBOX_ACTION_ICONS)[number];
 }
 
 /** The table and columns that map a subject id to its owner Conversation. */
@@ -99,13 +140,6 @@ export interface PluginReviewNotice {
    */
   title: string;
   /**
-   * Buttons that answer the item, in display order, such as `Resume`. An
-   * item with choices waits on its assignees. The first click closes it as
-   * done and calls the plugin's `inboxItemAnswered` hook with the choice.
-   * The answer starts no Turn: the plugin does the work.
-   */
-  choices?: Array<{ label: string; description?: string }>;
-  /**
    * The assignees must act, such as merge a pull request that is ready. The
    * item then waits on them: its Conversation shows in their Needs you, and
    * it counts in their Inbox. Leave it unset for a notice that is only for
@@ -115,11 +149,29 @@ export interface PluginReviewNotice {
 }
 
 /**
+ * One item of a subject as the Inbox records it. A closed item keeps how
+ * and when it closed, so a subject's items say what people did on it.
+ */
+export interface PluginInboxItemRecord {
+  /** The id of the kind action that a person ran to close it. */
+  action?: string;
+  /** Unset while the item is open. */
+  closedAtMs?: number;
+  id: string;
+  status: "open" | "done" | "dismissed";
+}
+
+/**
  * Inbox items that a plugin adds and closes from its own events. Each item
  * belongs to one Conversation. Core owns visibility, assignment rules, and
  * the Slack cards.
  */
 export interface PluginInboxItems {
+  /**
+   * The items of the subject, newest first: the open one, if any, then the
+   * closed ones.
+   */
+  history(subject: PluginInboxItemSubject): Promise<PluginInboxItemRecord[]>;
   /** Add an open item, or change the open one of the subject. */
   upsert(notice: PluginReviewNotice): Promise<void>;
   /**
@@ -133,15 +185,49 @@ export interface PluginInboxItems {
   }): Promise<boolean>;
 }
 
+/**
+ * A plugin changed an open item through a Conversation that does not own it.
+ * A plugin that picks the owner from provider data, such as a GitHub issue
+ * footer, can catch it when that data is stale.
+ */
+export class PluginInboxItemOwnerError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PluginInboxItemOwnerError";
+  }
+}
+
 /** Inbox items of a plugin, for the Conversation that each item belongs to. */
 export interface PluginConversationInboxItems {
   forConversation(conversationId: string): PluginInboxItems;
 }
 
-/** A person picked one of the `choices` of an item that this plugin added. */
-export interface InboxItemAnsweredHookContext extends PluginContext {
-  /** The label of the picked choice. */
-  choice: string;
+/**
+ * A person dismissed an item of a subject kind with `assigneeRoles`. The
+ * plugin removes them from the object on the provider, such as from a
+ * GitHub issue's assignees.
+ */
+export interface InboxItemDismissedHookContext extends PluginContext {
+  /** Annotations of the Conversation that the item belongs to. */
+  annotations: PluginAnnotations;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: PluginCodeChanges;
+  /** The Conversation that the item belongs to. */
+  conversationId: string;
+  /**
+   * The person's account of the plugin's provider, such as a GitHub login.
+   * Unset when they linked none.
+   */
+  handle?: string;
+  nowMs: number;
+  /** The subject of the item, with the plugin's own kind. */
+  subject: PluginInboxItemSubject;
+}
+
+/** A person ran an action of the kind of an item that this plugin added. */
+export interface InboxItemActionHookContext extends PluginContext {
+  /** The `id` of the kind action. */
+  action: string;
   /** Junior's native code index, as from a plugin route. */
   codeChanges: PluginCodeChanges;
   /** The Conversation that the item belongs to. */
@@ -150,7 +236,7 @@ export interface InboxItemAnsweredHookContext extends PluginContext {
   subject: PluginInboxItemSubject;
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
-  /** The closed item's id. It is the same on a retry of the same answer. */
+  /** The closed item's id. It is the same on a retry of the same action. */
   itemId: string;
   nowMs: number;
   /** Inbox items, as from a plugin route. */

@@ -1,7 +1,9 @@
 import * as z from "zod";
 import {
+  ASK_TOOL_NAMES,
   inboxItemQuestion,
   normalizeUserInputAnswer,
+  USER_INPUT_NOTE,
   type InboxItemPayload,
   type UserInputRequest,
 } from "@sentry/junior/api/schema";
@@ -10,7 +12,6 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { withoutStandaloneUrl } from "../display-text/DisplayText";
 import { automationPath } from "../format";
 import { displayPlainText } from "../display-text/plainText";
-import type { Conversation } from "../types";
 
 /** Return the Inbox route that selects one item. */
 export function inboxItemPath(id: string): string {
@@ -71,9 +72,6 @@ export function inboxItemTitleText(item: InboxItemPayload): string {
   return displayPlainText(item.title, item.mentions);
 }
 
-// Transcripts from before Review items became Inbox items have the old tool
-// name.
-const ADD_INBOX_ITEM_TOOL_NAMES = new Set(["addInboxItem", "addReviewItem"]);
 const executeToolInputSchema = z.object({ tool_name: z.string() });
 const addedItemSchema = z.object({ item: z.object({ id: z.string().min(1) }) });
 
@@ -92,7 +90,7 @@ function addedItemId(output: unknown): string | undefined {
 
 /**
  * Return the id of the Inbox item that one completed tool call added. The
- * agent calls `addInboxItem` directly or through `executeTool`. Returns
+ * agent calls `askUserQuestion` directly or through `executeTool`. Returns
  * undefined when the transcript hides the tool result.
  */
 export function inboxItemIdFromToolCall(call: {
@@ -106,7 +104,7 @@ export function inboxItemIdFromToolCall(call: {
     call.name === "executeTool"
       ? executeToolInputSchema.safeParse(call.input).data?.tool_name
       : call.name;
-  if (!toolName || !ADD_INBOX_ITEM_TOOL_NAMES.has(toolName)) return undefined;
+  if (!toolName || !ASK_TOOL_NAMES.has(toolName)) return undefined;
   return addedItemId(call.output);
 }
 
@@ -139,7 +137,9 @@ export function answerRows(
       ? [{ label: field.label, value: values.join(", ") }]
       : [];
   });
-  if (normalized.other) rows.push({ label: "Other", value: normalized.other });
+  if (normalized.other) {
+    rows.push({ label: USER_INPUT_NOTE.label, value: normalized.other });
+  }
   return rows;
 }
 
@@ -156,51 +156,44 @@ export function answerLine(
     .join(" · ");
 }
 
-/** Say "You answered Hold" for picked options, or "You replied" for text. */
-function answeredLine(choices: readonly string[]): string {
-  return choices.length > 0
-    ? `You answered ${choices.join(", ")}`
-    : "You replied";
-}
-
 /**
- * Say what the viewer last answered in a Conversation, from the answer that
- * its feed row carries, until a later Message moves it on. The answer's own
- * Message has the close time, so it does not count as later.
+ * Whether the viewer cannot see the Conversation that owns the item. The
+ * API then names no root for it, as for a person whose role on the subject
+ * puts them on the item.
  */
-export function conversationAnswerLine(
-  conversation: Pick<Conversation, "lastMessageAt" | "viewerAnswer">,
-): string | undefined {
-  const answer = conversation.viewerAnswer;
-  if (!answer) return undefined;
-  if (
-    conversation.lastMessageAt &&
-    Date.parse(conversation.lastMessageAt) > Date.parse(answer.closedAt)
-  )
-    return undefined;
-  return answeredLine(answer.choices);
+export function itemConversationHidden(
+  item: Pick<InboxItemPayload, "owner" | "rootConversationId">,
+): boolean {
+  return item.owner.kind === "conversation" && !item.rootConversationId;
 }
 
 /**
  * The Conversation that owns an item, or undefined when something else owns
- * it, such as an Automation.
+ * it, such as an Automation, or when the viewer cannot see it.
  */
 export function itemConversationId(
-  item: Pick<InboxItemPayload, "owner">,
+  item: Pick<InboxItemPayload, "owner" | "rootConversationId">,
 ): string | undefined {
-  return item.owner.kind === "conversation" ? item.owner.id : undefined;
+  return item.owner.kind === "conversation" && !itemConversationHidden(item)
+    ? item.owner.id
+    : undefined;
 }
 
 /**
  * The route of an item's owner: its Conversation, with `options`, or its
- * Automation.
+ * Automation. When the viewer cannot see the Conversation, the item's own
+ * row, so nothing links to the Conversation.
  */
 export function itemOwnerPath(
-  item: Pick<InboxItemPayload, "owner">,
+  item: Pick<
+    InboxItemPayload,
+    "id" | "owner" | "rootConversationId" | "status"
+  >,
   options?: Parameters<typeof conversationPath>[1],
 ): string {
-  return item.owner.kind === "automation"
-    ? automationPath(item.owner.id)
+  if (item.owner.kind === "automation") return automationPath(item.owner.id);
+  return itemConversationHidden(item)
+    ? inboxRowPath(item)
     : conversationPath(item.owner.id, options);
 }
 

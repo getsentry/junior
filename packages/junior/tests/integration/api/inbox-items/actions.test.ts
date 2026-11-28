@@ -1,5 +1,6 @@
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
+import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
@@ -23,10 +24,10 @@ import {
   insertInboxItem,
   takeInboxItem,
 } from "@/chat/inbox-items/store";
-import { juniorIdentities } from "@/db/schema";
+import { juniorIdentities, juniorQuestions } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
+import { useAppContext } from "../../../fixtures/app-context";
 import { avatarPath } from "../../../fixtures/avatar";
-import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
 import {
@@ -34,7 +35,6 @@ import {
   createConversationFixture,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
-import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 const CLI_CONVERSATION_ID = "local:cli:inbox-items";
 
@@ -78,17 +78,37 @@ async function slackConversation(conversationId: string): Promise<void> {
   });
 }
 
-async function addItem(input: Record<string, unknown>): Promise<string> {
-  const tool = createAddInboxItemTool(
-    {
-      conversationId: "slack:CPUB:1.000001",
-      resolveActorIdentity: async () => undefined,
-      source: { kind: "scheduled_automation" },
-    },
-    createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
+// Store an item of a Conversation's agent, as these API cases read it: a
+// question with any stored request, or a notice from before
+// `askUserQuestion`. The tool cases are in `inbox-item-tools.test.ts`.
+async function addItem(input: {
+  assignees: string[];
+  body: string;
+  conversation_ids?: string[];
+  kind: "action" | "notice";
+  request?: UserInputRequest;
+  title: string;
+}): Promise<string> {
+  const owner = "slack:CPUB:1.000001";
+  const everyone = input.assignees.includes("everyone");
+  const assigneeUserIds = await Promise.all(
+    input.assignees
+      .filter((assignee) => assignee !== "everyone")
+      .map(async (email) => (await user(email)).id),
   );
-  const result = await (tool as any).execute(input, {});
-  return result.item.id;
+  const item = await insertInboxItem(getDb(), {
+    assignedToEveryone: everyone,
+    assigneeUserIds,
+    body: input.body,
+    conversationIds: [owner, ...(input.conversation_ids ?? [])],
+    kind: input.kind,
+    nowMs: Date.now(),
+    owner: { id: owner, kind: "conversation" },
+    ...(input.request ? { request: input.request } : undefined),
+    subject: { id: `ask:${randomUUID()}`, kind: "question" },
+    title: input.title,
+  });
+  return item!.id;
 }
 
 function api(fixture: ConversationFixture, viewer: User) {
@@ -257,6 +277,7 @@ describe("inbox item actions API", () => {
     });
 
     // The names and photos come with the items, in one more statement.
+    await seedDashboardScale();
     const { items } = await (
       await expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
         statements: 6,
@@ -295,7 +316,7 @@ describe("inbox item actions API", () => {
       request: REQUEST,
     });
     // A notice does not need Ana, so it does not count.
-    await addItem({
+    const noticeId = await addItem({
       kind: "notice",
       title: "Weekly report is ready",
       body: "Read it when you have time.",
@@ -303,6 +324,7 @@ describe("inbox item actions API", () => {
       conversation_ids: ["slack:CPUB:1.000003"],
     });
 
+    await seedDashboardScale();
     const anaCount = await (
       await expectSqlBudget(() => api(fixture, ana).get("/count"), {
         statements: 1,
@@ -357,8 +379,10 @@ describe("inbox item actions API", () => {
     expect((await (await api(fixture, outsider).get("")).json()).items).toEqual(
       [],
     );
+    // Only a public question opens to its readers. Cal cannot dismiss a
+    // notice for Ana.
     expect(
-      (await api(fixture, cal).act(id, { action: "dismiss" })).status,
+      (await api(fixture, cal).act(noticeId, { action: "dismiss" })).status,
     ).toBe(403);
 
     const submitted = await api(fixture, ana).act(id, {
@@ -369,9 +393,22 @@ describe("inbox item actions API", () => {
     expect(await submitted.json()).toMatchObject({
       status: "done",
       canAct: false,
+      answeredBy: { email: "ana@example.com" },
       closedBy: { email: "ana@example.com" },
       answer: { values: { decision: ["Reject"], reason: ["Not fair source"] } },
     });
+    // The question holds the answer, who gave it, and when.
+    const answered = (await getInboxItem(getDb(), id))!;
+    expect(
+      await getDb()
+        .select({
+          answer: juniorQuestions.answer,
+          at: juniorQuestions.answeredAt,
+          by: juniorQuestions.answeredByUserId,
+        })
+        .from(juniorQuestions)
+        .where(eq(juniorQuestions.id, answered.subject.id)),
+    ).toEqual([{ answer: answered.answer, at: answered.closedAt, by: ana.id }]);
 
     // Both linked Conversations hear from Ana, once, even after a retry.
     const retry = await api(fixture, ana).act(id, {
@@ -650,6 +687,8 @@ describe("inbox item actions API", () => {
   });
 
   it("counts each Inbox bundle across every page", async () => {
+    // createApp installs its plugins; the next test starts without them.
+    useAppContext();
     // The GitHub plugin's link types recognize pull request subjects.
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     const fixture = await createConversationFixture();
@@ -691,7 +730,8 @@ describe("inbox item actions API", () => {
         ...(input.kind === "decision"
           ? {
               kind: "action",
-              request: REQUEST,
+              // askUserQuestion stores no shared question, only fields.
+              request: index % 2 ? { fields: REQUEST.fields } : REQUEST,
               subject: { id: `bundles:${index}`, kind: "question" },
             }
           : input.kind === "pr"
@@ -904,8 +944,19 @@ describe("inbox item actions API", () => {
     const dismissed = await api(fixture, cal).act(id, { action: "dismiss" });
     expect(dismissed.status).toBe(200);
     expect(await pendingMessages("slack:CPUB:1.000001")).toEqual([]);
+    // The Message names Cal's Identity, so the dashboard shows his photo.
+    const [calIdentity] = await getDb()
+      .select({ id: juniorIdentities.id })
+      .from(juniorIdentities)
+      .where(
+        and(
+          eq(juniorIdentities.provider, "junior"),
+          eq(juniorIdentities.providerSubjectId, "cal@example.com"),
+        ),
+      );
     expect(await savedChanges("slack:CPUB:1.000001", "dismissed")).toEqual([
       expect.objectContaining({
+        authorIdentityId: calIdentity!.id,
         text: expect.stringContaining("cal@example.com dismissed inbox item"),
         meta: expect.objectContaining({
           reviewItemChanges: [{ kind: "dismissed", reviewItemId: id }],

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import {
   inboxItemQuestion,
   type InboxItemPayload,
+  userInputQuestionText,
 } from "@sentry/junior/api/schema";
 
 import { DisplayText } from "../display-text/DisplayText";
@@ -23,6 +24,7 @@ import {
   answerLine,
   itemConversationId,
   itemOwnerLinkLabel,
+  itemConversationHidden,
   itemOwnerPath,
   inboxItemText,
 } from "./inboxItemFormat";
@@ -35,7 +37,7 @@ import { inboxItemTitleText } from "./inboxItemFormat";
 function outcomeOf(item: InboxItemPayload): string | undefined {
   const question = inboxItemQuestion(item.request);
   if (question && item.answer) return answerLine(question, item.answer);
-  return item.closeReason;
+  return item.closeAction ?? item.closeReason;
 }
 
 function DoneRow(props: {
@@ -55,7 +57,7 @@ function DoneRow(props: {
   const text =
     item.kind === "notice" || !question
       ? inboxItemText(item)
-      : question.question;
+      : userInputQuestionText(question);
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
   const detail = (
@@ -76,13 +78,16 @@ function DoneRow(props: {
         >
           {props.title}
         </span>
-        <Link
-          className="ml-auto inline-flex items-center gap-1.5 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
-          to={itemOwnerPath(item, { askItemId: item.id })}
-        >
-          {itemOwnerLinkLabel(item)}
-          <ArrowUpRight aria-hidden="true" size={14} />
-        </Link>
+        {/* A viewer who cannot see the Conversation gets no link to it. */}
+        {itemConversationHidden(item) ? null : (
+          <Link
+            className="ml-auto inline-flex items-center gap-1.5 font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
+            to={itemOwnerPath(item, { askItemId: item.id })}
+          >
+            {itemOwnerLinkLabel(item)}
+            <ArrowUpRight aria-hidden="true" size={14} />
+          </Link>
+        )}
       </div>
       <InboxItemObjects conversationId={itemConversationId(item)}>
         <DisplayText mentions={item.mentions} text={text} />

@@ -8,13 +8,29 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 
+/**
+ * How one card read uses caches. `now` asks the provider on each HTTP read,
+ * so a change of access counts at once. `onStale` gets the time that an
+ * entry served after its TTL was stored.
+ */
+export interface ObjectLinkRead {
+  /** Read only cached state, with no provider call. */
+  cacheOnly?: true;
+  now?: true;
+  onStale?(storedAtMs: number): void;
+  /** Ends every provider call of the card read, its access check included. */
+  signal?: AbortSignal;
+}
+
 /** One link type of core or a plugin, with the viewer-scoped resolver. */
 export interface ObjectLinkType {
   /**
-   * False when the resolver reads a cache that its writes clear, so a
-   * change shows at once instead of after the card cache expires.
+   * True when the resolver reads no HTTP cache, so Junior keeps the card
+   * for each viewer and URL.
    */
-  cacheCards?: false;
+  cacheCards?: true;
+  /** True when `canView` and `resolve` honor `read.cacheOnly`. */
+  cacheOnlyReads?: true;
   /**
    * Whether the viewer may see the object. Called before `resolve`, with
    * the URL's prefetch outcome in a page read.
@@ -23,8 +39,11 @@ export interface ObjectLinkType {
     viewer: User,
     url: URL,
     prefetched?: ObjectLinkPrefetchOutcome,
+    read?: ObjectLinkRead,
   ): Promise<boolean>;
   filters: readonly ObjectLinkFilter[];
+  /** Name the object from its link, for a card that cannot read it. */
+  label?(url: URL): string | undefined;
   /** The object types that `resolve` can return. */
   objectTypes: readonly ObjectType[];
   /** `junior` for core, or the plugin name. */
@@ -43,6 +62,7 @@ export interface ObjectLinkType {
     viewer: User,
     url: URL,
     prefetched?: ObjectLinkPrefetchOutcome,
+    read?: ObjectLinkRead,
   ): Promise<ObjectAnnotation | undefined>;
   /** Show the web page card when `canView` returns false. */
   webPageFallback?: true;
@@ -62,13 +82,75 @@ function compareSpecificity(left: number[], right: number[]): number {
 }
 
 // Two filters of equal specificity can claim the same URL only when they
-// have the same scheme and host, and their paths can match one path.
+// have the same scheme and host, their paths can match one path, and their
+// targets can match one target URL.
 function filtersOverlap(
   left: ObjectLinkFilter,
   right: ObjectLinkFilter,
 ): boolean {
   if ((left.scheme ?? "https") !== (right.scheme ?? "https")) return false;
   if (left.host !== right.host) return false;
+  if (!pathsOverlap(left, right)) return false;
+  // A URL can carry two different parameters, so only targets on the same
+  // parameter can rule out an overlap.
+  if (left.target?.param !== right.target?.param) return true;
+  const rightTargets = right.target?.filters ?? [];
+  return (
+    left.target === undefined ||
+    left.target.filters.some((leftTarget) =>
+      rightTargets.some((rightTarget) =>
+        targetsOverlap(leftTarget, rightTarget),
+      ),
+    )
+  );
+}
+
+// Target filters can differ in specificity, so a broader one, such as a
+// wildcard host or no path, overlaps every narrower one that it claims.
+function targetsOverlap(
+  left: ObjectLinkFilter,
+  right: ObjectLinkFilter,
+): boolean {
+  if ((left.scheme ?? "https") !== (right.scheme ?? "https")) return false;
+  if (!hostsOverlap(left.host, right.host)) return false;
+  if (left.path !== undefined) return pathClaims(right, left.path);
+  if (right.path !== undefined) return pathClaims(left, right.path);
+  if (left.pathPrefix !== undefined && right.pathPrefix !== undefined) {
+    return (
+      left.pathPrefix.startsWith(right.pathPrefix) ||
+      right.pathPrefix.startsWith(left.pathPrefix)
+    );
+  }
+  // Two patterns compare by segment. A missing path claims every path, and
+  // a prefix and a pattern count as overlapping.
+  return bothPatterns(left, right) ? pathsOverlap(left, right) : true;
+}
+
+function hostsOverlap(left?: string, right?: string): boolean {
+  if (left === undefined || right === undefined) return true;
+  return hostClaims(left, right) || hostClaims(right, left);
+}
+
+// `*.example.com` claims `a.example.com` and `*.a.example.com`.
+function hostClaims(wide: string, narrow: string): boolean {
+  return (
+    wide === narrow || (wide.startsWith("*.") && narrow.endsWith(wide.slice(1)))
+  );
+}
+
+function pathClaims(filter: ObjectLinkFilter, path: string): boolean {
+  const { path: exact, pathPattern, pathPrefix } = filter;
+  return objectLinkFilterMatches(
+    { path: exact, pathPattern, pathPrefix },
+    new URL(path, "https://link.invalid"),
+  );
+}
+
+function bothPatterns(left: ObjectLinkFilter, right: ObjectLinkFilter) {
+  return left.pathPattern !== undefined && right.pathPattern !== undefined;
+}
+
+function pathsOverlap(left: ObjectLinkFilter, right: ObjectLinkFilter) {
   if (left.pathPattern !== undefined && right.pathPattern !== undefined) {
     const leftParts = left.pathPattern.split("/");
     const rightParts = right.pathPattern.split("/");
@@ -118,11 +200,10 @@ export function assertNoObjectLinkConflicts(
 }
 
 /** Return the link type whose most specific filter claims the URL. */
-export function findObjectLinkType(
-  linkTypes: readonly ObjectLinkType[],
-  url: URL,
-): ObjectLinkType | undefined {
-  let best: { linkType: ObjectLinkType; specificity: number[] } | undefined;
+export function findObjectLinkType<
+  T extends { filters: readonly ObjectLinkFilter[] },
+>(linkTypes: readonly T[], url: URL): T | undefined {
+  let best: { linkType: T; specificity: number[] } | undefined;
   for (const linkType of linkTypes) {
     for (const filter of linkType.filters) {
       if (!objectLinkFilterMatches(filter, url)) continue;

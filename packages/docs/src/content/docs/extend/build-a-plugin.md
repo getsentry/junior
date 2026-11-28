@@ -132,6 +132,26 @@ Set the client redirect URI to
 plugin read-only. `authorize-params` adds provider-specific parameters to the
 authorization URL. Do not declare both `mcp.auth` and `mcp.oauth-client`.
 
+### Guardian review of MCP tools
+
+Guardian reviews each MCP tool call before it runs. A server's own tool
+annotations do not change that, because a server can mark a write as
+read-only. List the tools that have no effect, such as search and fetch, by
+their exact remote names:
+
+```yaml title="plugin.yaml"
+mcp:
+  url: https://api.my-provider.example/mcp
+  guardian:
+    skipReview:
+      - search
+      - fetch
+```
+
+Calls of a listed tool skip review. Junior reviews every other tool, also one
+that the server adds or renames. When the plugin sets `mcp.allowed-tools`,
+each listed tool must be in it or in `mcp.wrapped-tools`.
+
 ### Service accounts
 
 Per-user OAuth is the default. A plugin can also let Junior use one shared
@@ -481,7 +501,9 @@ onto the agent runtime's separate result channels.
 - `auto` is the default. Junior sets it when you omit the field. A tool with
   `readOnlyHint: true` and no `destructiveHint: true` runs without review.
   Guardian reviews each call of every other tool in this mode. Set
-  `readOnlyHint: true` only when the tool never writes.
+  `readOnlyHint: true` only when the tool never writes. Annotations that a
+  remote MCP server sends never skip review. Use `mcp.guardian.skipReview`
+  for those tools.
 - `review` makes Guardian review each call.
 - `approve` skips review. The tool runs without a Guardian decision, also in a
   child agent.
@@ -556,11 +578,24 @@ the Destination of that Conversation sets who can see the item. Save the row
 before you add the item. Add a unique index, so that at most one row with a
 Conversation has each subject id.
 
+A kind can set `actions`: buttons that each open item of the kind shows, such
+as `{ id: "resume", label: "Resume" }`, with an optional `icon` such as
+`"wrench"` that the dashboard shows before the label. A click closes the item
+as done and calls your `inboxItemAction` hook with the item and the action id.
+Do the work there. A retry of the same click calls the hook again, so make it
+safe to repeat.
+
+`history(subject)` returns the items of a subject, newest first. Each closed
+item says when and how it closed, and the action that closed it. Read what
+people did, such as a dismiss or an action, from it. Do not copy it into a
+table of your plugin.
+
 ```ts
 inboxSubjects: [
   {
     kind: "deploy_stopped",
     label: "Deploy stopped",
+    actions: [{ id: "retry", label: "Retry" }],
     owner: {
       table: "my_provider_deploys",
       subjectId: "deploy_id",
@@ -575,14 +610,14 @@ A plugin that records code changes with `ctx.codeChanges` also sets
 `codeLinks.change({ repository, number })` and `codeLinks.repository(name)` to
 link each code change and repository.
 
-Use `ctx.conversationChanges.apply(...)` when readers must see annotation and
-Inbox item changes together, such as a chip that shows a merged pull request
-and the close of its ask. Junior saves the batch in one write. When one entry
-fails, Junior saves no entry. A batch has at most 100 entries.
+Use `ctx.conversationChanges.apply(...)` when readers must see Inbox item
+changes together, such as the close of every ask of a merged pull request.
+Junior saves the batch in one write. When one entry fails, Junior saves no
+entry. A batch has at most 100 entries. A change at the provider changes no
+annotation: cards read the object live.
 
 ```ts
 await ctx.conversationChanges.apply({
-  annotations: [{ conversationId, upsert: annotation }],
   inboxItems: [
     { conversationId, close: { subject, reason, status: "done" } },
   ],
@@ -750,7 +785,9 @@ defineJuniorPlugin({
 
 - **Filter.** `scheme` is `https` when you omit it. `host` is an exact host
   or `*.example.com`. Give one of `path` (exact), `pathPattern` (a `*`
-  segment matches one segment), or `pathPrefix`. Junior picks an exact host
+  segment matches one segment), or `pathPrefix`. For a redirect page, such
+  as a sign-in page, `target: { param, filters }` claims the URL only when
+  that query parameter holds a URL that `filters` claim. Junior picks an exact host
   before a wildcard host, and an exact path before a pattern before a
   prefix. Two link types with equal filters for the same URLs stop app
   startup. An `https` URL that no link type claims gets a `web_page` card from core,
@@ -766,19 +803,58 @@ defineJuniorPlugin({
   gets HTTP 401. Use it in `canView` to ask the provider whether the viewer
   can open the object. Junior calls `canView` before each card read and
   again on each Attach.
-- **Resolver.** Return the card, or `undefined` for a missing object. To
-  share one provider read with `canView`, read through `ctx.cache` with a
-  short TTL. Junior caches the card for one minute for each viewer and URL,
-  and does not save it on a Conversation. When your webhooks keep the object
-  entry current, set `cacheCards: false`. Junior then reads your entry on
-  each card read, after `canView`, so a change shows at once.
-- **Prefetch.** To load a page of links in one provider call, add
-  `prefetch(ctx, urls)`. Junior calls it once per page read with every URL
-  that the link type claims, before `canView` and `resolve` run for each
-  URL. Write the objects to `ctx.cache`, and never return object data. To
-  tell one URL's card read what happened, return a `Map` from `url.href` to
-  an outcome. `out_of_time` means the page's time ran out before the object
-  loaded. That URL's `canView` and `resolve` on the same page get it as
+  For an MCP plugin, `ctx.viewerMcp` calls a provider tool with only the
+  viewer's own stored MCP login. List each tool that it may call in
+  `mcp.viewer-tools` (`viewerTools` in TypeScript). Without the list, it
+  can call no tool. Each tool must be in `mcp.allowed-tools` or
+  `mcp.wrapped-tools` when the plugin sets `allowed-tools`. The provider
+  must mark the tool read-only.
+- **Resolver.** Return the card, or `undefined` for a missing object.
+  Junior does not save it on a Conversation. Junior's HTTP cache keeps the
+  GET responses of `ctx.egress` and `ctx.viewerEgress`, with separate
+  entries for each credential. An entry serves for one minute. After that,
+  Junior asks your provider with the entry's `ETag` or `Last-Modified`, and
+  a `304` keeps the entry. When a read fails, the card shows the last
+  entry and when Junior fetched it. Set `httpCache: { ttlMs }` to change
+  the minute. When your webhooks keep your own `ctx.cache` entry current,
+  set `httpCache: { staleIfError: false, ttlMs: 0 }`, so a change shows at
+  once. When `resolve` reads your provider another way, such as through
+  `ctx.viewerMcp`, set `cacheCards: true`. Junior then keeps the card for
+  one minute for each viewer and URL.
+  When a webhook changes an object, call
+  `ctx.annotations.objectChanged(subject)` with the object's subject. An
+  open page that shows the object then reads its card again. Call it only
+  when the object changed, such as when your cache entry changed.
+- **Annotations.** When a tool creates or changes an object, return it in
+  `objectAnnotations` of the tool result, with `action`, `kind: "object"`,
+  `key`, `subject`, `objectType`, `title`, and `url`. Junior saves only
+  these fields. Each card reads the object live through your link type.
+  Add `label(url)` to the link type to give the short label, such as
+  `owner/repo#12`. The label shows when the card cannot load.
+- **Subject ids.** When the viewer's own read names the stable id of an
+  object that older Annotations name by another id, call
+  `ctx.replaceSubjectId({ kind, from, to })`. Junior moves the Annotations
+  of your subject kind `kind` from `from` to `to`, and changes nothing else.
+  When `from` is unique only in one workspace, set `urlPrefix` to the
+  workspace's address: only Annotations whose url starts with it move.
+- **Cache-only reads.** The dashboard's page loads and polls, such as the
+  conversation feed and the Inbox, make no provider call. They read each
+  card with `ctx.cacheOnly` set, and `egress`, `viewerEgress`, and
+  `viewerMcp` throw. A card that scrolls into view or is hovered still
+  reads live. Set `cacheOnlyReads: true` when your `canView` and `resolve`
+  then read only `ctx.cache`, such as objects that your webhooks keep.
+  Anyone who can read the Conversation or Inbox item sees that stored
+  card, so these reads need no viewer access check. Return nothing on a
+  miss. Without `cacheOnlyReads`, these reads show only a card that
+  `cacheCards` kept, or the saved title and link.
+- **Prefetch.** To load many links in one provider call, add
+  `prefetch(ctx, urls)`. Junior calls it once per read of many links with
+  every URL that the link type claims, before `canView` and `resolve` run
+  for each URL. A cache-only read does not call it. Write the objects to
+  `ctx.cache`, and never return object data. To tell one URL's card read
+  what happened, return a `Map` from `url.href` to an outcome.
+  `out_of_time` means the read's time ran out before the object loaded.
+  That URL's `canView` and `resolve` in the same read get it as
   `ctx.prefetchOutcome`, so they can show only what the cache holds. Other
   reads, such as an Attach, get no outcome, so they ask the provider as
   usual.

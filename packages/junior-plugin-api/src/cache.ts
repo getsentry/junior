@@ -13,6 +13,13 @@ export interface CacheEntry<T> {
 }
 
 /**
+ * How long a `getOrLoad` load that calls a provider may run. Other callers
+ * of the key wait 10 s for it, so a load that ends within this answers them
+ * all, and none of them calls the provider too.
+ */
+export const CACHE_LOAD_TIMEOUT_MS = 8000;
+
+/**
  * Short-lived copies of values that are slow or costly to load, such as
  * provider API reads. Junior can drop an entry at any time. A lost entry only
  * costs a reload, so never keep data here that Junior must not lose. Use
@@ -20,17 +27,19 @@ export interface CacheEntry<T> {
  */
 export interface PluginCache {
   /**
+   * Return the fresh cached value of `key`, or `undefined`. It never loads
+   * or waits on a load. `stale` also returns a `staleIfError` entry past
+   * its TTL, as the last good value.
+   */
+  get<T>(key: string, options?: { stale?: boolean }): Promise<T | undefined>;
+  /**
    * Return the cached value for `key`, or call `load` and cache its result.
    * Concurrent callers share one load. A load that throws is not cached,
    * and it throws to the caller unless a `staleIfError` value is kept.
-   * `refresh` ignores the cached value and replaces it.
+   * A caller that waits too long for another load gets that kept value, or
+   * loads the value itself when there is none. `refresh` ignores the cached
+   * value and replaces it.
    */
-  /**
-   * Return the fresh cached value of `key`, or `undefined` when there is
-   * none. It never loads, so a caller can find the misses of many keys and
-   * load them in one provider call.
-   */
-  get<T>(key: string): Promise<T | undefined>;
   getOrLoad<T>(
     key: string,
     load: () => Promise<CacheEntry<T>>,

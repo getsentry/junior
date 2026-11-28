@@ -71,7 +71,7 @@ attributes. Nested logs and spans inherit them.
 | Slow or wrong action review          | `guardian.action_review.*`, span `guardian.action_review`, `app.guardian.*` on `gen_ai.execute_tool` | `chat/guardian/gate.ts`                                         |
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
 | Core tool call skipped or failed     | `app.tool_call.outcome` on `gen_ai.execute_tool` (`completed`, `failed`, `aborted`, `not_found`, `invalid_arguments`, `replay_skipped`, `truncated`, `dangling_skipped`, `replaced`) | `core/turn/step.ts` |
-| Core Turn or reply stuck after a lost queue message | `turn.sweep.requeued` (warning; `app.turn.sweep.reason`, `app.turn.sweep.stalled_ms`), metric `turn.sweep.requeued`, span `turn.sweep`, `turn.sweep.failed` | `core/turn/sweep.ts` |
+| Core Turn or reply stuck after a lost queue message | `turn.sweep.requeued` (warning; `app.turn.sweep.reason`, `app.turn.sweep.stalled_ms`), metric `turn.sweep.requeued`, spans `turn.sweep` and `delivery.sweep`, `turn.sweep.failed` | `core/turn/sweep.ts`, `delivery/sweep.ts` |
 | Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
 | Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tool-support/catalog-search-rerank.ts`                    |
@@ -81,6 +81,7 @@ attributes. Nested logs and spans inherit them.
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
 | Related conversations missing/noisy | span `plugin.hook userPrompt` (`related-conversations`), `app.related-conversations.*`, `related_conversations_provider_failed`, `plugin.user_prompt.hook.failed` | `chat/related-conversations/find.ts` |
 | History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
+| Turn left its events unindexed      | span `event_search.index`, `app.event_search.index.*`                                                | `chat/conversations/event-embedding.ts`                         |
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
 | Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |
@@ -131,10 +132,8 @@ attributes. Nested logs and spans inherit them.
   without it ran on a WebSocket client. `db.query.text` keeps placeholders.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
-- A reviewed `gen_ai.execute_tool` span has `app.guardian.decision`,
-  `app.guardian.risk_level`, `app.guardian.rule` (the block rule, or `none`),
-  and `app.guardian.user_consent` (the user authorization level). Sentry's
-  data scrubber hides a key that contains `auth`.
+- A reviewed `gen_ai.execute_tool` span has `app.guardian.decision` and,
+  when a rule blocked the action, `app.guardian.rule`.
 - `guardian.action_review` has `app.guardian.proposal.chars` (the proposal
   JSON that the size limit counts) and, when a review's model call aborts,
   `app.guardian.review.aborted_by` (`timeout` or `run`). The span covers one

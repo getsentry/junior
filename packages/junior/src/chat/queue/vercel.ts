@@ -1,11 +1,19 @@
+import { createHash } from "node:crypto";
 import { PollingQueueClient, QueueClient } from "@vercel/queue";
+import { getAppContext } from "@/app/context";
 import { getChatConfig } from "@/chat/config";
-import type { QueueConsumer, QueueProvider } from "@/chat/queue/provider";
+import type {
+  QueueConsumer,
+  QueueProvider,
+  QueueSendOptions,
+} from "@/chat/queue/provider";
 
 type QueueClientOptions = ConstructorParameters<typeof QueueClient>[0];
 
-function defaultQueueClientOptions(): QueueClientOptions {
-  const { apiUrl } = getChatConfig().queue;
+function defaultQueueClientOptions(
+  apiUrl: string | undefined,
+  deploymentId: string | undefined,
+): QueueClientOptions {
   if (apiUrl) {
     // A local queue server does not check tokens. Any token skips the Vercel
     // OIDC lookup, which fails outside Vercel.
@@ -15,7 +23,7 @@ function defaultQueueClientOptions(): QueueClientOptions {
       token: "local",
     };
   }
-  if (getChatConfig().deployment.id) {
+  if (deploymentId) {
     return {};
   }
   return { deploymentId: null };
@@ -26,8 +34,20 @@ interface VercelQueueClients {
   send: QueueClient["send"];
 }
 
-function vercelQueueClients(): VercelQueueClients {
-  const options = defaultQueueClientOptions();
+/** The Vercel Queues clients of an app, and the config they were built from. */
+export interface VercelQueueClientCache {
+  current?: {
+    apiUrl: string | undefined;
+    deploymentId: string | undefined;
+    clients: VercelQueueClients;
+  };
+}
+
+function vercelQueueClients(
+  apiUrl: string | undefined,
+  deploymentId: string | undefined,
+): VercelQueueClients {
+  const options = defaultQueueClientOptions(apiUrl, deploymentId);
   const client = new QueueClient(options);
   if (!options?.resolveBaseUrl) {
     return { callbacks: client, send: client.send };
@@ -42,11 +62,22 @@ function vercelQueueClients(): VercelQueueClients {
   };
 }
 
-let clients: VercelQueueClients | undefined;
-
 // Build on first use, not at import, so env is read when the app runs.
+// Build again when the config they were built from changes.
 function getVercelQueueClients(): VercelQueueClients {
-  clients ??= vercelQueueClients();
+  const { apiUrl } = getChatConfig().queue;
+  const deploymentId = getChatConfig().deployment.id;
+  const cache = getAppContext().queueProvider;
+  const { current } = cache;
+  if (
+    current &&
+    current.apiUrl === apiUrl &&
+    current.deploymentId === deploymentId
+  ) {
+    return current.clients;
+  }
+  const clients = vercelQueueClients(apiUrl, deploymentId);
+  cache.current = { apiUrl, deploymentId, clients };
   return clients;
 }
 
@@ -54,6 +85,24 @@ function visibility(consumer: QueueConsumer) {
   return consumer.visibilityTimeoutSeconds === undefined
     ? {}
     : { visibilityTimeoutSeconds: consumer.visibilityTimeoutSeconds };
+}
+
+// Vercel Queues rejects an idempotency key over 256 characters. Keys built
+// from nested ids, such as child agent reply ids, can be longer. Send such a
+// key as its readable start, `:`, and the hash of the whole key, at exactly the
+// limit. The hash is stable, so the same key still drops a second send.
+const MAX_IDEMPOTENCY_KEY_LENGTH = 256;
+
+function withBoundedIdempotencyKey(
+  options: QueueSendOptions | undefined,
+): QueueSendOptions | undefined {
+  const key = options?.idempotencyKey;
+  if (!key || key.length <= MAX_IDEMPOTENCY_KEY_LENGTH) {
+    return options;
+  }
+  const digest = createHash("sha256").update(key).digest("hex");
+  const prefix = key.slice(0, MAX_IDEMPOTENCY_KEY_LENGTH - digest.length - 1);
+  return { ...options, idempotencyKey: `${prefix}:${digest}` };
 }
 
 /** Queue provider backed by Vercel Queues. */
@@ -64,7 +113,7 @@ export const vercelQueueProvider: QueueProvider = {
     const { messageId } = await getVercelQueueClients().send(
       topic,
       payload,
-      options,
+      withBoundedIdempotencyKey(options),
     );
     return messageId ? { messageId } : {};
   },

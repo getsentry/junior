@@ -6,7 +6,10 @@ import {
 } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
 import type { PluginImageSource } from "./images";
-import type { PluginInboxSubjectKind } from "./inbox-items";
+import {
+  PLUGIN_INBOX_ACTION_ICONS,
+  type PluginInboxSubjectKind,
+} from "./inbox-items";
 import type { PluginManifest } from "./manifest";
 import {
   objectLinkFilterSchema,
@@ -270,13 +273,40 @@ function validateInboxSubjects(
     }
     const owner = subject.owner;
     if (
+      owner !== "annotation" &&
       ![owner?.table, owner?.subjectId, owner?.conversationId].every(
         (identifier) =>
           typeof identifier === "string" && SQL_IDENTIFIER_RE.test(identifier),
       )
     ) {
       throw new Error(
-        `Plugin "${name}" inbox subject "${subject.kind}" needs an owner table, subjectId column, and conversationId column in snake_case.`,
+        `Plugin "${name}" inbox subject "${subject.kind}" needs an owner: "annotation", or a table, subjectId column, and conversationId column in snake_case.`,
+      );
+    }
+    if (
+      subject.assigneeRoles !== undefined &&
+      typeof subject.assigneeRoles !== "boolean"
+    ) {
+      throw new Error(
+        `Plugin "${name}" inbox subject "${subject.kind}" assigneeRoles must be a boolean.`,
+      );
+    }
+    const actionIds = (subject.actions ?? []).map((action) => action?.id);
+    if (
+      (subject.actions !== undefined && !Array.isArray(subject.actions)) ||
+      (subject.actions ?? []).some(
+        (action) =>
+          typeof action?.id !== "string" ||
+          !INBOX_SUBJECT_KIND_RE.test(action.id) ||
+          typeof action.label !== "string" ||
+          !action.label.trim() ||
+          (action.icon !== undefined &&
+            !PLUGIN_INBOX_ACTION_ICONS.includes(action.icon)),
+      ) ||
+      new Set(actionIds).size !== actionIds.length
+    ) {
+      throw new Error(
+        `Plugin "${name}" inbox subject "${subject.kind}" actions need unique snake_case ids, labels, and icons from ${PLUGIN_INBOX_ACTION_ICONS.join(", ")}.`,
       );
     }
     if (seen.has(subject.kind)) {

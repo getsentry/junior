@@ -5,6 +5,9 @@ import type {
   EventInput,
   EventPublisher,
   HeartbeatHookContext,
+  ObjectSubject,
+  PluginHttpCache,
+  PluginInboxItemRecord,
   PluginReviewNotice,
   PluginStartedTaskContext,
   PluginState,
@@ -40,6 +43,14 @@ export function signedRequest(input: {
     body,
   });
 }
+
+/**
+ * Core owns the HTTP cache, so these reads go to GitHub as they are. Core
+ * integration tests cover the saved ETags.
+ */
+export const passThroughHttpCache: PluginHttpCache = {
+  fetch: async ({ send }) => await send({}),
+};
 
 /** Plugin state in memory, with expiry. */
 export function memoryState(): PluginState {
@@ -100,6 +111,8 @@ export function createPluginHarness(
     }>,
     /** Batches of annotation and Inbox item changes, in order. */
     batches: [] as ConversationChangeBatch[],
+    /** Objects that a heartbeat said changed, so open pages read them again. */
+    changedObjects: [] as ObjectSubject[],
     closedNotices: [] as string[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
     /** Tasks that the plugin started and that have not run yet. */
@@ -132,8 +145,29 @@ export function createPluginHarness(
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
   const { codeChanges } = fixture.codeIndex;
-  /** The assignees of each open inbox item, by subject. */
-  const openNotices = new Map<string, string[]>();
+  /**
+   * The items of each subject, newest first, with the assignees of the
+   * open one, like core's item history.
+   */
+  const items = new Map<
+    string,
+    Array<PluginInboxItemRecord & { assignees: string[] }>
+  >();
+  let itemCount = 0;
+  const openItem = (key: string) => {
+    const latest = items.get(key)?.[0];
+    return latest?.status === "open" ? latest : undefined;
+  };
+  /** Close the open item of a subject, and return whether one was open. */
+  const closeItem = (
+    key: string,
+    close: Pick<PluginInboxItemRecord, "action" | "closedAtMs" | "status">,
+  ): boolean => {
+    const item = openItem(key);
+    if (!item) return false;
+    Object.assign(item, { closedAtMs: Date.now(), ...close });
+    return true;
+  };
   const events: EventPublisher = {
     async hasMatch(candidates) {
       return candidates.some(
@@ -157,6 +191,11 @@ export function createPluginHarness(
   const inboxItems: HeartbeatHookContext["inboxItems"] = {
     forConversation(conversationId) {
       return {
+        async history(subject) {
+          return (items.get(subjectKey(subject)) ?? []).map(
+            ({ assignees: _assignees, ...record }) => ({ ...record }),
+          );
+        },
         async upsert(notice) {
           if (failures.upsert > 0) {
             failures.upsert -= 1;
@@ -166,21 +205,33 @@ export function createPluginHarness(
           // closes when nobody is left. `notices` records each item that
           // opens and each ask that pushes.
           const key = subjectKey(notice.subject);
-          const on = openNotices.get(key);
+          const on = openItem(key);
           const assignees = notice.assigneeIdentityIds.filter(
-            (id) => notice.askedIdentityIds.includes(id) || on?.includes(id),
+            (id) =>
+              notice.askedIdentityIds.includes(id) ||
+              on?.assignees.includes(id),
           );
           if (assignees.length === 0) {
-            if (openNotices.delete(key)) recorded.closedNotices.push(key);
+            if (closeItem(key, { status: "done" })) {
+              recorded.closedNotices.push(key);
+            }
             return;
           }
-          openNotices.set(key, assignees);
-          if (on && notice.askedIdentityIds.length === 0) return;
+          if (on) {
+            on.assignees = assignees;
+            if (notice.askedIdentityIds.length === 0) return;
+          } else {
+            itemCount += 1;
+            items.set(key, [
+              { assignees, id: `item-${itemCount}`, status: "open" },
+              ...(items.get(key) ?? []),
+            ]);
+          }
           recorded.notices.push({ conversationId, notice });
         },
         async close(input) {
           const key = subjectKey(input.subject);
-          if (!openNotices.delete(key)) return false;
+          if (!closeItem(key, { status: input.status })) return false;
           recorded.closedNotices.push(key);
           return true;
         },
@@ -222,6 +273,12 @@ export function createPluginHarness(
       throw new Error("GitHub webhooks do not dispatch agents");
     };
     const annotations: HeartbeatHookContext["annotations"] = {
+      async listObjects() {
+        return [];
+      },
+      async nameObject() {},
+      async objectsMoved() {},
+      async objectChanged() {},
       forConversation() {
         return {
           async upsert() {},
@@ -237,8 +294,8 @@ export function createPluginHarness(
       annotations,
       cache,
       codeChanges,
+      httpCache: passThroughHttpCache,
       conversationChanges: conversationChangesThrough({
-        annotations,
         batches: recorded.batches,
         inboxItems,
       }),
@@ -265,6 +322,14 @@ export function createPluginHarness(
       throw new Error("The GitHub heartbeat does not use this");
     };
     const annotations: HeartbeatHookContext["annotations"] = {
+      async listObjects() {
+        return [];
+      },
+      async nameObject() {},
+      async objectsMoved() {},
+      async objectChanged(subject) {
+        recorded.changedObjects.push(subject);
+      },
       forConversation(conversationId) {
         return {
           async upsert(annotation) {
@@ -283,7 +348,6 @@ export function createPluginHarness(
       cache,
       codeChanges,
       conversationChanges: conversationChangesThrough({
-        annotations,
         batches: recorded.batches,
         inboxItems,
       }),
@@ -317,7 +381,13 @@ export function createPluginHarness(
       const task = githubPlugin().tasks?.[started.name];
       if (!task?.payload) throw new Error(`No started task ${started.name}`);
       await task.run({
-        annotations: { forConversation: unused },
+        annotations: {
+          forConversation: unused,
+          listObjects: async () => [],
+          nameObject: unused,
+          objectChanged: unused,
+          objectsMoved: async () => {},
+        },
         cache,
         codeChanges,
         conversationChanges: { apply: unused },
@@ -345,18 +415,24 @@ export function createPluginHarness(
   }
 
   /**
-   * A person picks a choice on an open item. Like core, the item closes
-   * first, then the plugin gets the answer.
+   * A person runs a kind action on an open item. Like core, the item closes
+   * first, then the plugin gets the action.
    */
-  async function answer(input: {
-    choice: string;
+  async function act(input: {
+    action: string;
     conversationId: string;
     itemId: string;
     nowMs: number;
     subject: { id: string; kind: string };
   }): Promise<void> {
-    expect(openNotices.delete(subjectKey(input.subject))).toBe(true);
-    await githubPlugin().hooks!.inboxItemAnswered!({
+    const key = subjectKey(input.subject);
+    expect(openItem(key)?.id).toBe(input.itemId);
+    closeItem(key, {
+      action: input.action,
+      closedAtMs: input.nowMs,
+      status: "done",
+    });
+    await githubPlugin().hooks!.inboxItemAction!({
       ...input,
       cache,
       codeChanges,
@@ -398,12 +474,12 @@ export function createPluginHarness(
    * tells the plugin nothing.
    */
   const dismiss = (key: string) => {
-    openNotices.delete(key);
+    closeItem(key, { status: "dismissed" });
   };
 
   return {
     ...recorded,
-    answer,
+    act,
     cache,
     deliver,
     dismiss,

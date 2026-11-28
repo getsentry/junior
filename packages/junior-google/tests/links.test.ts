@@ -5,6 +5,7 @@ import {
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { accountChooserLink } from "../src/calendar/events";
 import { googlePlugin } from "../src/index";
 import { saveGoogleAccount } from "../src/store";
 import {
@@ -128,25 +129,54 @@ function linkType(objectType: string): PluginObjectLinkDefinition {
 
 // A plugin cache in memory, the same for every call of one test.
 function memoryCache() {
-  const entries = new Map<string, unknown>();
+  const entries = new Map<
+    string,
+    { fresh: boolean; staleIfError?: boolean; value: unknown }
+  >();
   return {
-    async getOrLoad<T>(key: string, load: () => Promise<{ value: T }>) {
-      if (!entries.has(key)) entries.set(key, (await load()).value);
-      return entries.get(key) as T;
+    /** Make every entry stale, as when its TTL passes. */
+    expire() {
+      for (const entry of entries.values()) entry.fresh = false;
+    },
+    async get<T>(key: string, options?: { stale?: boolean }) {
+      const entry = entries.get(key);
+      return entry && (entry.fresh || (options?.stale && entry.staleIfError))
+        ? (entry.value as T)
+        : undefined;
+    },
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<{ staleIfError?: boolean; value: T }>,
+      options?: { refresh?: boolean },
+    ) {
+      const entry = entries.get(key);
+      if (entry?.fresh && !options?.refresh) return entry.value as T;
+      const { staleIfError, value } = await load();
+      entries.set(key, { fresh: true, staleIfError, value });
+      return value;
     },
   };
 }
 
-/** Check access, then read the card, the same as Junior does. */
+/**
+ * Check access, then read the card, the same as Junior does. A page load
+ * reads with `cacheOnly`, where egress throws.
+ */
 async function resolveAs(
   email: string,
   google: ReturnType<typeof fakeGoogle>,
   objectType: string,
   url: string,
+  read: { cacheOnly?: true } = {},
 ) {
   const ctx = {
+    ...read,
     cache: google.cache,
-    egress: { fetch: google.fetch },
+    egress: {
+      fetch: read.cacheOnly
+        ? () => Promise.reject(new Error("A page load reads no provider"))
+        : google.fetch,
+    },
     imagePath: (ref: string, version?: string) =>
       `/api/images/${Buffer.from(ref).toString("base64url")}.sig?w=640${version ? `&v=${version}` : ""}`,
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
@@ -270,6 +300,19 @@ describe("Google link cards", () => {
       ).resolves.toMatchObject({ title: TITLE });
     });
 
+    it("checks the current owner on each live read", async () => {
+      const file = { ...DOC };
+      const google = fakeGoogle({ file, finds: [DOMAIN] });
+
+      await resolveAs("alice@example.com", google, "document", DOC_URL);
+      // The owner moves the file to another domain within the cache time.
+      file.owners = [{ displayName: "Eve", emailAddress: "eve@other.test" }];
+
+      await expect(
+        resolveAs("alice@example.com", google, "document", DOC_URL),
+      ).resolves.toBeUndefined();
+    });
+
     it("hides a file that the viewer cannot open", async () => {
       const google = fakeGoogle({ doc: DOC_BODY, file: DOC });
 
@@ -326,6 +369,41 @@ describe("Google link cards", () => {
           "document",
           `https://docs.google.com/spreadsheets/d/${DOC_ID}/edit`,
         ),
+      ).resolves.toBeUndefined();
+    });
+
+    it("shows the cached file on a page load, with no Google read", async () => {
+      const google = fakeGoogle({ doc: DOC_BODY, file: DOC, finds: [NAMED] });
+      const pageLoad = (email: string) =>
+        resolveAs(email, google, "document", DOC_URL, { cacheOnly: true });
+
+      expect(linkType("document").cacheOnlyReads).toBe(true);
+      // Nothing holds the file yet, so the page shows the stored title.
+      await expect(pageLoad("alice@example.com")).resolves.toBeUndefined();
+      await resolveAs("alice@example.com", google, "document", DOC_URL);
+      const reads = google.fetch.mock.calls.length;
+      google.cache.expire();
+      // A reader who can read the Conversation sees the last good file. The
+      // Doc summary is not cached, so it is left out.
+      await expect(pageLoad("bob@example.com")).resolves.toMatchObject({
+        facts: { summary: undefined },
+        title: TITLE,
+      });
+      expect(google.fetch).toHaveBeenCalledTimes(reads);
+    });
+
+    it("shows no trashed file on a page load", async () => {
+      const google = fakeGoogle({
+        file: { ...DOC, trashed: true },
+        finds: [NAMED],
+      });
+
+      await resolveAs("alice@example.com", google, "document", DOC_URL);
+      google.cache.expire();
+      await expect(
+        resolveAs("alice@example.com", google, "document", DOC_URL, {
+          cacheOnly: true,
+        }),
       ).resolves.toBeUndefined();
     });
 
@@ -628,6 +706,7 @@ describe("Google link cards", () => {
         kind: "object",
         objectType: "calendar_event",
         key: "evt123abc",
+        subject: { id: "evt123abc", kind: "calendar_event" },
         label: "Launch review",
         title: "Launch review",
         url: EVENT_URL,
@@ -645,6 +724,23 @@ describe("Google link cards", () => {
       expect(new URL(google.fetch.mock.calls[0][0].request.url).pathname).toBe(
         "/calendar/v3/calendars/primary/events/evt123abc",
       );
+    });
+
+    it("shows the cached event on a page load, with no Calendar read", async () => {
+      const google = fakeGoogle({ event: EVENT });
+      const pageLoad = () =>
+        resolveAs("carol@example.com", google, "calendar_event", EVENT_URL, {
+          cacheOnly: true,
+        });
+
+      expect(linkType("calendar_event").cacheOnlyReads).toBe(true);
+      await expect(pageLoad()).resolves.toBeUndefined();
+      await resolveAs("alice@example.com", google, "calendar_event", EVENT_URL);
+      google.cache.expire();
+      await expect(pageLoad()).resolves.toMatchObject({
+        title: "Launch review",
+      });
+      expect(google.fetch).toHaveBeenCalledOnce();
     });
 
     it("shows an event that has a guest without an email", async () => {
@@ -746,6 +842,56 @@ describe("Google link cards", () => {
       expect(summary.length).toBeLessThanOrEqual(OBJECT_SUMMARY_MAX_LENGTH);
       expect(summary).toMatch(/^Check rollout Check .*…$/);
       expect(summary).not.toContain("<");
+    });
+
+    it("reads the Workspace link that Calendar tools save", async () => {
+      const url = accountChooserLink(EVENT_URL, ACCOUNT_EMAIL);
+      expect(new URL(url).host).toBe("accounts.google.com");
+      const link = linkType("calendar_event");
+      expect(
+        link.filters.some((filter) =>
+          objectLinkFilterMatches(filter, new URL(url)),
+        ),
+      ).toBe(true);
+      expect(link.label?.(new URL(url))).toBe("Calendar event");
+
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({ event: EVENT }),
+          "calendar_event",
+          url,
+        ),
+      ).resolves.toMatchObject({ key: "evt123abc", url });
+    });
+
+    it("does not read an AccountChooser link to another site", async () => {
+      const google = fakeGoogle({ event: EVENT });
+      const url = new URL("https://accounts.google.com/AccountChooser");
+      url.searchParams.set("continue", DOC_URL);
+
+      // Calendar leaves the link to the type that claims its target.
+      expect(
+        linkType("calendar_event").filters.some((filter) =>
+          objectLinkFilterMatches(filter, url),
+        ),
+      ).toBe(false);
+      expect(linkType("calendar_event").label?.(url)).toBeUndefined();
+      await expect(
+        resolveAs("alice@example.com", google, "calendar_event", url.href),
+      ).resolves.toBeUndefined();
+      expect(google.fetch).not.toHaveBeenCalled();
+    });
+
+    it("shows that a cancelled event is cancelled", async () => {
+      await expect(
+        resolveAs(
+          "alice@example.com",
+          fakeGoogle({ event: { ...EVENT, status: "cancelled" } }),
+          "calendar_event",
+          EVENT_URL,
+        ),
+      ).resolves.toMatchObject({ key: "evt123abc", status: "cancelled" });
     });
 
     it("does not read events on another calendar", async () => {

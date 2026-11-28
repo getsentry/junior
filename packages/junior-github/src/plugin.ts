@@ -5,6 +5,7 @@
  */
 import { githubAccountLinks } from "./account-links.js";
 import {
+  GITHUB_CONFLICT_RESUME,
   GITHUB_INBOX_SUBJECTS,
   githubInboxSubjectKinds,
 } from "./inbox-subjects.js";
@@ -26,11 +27,7 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
-import { GITHUB_CONFLICT_RESUME } from "./merge-conflict-checks/policy.js";
-import {
-  allowGitHubConflictAsk,
-  resumeGitHubConflictFixes,
-} from "./merge-conflict-checks/resume.js";
+import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { wasGitHubPullRequestOpenedIn } from "./pull-request-requesters/store.js";
 import {
@@ -40,11 +37,13 @@ import {
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
+  loadGitHubObjectNames,
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
   loadRepositoryFullNames,
   loadPullRequestCommitPages,
+  loadPullRequestCards,
   loadPullRequestHeadFacts,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
@@ -108,6 +107,12 @@ import {
   githubPullRequestActionSyncTask,
 } from "./webhooks/pull-request-action.js";
 import { githubSidebarAnnotations } from "./annotations.js";
+import {
+  GITHUB_ANNOTATION_NAMES_TASK,
+  githubAnnotationNamesTask,
+  startGitHubAnnotationNames,
+} from "./annotation-names.js";
+import { dismissGitHubItem } from "./inbox-dismiss.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
 import {
@@ -141,6 +146,7 @@ import {
   requireEnv,
   resolveUserAccount,
 } from "./credential-support.js";
+import { installationResponses } from "./installation-http-cache.js";
 
 // A failed check suite reports incidents that are open or ended in the last
 // hour. Older incidents rarely explain a suite that just finished.
@@ -233,6 +239,14 @@ export function githubPlugin(
     inboxSubjects: githubInboxSubjectKinds,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     tasks: {
+      [GITHUB_ANNOTATION_NAMES_TASK]: githubAnnotationNamesTask(
+        async () =>
+          await loadGitHubObjectNames({
+            appIdEnv,
+            installationIdEnv,
+            privateKeyEnv,
+          }),
+      ),
       [GITHUB_PULL_REQUEST_ACTION_BACKFILL_TASK]:
         githubPullRequestActionBackfillTask({
           botEmail: () => readEnv(botEmailEnv),
@@ -243,13 +257,18 @@ export function githubPlugin(
         env: { appIdEnv, installationIdEnv, privateKeyEnv },
       }),
       [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
-      [GITHUB_PULL_REQUEST_PATCH_TASK]: githubPullRequestPatchTask(
-        async (refs) =>
+      [GITHUB_PULL_REQUEST_PATCH_TASK]: githubPullRequestPatchTask({
+        loadCards: async (refs) =>
+          await loadPullRequestCards(
+            { appIdEnv, installationIdEnv, privateKeyEnv },
+            refs,
+          ),
+        loadHeadFacts: async (refs) =>
           await loadPullRequestHeadFacts(
             { appIdEnv, installationIdEnv, privateKeyEnv },
             refs,
           ),
-      ),
+      }),
       [GITHUB_PULL_REQUEST_REQUESTER_BACKFILL_TASK]:
         githubPullRequestRequesterBackfillTask,
       [GITHUB_REPOSITORY_NAME_REPAIR_TASK]: githubRepositoryNameRepairTask(
@@ -427,10 +446,17 @@ export function githubPlugin(
           },
         ];
       },
-      async inboxItemAnswered(ctx) {
+      async inboxItemDismissed(ctx) {
+        await dismissGitHubItem(ctx, {
+          appIdEnv,
+          installationIdEnv,
+          privateKeyEnv,
+        });
+      },
+      async inboxItemAction(ctx) {
         if (
           ctx.subject.kind !== GITHUB_INBOX_SUBJECTS.mergeConflict ||
-          ctx.choice !== GITHUB_CONFLICT_RESUME
+          ctx.action !== GITHUB_CONFLICT_RESUME
         ) {
           return;
         }
@@ -447,13 +473,12 @@ export function githubPlugin(
           ? await ctx.codeChanges.list({ providerIds: [pullRequestId] })
           : [];
         if (!change) {
-          // Core closed the item already. Let the next conflict check ask
-          // again, so the Resume is not lost.
+          // Core closed the item already. The Resume starts no fix, so the
+          // next conflict check asks again.
           ctx.log.warn("GitHub merge conflict Resume found no pull request", {
             conversationId: ctx.conversationId,
             pullRequestId,
           });
-          await allowGitHubConflictAsk(db, pullRequestId);
           return;
         }
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
@@ -501,8 +526,8 @@ export function githubPlugin(
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({
-          annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
+          cache: ctx.cache,
           codeChanges: ctx.codeChanges,
           conversationChanges: ctx.conversationChanges,
           db,
@@ -514,6 +539,8 @@ export function githubPlugin(
           log: ctx.log,
           nowMs: ctx.nowMs,
           inboxItems: ctx.inboxItems,
+          objectChanged: async (subject) =>
+            await ctx.annotations.objectChanged(subject),
           state: ctx.state,
         });
         await startGitHubRepositoryNameRepair({
@@ -521,6 +548,10 @@ export function githubPlugin(
           tasks: ctx.tasks,
         });
         await startGitHubPullRequestRequesterBackfill({
+          state: ctx.state,
+          tasks: ctx.tasks,
+        });
+        await startGitHubAnnotationNames({
           state: ctx.state,
           tasks: ctx.tasks,
         });
@@ -540,7 +571,9 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
-          responses: ctx.state,
+          responses: installationResponses(ctx.httpCache, () =>
+            readEnv(installationIdEnv),
+          ),
           tokens: new Map(),
         };
         return [
@@ -593,6 +626,7 @@ export function githubPlugin(
             privateKeyEnv,
             events: ctx.events,
             inboxItems: ctx.inboxItems,
+            responses: installationEnv.responses,
             state: ctx.state,
             tasks: ctx.tasks,
             tokens: installationEnv.tokens,

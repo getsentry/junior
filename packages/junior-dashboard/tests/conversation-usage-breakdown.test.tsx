@@ -2,7 +2,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ConversationGlanceMetrics } from "../src/client/conversations/ConversationMeta";
+import { conversationCost } from "../src/client/conversations/ConversationMeta";
 import { ConversationUsageBreakdown } from "../src/client/conversations/ConversationUsageBreakdown";
 import { conversationFromDetail } from "../src/client/format";
 
@@ -168,10 +168,9 @@ describe("ConversationUsageBreakdown", () => {
   });
 });
 
-describe("ConversationGlanceMetrics", () => {
+describe("conversationCost", () => {
   it("shows a cost that only per-model usage records", () => {
-    // The Usage trigger leaves totals to the glance, so the glance must
-    // show them.
+    // The details footer shows this cost beside Usage.
     const report = detail({
       modelUsage: [
         {
@@ -185,10 +184,7 @@ describe("ConversationGlanceMetrics", () => {
       ],
     });
     const text = renderToStaticMarkup(
-      <ConversationGlanceMetrics
-        conversation={conversationFromDetail(report)}
-        detail={report}
-      />,
+      <>{conversationCost(conversationFromDetail(report), report)}</>,
     ).replace(/<[^>]+>/g, " ");
     expect(text).toContain("$0.04");
   });
@@ -202,12 +198,8 @@ describe("ConversationGlanceMetrics", () => {
       ],
     });
     const html = renderToStaticMarkup(
-      <ConversationGlanceMetrics
-        conversation={conversationFromDetail(report)}
-        detail={report}
-      />,
+      <>{conversationCost(conversationFromDetail(report), report)}</>,
     );
     expect(html).not.toContain("$");
-    expect(html).not.toContain("font-medium");
   });
 });

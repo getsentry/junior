@@ -15,13 +15,13 @@ export {
 } from "../chat/child-agents/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
-  answeredChoices,
   buttonUserInputField,
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
+  userInputQuestionText,
 } from "../chat/inbox-items/user-input-request";
-export { inboxItemQuestion } from "../chat/inbox-items/request";
+export { ASK_TOOL_NAMES, inboxItemQuestion } from "../chat/inbox-items/request";
 export type {
   UserInputAnswer,
   UserInputField,
@@ -142,7 +142,6 @@ export {
 export type {
   ConversationFeed,
   ConversationFeedItem,
-  ConversationFeedViewerAnswer,
 } from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
@@ -546,6 +545,7 @@ export type {
   InboxSnoozeSubjectBody,
   InboxSnoozeTrigger,
   InboxSnoozeWake,
+  InboxViewerSnooze,
 } from "./schema/inbox-snooze";
 export { searchQuerySchema, searchReportSchema } from "./schema/search";
 export type {

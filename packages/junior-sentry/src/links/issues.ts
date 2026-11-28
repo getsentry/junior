@@ -26,8 +26,11 @@ import {
   type SentryIssueLink,
 } from "./urls.js";
 
-// The same time as the card cache, so a changed issue shows within a minute.
-const ISSUE_CACHE_TTL_MS = 60_000;
+// The entry holds only card fields. Each live read checks the viewer's
+// access with their own token, apart from it, so access stays fresh and
+// only card fields can be five minutes old. Page loads then show the last
+// good card.
+const ISSUE_CACHE_TTL_MS = 300_000;
 
 const issueSchema = z.object({
   assignedTo: z.object({ name: z.string() }).nullish(),
@@ -237,8 +240,27 @@ async function canViewSentryIssueLink(
   url: URL,
 ): Promise<boolean> {
   const link = parseSentryIssueLink(url);
-  const origin = link && (await sentryRegionOrigin(ctx, link.org));
+  if (!link) return false;
+  // A page load shows the stored card to anyone who can read the
+  // Conversation, so it checks no viewer access.
+  if (ctx.cacheOnly) return true;
+  const origin = await sentryRegionOrigin(ctx, link.org);
   return origin ? viewerCanSeeIssue(ctx, origin, link) : false;
+}
+
+/** Read the issue through the cache. Nothing when Junior cannot read it. */
+async function readCachedIssue(
+  ctx: ObjectLinkContext,
+  key: string,
+  link: SentryIssueLink,
+): Promise<SentryIssue | null> {
+  const origin = await sentryRegionOrigin(ctx, link.org);
+  if (!origin) return null;
+  return await ctx.cache.getOrLoad(key, async () => ({
+    staleIfError: true,
+    value: await readIssue(ctx, origin, link),
+    ttlMs: ISSUE_CACHE_TTL_MS,
+  }));
 }
 
 async function resolveSentryIssueLink(
@@ -247,15 +269,10 @@ async function resolveSentryIssueLink(
 ): Promise<ObjectAnnotation | undefined> {
   const link = parseSentryIssueLink(url);
   if (!link) return undefined;
-  const origin = await sentryRegionOrigin(ctx, link.org);
-  if (!origin) return undefined;
-  const issue = await ctx.cache.getOrLoad(
-    `issue:${link.org}/${link.issueId.toUpperCase()}`,
-    async () => ({
-      value: await readIssue(ctx, origin, link),
-      ttlMs: ISSUE_CACHE_TTL_MS,
-    }),
-  );
+  const key = `issue:${link.org}/${link.issueId.toUpperCase()}`;
+  const issue = ctx.cacheOnly
+    ? await ctx.cache.get<SentryIssue | null>(key, { stale: true })
+    : await readCachedIssue(ctx, key, link);
   if (!issue) return undefined;
   return issue.issueCategory === "feedback"
     ? sentryFeedbackCard(issue, link, url)
@@ -264,6 +281,7 @@ async function resolveSentryIssueLink(
 
 /** Sentry issue and feedback links, on sentry.io and on customer domains. */
 export const sentryIssueLinks: PluginObjectLinkDefinition = {
+  cacheOnlyReads: true,
   canView: canViewSentryIssueLink,
   filters: SENTRY_ISSUE_LINK_FILTERS,
   objectTypes: ["task"],

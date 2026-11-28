@@ -220,9 +220,9 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
 
 /**
  * Read what decides a merge conflict fix on one pull request: the review
- * decision, when it opened, and its latest pushes, reviews, and comments.
- * Pushes have their own window, so comments, which anyone can add, cannot
- * push a person's latest push out of it.
+ * decision, when it opened, its latest pushes, reviews, and comments, and
+ * its base branch changes. Pushes and base changes have their own windows,
+ * so comments, which anyone can add, cannot push them out.
  */
 export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
   query PullRequestConflictHistory($owner: String!, $name: String!, $number: Int!) {
@@ -244,6 +244,13 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
             ... on IssueComment { createdAt author { __typename } }
           }
         }
+        baseChanges: timelineItems(last: 10, itemTypes: [AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT, BASE_REF_CHANGED_EVENT]) {
+          nodes {
+            __typename
+            ... on AutomaticBaseChangeSucceededEvent { createdAt actor { __typename } }
+            ... on BaseRefChangedEvent { createdAt actor { __typename } }
+          }
+        }
       }
     }
   }
@@ -253,21 +260,31 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
  * Read what decides the requester's next action on one pull request: its
  * state, merge state, review requests, latest reviews, and latest comments
  * and review requests. A review comment reply is a review, so `reviews`
- * holds it too.
+ * holds it too. The open pull requests whose head is the base branch show
+ * that the base has not merged yet.
  */
 export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
   query PullRequestNextAction($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
+      defaultBranchRef { name }
       pullRequest(number: $number) {
         autoMergeRequest { enabledAt }
+        baseRefName
+        baseRef { associatedPullRequests(states: [OPEN]) { totalCount } }
         commits(last: 1) { nodes { commit { committedDate } } }
+        headRefOid
         isDraft
+        isInMergeQueue
         mergeStateStatus
+        reviewDecision
         state
         title
+        updatedAt
         url
         reviewRequests(first: 100) {
-          nodes { requestedReviewer { __typename ... on User { login } } }
+          nodes {
+            requestedReviewer { __typename ... on User { login } ... on Bot { login } }
+          }
         }
         reviews(last: 100) {
           pageInfo { hasPreviousPage startCursor }
@@ -504,6 +521,7 @@ const PULL_REQUEST_CARD = githubGraphql(`
   }
 
   fragment Card on PullRequest {
+    databaseId
     url
     number
     state
@@ -520,6 +538,7 @@ const PULL_REQUEST_CARD = githubGraphql(`
     additions
     deletions
     changedFiles
+    assignees(first: 5) { nodes { login } }
     reviewRequests(first: 5) {
       nodes {
         requestedReviewer {
@@ -530,7 +549,7 @@ const PULL_REQUEST_CARD = githubGraphql(`
     }
     reviewDecision
     latestOpinionatedReviews(first: 5, writersOnly: true) {
-      nodes { state }
+      nodes { state author { login } }
     }
     commits(last: 1) {
       nodes {
@@ -546,8 +565,9 @@ const PULL_REQUEST_CARD = githubGraphql(`
   }
 `);
 
-// Only the merge state and check counts of one pull request, for the patch
-// after a push. `pullRequestHeadFacts` repeats it like the cards.
+// The merge state, check counts, and review state of one pull request, for
+// the patch after a push, check, or review. `pullRequestHeadFacts` repeats
+// it like the cards.
 const PULL_REQUEST_HEAD_FACT = githubGraphql(`
   query PullRequestHeadFacts($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
@@ -556,9 +576,22 @@ const PULL_REQUEST_HEAD_FACT = githubGraphql(`
   }
 
   fragment HeadFacts on PullRequest {
+    databaseId
     updatedAt
     headRefOid
     mergeable
+    reviewRequests(first: 5) {
+      nodes {
+        requestedReviewer {
+          ... on User { login }
+          ... on Bot { login }
+        }
+      }
+    }
+    reviewDecision
+    latestOpinionatedReviews(first: 5, writersOnly: true) {
+      nodes { state author { login } }
+    }
     commits(last: 1) {
       nodes {
         commit {
@@ -631,9 +664,9 @@ export function pullRequestCards(count: number): GitHubGraphqlOperation {
 }
 
 /**
- * Return the query that reads only the merge state and check counts of
- * `count` pull requests by repository and number, for the patch after a
- * push. It has the aliases and variables of `pullRequestCards`.
+ * Return the query that reads the merge state, check counts, and review
+ * state of `count` pull requests by repository and number, for the patch.
+ * It has the aliases and variables of `pullRequestCards`.
  */
 export function pullRequestHeadFacts(count: number): GitHubGraphqlOperation {
   return aliasedPullRequests(PULL_REQUEST_HEAD_FACT, count);

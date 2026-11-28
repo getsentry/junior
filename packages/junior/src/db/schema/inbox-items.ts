@@ -57,8 +57,9 @@ export const juniorInboxItems = pgTable(
     status: text("status").$type<"open" | "done" | "dismissed">().notNull(),
     /**
      * A `question` item's question holds its title, body, request, and
-     * answer (`junior_questions`). The item keeps a copy for the release
-     * before this one, and new code never reads it.
+     * answer (`junior_questions`). The item keeps a copy of the title,
+     * body, and request for the release before this one, and new code
+     * never reads it.
      */
     title: text("title"),
     body: text("body"),
@@ -81,6 +82,11 @@ export const juniorInboxItems = pgTable(
       onDelete: "set null",
     }),
     closeReason: text("close_reason"),
+    /**
+     * The id of the subject kind's action that a person ran to close it,
+     * such as `resume` (`PluginInboxSubjectKind.actions`).
+     */
+    closeAction: text("close_action"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

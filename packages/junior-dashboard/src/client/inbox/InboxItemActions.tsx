@@ -1,5 +1,7 @@
+import { Wrench, type LucideIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import {
+  buttonUserInputField,
   inboxItemQuestion,
   type InboxItemActionBody,
   type InboxItemPayload,
@@ -19,6 +21,26 @@ import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
 import { RowDismissButton } from "./RowDismissButton";
+
+/**
+ * The actions of an item's subject kind that the viewer can take, such as
+ * Keep fixing. An item added with a question before kinds had actions
+ * shows that question's choice instead.
+ */
+export function itemKindActions(
+  item: InboxItemPayload,
+): NonNullable<InboxItemPayload["subject"]["actions"]> {
+  if (!item.canAct || inboxItemQuestion(item.request)) return [];
+  return item.subject.actions ?? [];
+}
+
+type KindActionIcon = NonNullable<
+  ReturnType<typeof itemKindActions>[number]["icon"]
+>;
+
+const KIND_ACTION_ICONS: Record<KindActionIcon, LucideIcon> = {
+  wrench: Wrench,
+};
 
 // Only an open card snoozes from here, so its snooze code stays out of the
 // first load.
@@ -66,6 +88,9 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
         <InboxItemCloser item={item} /> {what} this{" "}
         {formatRelativeTime(item.closedAt)}.
       </p>
+      {item.closeAction ? (
+        <p className="m-0 text-dashboard-text-muted">{item.closeAction}</p>
+      ) : null}
       {item.closeReason ? (
         <p className="m-0 text-dashboard-text-muted">{item.closeReason}</p>
       ) : null}
@@ -80,13 +105,13 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
  * Show the actions that the viewer can take on one Inbox item, or how it
  * closed. The Inbox, the transcript, and the side panel use it, so a
  * question reads the same on each. A caller that shows
- * its own Dismiss turns this one off. A To-do for the viewer adds Done,
- * its main action, last. `onAction` takes the actions in its
+ * its own Dismiss turns this one off. A To-do for the viewer adds Mark
+ * done, its main action, last. `onAction` takes the actions in its
  * place and reports their failures itself. An answer that failed shows
  * again in the form.
  */
 export function InboxItemActions(props: {
-  /** What Junior said around the question, after the question. */
+  /** What Junior said around the question, before the question. */
   context?: ReactNode;
   dismiss?: boolean;
   /** More actions after Take and Dismiss, such as an Inbox card's Snooze. */
@@ -113,8 +138,8 @@ export function InboxItemActions(props: {
   if (!item.canAct && !item.canAnswer) {
     return (
       <div className="grid gap-3">
-        {/* Anyone who sees a notice sees what it is about. */}
-        {item.kind === "notice" ? <InboxItemRelated item={item} /> : null}
+        {/* Anyone who sees an item sees what it is about. */}
+        <InboxItemRelated item={item} />
         <div className="flex flex-wrap items-center gap-2">
           <p className="m-0 text-sm text-dashboard-text-muted">
             Only an assignee can act on this item.
@@ -147,11 +172,13 @@ export function InboxItemActions(props: {
     }
   }
 
-  // A To-do for the viewer closes with Done, its main action.
+  // A To-do for the viewer closes with Mark done, its main action. A plugin
+  // kind can bring its own, such as Keep fixing.
   const todo = item.todoId !== undefined;
-  // A person who may only answer, such as a reader of a public question,
-  // gets no Dismiss or Snooze.
-  const dismiss = item.canAct && (props.dismiss ?? true);
+  const question = inboxItemQuestion(item.request);
+  const kindActions = itemKindActions(item);
+  // A reader of a public question can dismiss it, like an assignee.
+  const dismiss = item.canAnswer && (props.dismiss ?? true);
   const take = item.canTake ? (props.take ?? "Take") : false;
   // A card on its own, as in a transcript, snoozes its item itself. The
   // Inbox brings its own Snooze, so its row leaves with motion.
@@ -173,6 +200,7 @@ export function InboxItemActions(props: {
       {dismiss ? (
         <RowDismissButton
           disabled={action.isPending || sending}
+          note={item.subject.dismissNote}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
         />
       ) : null}
@@ -187,32 +215,62 @@ export function InboxItemActions(props: {
           disabled={action.isPending || sending}
           onClick={() => void run({ action: "done" }).catch(() => {})}
         >
-          Done
+          Mark done
         </Button>
       ) : null}
+      {kindActions.map((kindAction) => {
+        const Icon = kindAction.icon && KIND_ACTION_ICONS[kindAction.icon];
+        return (
+          <Button
+            disabled={action.isPending || sending}
+            key={kindAction.id}
+            onClick={() =>
+              void run({ action: "done", id: kindAction.id }).catch(() => {})
+            }
+          >
+            {Icon ? <Icon aria-hidden="true" size={16} /> : null}
+            {kindAction.label}
+          </Button>
+        );
+      })}
     </>
   );
 
-  const question = inboxItemQuestion(item.request);
+  // One question answered with one click has its buttons, not a form
+  // field, so the card shows its question here.
+  const questionText = question
+    ? (question.question ??
+      (buttonUserInputField(question)
+        ? question.fields[0]?.description
+        : undefined))
+    : undefined;
   return (
     <div className="grid gap-3">
-      {/* A notice asks nothing, but its related links say what it is
-          about. */}
-      {item.kind === "notice" ? <InboxItemRelated item={item} /> : null}
+      {/* The related links say what the item is about. A question shows
+          them under the question instead. */}
+      {item.kind === "action" && question ? null : (
+        <InboxItemRelated item={item} />
+      )}
       {item.kind === "action" && question ? (
         <div className="grid gap-3 text-sm">
-          {/* The question comes first and in full, then what Junior said
-              around it. */}
-          <section aria-label="Question" className="grid gap-1">
-            <span className="text-xs text-dashboard-text-muted">Question</span>
-            <div className="font-medium [&_p]:my-0">
-              <DisplayText mentions={item.mentions} text={question.question} />
-            </div>
-          </section>
+          {/* What Junior said around the question comes first, then the
+              question in full. Questions that each have their own choices
+              show in the form instead. */}
           {props.context}
+          {questionText ? (
+            <section aria-label="Question" className="grid gap-1">
+              <span className="text-xs text-dashboard-text-muted">
+                Question
+              </span>
+              <div className="font-medium [&_p]:my-0">
+                <DisplayText mentions={item.mentions} text={questionText} />
+              </div>
+            </section>
+          ) : null}
           <InboxItemRelated item={item} />
           <UserInputForm
             draft={draft}
+            mentions={item.mentions}
             onUnsentChange={setUnsent}
             onSubmit={(answer) =>
               run({
@@ -230,7 +288,12 @@ export function InboxItemActions(props: {
             words={item.owner.kind !== "automation"}
           />
         </div>
-      ) : take || snooze || dismiss || todo || props.extra ? (
+      ) : take ||
+        snooze ||
+        dismiss ||
+        todo ||
+        kindActions.length > 0 ||
+        props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">

@@ -14,7 +14,7 @@ export interface HeartbeatHandlerOptions {
   events: AppEventPublisher;
   sendPluginTask: SendPluginTask;
   showInboxItem?: ShowInboxItem;
-  /** Sends the queue message again for core Turns that no message reaches. */
+  /** Sends the queue message again for Turns and replies that none reaches. */
   sweepTurns?: () => Promise<void>;
 }
 

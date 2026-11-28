@@ -5,7 +5,7 @@ import { withConversationEventLock } from "@/conversation-events/lock";
 import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { markInputsAttempted } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC } from "@/core/turn/topic";
+import { TURN_ENDED_TOPIC, TURN_STEP_TOPIC } from "@/core/turn/topic";
 import {
   endFailedTurn,
   reconcileTurn,
@@ -70,6 +70,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   let engineCtx: EngineContext;
   let observer: LocalJuniorSqlFixture;
   let publishes: Publish[];
+  // The Turns whose end message was sent, in send order.
+  let ended: string[];
 
   beforeEach(async () => {
     fixture = await createJuniorSqlFixture();
@@ -99,12 +101,15 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       .insert(juniorConversations)
       .values(buildJuniorSqlConversation({ conversationId: CONVERSATION_ID }));
     publishes = [];
+    ended = [];
     // The queue is the external edge, so the test takes its sends.
     vi.spyOn(getQueueProvider(), "send").mockImplementation(
       async (topic, payload) => {
         if (topic === TURN_STEP_TOPIC) {
           const { turnId } = stepMessageSchema.parse(payload);
           publishes.push({ turnId, committed: await isCommitted(turnId) });
+        } else if (topic === TURN_ENDED_TOPIC) {
+          ended.push(stepMessageSchema.parse(payload).turnId);
         }
         return {};
       },
@@ -202,7 +207,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   it("starts a Turn with the first input and publishes it after the commit", async () => {
     const scheduled = await schedule("event-1");
 
-    expect(scheduled).toEqual({ turnId: expect.any(String), created: true });
+    expect(scheduled).toEqual({
+      turnId: expect.any(String),
+      created: true,
+      duplicate: false,
+    });
     await expect(readTurns()).resolves.toEqual([
       {
         id: scheduled.turnId,
@@ -228,6 +237,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-2")).resolves.toEqual({
       turnId: first.turnId,
       created: false,
+      duplicate: false,
     });
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toEqual([
@@ -237,6 +247,33 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
+  it("holds a new Turn for its start delay, also on a redelivery, so an input in that time joins it", async () => {
+    const first = await scheduleInput(engineCtx, {
+      ...keyed(input("event-1")),
+      startDelayMs: 30_000,
+    });
+    const second = await scheduleInput(engineCtx, {
+      ...keyed(input("event-2")),
+      startDelayMs: 30_000,
+    });
+    // The source sends the first input again while the Turn waits.
+    await scheduleInput(engineCtx, {
+      ...keyed(input("event-1")),
+      startDelayMs: 30_000,
+    });
+
+    expect(second).toMatchObject({ turnId: first.turnId, created: false });
+    const delayedStep = [
+      TURN_STEP_TOPIC,
+      expect.anything(),
+      expect.objectContaining({ delaySeconds: 30 }),
+    ];
+    expect(vi.mocked(getQueueProvider().send).mock.calls).toEqual([
+      delayedStep,
+      delayedStep,
+    ]);
+  });
+
   it("joins an interrupt from the same Actor and Source to the started Turn", async () => {
     const first = await schedule("event-1");
     await claim(first.turnId);
@@ -244,6 +281,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-2")).resolves.toEqual({
       turnId: first.turnId,
       created: false,
+      duplicate: false,
     });
     expect(publishes).toHaveLength(1);
   });
@@ -265,9 +303,17 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         engineCtx,
         keyed({ ...input("event-3"), delivery: "defer" }),
       ),
-    ).resolves.toEqual({ turnId: deferred.turnId, created: false });
+    ).resolves.toEqual({
+      turnId: deferred.turnId,
+      created: false,
+      duplicate: false,
+    });
 
-    expect(deferred).toEqual({ turnId: expect.any(String), created: true });
+    expect(deferred).toEqual({
+      turnId: expect.any(String),
+      created: true,
+      duplicate: false,
+    });
     expect(deferred.turnId).not.toBe(first.turnId);
     expect(publishes).toEqual([]);
   });
@@ -302,7 +348,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       groupKey: "host:other-group",
     });
 
-    expect(other).toEqual({ turnId: expect.any(String), created: true });
+    expect(other).toEqual({
+      turnId: expect.any(String),
+      created: true,
+      duplicate: false,
+    });
     expect(other.turnId).not.toBe(first.turnId);
   });
 
@@ -365,7 +415,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     });
   });
 
-  it("ends a superseded Turn at once when it waits between steps", async () => {
+  it("ends a superseded Turn at once when it waits between steps, and says it ended", async () => {
     const alice = await schedule("event-1");
     await commitStep(engineCtx, await claim(alice.turnId), CONTINUE, []);
     publishes = [];
@@ -376,6 +426,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       state: "cancelled",
       endReason: "superseded",
     });
+    expect(ended).toEqual([alice.turnId]);
     expect(publishes).toEqual([{ turnId: bob.turnId, committed: true }]);
     await expect(claimTurn(engineCtx, bob.turnId)).resolves.toMatchObject({
       turnId: bob.turnId,
@@ -387,7 +438,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const running = await claim(alice.turnId);
     await interruptFrom("identity:other", "event-2");
 
-    await expect(releaseTurn(engineCtx, running)).resolves.toBe(true);
+    await expect(releaseTurn(engineCtx, running)).resolves.toBe("cancelled");
 
     await expect(readEnd(alice.turnId)).resolves.toMatchObject({
       state: "cancelled",
@@ -466,7 +517,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   it("writes nothing for a duplicate input, and publishes its Turn again only while it is queued", async () => {
     const first = await schedule("event-1");
-    const duplicate = { turnId: first.turnId, created: false };
+    const duplicate = {
+      turnId: first.turnId,
+      created: false,
+      duplicate: true,
+    };
 
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
     expect(publishes).toHaveLength(2);
@@ -475,11 +530,9 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
     await stopTurns(engineCtx, CONVERSATION_ID);
-    // The stop's own message.
-    expect(publishes).toHaveLength(3);
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
-    expect(publishes).toHaveLength(3);
+    expect(publishes).toHaveLength(2);
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toHaveLength(1);
   });
@@ -501,6 +554,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-1")).resolves.toEqual({
       turnId: turn!.id,
       created: false,
+      duplicate: true,
     });
     expect(publishes).toEqual([{ turnId: turn!.id, committed: true }]);
   });
@@ -578,16 +632,14 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
-  it("publishes a cancelled Turn, and reconcileTurn leaves its inputs on it", async () => {
+  it("says a cancelled Turn ended, and reconcileTurn leaves its inputs on it", async () => {
     const cancelled = await schedule("event-1");
 
     await stopTurns(engineCtx, CONVERSATION_ID);
     await reconcileTurn(engineCtx, cancelled.turnId);
 
-    expect(publishes).toEqual([
-      { turnId: cancelled.turnId, committed: true },
-      { turnId: cancelled.turnId, committed: true },
-    ]);
+    expect(publishes).toEqual([{ turnId: cancelled.turnId, committed: true }]);
+    expect(ended).toEqual([cancelled.turnId, cancelled.turnId]);
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toEqual([
       { turnId: cancelled.turnId, idempotencyKey: "event-1" },
@@ -608,9 +660,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     publishes = [];
 
     const stopped = await stopTurns(engineCtx, CONVERSATION_ID);
-    // The step consumer runs reconcileTurn for the stop's message.
-    const [published] = publishes;
-    await reconcileTurn(engineCtx, published!.turnId);
+    await reconcileTurn(engineCtx, running.turnId);
 
     expect([...stopped].sort()).toEqual([running.turnId, queued.turnId].sort());
     await expect(readEnd(running.turnId)).resolves.toMatchObject({
@@ -619,8 +669,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(readEnd(queued.turnId)).resolves.toMatchObject({
       state: "cancelled",
     });
-    // Only the stop's own message: reconcileTurn found no Turn to start.
-    expect(publishes).toEqual([published]);
+    expect([...ended].sort()).toEqual(
+      [running.turnId, queued.turnId, running.turnId].sort(),
+    );
+    // reconcileTurn found no Turn to start.
+    expect(publishes).toEqual([]);
   });
 
   it("keeps the first attempt time of an input", async () => {

@@ -24,6 +24,11 @@ function atLocalHour(nowMs: number, days: number, hour: number) {
   return date.getTime();
 }
 
+/** Before 06:00 local: the viewer's night is not over yet. */
+function beforeDawn(nowMs: number): boolean {
+  return new Date(nowMs).getHours() < 6;
+}
+
 /** Days from the day of `nowMs` to the next Monday, 1 to 7. */
 function daysToMonday(nowMs: number): number {
   return (8 - new Date(nowMs).getDay()) % 7 || 7;
@@ -57,12 +62,21 @@ const snoozeChoices: readonly (SnoozeChoice & { beforeHour?: number })[] = [
     untilMs: (nowMs) => atLocalHour(nowMs, 0, 18),
   },
   {
+    // Before dawn, "tomorrow" is 09:00 today.
     label: "Tomorrow morning",
-    untilMs: (nowMs) => atLocalHour(nowMs, 1, 9),
+    untilMs: (nowMs) => atLocalHour(nowMs, beforeDawn(nowMs) ? 0 : 1, 9),
   },
   {
+    // Before dawn on a Monday, "next week" is 09:00 today.
     label: "Next week",
-    untilMs: (nowMs) => atLocalHour(nowMs, daysToMonday(nowMs), 9),
+    untilMs: (nowMs) =>
+      atLocalHour(
+        nowMs,
+        beforeDawn(nowMs) && new Date(nowMs).getDay() === 1
+          ? 0
+          : daysToMonday(nowMs),
+        9,
+      ),
   },
 ];
 

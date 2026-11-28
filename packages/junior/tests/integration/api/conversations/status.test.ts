@@ -20,10 +20,7 @@ import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/child-agents";
-import {
-  closeConversationFixture,
-  webTestActor,
-} from "../../../fixtures/conversation";
+import { closeConversationFixture } from "../../../fixtures/conversation";
 import {
   SLACK_VIEWER,
   SLACK_DESTINATION,
@@ -77,18 +74,24 @@ describe("conversation status", () => {
       fixture.conversationStore,
       "1700000000.000100",
     );
-    await addItem(conversationId, {
-      kind: "notice",
-      title: "Release shipped",
+    // A notice that an agent stored before `askUserQuestion` asks nothing.
+    await insertInboxItem(getDb(), {
+      subject: { id: "notice", kind: "question" },
+      owner: { id: conversationId, kind: "conversation" },
+      assignedToEveryone: false,
+      assigneeUserIds: [],
       body: "No action needed.",
-      assignees: [webTestActor.email],
+      conversationIds: [conversationId],
+      kind: "notice",
+      nowMs: Date.now(),
+      title: "Release shipped",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("done");
     const before = await fixture.request(detailPath(conversationId));
     const version = before.headers.get(CONVERSATION_DETAIL_VERSION_HEADER);
     expect(version).toBeTruthy();
 
-    // addInboxItem assigns a Participant by default. A Slack Actor without
+    // askUserQuestion assigns a Participant by default. A Slack Actor without
     // a User adds an item that no one is assigned to, and anyone in the
     // thread can answer it.
     const unassigned = await insertInboxItem(getDb(), {
@@ -138,7 +141,7 @@ describe("conversation status", () => {
       {
         body: JSON.stringify({
           action: "submit",
-          answer: { values: { decision: ["Ship"] } },
+          answer: { values: { q1: ["Yes"] } },
         }),
         headers: { "content-type": "application/json" },
         method: "POST",
@@ -400,8 +403,20 @@ describe("conversation status", () => {
     await recordStarterMessage(dashboard);
     await expect(fixture.status(dashboard)).resolves.toBe("done");
 
-    // A Slack thread that moves into the Space still delivers to Slack, so
-    // an answer that Slack accepted is read.
+    // Its Thread's answer waits on the same starter.
+    const thread = `${dashboard}:thread`;
+    await fixture.conversationStore.createChild({
+      childConversationId: thread,
+      kind: "thread",
+      parentConversationId: dashboard,
+    });
+    await recordAnswer(thread, 1);
+    await expect(fixture.tree(thread)).resolves.toMatchObject({
+      treeState: "needs_you",
+    });
+
+    // A Slack thread that moves into the Space drops its Location, so only
+    // the starter's read of an answer counts, as for any child.
     const slack = await recordSlackRoot(
       fixture.conversationStore,
       "1700000000.000270",
@@ -410,7 +425,7 @@ describe("conversation status", () => {
       undefined,
     );
     await recordAnswer(slack, 1, Date.now(), "slack");
-    await expect(fixture.status(slack)).resolves.toBe("done");
+    await expect(fixture.status(slack)).resolves.toBe("needs_input");
   });
 
   it("does not wait on a read when the root has no starter", async () => {

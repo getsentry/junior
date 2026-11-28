@@ -9,7 +9,9 @@ export * from "./code";
 export * from "./conversation-changes";
 export * from "./conversation-events";
 export * from "./schemas";
+export * from "./abort";
 export * from "./cache";
+export * from "./http-cache";
 export * from "./context";
 export * from "./state";
 export {

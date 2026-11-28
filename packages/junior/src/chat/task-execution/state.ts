@@ -458,7 +458,7 @@ const storedOptionalStringSchema = storedNonEmptyStringSchema
   .optional()
   .catch(undefined);
 const storedOptionalNumberSchema = z.number().optional().catch(undefined);
-const storedIdListSchema = z.array(z.unknown()).catch([]);
+const storedIdListSchema = z.array(z.unknown()).catch(() => []);
 
 const storedLeaseSchema = z.object({
   token: storedNonEmptyStringSchema,
@@ -495,7 +495,7 @@ function normalizeStop(value: unknown): ConversationStop | undefined {
 
 const storedExecutionSchema = z.object({
   status: z.unknown().optional(),
-  pendingMessages: z.array(z.unknown()).catch([]),
+  pendingMessages: z.array(z.unknown()).catch(() => []),
   inboundMessageIds: storedIdListSchema,
   messageSenders: z.unknown().optional(),
   lease: z.unknown().optional(),

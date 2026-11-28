@@ -231,9 +231,15 @@ export function stubGraphql(answers: {
         name.startsWith("number") ? [Number(value)] : [],
       );
       queries.push({ numbers, operationName });
+      // A patch read also names each pull request by GitHub's id, as the
+      // `pullRequest` payloads do, and has its review requests.
       const cards =
         operationName === "PullRequestHeadFacts"
-          ? (answers.patches?.shift() ?? [])
+          ? (answers.patches?.shift() ?? []).map((node) => ({
+              databaseId: (node as { number: number }).number * 1000,
+              reviewRequests: { nodes: [] },
+              ...(node as object),
+            }))
           : typeof answers.cards === "function"
             ? answers.cards(numbers)
             : (answers.cards ?? []);
@@ -273,6 +279,7 @@ export function patchQueries(queries: GraphqlQuery[]): GraphqlQuery[] {
 export function cardNode(number: number) {
   return {
     additions: number,
+    assignees: { nodes: [] },
     author: { login: "junior-test[bot]" },
     baseRefName: "main",
     body: "Cache GitHub objects.",

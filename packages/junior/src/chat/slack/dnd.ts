@@ -22,13 +22,14 @@ const dndInfoSchema = z.object({
 export async function isSlackDndActive(
   userId: string,
   nowMs: number,
+  signal?: AbortSignal,
 ): Promise<boolean | undefined> {
   let response: unknown;
   try {
     response = await withSlackRetries(
       () => getSlackClient().dnd.info({ user: userId }),
       3,
-      { action: "dnd.info", idempotent: true },
+      { action: "dnd.info", idempotent: true, signal },
     );
   } catch (error) {
     // `withSlackRetries` already logged the Slack error. The caller falls

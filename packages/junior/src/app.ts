@@ -16,8 +16,12 @@ import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import type { ExperimentalFeaturesConfig } from "@/chat/experimental";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setPlugins, validatePlugins } from "@/chat/plugins/hooks/registry";
+import {
+  createAppContext,
+  getAppContext,
+  installAppContext,
+} from "@/app/context";
+import { validatePlugins } from "@/chat/plugins/hooks/registry";
 import {
   type PluginRouteRegistration,
   type PluginApiRouteRegistration,
@@ -59,8 +63,8 @@ import {
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_TURN_ENDED_CALLBACK_ROUTE,
   JUNIOR_TURN_STEP_CALLBACK_ROUTE,
-  JUNIOR_DELIVERY_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
@@ -93,8 +97,12 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { turnTools } from "@/turn-steps/tools";
-import { deliveryConsumer, deploymentDelivery } from "@/turn-steps/delivery";
+import {
+  createDeploymentDelivery,
+  turnEndedConsumer,
+} from "@/turn-steps/turn-ended";
 import { sweepTurns } from "@/core/turn/sweep";
+import { sweepDeliveries } from "@/delivery/sweep";
 import { createEngineContext } from "@/turn-steps/engine-context";
 import {
   vercelBackgroundCompactionQueue,
@@ -390,7 +398,7 @@ function warnUnregisteredConfigDefaults(
   defaults: Record<string, unknown> | undefined,
 ): void {
   for (const key of Object.keys(defaults ?? {})) {
-    if (!pluginCatalogRuntime.isConfigKey(key)) {
+    if (!getAppContext().catalog.isConfigKey(key)) {
       logWarn("config.default.unregistered", { "app.config.key": key });
     }
   }
@@ -489,13 +497,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousPluginCatalogConfig =
-    pluginCatalogRuntime.setConfig(pluginConfig);
-  const previousPlugins = setPlugins(plugins);
+  const previousAppContext = installAppContext(
+    createAppContext({ plugins, pluginConfig }),
+  );
   let restoreChatConfig: (() => void) | undefined;
   const restoreRuntimeConfig = (): void => {
-    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
-    setPlugins(previousPlugins);
+    installAppContext(previousAppContext);
     restoreChatConfig?.();
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
@@ -547,7 +554,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     }
     if (shouldValidatePluginCatalog) {
-      pluginCatalogRuntime.getSignature();
+      getAppContext().catalog.getSignature();
       validatePluginRegistrations(configuredPlugins?.registrations ?? []);
       validatePluginEgressCredentialHooks(
         configuredPlugins?.registrations ?? [],
@@ -810,7 +817,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // timeout use this app's functionMaxDurationSeconds.
   const chatConfig = getChatConfig();
   const engineCtx = createEngineContext(chatConfig);
-  const deliveries = deliveryConsumer(engineCtx, deploymentDelivery);
+  const turnEnds = turnEndedConsumer(
+    engineCtx,
+    createDeploymentDelivery({ getSlackAdapter: getProductionSlackAdapter }),
+  );
   app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
@@ -862,12 +872,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
     return turnStepPOST(c.req.raw);
   });
-  let deliveryPOST:
+  let turnEndedPOST:
     | ReturnType<typeof engineCtx.queue.createCallback>
     | undefined;
-  app.post(JUNIOR_DELIVERY_CALLBACK_ROUTE, (c) => {
-    deliveryPOST ??= engineCtx.queue.createCallback(deliveries);
-    return deliveryPOST(c.req.raw);
+  app.post(JUNIOR_TURN_ENDED_CALLBACK_ROUTE, (c) => {
+    turnEndedPOST ??= engineCtx.queue.createCallback(turnEnds);
+    return turnEndedPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {
@@ -877,7 +887,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       events,
       sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
-      sweepTurns: () => sweepTurns(engineCtx),
+      sweepTurns: async () => {
+        await sweepTurns(engineCtx);
+        await sweepDeliveries(engineCtx);
+      },
     });
   });
 

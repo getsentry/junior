@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_annotations_object_id_idx" ON "junior_conversation_annotations" ("plugin",("annotation_json" ->> 'objectId'),"created_at") WHERE "kind" = 'object' and ("annotation_json" ->> 'objectId') is not null;

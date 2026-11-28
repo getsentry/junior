@@ -16,6 +16,7 @@ import {
   type InboxItemDeliverySkipReason,
 } from "@/chat/inbox-items/deliveries";
 import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
+import { cutInboxItemTitle } from "@/chat/inbox-items/tool-support";
 import {
   getInboxItem,
   isInboxItemOpen,
@@ -179,13 +180,16 @@ async function deliverPush(args: {
     return;
   }
   // The payload holds only a short plain-text preview. The tag replaces an
-  // earlier push of the item on the device.
+  // earlier push of the item on the device. An ask of one question has it as
+  // both title and body, or a long one as its body and the cut title, so the
+  // push shows it once.
+  const repeatsTitle = item.title === cutInboxItemTitle(item.body);
   await sendPushNotificationToUser({
     config: args.config,
     db,
     kind: args.kind,
     payload: {
-      body: notificationPreview(item.body),
+      body: repeatsTitle ? "" : notificationPreview(item.body),
       tag: item.id,
       title: item.title,
       url: args.url,

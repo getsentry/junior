@@ -137,7 +137,7 @@ export type MessageAgent = (
  * A `person` input is words that a person typed; the prompt shows it in
  * `<current-instruction>` with the Actor of the instruction. A `runtime`
  * input is already rendered as its own tag by the runtime, such as `<task>`,
- * `<agent-result>`, or `<inbox-item-answer>`. `requestText` holds the
+ * `<agent-result>`, or `<question-answer>`. `requestText` holds the
  * request words inside a runtime input, without its tags and generic
  * instructions, such as the text answer of an Inbox item or the task that a
  * parent agent wrote.

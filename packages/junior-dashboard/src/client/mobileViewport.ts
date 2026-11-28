@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 
 import { acquireBodyScrollLock, releaseBodyScrollLock } from "./bodyScrollLock";
 import { MOBILE_LAYOUT_QUERY } from "./layoutMedia";
@@ -6,7 +6,7 @@ import { MOBILE_LAYOUT_QUERY } from "./layoutMedia";
 const viewportHeightProperty = "--dashboard-viewport-height";
 const viewportOffsetTopProperty = "--dashboard-viewport-offset-top";
 const keyboardOpenProperty = "--dashboard-keyboard-open";
-/** Single owner for composer bottom pad. Call sites must not invent safe-area math. */
+/** The one owner of the composer bottom pad. Do no safe-area math elsewhere. */
 export const composerDockPaddingProperty = "--dashboard-composer-dock-padding";
 // Ignore small visualViewport shrink from rubber-band and transient chrome.
 // Real software keyboards reduce height by much more than this.
@@ -28,24 +28,11 @@ export type MobileViewportMetrics = {
 };
 
 /**
- * Map layout + visual viewport into shell geometry.
- *
- * Contract:
- * - closed keyboard: shell = layout height, offset 0 (ignore rubber-band)
- * - open keyboard: shell height = visual height
- * - open keyboard offset: the visual pan, capped so the shell stays inside the
- *   page. When the page already shrank to the visible band
- *   (`interactive-widget=resizes-content`), the cap is 0, so the fixed shell
- *   cannot slide under the keyboard.
- *
- * Measured on iOS 18.7 Safari with the keyboard open: `innerHeight` and
- * `visualViewport.height` drop to 404, `documentElement.clientHeight` stays
- * 714, and Safari pans the visual viewport down 310px. The shell must follow
- * that pan. Capping by `innerHeight` alone gives 0 and leaves the shell 310px
- * above the screen, with a gap over the keyboard.
- *
- * No freeze / first-dock / source coalesce. The shell follows live geometry.
- * Body scroll lock stops document panning; the shell does not fight scrollY.
+ * Map layout and visual viewport into shell geometry. Keyboard closed: layout
+ * height at offset 0. Keyboard open: visual height, following the visual pan
+ * capped inside the page (0 under `resizes-content`). iOS 18.7 Safari keeps
+ * `clientHeight` tall and pans down, so an `innerHeight`-only cap strands the
+ * shell above the screen. Body scroll lock, not the shell, stops panning.
  */
 export function mobileViewportMetrics(input: {
   /**
@@ -121,7 +108,7 @@ export function nextRestingLayoutHeight(input: {
   return layoutHeight;
 }
 
-/** Keep the mobile workspace inside the visual viewport while the keyboard is open. */
+/** Keep the workspace in the visual viewport while the keyboard is open. */
 export function useMobileViewportHeight(
   rootRef: RefObject<HTMLElement | null>,
   enabled: boolean,
@@ -284,71 +271,11 @@ export function useMobileViewportHeight(
   }, [enabled, rootRef]);
 }
 
-function isEditableElement(element: Element | null): boolean {
+/** Whether the element takes typed text, so a touch keyboard can be open. */
+export function isEditableElement(element: Element | null): boolean {
   return (
     element instanceof HTMLInputElement ||
     element instanceof HTMLTextAreaElement ||
     (element instanceof HTMLElement && element.isContentEditable)
   );
-}
-
-/**
- * The visible band above an open touch keyboard, or undefined while no
- * keyboard is open. A sheet that portals outside the shell reads it, so its
- * fields stay above the keyboard. It uses the same geometry as the shell
- * (`mobileViewportMetrics`) and writes no CSS variables.
- */
-export function useKeyboardBand(): MobileViewportMetrics | undefined {
-  const [band, setBand] = useState<MobileViewportMetrics>();
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    const mobile = window.matchMedia(MOBILE_LAYOUT_QUERY);
-    let restingLayoutHeight = Math.round(window.innerHeight);
-    let frame: number | undefined;
-    const sync = () => {
-      if (frame !== undefined) return;
-      frame = requestAnimationFrame(() => {
-        frame = undefined;
-        const layoutHeight = window.innerHeight;
-        const metrics = mobileViewportMetrics({
-          documentClientHeight:
-            document.documentElement.clientHeight || layoutHeight,
-          editableFocused: isEditableElement(document.activeElement),
-          layoutHeight,
-          mobile: mobile.matches,
-          restingLayoutHeight,
-          visualHeight: viewport.height,
-          visualOffsetTop: viewport.offsetTop,
-        });
-        restingLayoutHeight = nextRestingLayoutHeight({
-          keyboardOpen: metrics?.keyboardOpen ?? false,
-          layoutHeight,
-          previousRestingLayoutHeight: restingLayoutHeight,
-        });
-        const next = metrics?.keyboardOpen ? metrics : undefined;
-        setBand((current) =>
-          current?.heightPx === next?.heightPx &&
-          current?.offsetTopPx === next?.offsetTopPx
-            ? current
-            : next,
-        );
-      });
-    };
-    sync();
-    window.addEventListener("resize", sync);
-    viewport.addEventListener("resize", sync);
-    viewport.addEventListener("scroll", sync);
-    document.addEventListener("focusin", sync);
-    document.addEventListener("focusout", sync);
-    return () => {
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      window.removeEventListener("resize", sync);
-      viewport.removeEventListener("resize", sync);
-      viewport.removeEventListener("scroll", sync);
-      document.removeEventListener("focusin", sync);
-      document.removeEventListener("focusout", sync);
-    };
-  }, []);
-  return band;
 }

@@ -2,10 +2,12 @@ import { sql } from "drizzle-orm";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
-import type {
-  PluginInboxItemSubject,
-  PluginInboxItems,
-  PluginReviewNotice,
+import {
+  PluginInboxItemOwnerError,
+  type PluginInboxItemRecord,
+  type PluginInboxItemSubject,
+  type PluginInboxItems,
+  type PluginReviewNotice,
 } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
@@ -13,39 +15,45 @@ import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import type { JuniorDatabase } from "@/db/db";
 import type { ShowInboxItem } from "./changes";
-import { inboxItemRequestSchema, type InboxItemRequest } from "./request";
 import {
   closeInboxItem,
   getOpenInboxItemBySubject,
   insertInboxItem,
+  listInboxItemsBySubject,
   ownerConversationId,
   updateInboxItemContent,
   type InboxItem,
   type InboxItemContent,
 } from "./store";
 import { leaveInboxItem, resetInboxItemPushes } from "./deliveries";
+import { InboxItemOwnerMismatchError } from "./owner";
+import { hasAssigneeRoles } from "./plugin-dismiss";
 import {
   pluginSubjectKind,
+  subjectKindActions,
   subjectKindLabel,
   type InboxItemSubject,
 } from "./subjects";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
 /**
  * Resolve the Users to assign. A plugin notice goes only to people in its
- * Conversation, public or private. Junior leaves out an Identity without a
- * User and a User who is not in the Conversation.
+ * Conversation, public or private, unless its subject kind has
+ * `assigneeRoles`: then a person's role on the object puts them on it.
+ * Junior leaves out an Identity without a User, and otherwise a User who
+ * is not in the Conversation.
  */
 async function assigneeUsers(
   db: JuniorDatabase,
   identityIds: readonly string[],
   conversationId: string,
+  roles: boolean,
 ): Promise<Array<{ identityId: string; userId: string }>> {
   const users = await mapBounded(
     [...new Set(identityIds)],
     async (identityId) => {
       const user = (await readIdentityByIdFromSql(db, identityId))?.user;
       if (!user) return [];
+      if (roles) return [{ identityId, userId: user.id }];
       const access = (
         await readConversationAccessFromSql(db, [conversationId], user)
       ).get(conversationId);
@@ -73,22 +81,18 @@ function sameContent(item: InboxItem, content: InboxItemContent): boolean {
 /** Why a plugin item closes when nobody on it has an ask now. */
 const NOBODY_LEFT_REASON = "Nobody on the item has an ask now.";
 
-/** Field id of the one choice field of a plugin item with choices. */
-export const PLUGIN_CHOICE_FIELD_ID = "choice";
-
-/** The request that shows a plugin item's choices as one row of buttons. */
-function choicesRequest(notice: PluginReviewNotice): InboxItemRequest {
-  return inboxItemRequestSchema.parse({
-    question: notice.body,
-    fields: [
-      {
-        id: PLUGIN_CHOICE_FIELD_ID,
-        kind: "choice",
-        label: notice.title,
-        options: notice.choices,
-      },
-    ],
-  });
+/**
+ * Return the kind action of a plugin item that closed with a pick of a
+ * choice field named `choice`, as items did before kinds defined actions.
+ * The picked label names the action by its label or, after the label
+ * changed, by its id, as "Resume" names `resume`.
+ */
+export function legacyChoiceAction(item: InboxItem): string | undefined {
+  const label = item.answer?.values["choice"]?.[0];
+  if (!label) return undefined;
+  return subjectKindActions(item.subject.kind, getPlugins()).find(
+    (action) => action.label === label || action.id === label.toLowerCase(),
+  )?.id;
 }
 
 /**
@@ -102,7 +106,7 @@ function pluginItemSubject(plugin: string, subject: PluginInboxItemSubject) {
 /** Throw when the plugin's owner table gives the item another Conversation. */
 function requireOwner(item: InboxItem, conversationId: string): void {
   if (ownerConversationId(item) !== conversationId) {
-    throw new Error(
+    throw new PluginInboxItemOwnerError(
       `Inbox item ${item.id} belongs to another Conversation than ${conversationId}`,
     );
   }
@@ -164,9 +168,10 @@ export function createPluginInboxItems(args: {
   ): Promise<{ itemId: string; waitText?: string } | undefined> => {
     const existing = await getOpenInboxItemBySubject(db, subject);
     if (existing) requireOwner(existing, conversationId);
+    const roles = hasAssigneeRoles({ subject });
     const [withAsk, asked] = await Promise.all([
-      assigneeUsers(db, notice.assigneeIdentityIds, conversationId),
-      assigneeUsers(db, notice.askedIdentityIds, conversationId),
+      assigneeUsers(db, notice.assigneeIdentityIds, conversationId, roles),
+      assigneeUsers(db, notice.askedIdentityIds, conversationId, roles),
     ]);
     // A person joins only with the event that gives them an ask. The
     // others with an ask stay only when they are on the item already, so
@@ -181,8 +186,11 @@ export function createPluginInboxItems(args: {
     // The item closes when nobody is left: everyone with an ask left it,
     // or everyone who was on it no longer has one. One for nobody Junior
     // knows, such as a person with no linked account, stays open with no
-    // assignees.
-    if (userIds.length === 0 && (withAsk.length > 0 || current.size > 0)) {
+    // assignees, unless roles put people on it: then it needs a person.
+    if (
+      userIds.length === 0 &&
+      (roles || withAsk.length > 0 || current.size > 0)
+    ) {
       if (!existing) return undefined;
       const itemId = await closePluginInboxItem(db, {
         conversationId,
@@ -201,10 +209,14 @@ export function createPluginInboxItems(args: {
         ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),
       ],
       // An item that waits on its assignees is an action: it needs them.
-      kind: notice.waitsOnAssignees || notice.choices ? "action" : "notice",
+      // So is one whose kind has actions, such as Resume.
+      kind:
+        notice.waitsOnAssignees ||
+        subjectKindActions(subject.kind, getPlugins()).length > 0
+          ? "action"
+          : "notice",
       title: notice.title,
       subject,
-      ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
     };
     // A plugin may show the same item on each event. One with no change
     // and no new ask writes nothing and shows nothing.
@@ -241,6 +253,11 @@ export function createPluginInboxItems(args: {
         ...content,
         owner: { id: conversationId, kind: "conversation" },
         nowMs: Date.now(),
+      }).catch((error: unknown) => {
+        // The subject names another owner, as `requireOwner` checks for an
+        // item that exists.
+        if (!(error instanceof InboxItemOwnerMismatchError)) throw error;
+        throw new PluginInboxItemOwnerError(error.message);
       });
       // Undefined means another writer added the item first.
       if (!item) return undefined;
@@ -249,14 +266,28 @@ export function createPluginInboxItems(args: {
     // An action item means the Conversation waits on a person, also when
     // an update makes a notice an action.
     return open && content.kind === "action"
-      ? {
-          itemId,
-          waitText:
-            inboxItemQuestion(content.request)?.question ?? content.body,
-        }
+      ? { itemId, waitText: content.body }
       : { itemId };
   };
   return {
+    async history(subject) {
+      const items = await listInboxItemsBySubject(
+        getDb(),
+        pluginItemSubject(args.plugin, subject),
+      );
+      // The subject names the owner, so one check covers every item.
+      if (items[0]) requireOwner(items[0], conversationId);
+      return items.map((item) => {
+        const record: PluginInboxItemRecord = {
+          id: item.id,
+          status: item.status,
+        };
+        const action = item.closeAction ?? legacyChoiceAction(item);
+        if (action) record.action = action;
+        if (item.closedAt) record.closedAtMs = item.closedAt.getTime();
+        return record;
+      });
+    },
     async upsert(notice) {
       const subject = pluginItemSubject(args.plugin, notice.subject);
       if (!subjectKindLabel(subject.kind, getPlugins())) {

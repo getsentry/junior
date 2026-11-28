@@ -1,9 +1,7 @@
 import pLimit from "p-limit";
-import { githubObjectFacts } from "../object-facts.js";
-import { githubObjectAnnotation } from "../annotations.js";
+import { githubAnnotatedObject } from "../annotations.js";
 import {
-  objectFactsSchema,
-  type ObjectAnnotation,
+  type AnnotatedObject,
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
@@ -146,6 +144,8 @@ const createPullRequestStateSchema = Type.Union([
       number: Type.Number(),
       /** GitHub's id of the pull request, for its opener's row. */
       pullRequestId: Type.Optional(Type.String()),
+      // A state saved before Annotations stopped saving facts has these.
+      // Nothing reads them.
       facts: Type.Optional(Type.Unknown()),
       sourceUpdatedAt: Type.Optional(Type.String()),
       description: Type.Optional(Type.String({ maxLength: 4000 })),
@@ -171,9 +171,8 @@ const createPullRequestStateSchema = Type.Union([
 type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 
 interface GitHubPullRequestResult {
-  facts?: ObjectAnnotation["facts"] | undefined;
-  sourceUpdatedAt?: string | undefined;
-  description?: string | undefined;
+  /** GitHub's id of the pull request. Unset in a state saved before it. */
+  id?: string | undefined;
   number: number;
   url: string;
 }
@@ -340,7 +339,6 @@ async function createGitHubPullRequest(
   const stackTarget = stackTargetSchema.safeParse(parsed);
   return {
     result: {
-      ...githubObjectFacts("code_change", parsed),
       number: pullRequest.number,
       url: pullRequest.html_url,
     },
@@ -585,18 +583,18 @@ async function gitHubPullRequestStructuredResult(
     result,
     ctx.events.canSubscribe,
   );
-  const objectAnnotations = [
-    githubObjectAnnotation({
-      facts: result.facts,
-      sourceUpdatedAt: result.sourceUpdatedAt,
-      description: result.description,
-      repo: input.repo,
-      number: result.number,
-      title: input.title,
-      url: result.url,
-      objectType: "code_change",
-      status: input.draft ? "draft" : "open",
-    }),
+  const objectAnnotations: AnnotatedObject[] = [
+    {
+      action: "created",
+      ...githubAnnotatedObject({
+        id: result.id,
+        repo: input.repo,
+        number: result.number,
+        title: input.title,
+        url: result.url,
+        objectType: "code_change",
+      }),
+    },
   ];
   if (!subscriptionConfig || !base.subscribable) {
     return {
@@ -699,12 +697,7 @@ export function createGitHubPullRequestTool(
             // The same stop can drop the reviewers named for a draft.
             await saveNamedDraftReviewers(ctx, completedInput, state.number);
             const completedResult = {
-              facts:
-                state.facts === undefined
-                  ? undefined
-                  : objectFactsSchema.parse(state.facts),
-              sourceUpdatedAt: state.sourceUpdatedAt,
-              description: state.description,
+              id: state.pullRequestId,
               number: state.number,
               url: state.url,
             };
@@ -769,13 +762,6 @@ export function createGitHubPullRequestTool(
             number: result.number,
             ...(pullRequestId === undefined ? undefined : { pullRequestId }),
             url: result.url,
-            facts: result.facts,
-            ...(result.sourceUpdatedAt === undefined
-              ? undefined
-              : { sourceUpdatedAt: result.sourceUpdatedAt }),
-            ...(result.description === undefined
-              ? undefined
-              : { description: result.description }),
           };
           try {
             await ctx.state.set(
@@ -806,7 +792,7 @@ export function createGitHubPullRequestTool(
           return await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,
-            result,
+            { ...result, id: pullRequestId },
             subscriptionConfig,
             stack,
           );

@@ -20,6 +20,8 @@ export type { ToolExposure };
 /** Invocation-specific approval metadata resolved by a trusted host bridge. */
 export interface ToolApprovalResolution {
   annotations?: ToolAnnotations;
+  /** Set by core from the plugin manifest, never from the MCP server. */
+  skipReview?: true;
   description?: string;
   name?: string;
   source?: {

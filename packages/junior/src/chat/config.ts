@@ -43,8 +43,8 @@ export interface RuntimeLimits {
   contextWindowTokens?: number;
   /**
    * Levels of child agents that can start their own child agents. The
-   * default, 1, lets a child of the root start child agents, and those
-   * cannot start more. 0 lets only the root Conversation start them.
+   * default, 2, lets a child of the root and its children start child
+   * agents. 0 lets only the root Conversation start them.
    */
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */

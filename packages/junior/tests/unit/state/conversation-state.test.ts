@@ -73,6 +73,24 @@ describe("conversation state", () => {
     expect(conversation.processing.pendingAuth).toBeUndefined();
   });
 
+  it.each([
+    { label: "missing conversation", value: {} },
+    { label: "invalid processing", value: { conversation: { processing: 5 } } },
+  ])("gives each $label fallback its own processing state", ({ value }) => {
+    const first = coerceThreadConversationState(value);
+    first.processing.pendingAuth = {
+      kind: "plugin",
+      provider: "github",
+      actorId: "U123",
+      sessionId: "turn-1",
+      linkSentAtMs: 1,
+    };
+
+    const second = coerceThreadConversationState(value);
+
+    expect(second.processing.pendingAuth).toBeUndefined();
+  });
+
   it("coerces message image file ids and vision summaries", () => {
     const conversation = coerceThreadConversationState({
       conversation: {

@@ -45,6 +45,8 @@ export interface GitHubConflictFix {
   atMs: number;
   /** The head commit that the fix was for. */
   headSha: string;
+  /** The merge conflict item whose Resume started the fix. */
+  itemId?: string;
 }
 
 /**
@@ -74,17 +76,13 @@ export const juniorGitHubPullRequests = pgTable("junior_github_pull_requests", {
   /** When the current check started. */
   readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
   /**
-   * When a person last chose Resume on the merge conflict item.
-   * It counts as activity by a person, so the fix count starts again.
+   * Unused: the merge conflict item history holds the Resumes and asks. A
+   * migration drops it once no release reads it.
    */
   conflictFixesResumedAt: timestamp("conflict_fixes_resumed_at", {
     withTimezone: true,
   }),
-  /**
-   * When Junior last asked the requester to resume a merge conflict fix
-   * that did not land. It asks once after each Resume, so a Dismiss ends
-   * the asks on the pull request.
-   */
+  /** Unused, like `conflictFixesResumedAt`. */
   conflictFixAskedAt: timestamp("conflict_fix_asked_at", {
     withTimezone: true,
   }),

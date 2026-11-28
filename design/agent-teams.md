@@ -44,10 +44,10 @@ end-of-Turn contract. A person can see and steer each agent.
   person moves it into, out of, or between Spaces.
 - `any-shape` The contract does not depend on how many Spaces a person is
   in, or on which kind is the top of a person's work.
-- `limits` A parent other than a Lead has at most 8 active child agents.
+- `limits` A parent has at most 8 active child agents.
   Only `limits.maxAgentDepth` levels of child agents can start their own.
-  The children of a Lead count as roots for this limit. The default is 1, so a root's child can start children. With 0, only a root
-  can.
+  The default is 2, so a Lead's child, or a root's grandchild, can start
+  children. With 0, only a root can.
 
 **Authority**
 
@@ -74,10 +74,9 @@ end-of-Turn contract. A person can see and steer each agent.
   tool, because its reply goes to people in a channel. Stray text never
   posts.
 - `final-text` The final text of a Turn is part of the update that the
-  agent sends. Only a Conversation that has its own Location delivers it
-  there: a root, or a Conversation that moved into a Space. A Lead delivers
-  it to its Space. Other children show their Turns to people. Final text that was cut off,
-  such as by a length limit or an abort, is a failure, not a reply.
+  agent sends. Only a root delivers it to its Location, so a Lead delivers
+  it to its Space. Children show their Turns to people. Final text that was
+  cut off, such as by a length limit or an abort, is a failure, not a reply.
   `messageAgent` sends text to another agent at any time. It is not the
   reply, and it does not end the Turn.
 - `always-reports` A child agent always tells the agent that started it how
@@ -133,10 +132,7 @@ end-of-Turn contract. A person can see and steer each agent.
   Done in the Threads panel, and new work takes it out.
 - `tree-auto-archive` Auto-archive treats every Conversation in a tree the
   same way. With the root's setting and grace period, it archives a done
-  child before its parent. It never archives a Lead, or a child that a
-  person messaged after its parent last gave it work.
-- `person-use` An agent cannot archive a Thread that a person messaged
-  after the agent last gave it work.
+  child before its parent. It never archives a Lead.
 - `auto-restore` New work from its parent, or a new ask for a person,
   restores an auto-archived child. Only a person restores a Conversation
   that a person or an agent archived.

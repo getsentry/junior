@@ -253,6 +253,8 @@ const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const MANY_TURNS_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const BUSY_CONVERSATION_ID = "slack:CQA456:1770028800.000800";
 const SENTAUR_CONVERSATION_ID = "slack:CQA456:1770028800.000900";
+const SENTAUR_RUNS_THREAD_ID = "slack:CQA456:1770028800.000901";
+const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 /** Event automation run. Its trigger message id equals the conversation id. */
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
@@ -266,7 +268,7 @@ export const DASHBOARD_QA_THREAD_ID = "junior:internal:dashboard-qa:thread";
 export const DASHBOARD_QA_ARCHIVED_THREAD_ID =
   "junior:internal:dashboard-qa:archived-thread";
 /** A Thread whose parent is the Thread above, not the root. */
-const DASHBOARD_QA_NESTED_THREAD_ID =
+export const DASHBOARD_QA_NESTED_THREAD_ID =
   "junior:internal:dashboard-qa:thread:nested";
 /** Process-local pins so the Pinned section can be exercised in visual QA. */
 const mockPinnedConversationIds = new Set<string>();
@@ -287,6 +289,9 @@ const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
 /** Process-local unsubscribes for mock visual QA. */
 const mockUnsubscribedConversationIds = new Set<string>();
+
+/** Process-local Joins of public roots for mock visual QA. */
+const mockJoinedConversationIds = new Set<string>();
 
 /** Process-local Slack detaches for mock visual QA. */
 const mockDeliveryPausedConversationIds = new Set<string>();
@@ -316,6 +321,7 @@ export function resetMockConversationViewerState(): void {
   mockAttachedAnnotations.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
+  mockJoinedConversationIds.clear();
   mockDeliveryPausedConversationIds.clear();
   mockArchivedAt.clear();
   mockArchiveCount = 0;
@@ -813,9 +819,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     ],
     annotations: [
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/getsentry#21571",
         label: "getsentry/getsentry#21571",
+        title: "getsentry/getsentry#21571",
         objectType: "code_change",
         plugin: "github",
         status: "merged",
@@ -824,9 +831,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 52_000),
       },
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/getsentry#21572",
         label: "getsentry/getsentry#21572",
+        title: "getsentry/getsentry#21572",
         objectType: "code_change",
         plugin: "github",
         status: "open",
@@ -835,9 +843,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 40_000),
       },
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/getsentry#21569",
         label: "getsentry/getsentry#21569",
+        title: "getsentry/getsentry#21569",
         objectType: "code_change",
         plugin: "github",
         status: "draft",
@@ -846,9 +855,10 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 30_000),
       },
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/sentry#121727",
         label: "getsentry/sentry#121727",
+        title: "getsentry/sentry#121727",
         objectType: "code_change",
         plugin: "github",
         status: "merged",
@@ -1208,6 +1218,8 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         messageId: "qa-reviewer-result",
         role: "user",
         eventType: "agent.update",
+        eventIdentifier: DASHBOARD_QA_REVIEW_ID,
+        eventStatus: "blocked",
         trustedSummary: 'Child agent "reviewer" is blocked.',
         text: "The reviewer needs access to the dashboard repository.",
       }),
@@ -1583,6 +1595,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
           "Metrics are in https://drive.google.com/file/d/1MockReleaseMetricsPdf_0123456789/view, and the assets are in https://drive.google.com/drive/folders/1MockReleaseAssets_0123456789",
           "Morgan asked to hold the deploy: https://acme.slack.com/archives/CQA456/p1770021700000100",
           "The checkout error is back after the deploy: https://acme.sentry.io/issues/JUNIOR-3ZK/",
+          "Canary agents are tracked in https://linear.app/acme/issue/ENG-123/grow-the-gocd-agent-pool",
           "Checkout spans slowed down with it: https://acme.sentry.io/explore/traces/?project=11&statsPeriod=24h",
           "First event after the deploy: https://acme.sentry.io/projects/junior/events/7d3e9b1a5c2f4e8d9a0b6c1d2e3f4a5b/",
           "The latency alert is still firing: https://acme.sentry.io/monitors/4021/",
@@ -1600,8 +1613,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
           "",
           // Alone on their lines: the video shows only its thumbnail, the
           // Slack message, the chart, the trace, the event, the release, the
-          // dashboard, the monitor, and the alert show a card, and the
-          // repeated pull request shows no second card.
+          // dashboard, the monitor, the alert, and the Linear issue show a
+          // card, and the repeated pull request shows no second card.
           "https://www.youtube.com/watch?v=MockLaunchDemo",
           "",
           "https://acme.slack.com/archives/CQA456/p1770021700000100",
@@ -1619,6 +1632,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
           "https://acme.sentry.io/monitors/4021/",
           "",
           "https://acme.sentry.io/monitors/alerts/6363564/",
+          "",
+          "https://linear.app/acme/issue/ENG-123/grow-the-gocd-agent-pool",
           "",
           "https://github.com/getsentry/payments/pull/91",
         ].join("\n"),
@@ -1675,7 +1690,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/junior#2201",
         objectType: "code_change",
         plugin: "github",
-        status: "draft",
         url: "https://github.com/getsentry/junior/pull/2201",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 80_000),
@@ -1689,9 +1703,12 @@ function longConversation(nowMs: number): ConversationDetailReport {
         facts: {
           type: "code_change",
           additions: 48,
+          approvers: ["avery"],
+          assignees: ["morgan"],
           author: "junior",
           changedFiles: 3,
           deletions: 9,
+          reviewers: ["riley"],
           sourceBranch: "release/pin-payments-4.2",
           targetBranch: "main",
         },
@@ -1718,7 +1735,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/relay#44",
         objectType: "code_change",
         plugin: "github",
-        status: "merged",
         url: "https://github.com/getsentry/relay/pull/44",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 70_000),
@@ -1757,6 +1773,8 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     conversationId: INCIDENT_CONVERSATION_ID,
     displayTitle: "Checkout latency triage",
     ...mockSummary("expired"),
+    // Composer QA types here, and only a Participant has a composer.
+    isParticipant: true,
     startedAt,
     lastSeenAt: iso(nowMs, -41 * 60_000),
     lastProgressAt: iso(nowMs, -42 * 60_000),
@@ -1941,6 +1959,8 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
   return detail(nowMs, {
     conversationId: MANY_TURNS_CONVERSATION_ID,
     displayTitle: "Quarterly reliability review",
+    // A public root that the viewer has not joined, for Join QA.
+    visibility: "public",
     surface: "slack",
     channel: "CQA456",
     startedAt,
@@ -2478,7 +2498,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     sentaurConversation(nowMs),
     threadConversation(
       nowMs,
-      "slack:CQA456:1770028800.000901",
+      SENTAUR_RUNS_THREAD_ID,
       "Check the last ten Sentaur pipeline runs",
       "Check the last ten Sentaur pipeline runs for lost agents.",
       -25.5 * 60 * 60_000,
@@ -2486,7 +2506,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
     ),
     threadConversation(
       nowMs,
-      "slack:CQA456:1770028800.000902",
+      SENTAUR_LOGS_THREAD_ID,
       "Read the canary agent logs",
       "Read the GoCD agent logs from the failed canary stages.",
       -25.4 * 60 * 60_000,
@@ -3185,6 +3205,7 @@ export function setMockConversationSubscribed(
     mockAgentTree(conversation)?.[0]?.conversationId ?? conversationId;
   if (subscribed) {
     mockUnsubscribedConversationIds.delete(rootId);
+    mockJoinedConversationIds.add(rootId);
   } else {
     mockUnsubscribedConversationIds.add(rootId);
     mockPinnedConversationIds.delete(rootId);
@@ -3400,6 +3421,16 @@ export function readMockConversationChildAgents(
       conversationId,
     };
   }
+  // Both Sentaur Threads have Inbox items that wait on the viewer.
+  if (conversationId === SENTAUR_CONVERSATION_ID) {
+    return {
+      agents: [SENTAUR_RUNS_THREAD_ID, SENTAUR_LOGS_THREAD_ID].map((id) => ({
+        ...thread(id),
+        treeState: "needs_you" as const,
+      })),
+      conversationId,
+    };
+  }
   if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
     return { agents: [], conversationId };
   }
@@ -3489,6 +3520,9 @@ export function readMockConversationDetail(
   );
   if (!conversation) return undefined;
   const agentTree = mockAgentTree(conversation);
+  const rootId = agentTree?.[0]?.conversationId ?? conversationId;
+  const isParticipant =
+    conversation.isParticipant || mockJoinedConversationIds.has(rootId);
   // Match the API: only readable root Conversations can be forked.
   const attached = mockAttachedAnnotations.get(conversationId) ?? [];
   const detail = {
@@ -3499,19 +3533,22 @@ export function readMockConversationDetail(
       !conversation.parentConversationId &&
       !isUnlistedMockConversation(conversationId) &&
       conversation.eventHistory.status !== "redacted",
-    // Match the API: anyone who can post in a public one may Invite.
-    ...(conversation.visibility === "public"
+    isParticipant,
+    // Match the API: only a Participant may Invite.
+    ...(isParticipant && conversation.visibility === "public"
       ? { canInvite: true as const }
       : undefined),
-    ...(conversation.isParticipant
+    ...(isParticipant
       ? {
           autoArchive:
             mockAutoArchiveByConversationId.get(conversationId) ?? false,
-          subscribed: !mockUnsubscribedConversationIds.has(
-            agentTree?.[0]?.conversationId ?? conversationId,
-          ),
+          subscribed: !mockUnsubscribedConversationIds.has(rootId),
         }
-      : undefined),
+      : // Match the API: a reader of a public root can Join it.
+        !conversation.parentConversationId &&
+          conversation.visibility === "public"
+        ? { subscribed: false }
+        : undefined),
   };
   const withViewerState = withMockViewerState(
     detail,

@@ -1,6 +1,7 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { getChatConfig } from "@/chat/config";
 import { addConversationNote } from "@/chat/conversations/notes";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -15,6 +16,7 @@ import {
 } from "@/chat/task-execution/store";
 import type { StopConversationWorkResult } from "@/chat/task-execution/state";
 import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
+import { stopTurns } from "@/core/turn/state";
 import { juniorConversations } from "@/db/schema";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -24,6 +26,7 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
+import { createEngineContext } from "@/turn-steps/engine-context";
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
 export async function getConversationStoppedAtMs(
@@ -187,6 +190,9 @@ export async function stopConversationTree(
     if (conversationId === options.finishedRunOf) {
       return { status: "no_work" };
     }
+    if (getChatConfig().turnEngine === "core") {
+      return await stopCoreTurns(conversationId, options.onStopSaved);
+    }
     return await stopConversationWork({
       conversationId,
       conversationStore: options.conversationStore,
@@ -196,6 +202,26 @@ export async function stopConversationTree(
       state: options.state,
     });
   });
+}
+
+/**
+ * Cancel the queued and running core Turns of a Conversation. Core keeps no
+ * mailbox, so a stop drops no pending messages, and the first stopped Turn
+ * stands in for main's run.
+ */
+async function stopCoreTurns(
+  conversationId: string,
+  onStopSaved: (() => void) | undefined,
+): Promise<StopConversationWorkResult> {
+  const [turnId] = await stopTurns(
+    createEngineContext(getChatConfig()),
+    conversationId,
+  );
+  if (!turnId) {
+    return { status: "no_work" };
+  }
+  onStopSaved?.();
+  return { status: "requested", runId: turnId, pendingMessages: [] };
 }
 
 /**

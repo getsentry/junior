@@ -31,10 +31,14 @@ import {
 } from "@/chat/inbox-items/access";
 import {
   questionLinks,
+  subjectKindActionLabel,
+  subjectKindActions,
+  subjectKindDismissNote,
   subjectKindLabel,
   subjectTodo,
 } from "@/chat/inbox-items/subjects";
 import { getPlugins } from "@/chat/plugins/hooks/registry";
+import { hasAssigneeRoles } from "@/chat/inbox-items/plugin-dismiss";
 import {
   actOnInboxItem,
   readInboxItemForUser,
@@ -60,14 +64,20 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   clearInboxWakeReasons,
   readViewerInboxSnoozes,
+  SNOOZE_TIMER_EVENT_TYPE,
+  snoozeTimerWakeAtMs,
+  type ViewerInboxSnooze,
 } from "@/chat/inbox-snoozes/store";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
-import type { InboxSnoozeWake } from "@/api/schema/inbox-snooze";
+import type {
+  InboxSnoozeWake,
+  InboxViewerSnooze,
+} from "@/api/schema/inbox-snooze";
 import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
-import { readItemRoots } from "./item-roots";
+import { readHiddenOwners, readItemRoots } from "./item-roots";
 import { readInboxItemMentions } from "./mentions";
 import {
   codeChangeSubjectProvider,
@@ -196,6 +206,13 @@ function subjectPayload(
   const url = view?.url;
   const object = view?.object;
   const label = subjectKindLabel(subject.kind, getPlugins(), object, viewer);
+  const dismissNote = subjectKindDismissNote(
+    subject.kind,
+    getPlugins(),
+    object,
+    viewer,
+  );
+  const actions = subjectKindActions(subject.kind, getPlugins());
   const objectType = url && readLinkObjectType(url);
   const snoozeUrl = url ?? questionLinks(item)[0];
   const resource =
@@ -203,7 +220,17 @@ function subjectPayload(
   return {
     id: subject.id,
     kind: subject.kind,
+    ...(actions.length > 0
+      ? {
+          actions: actions.map(({ icon, id, label }) => ({
+            id,
+            label,
+            ...(icon ? { icon } : undefined),
+          })),
+        }
+      : undefined),
     ...(label ? { label } : undefined),
+    ...(dismissNote ? { dismissNote } : undefined),
     ...(url ? { url } : undefined),
     ...(object ? { object } : undefined),
     ...(objectType ? { objectType } : undefined),
@@ -222,15 +249,52 @@ function subjectPayload(
 
 // The Event's source says how it reads after the resource's name, such as
 // "is merged" from the GitHub plugin.
+function eventPhrase(namespace: string, eventType: string) {
+  return getEventCatalog()[namespace]?.events[eventType]?.phrase;
+}
+
 function wakePayload(reason: InboxSnoozeWakeReason): InboxSnoozeWake {
   if (reason.kind === "time") return reason;
-  const phrase =
-    getEventCatalog()[reason.namespace]?.events[reason.eventType]?.phrase;
+  const phrase = eventPhrase(reason.namespace, reason.eventType);
   return {
     eventType: reason.eventType,
     kind: "event",
     resource: reason.identifier,
     ...(phrase ? { phrase } : undefined),
+  };
+}
+
+// A snooze's wake time is a timer trigger.
+function isSnoozeTimer(trigger: ViewerInboxSnooze["triggers"][number]) {
+  return trigger.eventType === SNOOZE_TIMER_EVENT_TYPE;
+}
+
+/** What ends the viewer's snooze of an item, as its row says it. */
+function viewerSnoozePayload(snooze: ViewerInboxSnooze): InboxViewerSnooze {
+  const events = snooze.triggers
+    .filter((trigger) => !isSnoozeTimer(trigger))
+    .map((trigger) => {
+      const phrase = eventPhrase(trigger.namespace, trigger.eventType);
+      return {
+        eventType: trigger.eventType,
+        outcome: trigger.outcome,
+        resource: trigger.identifier,
+        ...(phrase ? { phrase } : undefined),
+      };
+    });
+  const timer = snooze.triggers.find(isSnoozeTimer);
+  const wakeAtMs = timer && snoozeTimerWakeAtMs(timer.identifier);
+  return {
+    snoozedAt: snooze.createdAt.toISOString(),
+    ...(snooze.triggers.length === 0
+      ? { untilClosed: true as const }
+      : undefined),
+    ...(wakeAtMs !== undefined
+      ? { wakeAt: new Date(wakeAtMs).toISOString() }
+      : timer
+        ? { untilSetTime: true as const }
+        : undefined),
+    ...(events.length > 0 ? { events } : undefined),
   };
 }
 
@@ -243,11 +307,21 @@ function inboxItemPayload(
   related: RelatedReviewWork | undefined,
   wake: InboxSnoozeWakeReason | undefined,
   views: ReadonlyMap<string, InboxSubjectView>,
+  hidden: ReadonlySet<string>,
 ): InboxItemPayload {
-  const conversationId = ownerConversationId(item);
+  const owner = ownerConversationId(item);
+  // The viewer sees the item but not its Conversation, so the payload names
+  // no Conversation, Turn, or tree.
+  const conversationHidden = owner !== undefined && hidden.has(owner);
+  const conversationId = conversationHidden ? undefined : owner;
   const root = conversationId ? roots.get(conversationId) : undefined;
   const todo = subjectTodo(item.subject);
   const question = inboxItemQuestion(item.request);
+  const closeAction = subjectKindActionLabel(
+    item.subject.kind,
+    getPlugins(),
+    item.closeAction,
+  );
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: isInboxItemForEveryone(item),
@@ -256,8 +330,10 @@ function inboxItemPayload(
     canAct: canActOnInboxItem(item, viewer.id),
     canAnswer: canAnswerInboxItem(item, viewer.id),
     canTake:
-      canActOnInboxItem(item, viewer.id) && !isOnlyAssignee(item, viewer.id),
-    conversationIds: item.conversationIds,
+      canActOnInboxItem(item, viewer.id) &&
+      !isOnlyAssignee(item, viewer.id) &&
+      !hasAssigneeRoles(item),
+    conversationIds: conversationHidden ? [] : item.conversationIds,
     createdAt: item.createdAt.toISOString(),
     id: item.id,
     kind: item.kind,
@@ -271,10 +347,14 @@ function inboxItemPayload(
       ? { rootConversationId: root?.rootConversationId ?? conversationId }
       : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
-    ...(item.addedByTurnId ? { addedByTurnId: item.addedByTurnId } : undefined),
+    ...(item.answeredBy ? { answeredBy: item.answeredBy } : undefined),
+    ...(item.addedByTurnId && !conversationHidden
+      ? { addedByTurnId: item.addedByTurnId }
+      : undefined),
     ...(item.addedByAutomationId
       ? { automationId: item.addedByAutomationId }
       : undefined),
+    ...(closeAction ? { closeAction } : undefined),
     ...(item.closeReason ? { closeReason: item.closeReason } : undefined),
     ...(item.closedAt ? { closedAt: item.closedAt.toISOString() } : undefined),
     ...(item.closedBy ? { closedBy: item.closedBy } : undefined),
@@ -304,8 +384,9 @@ async function inboxItemPayloads(
   reader: InboxItemReader,
 ): Promise<InboxItemPayload[]> {
   const db = getDb();
-  const [roots, mentions, related, snoozes, views] = await Promise.all([
+  const [roots, hidden, mentions, related, snoozes, views] = await Promise.all([
     readItemRoots(db, items, viewer),
+    readHiddenOwners(db, items, viewer),
     readInboxItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
     readViewerInboxSnoozes(db, {
@@ -314,7 +395,7 @@ async function inboxItemPayloads(
         .map((item) => item.id),
       userId: viewer.id,
     }),
-    resolveInboxItemSubjects(viewer, items),
+    resolveInboxItemSubjects(viewer, items, { cacheOnly: true }),
   ]);
   return items.map((item, index) => {
     const payload = inboxItemPayload(
@@ -325,9 +406,11 @@ async function inboxItemPayloads(
       related.get(item.id),
       snoozes.wakeReasons.get(item.id),
       views,
+      hidden,
     );
-    return snoozes.snoozed.has(item.id)
-      ? { ...payload, snoozedByViewer: true }
+    const snooze = snoozes.snoozed.get(item.id);
+    return snooze
+      ? { ...payload, snoozedByViewer: viewerSnoozePayload(snooze) }
       : payload;
   });
 }
@@ -566,6 +649,9 @@ export function createInboxItemRoutes(services: {
           user: viewer,
           ...(body.action === "submit"
             ? { answer: { ...body.answer, requestId: id } }
+            : undefined),
+          ...(body.action === "done" && body.id
+            ? { kindAction: body.id }
             : undefined),
         });
         // The viewer acted on the item, so it no longer says why it woke.

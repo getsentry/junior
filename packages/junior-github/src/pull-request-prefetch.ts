@@ -7,15 +7,11 @@
  */
 import type { ObjectLinkContext } from "@sentry/junior-plugin-api";
 import pLimit, { type LimitFunction } from "p-limit";
-import type * as z from "zod";
 import { pullRequestCards } from "./graphql-documents.js";
 import {
-  clearGitHubReviewAfterRead,
-  type GitHubPullRequestFields,
   githubObjectCacheKey,
-  githubPullRequestEntry,
   githubPullRequestFieldsSchema,
-  isOlderGitHubObject,
+  storeGitHubPullRequestFields,
 } from "./object-cache.js";
 import {
   aliasedPullRequests,
@@ -45,14 +41,15 @@ function cacheKey(ref: PullRequestRef): string {
 }
 
 // Whether a fresh entry still needs a read: an open pull request whose
-// review decision is not read yet. Webhooks have no review decision, and a
-// review webhook clears it (`webhooks/object-cache.ts`).
+// review decision is not read yet, or any pull request whose approvers are
+// not. Webhooks and REST reads have neither, and a review webhook clears
+// the decision (`webhooks/object-cache.ts`).
 function needsReview(entry: unknown): boolean {
   const fields = githubPullRequestFieldsSchema.safeParse(entry);
   return (
     fields.success &&
-    fields.data.state === "open" &&
-    fields.data.review === undefined
+    (fields.data.approved_by === undefined ||
+      (fields.data.state === "open" && fields.data.review === undefined))
   );
 }
 
@@ -68,30 +65,6 @@ async function missingRefs(
     return await viewerCanSeeRepository(ctx, ref);
   });
   return refs.filter((_, index) => missing[index]);
-}
-
-async function storeCard(
-  ctx: ObjectLinkContext,
-  key: string,
-  node: z.output<typeof pullRequestCardNodeSchema>,
-  startedAtMs: number,
-): Promise<void> {
-  const fields = githubPullRequestFieldsFromNode(node);
-  let stored = false;
-  await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) => {
-    stored = !isOlderGitHubObject(current, fields);
-    return stored
-      ? githubPullRequestEntry({ ...current, ...fields })
-      : undefined;
-  });
-  // A review webhook during the read changes the decision after GitHub
-  // answered, often with the same `updated_at`.
-  if (stored) {
-    await clearGitHubReviewAfterRead(ctx.cache, key, {
-      review: fields.review,
-      startedAtMs,
-    });
-  }
 }
 
 async function loadChunk(
@@ -124,7 +97,14 @@ async function loadChunk(
   );
   await pLimit(PREFETCH_CONCURRENCY).map(refs, async (ref, index) => {
     const node = nodes[index];
-    if (node) await storeCard(ctx, cacheKey(ref), node, startedAtMs);
+    if (node) {
+      await storeGitHubPullRequestFields(
+        ctx.cache,
+        cacheKey(ref),
+        githubPullRequestFieldsFromNode(node),
+        startedAtMs,
+      );
+    }
   });
 }
 

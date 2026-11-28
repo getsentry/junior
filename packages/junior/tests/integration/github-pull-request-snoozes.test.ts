@@ -67,23 +67,33 @@ async function snoozeUntil(eventType: string) {
 
 /**
  * Answer GraphQL reads of the pull request with `mergeable` at `head`: the
- * merge state patch after a push, and the card reads of a page.
+ * merge state patch after a push, and the card reads of a page. `during`
+ * runs once while the first read waits on GitHub.
  */
-function stubMergeState(mergeable: string, head: string) {
+function stubMergeState(
+  mergeable: string,
+  head: string,
+  read: { during?: () => Promise<unknown>; updatedAt?: string } = {},
+) {
   const node = {
     commits: { nodes: [] },
     headRefOid: head,
     mergeable,
-    updatedAt: new Date().toISOString(),
+    reviewRequests: { nodes: [] },
+    updatedAt: read.updatedAt ?? new Date().toISOString(),
   };
   mswServer.use(
     http.post("https://api.github.com/graphql", async ({ request }) => {
       const { operationName } = (await request.json()) as {
         operationName: string;
       };
+      const during = read.during;
+      read.during = undefined;
+      await during?.();
       const card = {
         ...node,
         additions: 1,
+        assignees: { nodes: [] },
         author: { login: "byk" },
         baseRefName: "main",
         body: "",
@@ -93,7 +103,6 @@ function stubMergeState(mergeable: string, head: string) {
         isDraft: false,
         merged: false,
         number: 1,
-        reviewRequests: { nodes: [] },
         state: "OPEN",
         title: "Add acme entry",
         url: PULL_REQUEST.url,
@@ -234,10 +243,79 @@ describe("GitHub pull request snoozes", () => {
     expect((await asAna.inbox()).inbox).toEqual([TITLE]);
   });
 
+  it("marks no merge conflict from a card read that a newer webhook replaced", async () => {
+    const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
+    // A check on a pull request with no entry reads its card. A webhook
+    // lands during that read, so the conflict in the card is older.
+    stubMergeState("CONFLICTING", "aaa111", {
+      during: () =>
+        sendGitHubWebhook(app, "pull_request", {
+          action: "edited",
+          pull_request: pullRequest({ mergeable: true }),
+        }),
+      updatedAt: new Date(T0 - 60_000).toISOString(),
+    });
+    await sendGitHubWebhook(app, "check_run", {
+      action: "completed",
+      check_run: {
+        conclusion: "success",
+        head_sha: "aaa111",
+        id: 8001,
+        pull_requests: [{ id: 1000, number: 1 }],
+        status: "completed",
+      },
+    });
+    vi.setSystemTime(Date.now() + 60_000);
+    await tasks.deliver();
+
+    await push("bbb222", "MERGEABLE");
+    expect((await asAna.inbox()).inbox).toEqual([]);
+  });
+
   it("wakes a snooze when a push fixes a merge conflict that a comment found", async () => {
     const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
 
     await comment(false);
+    expect((await asAna.inbox()).inbox).toEqual([]);
+
+    await push("bbb222", "MERGEABLE");
+    expect((await asAna.inbox()).inbox).toEqual([TITLE]);
+  });
+
+  it("reads an unchanged pull request again with its saved ETag, and a 304 keeps the merge conflict it found", async () => {
+    const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
+    const etag = 'W/"pull-1"';
+    const answers: number[] = [];
+    mswServer.use(
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/1",
+        ({ request }) => {
+          if (request.headers.get("if-none-match") === etag) {
+            answers.push(304);
+            return new HttpResponse(null, { headers: { etag }, status: 304 });
+          }
+          answers.push(200);
+          return HttpResponse.json(
+            pullRequest({ mergeable: false, mergeable_state: "dirty" }),
+            { headers: { etag } },
+          );
+        },
+      ),
+    );
+    for (const id of [4002, 4003]) {
+      await sendGitHubWebhook(app, "issue_comment", {
+        action: "created",
+        comment: { body: "Any update?", id, user: { login: "jane" } },
+        sender: { id: 3001, login: "jane" },
+        issue: {
+          number: 1,
+          pull_request: {
+            url: "https://api.github.com/repos/getsentry/junior/pulls/1",
+          },
+        },
+      });
+    }
+    expect(answers).toEqual([200, 304]);
     expect((await asAna.inbox()).inbox).toEqual([]);
 
     await push("bbb222", "MERGEABLE");

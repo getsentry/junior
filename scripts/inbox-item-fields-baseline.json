@@ -14,6 +14,7 @@
     "closed_at",
     "closed_by_user_id",
     "close_reason",
+    "close_action",
     "created_at",
     "updated_at"
   ],
@@ -21,6 +22,7 @@
     "addedByLabel",
     "addedByTurnId",
     "answer",
+    "answeredBy",
     "assignedToEveryone",
     "assignees",
     "automationId",
@@ -28,6 +30,7 @@
     "canAct",
     "canAnswer",
     "canTake",
+    "closeAction",
     "closeReason",
     "closedAt",
     "closedBy",
@@ -49,5 +52,15 @@
     "visibility",
     "wake"
   ],
-  "subject": ["id", "kind", "label", "object", "objectType", "resource", "url"]
+  "subject": [
+    "actions",
+    "dismissNote",
+    "id",
+    "kind",
+    "label",
+    "object",
+    "objectType",
+    "resource",
+    "url"
+  ]
 }

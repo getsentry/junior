@@ -141,14 +141,15 @@ async function loadWebPage(
  */
 async function resolveWebPageLink(
   url: URL,
+  cacheOnly: boolean,
 ): Promise<ObjectAnnotation | undefined> {
   if (isDashboardLink(url)) return undefined;
   if (url.username || url.password) return undefined;
   const key = createHash("sha256").update(url.href).digest("hex");
-  const card = await createCache(getStateAdapter(), "web-pages").getOrLoad(
-    key,
-    () => loadWebPage(url),
-  );
+  const cache = createCache(getStateAdapter(), "web-pages");
+  const card = cacheOnly
+    ? await cache.get<ObjectAnnotation | null>(key)
+    : await cache.getOrLoad(key, () => loadWebPage(url));
   return card ?? undefined;
 }
 
@@ -158,14 +159,15 @@ async function resolveWebPageLink(
  */
 export function webPageLinkType(): ObjectLinkType {
   return {
-    // The resolver keeps one card per URL for every viewer.
-    cacheCards: false,
+    cacheOnlyReads: true,
     // Junior fetches the page without credentials, so it is public.
     canView: async () => true,
     // Junior fetches only `https`, so a plain `http` link stays a link.
     filters: [{ scheme: "https" }],
     objectTypes: ["web_page"],
     owner: "junior",
-    resolve: (_viewer, url) => resolveWebPageLink(url),
+    // The resolver keeps one card per URL for every viewer.
+    resolve: (_viewer, url, _prefetched, read) =>
+      resolveWebPageLink(url, Boolean(read?.cacheOnly)),
   };
 }

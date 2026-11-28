@@ -53,9 +53,10 @@ test("the pane lists the viewer's Spaces, and a Space page shows its details", a
   const details = page.getByRole("complementary", {
     name: "Conversation details",
   });
-  const threads = details.getByRole("region", { exact: true, name: "Threads" });
+  const work = details.getByRole("region", { exact: true, name: "Agents" });
+  await work.getByRole("button", { name: "Show finished" }).click();
   await expect(
-    threads.getByRole("link", { name: /Plan the billing migration/ }),
+    work.getByRole("link", { name: /Plan the billing migration/ }),
   ).toBeVisible();
   await expect(
     details
@@ -195,6 +196,10 @@ test("another Space's page does not show the last Space's Threads", async ({
   const billingRow = details.getByRole("link", {
     name: /Plan the billing migration/,
   });
+  await details
+    .getByRole("region", { exact: true, name: "Agents" })
+    .getByRole("button", { name: "Show finished" })
+    .click();
   await expect(billingRow).toBeVisible();
 
   // Hold the next Lead's Threads, so the page shows them loading.
@@ -218,6 +223,11 @@ test("another Space's page does not show the last Space's Threads", async ({
   await expect(details.getByRole("img", { name: /^Riley Park/ })).toBeVisible();
   await expect(billingRow).toHaveCount(0);
   release();
+  // Each Space's details start with finished Threads folded.
+  await details
+    .getByRole("region", { exact: true, name: "Agents" })
+    .getByRole("button", { name: "Show finished" })
+    .click();
   await expect(
     details.getByRole("link", { name: /SDK changelog summary 8/ }),
   ).toBeVisible();
@@ -236,7 +246,8 @@ test("a member leaves a public Space from the Conversation menu", async ({
   await conversationMenuRow(page, "Leave").click();
   await expect(pane).toHaveCount(0);
   await page.keyboard.press("Escape");
-  // A public Space stays open, and a message to its Lead joins it again.
+  // A public Space stays open. Leave keeps them a Participant of its Lead,
+  // so they can still post.
   await expect(page.getByLabel("Continue this conversation")).toBeVisible();
 });
 

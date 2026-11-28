@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
+import { hasAssigneeRoles } from "@/chat/inbox-items/plugin-dismiss";
 import { ownerConversationId, type InboxItem } from "@/chat/inbox-items/store";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
@@ -75,4 +76,28 @@ export async function readItemRoots(
       return [[child.conversationId, { label, rootConversationId }] as const];
     }),
   );
+}
+
+/**
+ * Read the owner Conversations of a page of items that the viewer cannot
+ * see. Only a role on a plugin item's object (`assigneeRoles`) puts a
+ * person on an item outside its Conversation, so only those owners are
+ * read. Their card then shows the item and its subject, and no
+ * Conversation.
+ */
+export async function readHiddenOwners(
+  db: JuniorDatabase,
+  items: readonly Pick<InboxItem, "owner" | "subject">[],
+  viewer: User,
+): Promise<Set<string>> {
+  const ids = [
+    ...new Set(
+      items.flatMap((item) =>
+        hasAssigneeRoles(item) ? (ownerConversationId(item) ?? []) : [],
+      ),
+    ),
+  ];
+  if (ids.length === 0) return new Set();
+  const access = await readConversationAccessFromSql(db, ids, viewer);
+  return new Set(ids.filter((id) => !access.get(id)?.canViewPrivateContent));
 }

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { conversationTurnFailedSql } from "@/chat/conversations/sql/status";
 import { rootSpaceIdSql } from "@/chat/spaces/tree-space";
@@ -44,10 +44,11 @@ export async function readSpaceStates(
 ): Promise<Map<string, SpaceStateRead>> {
   if (spaceIds.length === 0) return new Map();
   // The Space's top-level Conversations are its Lead and the Lead's direct
-  // children. One read of `junior_conversations_space_lead_idx` finds the
-  // Leads, and the primary key and `junior_conversations_parent_idx` find
-  // the rows. The tree state of each one covers its own child agents.
-  const leads = db
+  // children. `junior_conversations_space_lead_idx` finds the Leads, and the
+  // primary key and `junior_conversations_parent_idx` find the rows, only
+  // with `= any(array(...))`: an `or` of two `in` subqueries reads the table.
+  // The tree state of each one covers its own child agents.
+  const leads = sql`array(${db
     .select({ id: spaceLead.conversationId })
     .from(spaceLead)
     .where(
@@ -55,7 +56,7 @@ export async function readSpaceStates(
         eq(spaceLead.kind, "lead"),
         inArray(spaceLead.spaceId, [...spaceIds]),
       ),
-    );
+    )})`;
   const roots = await db
     .select({
       conversationId: juniorConversations.conversationId,
@@ -66,8 +67,8 @@ export async function readSpaceStates(
     .where(
       and(
         or(
-          inArray(juniorConversations.conversationId, leads),
-          inArray(juniorConversations.parentConversationId, leads),
+          sql`${juniorConversations.conversationId} = any(${leads})`,
+          sql`${juniorConversations.parentConversationId} = any(${leads})`,
         ),
         isNull(juniorConversations.archivedAt),
         isNull(juniorConversations.quickQuestionAt),

@@ -80,10 +80,9 @@ function githubNoreplyEmail(user?: User): string | undefined {
 }
 
 /**
- * Stable identity key for an actor, matching the distinctness rule
- * `instructionActors` uses to build `run.actors` (identity ids only, never
- * display fields) so the run actor is recognized here even under a different
- * display profile.
+ * Identity key for an actor: identity ids only, never display fields, as
+ * `instructionActors` builds `run.actors`, so one person under two display
+ * profiles matches.
  */
 function actorIdentityKey(actor: Actor): string {
   if (actor.platform === "system") {
@@ -95,16 +94,10 @@ function actorIdentityKey(actor: Actor): string {
 }
 
 /**
- * Build `Co-Authored-By` trailers crediting human run actors.
- *
- * `run.actors` is attribution only (see `multi-actor-runs.md`): a steerer
- * without a resolvable name and email is silently omitted rather than
- * denying the commit. Dedupes by identity and resolved email so the same human
- * under two display profiles, or an actor matching the bot identity, only ever
- * produces one line.
- *
- * When the current actor has a linked GitHub identity, prefer that noreply
- * address so external automation can resolve a login for assignment.
+ * Build `Co-Authored-By` trailers that credit the human run actors. Run actors
+ * are attribution only, so an actor without a resolvable name and email is
+ * left out rather than denying the commit. Lines dedupe by identity and email,
+ * and an actor that matches the bot identity gets no line.
  */
 export function additionalActorCoauthorTrailers(args: {
   actors?: Actor[];
@@ -147,12 +140,9 @@ export function additionalActorCoauthorTrailers(args: {
 
 /**
  * Client hooks that Junior's hooks directory passes to the repository.
- *
- * Junior's `core.hooksPath` replaces the repository hooks directory: the
- * repository's own `core.hooksPath` (husky) or `.git/hooks` (simple-git-hooks,
- * Git LFS). Git would skip those hooks without these pass-through hooks.
- * `prepare-commit-msg` is not in the list because Junior's own hook runs the
- * repository hook first.
+ * Junior's `core.hooksPath` replaces the repository's own (husky) or
+ * `.git/hooks`, so Git would skip them without these. `prepare-commit-msg`
+ * is absent because Junior's own hook runs the repository hook first.
  */
 export const REPOSITORY_HOOK_NAMES = [
   "applypatch-msg",
@@ -225,24 +215,11 @@ fi
 }
 
 /**
- * Awk program that sets the co-author trailers of a commit message.
- *
- * It removes every `Co-authored-by` line from paragraphs made only of
- * trailers, so model-supplied co-authors never reach a commit. Then it
- * appends the trailers in `JUNIOR_COAUTHOR_TRAILERS`, deduplicated by email
- * and without the bot, to the final trailer paragraph. Like Git, it never
- * treats the subject paragraph as trailers. A trailer key starts with a
- * capital letter, so a conventional commit subject such as `feat: x` in a
- * squash message stays body text. It keeps the comment block that Git adds
- * for an editor at the end. A message with no content stays empty, so Git
- * still aborts the commit.
- *
- * With `JUNIOR_COAUTHOR_LIST` set, it prints only the `Co-authored-by` lines
- * that it would remove. The hook uses this to read the co-authors of a
- * rewritten commit with the same rules, so a squash-style message keeps the
- * co-authors in its earlier trailer paragraphs too.
- *
- * The hook puts this program in single quotes, so it must not contain one.
+ * Awk that sets a commit message's co-author trailers: drops every
+ * `Co-authored-by` in trailer-only paragraphs, so model co-authors never land,
+ * and appends `JUNIOR_COAUTHOR_TRAILERS` to the last one. Like Git, it skips
+ * the subject and needs a capital key, keeps Git's comment block, and leaves
+ * an empty message empty. The hook single-quotes it, so it has no `'`.
  */
 const SET_COAUTHOR_TRAILERS_AWK = String.raw`
 function blank(line) { return line ~ /^[[:space:]]*$/ }

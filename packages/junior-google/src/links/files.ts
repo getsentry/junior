@@ -141,9 +141,11 @@ function parseFileLink(url: URL): FileLink | undefined {
     : undefined;
 }
 
-// Long enough that the access check and the card share one Drive read. The
-// access queries check `trashed` again, so a trashed file never shows.
-const FILE_READ_TTL_MS = 10_000;
+// A live access check always reads the file again, and the card shares
+// that read, so a live card is never stale. The entry lives five minutes,
+// and then stays as the last good file for page loads. Every read checks
+// `trashed`, so a trashed file never shows.
+const FILE_READ_TTL_MS = 300_000;
 
 async function fetchFile(
   ctx: ViewerReadContext,
@@ -179,15 +181,21 @@ function fitsLink(file: LinkedFile | null, link: FileLink): file is LinkedFile {
 async function readLinkedFile(
   ctx: ObjectLinkContext,
   link: FileLink,
+  options?: { refresh: true },
 ): Promise<LinkedFile | undefined> {
   const { fileId, resourceKey } = link.file;
-  const file = await ctx.cache.getOrLoad(
-    `drive-file:${fileId}:${resourceKey ?? ""}`,
-    async () => ({
-      value: await fetchFile(ctx, link.file),
-      ttlMs: FILE_READ_TTL_MS,
-    }),
-  );
+  const key = `drive-file:${fileId}:${resourceKey ?? ""}`;
+  const file = ctx.cacheOnly
+    ? ((await ctx.cache.get<LinkedFile | null>(key, { stale: true })) ?? null)
+    : await ctx.cache.getOrLoad(
+        key,
+        async () => ({
+          staleIfError: true,
+          value: await fetchFile(ctx, link.file),
+          ttlMs: FILE_READ_TTL_MS,
+        }),
+        options,
+      );
   return fitsLink(file, link) ? file : undefined;
 }
 
@@ -238,7 +246,14 @@ async function canViewGoogleFileLink(
 ): Promise<boolean> {
   const config = readGoogleConfig();
   const link = parseFileLink(url);
-  const file = config && link && (await readLinkedFile(ctx, link));
+  // A page load shows the stored card to anyone who can read the
+  // Conversation, so it checks no viewer access.
+  if (ctx.cacheOnly) return !!config && !!link;
+  // The owners and the shared drive decide which Drive queries count, so a
+  // live check never uses the last good file. The card then reads the entry
+  // that this check stored.
+  const file =
+    config && link && (await readLinkedFile(ctx, link, { refresh: true }));
   return (
     !!file &&
     (await personCanOpenFile(
@@ -260,8 +275,11 @@ async function resolveGoogleFileLink(
   // A Drive link to a Doc, Sheet, or Slides file shows the same card as its
   // Docs link.
   const type = googleFileType(file.mimeType);
+  // The summary is not in the cache, so a page load shows none.
   const summary =
-    type === "document" ? await docSummary(ctx, link.file) : undefined;
+    type === "document" && !ctx.cacheOnly
+      ? await docSummary(ctx, link.file)
+      : undefined;
   const modifiedAtMs = file.modifiedTime
     ? Date.parse(file.modifiedTime)
     : Number.NaN;
@@ -315,6 +333,7 @@ export const googleFileLinks: PluginObjectLinkDefinition = {
     ),
     { host: "drive.google.com", path: "/open" },
   ],
+  cacheOnlyReads: true,
   canView: canViewGoogleFileLink,
   objectTypes: ["document"],
   // One tool reads Docs, Sheets, and Slides. No tool reads other files.

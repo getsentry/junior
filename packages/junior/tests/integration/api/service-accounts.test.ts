@@ -13,8 +13,7 @@ import {
   useServiceAccountMcpServer,
 } from "../../fixtures/service-account-mcp";
 import { mswServer } from "../../msw/server";
-
-const ORIGINAL_ENV = { ...process.env };
+import { resetTestEnv } from "../../fixtures/stub-env";
 const BASE_URL = "https://junior.example.com";
 const ADMIN = "admin@example.com";
 const OTHER_ADMIN = "other-admin@example.com";
@@ -116,7 +115,7 @@ async function finishSignIn(
 
 describe("service accounts API", () => {
   beforeEach(async () => {
-    process.env = { ...ORIGINAL_ENV, JUNIOR_BASE_URL: BASE_URL };
+    resetTestEnv({ JUNIOR_BASE_URL: BASE_URL });
     await createServiceAccountApp();
     for (const email of [ADMIN, OTHER_ADMIN, PERSON]) {
       await resolveViewerUser(email);
@@ -126,7 +125,7 @@ describe("service accounts API", () => {
   });
 
   afterEach(async () => {
-    process.env = { ...ORIGINAL_ENV };
+    vi.unstubAllEnvs();
     await closeDb();
   });
 
@@ -193,8 +192,8 @@ describe("service accounts API", () => {
   });
 
   it("serves only listed host operations with an OAuth plugin's service account", async () => {
-    process.env["CLIPS_CLIENT_ID"] = "clips-client";
-    process.env["CLIPS_CLIENT_SECRET"] = "clips-secret";
+    vi.stubEnv("CLIPS_CLIENT_ID", "clips-client");
+    vi.stubEnv("CLIPS_CLIENT_SECRET", "clips-secret");
     const tokenRequests: Array<{ authorization: string | null; body: string }> =
       [];
     const upstream: Array<string | null> = [];
@@ -280,8 +279,8 @@ describe("service accounts API", () => {
   });
 
   it("keeps no old expiry when a service account refresh reports none", async () => {
-    process.env["CLIPS_CLIENT_ID"] = "clips-client";
-    process.env["CLIPS_CLIENT_SECRET"] = "clips-secret";
+    vi.stubEnv("CLIPS_CLIENT_ID", "clips-client");
+    vi.stubEnv("CLIPS_CLIENT_SECRET", "clips-secret");
     const grants: string[] = [];
     const upstream: Array<string | null> = [];
     mswServer.use(

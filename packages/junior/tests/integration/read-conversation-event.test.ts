@@ -11,6 +11,7 @@ import {
   getConversationEventStore,
   getConversationStore,
 } from "@/chat/db";
+import { createCurrentGuardian } from "@/chat/guardian/current";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -68,9 +69,9 @@ async function runScript(source: string) {
       source: SOURCE,
       userIntent: () => "What was the checksum in the earlier deploy log?",
     },
-    onDecision: async () => undefined,
     onFatal: () => undefined,
-    reviewer: { review },
+    onDecision: async () => undefined,
+    guardian: (batch) => createCurrentGuardian({ review }, batch),
   });
   const resume = createResumeState({
     historySeqs: [],

@@ -1,22 +1,9 @@
 /**
- * Re-fill of the cache warming savings counters from stored Conversation
- * history. A Junior admin starts it from the System page.
- *
- * Live recording (`savings.ts`) counts only idle periods and tool waits that
- * end after it is deployed. A re-fill replays the stored model calls of the
- * last `REFILL_DAYS` into the days before the first day with live counters,
- * with the rules of `historyPeriodSavings`. Idle periods that ended before
- * the first recorded warmup call count nothing: warming did not run yet. Each
- * day gets the recorded cost of its warmup calls. A re-fill replaces those
- * days, so a second re-fill does not add to the first. It never writes a
- * live day: live days have the warm state split, which history does not.
- *
- * The start request only stores a pending job. The heartbeat runs one slice
- * of the scan each minute, with a time budget. Each slice keeps its sums and
- * the scan position in the job with one state write, so a retried slice does
- * not count twice. The last slice replaces the days in one transaction. A
- * job whose lease expires, because its slices stopped or kept failing, is
- * failed, and an admin can start a new one.
+ * Re-fill of the savings counters from stored history. It replays the last
+ * `REFILL_DAYS` into the days before the first live day and replaces them,
+ * so a second re-fill does not add to the first, and never writes a live day:
+ * history has no warm state split. Each slice saves its sums and position in
+ * one write, so a retry counts once. A job whose lease expires fails.
  */
 import { randomUUID } from "node:crypto";
 import * as z from "zod";

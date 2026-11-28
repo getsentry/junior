@@ -6,7 +6,7 @@ import { getChatConfig } from "@/chat/config";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
 import { skillBodyReferences, skillReferences } from "@/chat/skill-references";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getAppContext } from "@/app/context";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 import { mapBounded } from "@/chat/fan-out";
 
@@ -259,7 +259,7 @@ function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
   const additionalRoots = options?.additionalRoots ?? [];
   const envRoots = getChatConfig().skills.dirs;
   const defaults = skillRoots();
-  const pluginRoots = pluginCatalogRuntime.getSkillRoots();
+  const pluginRoots = getAppContext().catalog.getSkillRoots();
 
   const seen = new Set<string>();
   const resolved: string[] = [];
@@ -282,7 +282,7 @@ function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
 function resolveSkillPlugin(
   meta: Pick<SkillMetadata, "name" | "skillPath" | "pluginProvider">,
 ): PluginDefinition | undefined {
-  const plugin = pluginCatalogRuntime.getForSkillPath(meta.skillPath);
+  const plugin = getAppContext().catalog.getForSkillPath(meta.skillPath);
   if (meta.pluginProvider && plugin?.manifest.name !== meta.pluginProvider) {
     throw new Error(
       `Skill "${meta.name}" metadata names plugin "${meta.pluginProvider}" but is not owned by that plugin`,
@@ -405,7 +405,7 @@ async function readSkillDirectory(
     const disableModelInvocation =
       parsed.skill.disableModelInvocation === true ||
       (await openAiImplicitInvocationDisabled(skillDir));
-    const plugin = pluginCatalogRuntime.getForSkillPath(skillDir);
+    const plugin = getAppContext().catalog.getForSkillPath(skillDir);
     const references = skillBodyReferences(parsed.skill.body);
 
     return {

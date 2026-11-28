@@ -10,13 +10,17 @@ import {
   pullRequestFeedbackReactionContent,
   pullRequestReviewPath,
 } from "../pull-request-feedback.js";
-import type { PluginCache, PluginState } from "@sentry/junior-plugin-api";
+import {
+  CACHE_LOAD_TIMEOUT_MS,
+  type PluginCache,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GitHubRequestError,
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import type { GitHubResponses } from "../installation-http-cache.js";
 import { githubGraphqlRequest } from "./graphql-request.js";
 import type { InstallationTokens } from "../installation-tokens.js";
 import {
@@ -25,6 +29,7 @@ import {
   PULL_REQUEST_CONFLICT_HISTORY,
   PULL_REQUEST_NEXT_ACTION,
   PULL_REQUEST_REVIEWS_BEFORE,
+  pullRequestCards,
   pullRequestHeadFacts,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
@@ -40,13 +45,14 @@ export interface GitHubInstallationEnv {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
-  /** Saved GET responses, as in `sendConditionalRequest`. */
-  responses?: PluginState | undefined;
+  /** Saved GET responses, as in `installationResponses`. */
+  responses?: GitHubResponses | undefined;
   /** Tokens to reuse, as in `reuseInstallationToken`. */
   tokens?: InstallationTokens | undefined;
 }
 
-function splitRepository(fullName: string, label: string) {
+/** Split `owner/name`, or throw an error that names the request. */
+export function splitRepository(fullName: string, label: string) {
   const [owner, name, ...extra] = fullName.split("/");
   if (!owner || !name || extra.length > 0) {
     throw new Error(`GitHub ${label} received an invalid repository name`);
@@ -153,6 +159,108 @@ export async function loadRepositoryFullNames(
       }
       throw error;
     }
+  };
+}
+
+/** One issue or pull request, by its repository and number. */
+export interface GitHubObjectRef {
+  /** `pull_request` reads the pull request; `issue` reads either. */
+  kind: "issue" | "pull_request";
+  name: string;
+  number: number;
+  owner: string;
+}
+
+/** GitHub's id of one issue or pull request, and its current link. */
+export interface GitHubObjectName {
+  id: string;
+  kind: "issue" | "pull_request";
+  url: string;
+}
+
+const objectNameSchema = z.object({
+  html_url: z.url(),
+  id: z.number().int().positive(),
+  // The issues API also returns pull requests, with this field set.
+  pull_request: z.object({}).optional(),
+});
+
+/** Reads of the current names of issues, pull requests, and repositories. */
+export interface GitHubObjectNameReader {
+  /** The object's id and current link, or undefined when GitHub has none. */
+  readObject(ref: GitHubObjectRef): Promise<GitHubObjectName | undefined>;
+  /**
+   * The current full name of a repository, by a name that it had, or
+   * undefined when GitHub has none.
+   */
+  readRepositoryName(fullName: string): Promise<string | undefined>;
+}
+
+/**
+ * Return reads of current names with one read-only token for every
+ * repository of the installation. GitHub answers an old name of a renamed
+ * repository with a redirect to its new place, which a read follows. A
+ * read returns undefined when GitHub does not find the object, also when
+ * the App cannot read it.
+ */
+export async function loadGitHubObjectNames(
+  env: GitHubInstallationEnv,
+): Promise<GitHubObjectNameReader> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { issues: "read", metadata: "read", pull_requests: "read" },
+  });
+  const read = async <T>(path: string, schema: z.ZodType<T>) => {
+    try {
+      return schema.parse(
+        await githubRequest("https://api.github.com", path, {
+          token: token.token,
+        }),
+      );
+    } catch (error) {
+      // GitHub answers 404 for a missing object or one that the App cannot
+      // read, and 410 for a deleted issue.
+      if (
+        error instanceof GitHubRequestError &&
+        (error.status === 404 || error.status === 410)
+      ) {
+        return undefined;
+      }
+      throw error;
+    }
+  };
+  const readOf = async (collection: "issues" | "pulls", ref: GitHubObjectRef) =>
+    await read(
+      `/repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.name)}/${collection}/${ref.number}`,
+      objectNameSchema,
+    );
+  return {
+    async readObject(ref) {
+      if (ref.kind === "issue") {
+        const issue = await readOf("issues", ref);
+        if (!issue) return undefined;
+        if (!issue.pull_request) {
+          return { id: String(issue.id), kind: "issue", url: issue.html_url };
+        }
+      }
+      // A pull request's own id differs from its id in the issues API.
+      const pull = await readOf("pulls", ref);
+      return (
+        pull && {
+          id: String(pull.id),
+          kind: "pull_request",
+          url: pull.html_url,
+        }
+      );
+    },
+    async readRepositoryName(fullName) {
+      const { owner, name } = splitRepository(fullName, "repository name");
+      const repository = await read(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`,
+        z.object({ full_name: z.string().min(1) }),
+      );
+      return repository?.full_name;
+    },
   };
 }
 
@@ -270,6 +378,27 @@ export async function loadPullRequestHeadFacts(
   return await githubGraphqlRequest({
     body: {
       ...pullRequestHeadFacts(refs.length),
+      variables: pullRequestVariables(refs),
+    },
+    token: token.token,
+  });
+}
+
+/**
+ * Read the cards of pull requests by repository and number, in one aliased
+ * query, with a read-only token.
+ */
+export async function loadPullRequestCards(
+  env: GitHubInstallationEnv,
+  refs: PullRequestRef[],
+): Promise<unknown> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { checks: "read", pull_requests: "read" },
+  });
+  return await githubGraphqlRequest({
+    body: {
+      ...pullRequestCards(refs.length),
       variables: pullRequestVariables(refs),
     },
     token: token.token,
@@ -454,16 +583,18 @@ async function loadRepositoryPermission(
   return await cache.getOrLoad<RepositoryPermission>(
     `repository-permission:${owner}/${name}:${target.login}`.toLowerCase(),
     async () => {
+      const signal = AbortSignal.timeout(CACHE_LOAD_TIMEOUT_MS);
       const token = await issueInstallationToken({
         ...env,
         permissions: { metadata: "read" },
         repositories: [name],
+        signal,
       });
       const response = repositoryPermissionSchema.parse(
         await githubRequest(
           "https://api.github.com",
           `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/collaborators/${encodeURIComponent(target.login)}/permission`,
-          { responses: env.responses, token: token.token },
+          { responses: env.responses, signal, token: token.token },
         ),
       );
       return {
@@ -534,15 +665,28 @@ const userLoginSchema = z
 const nextActionSchema = z.object({
   data: z.object({
     repository: z.object({
+      defaultBranchRef: z.object({ name: z.string() }).nullable(),
       pullRequest: z.object({
         autoMergeRequest: z.object({}).nullable(),
+        // A deleted base branch has no ref.
+        baseRef: z
+          .object({
+            associatedPullRequests: z.object({ totalCount: z.number() }),
+          })
+          .nullable(),
+        baseRefName: z.string(),
         commits: z.object({
           nodes: nodesSchema(
             z.object({ commit: z.object({ committedDate: timestampSchema }) }),
           ),
         }),
+        headRefOid: z.string(),
         isDraft: z.boolean(),
+        isInMergeQueue: z.boolean(),
         mergeStateStatus: z.string(),
+        reviewDecision: z
+          .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
+          .nullish(),
         reviewRequests: z.object({
           nodes: nodesSchema(z.object({ requestedReviewer: userLoginSchema })),
         }),
@@ -571,6 +715,7 @@ const nextActionSchema = z.object({
           ),
         }),
         title: z.string(),
+        updatedAt: timestampSchema,
         url: z.string().url(),
       }),
     }),
@@ -612,9 +757,19 @@ export interface GitHubPullRequestMergeState {
   activity: GitHubPullRequestActivity[];
   /** A person turned on auto-merge, so GitHub merges it without them. */
   autoMerge: boolean;
+  /**
+   * The base branch is the head branch of another open pull request, so
+   * this one can merge only after that one. GitHub's merge state checks it
+   * only against the base branch. A pull request from the default branch,
+   * such as a sync into a long-lived branch, does not count.
+   */
+  baseOpen: boolean;
   draft: boolean;
   /** When the head commit was made, as the time of the last push. */
   headCommittedAt?: Date;
+  headSha: string;
+  /** A person added it to the merge queue, so GitHub merges it. */
+  inMergeQueue: boolean;
   /**
    * The requester's latest review that approves or requests changes
    * approves it. Read for drafts too, from the last 100 reviews, because the
@@ -629,6 +784,8 @@ export interface GitHubPullRequestMergeState {
   mergeableState?: string;
   /** Logins of the people whose review GitHub still requests. */
   requestedReviewers: string[];
+  /** Logins of the people and Apps whose review GitHub requests. */
+  reviewRequestLogins: string[];
   /**
    * GitHub still requests a review from a person or a team. A team that
    * the App cannot read has no login, so `requestedReviewers` misses it.
@@ -647,8 +804,11 @@ export interface GitHubPullRequestMergeState {
    * open and not a draft.
    */
   reviewOutcome?: "approved" | "changesRequested";
+  /** GitHub's review decision, which a repository with no rule lacks. */
+  reviewDecision?: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED";
   state: "closed" | "merged" | "open";
   title: string;
+  updatedAt: string;
   url: string;
 }
 
@@ -691,14 +851,15 @@ export async function loadPullRequestMergeState(
       body: { ...document, variables: { ...variables, ...extra } },
       token: token.token,
     });
-  const readPull = async () =>
+  const readRepository = async () =>
     nextActionSchema.parse(await query(PULL_REQUEST_NEXT_ACTION)).data
-      .repository.pullRequest;
-  let pull = await readPull();
+      .repository;
+  const repository = await readRepository();
+  let pull = repository.pullRequest;
   const open = pull.state === "OPEN" && !pull.isDraft;
   const unknown = (status: string) => status === "UNKNOWN";
   if (open && !pull.autoMergeRequest && unknown(pull.mergeStateStatus)) {
-    pull = await readPull();
+    pull = (await readRepository()).pullRequest;
   }
   const reviews: Review[] = [...pull.reviews.nodes];
   let page = pull.reviews.pageInfo;
@@ -761,10 +922,15 @@ export async function loadPullRequestMergeState(
   const state: GitHubPullRequestMergeState = {
     activity,
     autoMerge: Boolean(pull.autoMergeRequest),
+    baseOpen:
+      pull.baseRefName !== repository.defaultBranchRef?.name &&
+      (pull.baseRef?.associatedPullRequests.totalCount ?? 0) > 0,
     draft: pull.isDraft,
     ...(headCommittedAt
       ? { headCommittedAt: new Date(headCommittedAt) }
       : undefined),
+    headSha: pull.headRefOid,
+    inMergeQueue: pull.isInMergeQueue,
     ...(mergeableState ? { mergeableState } : undefined),
     requesterApproved: false,
     requestedReviewers: pull.reviewRequests.nodes.flatMap((request) =>
@@ -773,7 +939,13 @@ export async function loadPullRequestMergeState(
         ? [request.requestedReviewer.login]
         : [],
     ),
+    ...(pull.reviewDecision
+      ? { reviewDecision: pull.reviewDecision }
+      : undefined),
     reviewPending: pull.reviewRequests.nodes.length > 0,
+    reviewRequestLogins: pull.reviewRequests.nodes.flatMap((request) =>
+      request.requestedReviewer?.login ? [request.requestedReviewer.login] : [],
+    ),
     reviewedBy: [],
     state:
       pull.state === "MERGED"
@@ -782,6 +954,7 @@ export async function loadPullRequestMergeState(
           ? "open"
           : "closed",
     title: pull.title,
+    updatedAt: pull.updatedAt,
     url: pull.url,
   };
   // GitHub lists reviews oldest first, so a later one replaces an earlier.

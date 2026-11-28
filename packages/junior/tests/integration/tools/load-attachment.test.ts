@@ -495,18 +495,64 @@ describe("loadAttachment tool", () => {
     expect(storage.objects.size).toBe(0);
   });
 
-  it("starts a Slack download only from a row in this conversation", async () => {
+  it("loads an attachment of its parent Conversation", async () => {
+    const storage = createMemoryAttachmentStorage();
+    const db = getSqlExecutor();
+    const parentConversationId = "slack:D-load-attachment:parent";
+    const childConversationId = "slack:D-load-attachment:parent:child";
+    await getConversationStore().recordActivity({
+      conversationId: parentConversationId,
+      destination: { channelId: "DLOAD", platform: "slack", teamId: "TLOAD" },
+      nowMs: 1,
+      source: "slack",
+      title: "Parent conversation",
+      visibility: "private",
+    });
+    await getConversationStore().createChild({
+      childConversationId,
+      kind: "thread",
+      nowMs: 2,
+      parentConversationId,
+    });
+    const stored = await storeAttachment({
+      conversationId: parentConversationId,
+      db,
+      file: {
+        data: Buffer.from("parent clip"),
+        filename: "hover-card-bug.mp4",
+        mimeType: "video/mp4",
+      },
+      storage,
+    });
+    const tool = createLoadAttachmentTool({
+      conversationId: childConversationId,
+      db,
+      storage,
+      workspace: localWorkspace(root),
+    });
+
+    const result = await tool.execute?.({ attachment_id: stored.id }, {});
+
+    const sandboxPath = `.junior/attachments/${stored.id}/hover-card-bug.mp4`;
+    expect(result).toMatchObject({ bytes: 11, path: sandboxPath });
+    expect(await fs.readFile(path.join(root, sandboxPath), "utf8")).toBe(
+      "parent clip",
+    );
+  });
+
+  it("starts a Slack download only from a row this conversation can read", async () => {
     const storage = createMemoryAttachmentStorage();
     const db = getSqlExecutor();
     await recordConversation();
-    const otherConversationId = "slack:C-load-attachment:other";
+    // Private, in another tree and at another Destination.
+    const otherConversationId = "slack:D-load-attachment:other";
     await getConversationStore().recordActivity({
       conversationId: otherConversationId,
-      destination: { channelId: "CLOAD", platform: "slack", teamId: "TLOAD" },
+      destination: { channelId: "DOTHER", platform: "slack", teamId: "TLOAD" },
       nowMs: 1,
       source: "slack",
       title: "Other conversation",
-      visibility: "public",
+      visibility: "private",
     });
     const elsewhere = await recordLargeSlackFile({
       conversationId: otherConversationId,
@@ -522,14 +568,14 @@ describe("loadAttachment tool", () => {
       workspace: localWorkspace(root),
     });
 
-    // A row id from another conversation, a raw Slack file id, and an
-    // unknown id all miss the conversation-scoped lookup.
+    // A row id of a Conversation that this one cannot read, a raw Slack
+    // file id, and an unknown id all get the same error.
     for (const attachmentId of [elsewhere.id, "F0ELSEWHERE", "att_unknown"]) {
       await expect(
         tool.execute?.({ attachment_id: attachmentId }, {}),
       ).rejects.toThrow(
         new ToolInputError(
-          "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+          "Attachment not found. Use an attachment_id from the attachment context, a Slack read result, or a Conversation that this one can read.",
         ),
       );
     }

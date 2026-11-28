@@ -43,19 +43,9 @@ each rule, so new code cannot drift from it.
   channels that Sentry's Postgres spans use. Tests inject them into `pg` with
   `packages/junior/tests/fixtures/pg-tracing-hook.ts`, so runtime code has no
   extra wrapper.
-- Do not read a big table in full on a hot API route. Integration tests check
-  the plan of each statement with `expectNoFullScan` from the same file. It
-  fails when a plan reads a table in its `BIG_TABLES` list with no index
-  condition. A known full scan with a fix on the way gets a named `allowed`
-  entry with a reason. An entry that matches nothing fails, so the fix
-  removes it.
-- Keep the estimated plan cost of each statement of a polled API route inside
-  a budget. Integration tests check it with `expectPlanCost` from the same
-  file. A statement that does work for each item of a list, such as one
-  correlated subquery for each ID, costs more before the test data is big
-  enough to make it slow. Set the max to about 1.5 times the measured cost.
 - Do not add rollup or summary tables, or triggers that maintain them, to make
-  a read faster. Fix the query, add an index, or cache the result.
+  a read faster. Fix the schema, add an index, or cache the result. Do not
+  tune the Postgres planner or shape a query around its plan (`AGENTS.md`).
 - Keep the JSON body of hot API routes inside a size budget. A budget holds
   the size of the largest item of a list. A nested list with no cap on its
   count gets its own budget. Integration tests measure it with

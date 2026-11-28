@@ -23,9 +23,9 @@ groups and acts on its rows.
   asks. It can link to other objects, such as a pull request.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
-- Only an assignee answers a private item that has assignees. Anyone who
-  can see a public question can answer it, but only an assignee dismisses
-  or takes it. The answer carries the authority of the person who gives
+- Only an assignee answers or dismisses a private item that has assignees.
+  Anyone who can see a public question can answer or dismiss it. The
+  answer carries the authority of the person who gives
   it. Junior, an Event, or a trigger never answers or approves for a
   person.
 - "Needs you" means one thing on every surface: an ask or a Conversation
@@ -36,7 +36,7 @@ groups and acts on its rows.
 - The Inbox filters its asks by type: PRs (a code change's own asks,
   such as Review requested), Decisions (other asks with a form, also
   when they cite a code change), To-dos (the viewer's To-dos), and Other
-  (the rest, such as Resume). Each count holds the asks
+  (the rest, such as Keep fixing). Each count holds the asks
   that wait on the viewer, one per ask. The type counts add up to All, and
   All is the Inbox count. A type with nothing waiting hides, but All always
   shows.
@@ -53,19 +53,32 @@ groups and acts on its rows.
   nothing takes the focus. A typed message still answers it.
 - While a waiting card is not in full view, a "N questions waiting" pill
   shows above the message box and goes to the oldest such card.
-- A question card has one layout in the Inbox and the transcript: the
-  question under its "Question" label, then the last message of the Turn
-  that asked it (about 12 lines, then Show more), then the form. The card
-  has no subject preview: the row head and Related link the subject. In
-  the transcript, a waiting card spans the transcript width.
-- A click on a choice picks it. Send answers, with the note line. An
-  action that takes no words, such as a plugin's Resume, is one click.
-- The first answer or dismiss closes the item for everyone, and the item
-  records who closed it and when. A dismiss is not a decision, so it does
-  not continue the work.
+- A question card shows each question with its own header, choices, and answer.
+  A card with one question shows it under its "Question" label. In the Inbox,
+  the last message of the Turn that asked it comes first (about 12 lines, then
+  Show more). A card in the transcript leaves that message out, because it sits
+  right above the card. On a phone, the sheet that a transcript card opens shows
+  the message, because the sheet covers the transcript. The card has no subject
+  preview: the row head and Related link the subject. In the transcript, a
+  waiting card spans the transcript width.
+- A click on a choice picks it, and a click on the picked choice of a
+  single-choice question clears it. A card has one Additional notes box,
+  where the person can also write an answer that no choice fits: Enter adds
+  a line, and Send or Cmd/Ctrl+Enter sends the answers with the notes. An
+  action that takes no words, such as a plugin's Keep fixing, is one click.
+- The first answer closes the item for everyone, and the item records who
+  closed it and when.
+- A dismiss closes the item for everyone, unless its subject gives each
+  assignee their own place, such as a GitHub assignee or reviewer. Then a
+  dismiss removes only the person who dismissed it, in the subject too. A
+  dismiss is not a decision, so it does not continue the work.
+- A plugin item's Dismiss says what else it changes on the provider.
 - A person who wants someone else to act snoozes it until it closes.
   Snooze is per person. The item then waits in their Snoozed view, where
   they can still answer it, dismiss it, or wake it.
+- A row in Snoozed says what ends its snooze, and when the person snoozed
+  it, in a muted line, such as "Until Tue, Dec 9, 09:00 · snoozed 2 hours
+  ago".
 - A card's actions read Dismiss, Snooze, then the main action, such as
   Send, last. Every card that shows an item uses this order.
 - An item with no assignee is up for grabs. Anyone who can see it can take
@@ -75,25 +88,29 @@ groups and acts on its rows.
 - A Slack thread that its Conversation detached from gets no new item card.
 - An Inbox item stores only its subject, a `{ kind, id }` pair, and the
   fields that every item uses: assignees, status, and who closed it and
-  when. Owner, visibility, title, state, and links come from the subject,
-  live. An item can appear or disappear when its owner's visibility
-  changes.
+  when. Owner, visibility, title, state, and links come from the subject's
+  stored data. The Inbox list calls no provider. An item can appear or
+  disappear when its owner's visibility changes.
 - A subject kind and id name one open item, across all workspaces. There
   is no dedupe key. A plugin kind starts with the plugin name. When the ask
   about the same object changes, such as from review to merge, the same
   item shows the new ask.
 - A question belongs to the Conversation where Junior asked it, and holds
-  its title, body, form, related links, and answer. Its related links show
-  on the card, but they never decide the card or add related work to
-  another item.
+  its title, body, form, and answer, with who answered it and when.
+  Related links that older questions stored still show on the card, but
+  they never decide the card or add related work to another item.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
-- The answer to an item that a plugin added goes to that plugin, which does
-  the work, such as Resume on a merge conflict fix that did not land. It
-  starts no Turn.
+- A plugin's subject kind can define actions, such as Keep fixing on a
+  merge conflict fix that did not land. Each shows as a button on the
+  kind's open items. A click closes the item as done, the item records the
+  action, and the plugin does the work. It starts no Turn.
 - An item is visible to whoever can see its subject's owner. An item from
   a public Conversation is visible to the whole workspace. Everyone means
   the people who can see the item's owner.
+- A person whose role on a provider object puts them on its item sees the
+  item and the object, but not its owner Conversation unless they can see
+  it.
 - The owner of a plugin item is a Conversation that the plugin names. For
   each of its subject kinds, the plugin maps a subject id to that
   Conversation from its own records, and Junior reads the owner through
@@ -169,11 +186,6 @@ groups and acts on its rows.
   who can see the Conversation only after that gets no item until the
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".
-- In a private Space, the Inbox lists and counts a "To do for you" item by
-  Participants and Destination, not by Space membership. A Participant who
-  is not a member sees it but cannot open it, and a member who is not a
-  Participant does not see it. This breaks "only while they can see the
-  Conversation's private content".
 - A typed message leaves a question for Everyone, or a question with no
   assignees, open. Only its card or the Inbox answers it. This breaks "a
   typed message still answers it".
@@ -192,3 +204,5 @@ groups and acts on its rows.
   that User. This breaks "when the item closes, its push goes away on every
   device".
 - An item from a private Conversation cannot go to Everyone yet.
+- In Slack, a picked single choice cannot be cleared; the person closes and
+  reopens the modal.

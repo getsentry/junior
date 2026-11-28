@@ -84,9 +84,9 @@ export function useInboxItemTurnMessage(
 }
 
 /**
- * The last message of the Turn that asked a question, under the question on
- * its card in the Inbox and in the transcript. It shows about 12 lines, then
- * Show more, and nothing until it is read.
+ * The last message of the Turn that asked a question, on its card in the
+ * Inbox and in the phone sheet. It shows about 12 lines, then Show more,
+ * and nothing until it is read.
  */
 export function InboxItemTurnMessage(props: { item: InboxItemPayload }) {
   const message = useInboxItemTurnMessage(props.item);

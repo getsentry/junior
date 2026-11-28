@@ -9,13 +9,12 @@ import type {
   PluginCredentialResult,
   PluginGrant,
   PluginProviderAccount,
-  PluginState,
   PluginStoredTokens,
   PluginUserTokenSlot,
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { sendConditionalRequest } from "./conditional-requests.js";
+import type { GitHubResponses } from "./installation-http-cache.js";
 import {
   parseInstallationTokenResponse,
   readInstallationPermissions,
@@ -48,8 +47,9 @@ export type GitHubGrant = PluginGrant & {
 interface GitHubRequestParams {
   body?: unknown;
   method?: string;
-  /** Saved GET responses, as in `sendConditionalRequest`. */
-  responses?: PluginState | undefined;
+  /** Saved GET responses, as in `installationResponses`. */
+  responses?: GitHubResponses | undefined;
+  signal?: AbortSignal | undefined;
   token: string;
 }
 
@@ -94,6 +94,8 @@ interface InstallationCredentialBaseOptions {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
+  /** Ends the wait for the token. A shared mint goes on for others. */
+  signal?: AbortSignal | undefined;
   /** Tokens to reuse, as in `reuseInstallationToken`. */
   tokens?: InstallationTokens | undefined;
 }
@@ -304,8 +306,7 @@ export async function githubRequest(
 ): Promise<unknown> {
   const method = params.method ?? "GET";
   const url = `${apiBase}${path}`;
-  const responses = method === "GET" ? params.responses : undefined;
-  const response = await sendConditionalRequest(responses, url, (headers) =>
+  const send = (headers: Record<string, string>) =>
     fetch(url, {
       method,
       headers: {
@@ -316,8 +317,12 @@ export async function githubRequest(
         ...(params.body ? { "Content-Type": "application/json" } : undefined),
       },
       ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
-    }),
-  );
+      ...(params.signal ? { signal: params.signal } : undefined),
+    });
+  const response =
+    method === "GET" && params.responses
+      ? await params.responses(url, send)
+      : await send({});
 
   const text = await response.text();
   let parsed: unknown;
@@ -851,7 +856,7 @@ export async function issueInstallationToken(
     return await mintInstallationToken(options);
   }
   return await reuseInstallationToken(options.tokens, options, () =>
-    mintInstallationToken(options),
+    mintInstallationToken({ ...options, signal: undefined }),
   );
 }
 
@@ -886,6 +891,7 @@ async function mintInstallationToken(
     `/app/installations/${installationId}/access_tokens`,
     {
       method: "POST",
+      signal: options.signal,
       token: appJwt,
       body,
     },

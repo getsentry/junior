@@ -5,6 +5,7 @@ import type {
   InboxItemActionBody,
   InboxItemPayload,
   InboxSnoozeWake,
+  InboxViewerSnooze,
 } from "@sentry/junior/api/schema";
 
 import { ToggleSheet } from "../components/BottomSheet";
@@ -48,8 +49,8 @@ import {
   CodeChangeTitle,
 } from "./CodeChangeTitle";
 import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
-import { useLiveAnnotations } from "../conversations/liveAnnotations";
 import { inboxItemKind } from "./inboxModel";
+import { itemKindActions } from "./InboxItemActions";
 import {
   INBOX_ROW_META_CLASS,
   inboxCardClass,
@@ -89,7 +90,7 @@ import {
 } from "./RowOwnerLink";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
-import { wakeReasonText } from "./snoozeSentences";
+import { snoozeText, wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
 import { formatCompactAge } from "../time";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -97,6 +98,7 @@ import { SpaceChip } from "../spaces/SpaceTile";
 import {
   itemConversationId,
   itemOwnerLinkLabel,
+  itemConversationHidden,
   itemOwnerPath,
 } from "./inboxItemFormat";
 
@@ -132,8 +134,6 @@ function rowOpenTarget(props: InboxRowProps): RowOpenTarget {
 }
 
 type InboxRowProps = {
-  /** What the viewer answered, such as "You answered Hold": the summary. */
-  answered?: string;
   bundle?: InboxBundle;
   /** Each card's own actions, in a stack whose cards act by themselves. */
   cardActions?(item: InboxItemPayload): InboxCardActions;
@@ -177,6 +177,8 @@ type InboxRowProps = {
   /** The row's Threads show the action bar on their last line instead. */
   actionsBelow?: boolean;
   snoozeMenuOpen: boolean;
+  /** The viewer's snooze of the row's item, on a row in Snoozed. */
+  snooze?: InboxViewerSnooze | undefined;
   /** Label of each ask's take button. Only Up for grabs offers one. */
   take?: string;
   time: string;
@@ -452,8 +454,7 @@ function InboxRowBody(
   const itemSize = useCodeChangeFacts(
     props.itemTitle ? bundle?.newest.subject : undefined,
   );
-  const annotations =
-    useLiveAnnotations(conversation?.sidebarAnnotations) ?? NO_ANNOTATIONS;
+  const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
   // An item row's title already names its ask, so it shows no pill.
   const asks = props.itemTitle ? [] : askPills(openItems, annotations);
   const subjects = new Set(
@@ -483,11 +484,7 @@ function InboxRowBody(
   const work = ranked.filter((annotation) => !named.has(annotation.url ?? ""));
   const main = mainRepo(annotations);
   const waiting = bundle?.needsYou ?? false;
-  const found = props.itemTitle ? undefined : rowSummary(conversation);
-  // The viewer's answer replaces the line that asked for it.
-  const summary = props.answered
-    ? { mentions: undefined, text: props.answered }
-    : found;
+  const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
   const media = conversation?.media ?? [];
@@ -501,6 +498,13 @@ function InboxRowBody(
   const regionId = rowRegionId(props.rowKey);
   // An open Conversation row's cards each say why their item woke.
   const wake = props.expanded && !props.itemTitle ? undefined : props.wake;
+  // A muted line under the title: why the item woke, or in Snoozed, what
+  // ends its snooze.
+  const statusLine = wake
+    ? wakeReasonText(wake)
+    : props.snooze
+      ? snoozeText(props.snooze)
+      : undefined;
   // A closed row fits its title and subtitle to one line each. An open one
   // shows them in full, so its detail never needs to say them again.
   const lineClass = props.expanded ? "min-w-0 break-words" : fadeOverflowClass;
@@ -573,7 +577,10 @@ function InboxRowBody(
           onAction={props.onItemAction}
           primaryAction={
             props.itemHead ? (
-              <CodeChangeOpenButton head={props.itemHead} />
+              <CodeChangeOpenButton
+                head={props.itemHead}
+                secondary={itemKindActions(item).length > 0}
+              />
             ) : replyNotice ? (
               <ReplyNoticeLink item={item} open={rowOpenTarget(props)} />
             ) : undefined
@@ -716,16 +723,16 @@ function InboxRowBody(
                 ) : null}
               </Link>
             </RowTitle>
-            {wake ? (
+            {statusLine ? (
               <span
                 className={cn(
                   lineClass,
                   "col-span-2 text-xs text-dashboard-text-muted",
                 )}
-                data-inbox-slot="wake"
+                data-inbox-slot={wake ? "wake" : "snooze"}
                 ref={fadeWhenOverflowing}
               >
-                {wakeReasonText(wake)}
+                {statusLine}
               </span>
             ) : null}
             {/* Who is in it and what it asks, in one small line under the
@@ -890,7 +897,12 @@ function rowActions(
         : undefined)}
       onSnoozeMenu={props.onSnoozeMenu}
       onWake={props.onWake}
-      open={owner ? rowOpenTarget(props) : undefined}
+      // A viewer who cannot see the Conversation gets no link to it.
+      open={
+        owner && !(props.bundle && itemConversationHidden(props.bundle.newest))
+          ? rowOpenTarget(props)
+          : undefined
+      }
       snoozeMenuOpen={props.snoozeMenuOpen}
     />
   );

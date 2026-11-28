@@ -36,6 +36,16 @@ for (const view of [desktop, mobile]) {
       name: "Asked Approve the payments-v42 rollout",
     });
     await expect(card).toContainText("Waiting on you");
+    if (view === desktop) {
+      // The answered question above reads its closed item after the list,
+      // and its row then grows. A click while the transcript follows that
+      // growth finds a moving button, and Playwright's retry scrolls the
+      // button to the bottom edge, which leaves the latest message. A phone
+      // shows the form in a sheet, out of the transcript.
+      await expect(
+        page.getByRole("region", { name: "Asked Pick the canary region" }),
+      ).toBeVisible();
+    }
     // Nothing docks over the message box, and nothing takes the focus.
     await expect(page.getByRole("region", { name: /^Question:/ })).toHaveCount(
       0,
@@ -61,10 +71,15 @@ for (const view of [desktop, mobile]) {
     await expect(question).toContainText(
       "Roll out payments-v42 to every region?",
     );
-    // As on the Inbox card, Junior's message of that Turn follows.
+    // Junior's message of that Turn is right above the card in the
+    // transcript, so the card does not show it again. A phone sheet covers
+    // the transcript, so the sheet shows it.
     await expect(
       ask.getByRole("region", { name: "Junior's message" }),
-    ).toContainText("I need your go-ahead before I roll out to every region.");
+    ).toHaveCount(view === mobile ? 1 : 0);
+    await expect(
+      page.getByText("I need your go-ahead before I roll out to every region."),
+    ).toHaveCount(view === mobile ? 2 : 1);
 
     // A click picks a choice. Only Send answers, with the note.
     const rollOut = ask.getByRole("button", { name: /Roll out/ });
@@ -73,7 +88,7 @@ for (const view of [desktop, mobile]) {
     await rollOut.click();
     await expect(rollOut).toHaveAttribute("aria-pressed", "true");
     await ask
-      .getByRole("textbox", { name: "Anything else?" })
+      .getByRole("textbox", { name: "Additional notes" })
       .fill("Start with us-east-1.");
     expect(actions).toEqual([]);
     await screenshot(page, "conversation-question-card", {
@@ -117,16 +132,22 @@ test("a second click takes the pick back, and a note alone answers", async ({
   await expect(hold).toHaveAttribute("aria-pressed", "false");
   const send = card.getByRole("button", { name: "Send", exact: true });
   await expect(send).toBeDisabled();
-  // Enter in the note line sends it.
-  const note = card.getByRole("textbox", { name: "Anything else?" });
+  // Enter adds a line to the notes. Cmd or Ctrl with Enter sends them.
+  const note = card.getByRole("textbox", { name: "Additional notes" });
   await note.fill("Wait for the EU team on Monday.");
   await note.press("Enter");
+  await note.pressSequentially("Then roll out.");
+  expect(actions).toEqual([]);
+  await note.press("ControlOrMeta+Enter");
   await expect
     .poll(() => actions)
     .toEqual([
       {
         action: "submit",
-        answer: { other: "Wait for the EU team on Monday.", values: {} },
+        answer: {
+          other: "Wait for the EU team on Monday.\nThen roll out.",
+          values: {},
+        },
       },
     ]);
   await expect(card).toContainText("Wait for the EU team on Monday.");

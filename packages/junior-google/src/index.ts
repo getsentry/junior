@@ -48,6 +48,7 @@ import { searchGoogleFilesTool } from "./tools/search-files";
 import { getGoogleSlideThumbnailTool } from "./tools/slide-thumbnail";
 import { updateCalendarEventTool } from "./tools/update-event";
 import { updateGoogleSlidesTool } from "./tools/update-slides";
+import { googleInboxSubjectKinds } from "./inbox-subjects";
 
 /** Register Junior's Google Workspace plugin. */
 export function googlePlugin(): PluginRegistration {
@@ -70,6 +71,7 @@ export function googlePlugin(): PluginRegistration {
       commands: [createGoogleCliCommand()],
     },
     userPages: [createGoogleSetupPage()],
+    inboxSubjects: googleInboxSubjectKinds,
     objectLinks: [googleFileLinks, googleCalendarLinks],
     images: googleImages,
     hooks: {

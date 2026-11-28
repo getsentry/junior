@@ -12,13 +12,14 @@ const {
   resolveMock: vi.fn(),
 }));
 
-vi.mock("@/chat/plugins/catalog-runtime", () => ({
-  pluginCatalogRuntime: {
+vi.mock("@/app/context", () => {
+  const catalog = {
     getProviders: getProvidersMock,
     getRuntimeDependencies: getRuntimeDependenciesMock,
     getRuntimePostinstall: getRuntimePostinstallMock,
-  },
-}));
+  };
+  return { getAppContext: () => ({ plugins: [], catalog }) };
+});
 
 vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   resolve: resolveMock,

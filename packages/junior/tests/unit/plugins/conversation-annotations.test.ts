@@ -12,7 +12,6 @@ describe("conversation annotations", () => {
     const annotation = {
       kind: "resource_link" as const,
       key: "getsentry/junior#1081",
-      label: "getsentry/junior #1081",
     };
 
     expect(() =>
@@ -130,6 +129,19 @@ describe("conversation annotations", () => {
     ).toThrow("4 KiB");
     expect(objectFactFields(undefined)).toEqual([]);
     expect(objectFactFields({ type: "code_change" })).toEqual([]);
+    expect(
+      objectFactFields({
+        type: "code_change",
+        author: "alex",
+        approvers: ["sam"],
+        reviewers: ["sam", "riley"],
+        assignees: ["alex"],
+      }),
+    ).toEqual([
+      { key: "author", label: "Author", value: "alex" },
+      { key: "reviewers", label: "Reviewers", value: "sam (approved), riley" },
+      { key: "assignees", label: "Assignees", value: "alex" },
+    ]);
     expect(objectFactFields({ type: "task", assignees: [] })).toEqual([
       { key: "assignees", label: "Assignees", value: "Unassigned" },
     ]);

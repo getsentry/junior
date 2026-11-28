@@ -5,16 +5,16 @@
 // the message is acknowledged, and the Turn never runs. `assignTurn` picks
 // which Turn takes the input.
 //
-// After any change to a Turn, `reconcileTurn` brings delivery and the queue
-// in line with the Turn's stored state. It lives here because a failed Turn
-// hands on its late inputs through `assignTurn`, and only this file writes
-// input rows. Every part of it is safe to repeat, so it needs no marker: every
-// path in `advanceTurn` runs it, and a redelivered message runs it again.
+// After any change to a Turn, `reconcileTurn` brings the queue in line with
+// the Turn's stored state. It lives here because a failed Turn hands on its
+// late inputs through `assignTurn`, and only this file writes input rows.
+// Every part of it is safe to repeat, so it needs no marker: every path in
+// `advanceTurn` runs it, and a redelivered message runs it again.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { withConversationEventLock } from "@/conversation-events/lock";
-import { publishDelivery } from "@/core/delivery/queue";
+import { publishTurnEnded } from "@/core/turn/ended";
 import type { EngineContext } from "@/core/engine-context";
 import {
   findInputTurn,
@@ -37,10 +37,14 @@ import {
 } from "@/core/turn/state";
 import { juniorTurnInbox } from "@/db/schema";
 
-/** The Turn that an input went to, and whether the input created it. */
-type ScheduleResult = { turnId: string; created: boolean };
+/** The Turn an input went to, and whether it created the Turn or was known. */
+type ScheduleResult = { turnId: string; created: boolean; duplicate: boolean };
 
-type Placement = ScheduleResult & { publish: boolean };
+type Placement = ScheduleResult & {
+  publish: boolean;
+  /** A queued Turn that the input superseded, which ended now. */
+  ended?: string;
+};
 
 // Not exported: scheduleInput is the only writer, so every input row is
 // written under the Conversation lock.
@@ -101,6 +105,7 @@ async function placeInput(
     return {
       turnId: existing.turnId,
       created: false,
+      duplicate: true,
       publish: existing.state === "queued",
     };
   }
@@ -109,11 +114,13 @@ async function placeInput(
   if ("join" in choice) {
     const { turnId } = choice.join;
     await addInput({ executor }, { ...input, turnId });
-    return { turnId, created: false, publish: false };
+    return { turnId, created: false, duplicate: false, publish: false };
   }
-  if (choice.supersede) {
-    await supersedeTurn({ executor }, choice.supersede.turnId);
-  }
+  const ended =
+    choice.supersede &&
+    (await supersedeTurn({ executor }, choice.supersede.turnId))
+      ? choice.supersede.turnId
+      : undefined;
   const turn = await createTurn(
     { executor },
     {
@@ -128,30 +135,52 @@ async function placeInput(
   return {
     turnId: turn.turnId,
     created: true,
+    duplicate: false,
     publish: openTurns.length === 0 || choice.supersede !== undefined,
+    ended,
   };
 }
 
 /**
- * Puts an input into the Turn that `assignTurn` picks, and publishes a Turn
- * that the input created when no other Turn is open or when it supersedes
- * one. An input with a known idempotency key writes nothing. Call it outside
- * a transaction: it publishes after its own commit, and a publish error
- * reaches the caller with the input already stored.
+ * Puts an input into the Turn that `assignTurn` picks, then publishes what
+ * the placement calls for, such as the end of a Turn it superseded. A known
+ * idempotency key writes nothing. Call it outside a transaction: it publishes
+ * after its own commit, so a publish error leaves the input stored.
+ * `startDelayMs` holds the Turn that this publishes, so later inputs join it.
  */
 export async function scheduleInput(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
-  input: TurnInput & { delivery: MailboxDelivery },
+  {
+    startDelayMs,
+    ...input
+  }: TurnInput & {
+    delivery: MailboxDelivery;
+    startDelayMs?: number | undefined;
+  },
 ): Promise<ScheduleResult> {
   const placement = await withConversationEventLock(
     executor,
     input.conversationId,
     () => placeInput({ executor }, input),
   );
-  if (placement.publish) {
-    await publishTurnStep({ queue }, placement.turnId);
+  if (placement.ended) {
+    await publishTurnEnded(
+      { queue },
+      { conversationId: input.conversationId, turnId: placement.ended },
+    );
   }
-  return { turnId: placement.turnId, created: placement.created };
+  if (placement.publish) {
+    await publishTurnStep(
+      { queue },
+      placement.turnId,
+      startDelayMs ? { delayMs: startDelayMs } : {},
+    );
+  }
+  return {
+    turnId: placement.turnId,
+    created: placement.created,
+    duplicate: placement.duplicate,
+  };
 }
 
 // Not exported, like addInput: only endFailedTurn moves inputs, under the
@@ -234,11 +263,10 @@ export async function endFailedTurn(
 }
 
 /**
- * Brings delivery and the queue in line with this Turn's stored state. Safe
- * to repeat. It publishes the Turn's delivery message, then publishes the
- * Conversation's open Turn if it is queued. What it does depends only on the
- * stored state, not on why it runs. Call it outside a transaction, after the
- * commit that it follows, so a worker that takes a message sees that commit.
+ * Brings the queue in line with this Turn's stored state, so it is safe to
+ * repeat: it says the Turn ended if it has, then publishes the Conversation's
+ * open Turn if it is queued. Call it after the commit that it follows,
+ * outside a transaction, so a worker that takes a message sees that commit.
  */
 export async function reconcileTurn(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
@@ -248,13 +276,12 @@ export async function reconcileTurn(
   if (!turn) {
     return;
   }
-  await publishDelivery(
-    { queue },
-    {
-      conversationId: turn.conversationId,
-      turnId,
-    },
-  );
+  if (turn.state !== "queued" && turn.state !== "running") {
+    await publishTurnEnded(
+      { queue },
+      { conversationId: turn.conversationId, turnId },
+    );
+  }
   const openTurn = await findOpenTurn({ executor }, turn.conversationId);
   // A Turn that a step commit continued is the queued open Turn, so this also
   // sends its next step. A running Turn has a worker, so it needs no message.

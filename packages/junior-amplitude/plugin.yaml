@@ -8,7 +8,8 @@ env-vars:
 
 mcp:
   url: ${AMPLITUDE_MCP_URL}
-  allowed-tools:
+  # Every allowed tool only reads, so Guardian skips review of each one.
+  allowed-tools: &read-tools
     - search
     - get_from_url
     - get_context
@@ -51,3 +52,5 @@ mcp:
     - get_agent_analytics_conversation
     - search_agent_analytics_conversations
     - get_agent_analytics_schema
+  guardian:
+    skipReview: *read-tools

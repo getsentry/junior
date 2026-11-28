@@ -129,17 +129,35 @@ export interface PluginMcpOAuthClientConfig {
   scope?: string;
 }
 
+/** Guardian settings for one MCP server. */
+export interface PluginMcpGuardianConfig {
+  /**
+   * Exact remote tool names whose calls skip review because they have no
+   * effect. Every other tool is reviewed, also one the server renames.
+   */
+  skipReview?: string[];
+}
+
 export interface PluginMcpConfig {
   /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
   /** Bot auth: sign short-lived JWT assertions instead of per-actor OAuth. */
   auth?: PluginMcpAuthConfig;
+  /** How Guardian treats this server's tools. */
+  guardian?: PluginMcpGuardianConfig;
   /** Request headers. Values may use `${NAME}` refs to declared env vars; Junior resolves them at connect time. */
   headers?: Record<string, string>;
   /** Per-actor OAuth with a pre-registered client instead of dynamic client registration. */
   oauthClient?: PluginMcpOAuthClientConfig;
   transport: "http";
   url: string;
+  /**
+   * Provider tools that link cards and their images may call as the viewer
+   * (`viewerMcp`). Omit for none. Each must be loaded: listed in
+   * `allowedTools` or `wrappedTools`, or any tool when `allowedTools` is
+   * unset. The provider must also mark each call read-only.
+   */
+  viewerTools?: string[];
   /** Provider tools hidden from the model and callable only by plugin-owned wrapper tools. */
   wrappedTools?: string[];
 }

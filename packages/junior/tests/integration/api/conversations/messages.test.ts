@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { createConversationRoutes } from "@/api/conversations/routes";
@@ -8,10 +8,19 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@/api/schema";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import { getChatConfig } from "@/chat/config";
 import { createAndEnqueueConversation } from "@/chat/conversations/web-input";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
+import {
+  startLocalVercelQueueServer,
+  type LocalVercelQueueServer,
+} from "@/chat/queue/local-server";
+import {
+  juniorConversationParticipants,
+  juniorIdentities,
+  juniorTurnInbox,
+} from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -20,6 +29,7 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../../fixtures/conversation-work";
+import { patchConfig } from "../../../fixtures/config";
 import { signedInViewer } from "../../../fixtures/user";
 
 function apiFor(email: string): Hono<JuniorApiEnv> {
@@ -39,12 +49,24 @@ function apiFor(email: string): Hono<JuniorApiEnv> {
   return app;
 }
 
+/** Join a public root through its Subscribe route, as the dashboard does. */
+async function join(email: string, conversationId: string) {
+  return await apiFor(email).request(
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/subscription`,
+    {
+      body: JSON.stringify({ subscribed: true }),
+      headers: { "content-type": "application/json" },
+      method: "PATCH",
+    },
+  );
+}
+
 describe("conversation messages API", () => {
   afterEach(async () => {
     await closeConversationFixture();
   });
 
-  it("lets a signed-in person join a public conversation by posting, but not a private one", async () => {
+  it("takes Messages only from Participants: a reader of a public conversation Joins first", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const post = async (conversationId: string, idempotencyKey: string) =>
@@ -61,6 +83,10 @@ describe("conversation messages API", () => {
       { actor, idempotencyKey: "join-public-root", message: "first" },
       { conversationStore, queue, state },
     );
+    expect((await post(shared.conversationId, "before-join")).status).toBe(403);
+    expect(
+      (await join("newcomer@example.com", shared.conversationId)).status,
+    ).toBe(200);
     const joined = await post(shared.conversationId, "join-public");
     expect(joined.status).toBe(200);
     const accepted = acceptedConversationMessageSchema.parse(
@@ -117,6 +143,7 @@ describe("conversation messages API", () => {
       });
     }
 
+    expect((await join("newcomer@example.com", posted)).status).toBe(200);
     const response = await apiFor("newcomer@example.com").request(
       `http://localhost/api/conversations/${encodeURIComponent(posted)}/messages`,
       {
@@ -191,5 +218,57 @@ describe("conversation messages API", () => {
         slackUserId: "UCLEO1234",
       }),
     ]);
+  });
+});
+
+describe("conversation messages on the core Turn engine", () => {
+  // Core publishes each Turn message to Vercel Queues. The server keeps them
+  // with no consumer, so a test reads only the stored input.
+  let queueServer: LocalVercelQueueServer;
+
+  beforeAll(async () => {
+    queueServer = await startLocalVercelQueueServer({ consumers: [] });
+  });
+
+  afterAll(async () => {
+    await queueServer.close();
+  });
+
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("gives a core input the privacy of its dashboard conversation", async () => {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+    const { actor, conversationStore, queue, state } =
+      await createConversationFixture();
+    const sourceOf = async (visibility: "private" | "public") => {
+      const { conversationId } = await createAndEnqueueConversation(
+        {
+          actor,
+          idempotencyKey: `core-${visibility}`,
+          message: "hello",
+          visibility,
+        },
+        { conversationStore, queue, state },
+      );
+      const [input] = await getDb()
+        .select({ source: juniorTurnInbox.source })
+        .from(juniorTurnInbox)
+        .where(eq(juniorTurnInbox.conversationId, conversationId));
+      return input?.source;
+    };
+
+    await expect(sourceOf("private")).resolves.toMatchObject({
+      kind: "web",
+      visibility: "private",
+    });
+    await expect(sourceOf("public")).resolves.toMatchObject({
+      kind: "web",
+      visibility: "public",
+    });
   });
 });

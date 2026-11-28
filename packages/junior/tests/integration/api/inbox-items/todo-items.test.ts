@@ -1,12 +1,14 @@
 import type { Event, User } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { inviteToConversation } from "@/api/conversations/subscription";
 import { inboxItemCountSchema, inboxItemListSchema } from "@/api/schema";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
+import { createSpace } from "@/chat/spaces/store";
 import { setTodoStatusByUser } from "@/chat/todos/store";
 import { createUpdateTodosTool } from "@/chat/todos/tools/update";
 import {
@@ -34,6 +36,7 @@ import {
 
 const HOUR_MS = 60 * 60 * 1000;
 const THREAD = "agent:thread-of-snooze-root";
+const SPACE_THREAD = "agent:thread-in-private-space";
 
 describe("To-dos for a person in the Inbox", () => {
   let fixture: ConversationFixture;
@@ -422,6 +425,64 @@ describe("To-dos for a person in the Inbox", () => {
     expect((await inbox(ana).act(item!.id, { action: "done" })).status).toBe(
       404,
     );
+  });
+
+  it("in a private Space, goes only to the Space's members", async () => {
+    const ana = await user("ana@example.com");
+    const bob = await user("bob@example.com");
+    const cy = await user("cy@example.com");
+    const space = await createSpace({
+      creator: ana,
+      description: null,
+      name: "Payroll audit",
+      visibility: "private",
+    });
+    const [lead] = await getDb()
+      .select({ id: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(
+        and(
+          eq(juniorConversations.kind, "lead"),
+          eq(juniorConversations.spaceId, space.id),
+        ),
+      );
+    await getConversationStore().createChild({
+      childConversationId: SPACE_THREAD,
+      kind: "thread",
+      nowMs: NOW_MS,
+      parentConversationId: lead!.id,
+      title: "Check payroll",
+    });
+    // Participants belong to the root, so an Invite from the Thread makes
+    // Bob a Participant of the Lead: a member. He never writes in the
+    // Thread. A Thread has no Participants of its own, so nobody can be one
+    // without being a member.
+    await inviteToConversation(ana, SPACE_THREAD, { userId: bob.id });
+    await agentTodos(SPACE_THREAD)({
+      add: [
+        { title: "Check the dates", assignee: "bob@example.com" },
+        { title: "Check the totals", assignee: "cy@example.com" },
+      ],
+    });
+    // Only someone who can read the Thread's private content sees its title.
+    const titleFor = async (viewer: User) =>
+      (
+        (await inbox(viewer).json(
+          `/conversations/${encodeURIComponent(SPACE_THREAD)}`,
+        )) as { displayTitle: string }
+      ).displayTitle;
+    expect(await inbox(bob).items()).toEqual([
+      expect.objectContaining({ title: "Check the dates" }),
+    ]);
+    expect(await inbox(bob).count()).toEqual(
+      expect.objectContaining({ needsViewer: 1 }),
+    );
+    expect(await titleFor(bob)).toBe("Check payroll");
+    expect(await inbox(cy).items()).toEqual([]);
+    expect(await inbox(cy).count()).toEqual(
+      expect.objectContaining({ needsViewer: 0 }),
+    );
+    expect(await titleFor(cy)).toBe("Private Conversation");
   });
 
   function publisher() {

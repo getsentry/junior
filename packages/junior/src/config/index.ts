@@ -57,6 +57,11 @@ import { readSlackEnv, slackEnvNames, slackSchema } from "@/config/slack";
 import { deriveSql, readSqlEnv, sqlEnvNames, sqlSchema } from "@/config/sql";
 import { readStateEnv, stateEnvNames, stateSchema } from "@/config/state";
 import { deriveTrust, trustSchema } from "@/config/trust";
+import {
+  readTurnEngineEnv,
+  turnEngineEnvNames,
+  turnEngineFields,
+} from "@/config/turn-engine";
 import { readWebPushEnv, webPushSchema } from "@/config/web-push";
 
 const configObjectSchema = z.strictObject({
@@ -76,6 +81,7 @@ const configObjectSchema = z.strictObject({
   functionMaxDurationSeconds: functionMaxDurationSecondsSchema,
   limits: limitsSchema.optional(),
   ...killSwitchFields,
+  ...turnEngineFields,
   encryption: encryptionSchema,
   secrets: secretsSchema,
   signIn: signInSchema,
@@ -134,6 +140,7 @@ const ENV_NAMES: Record<string, string> = {
   ...attachmentStorageEnvNames,
   ...queueEnvNames,
   ...killSwitchEnvNames,
+  ...turnEngineEnvNames,
   ...encryptionEnvNames,
   ...sqlEnvNames,
   ...slackEnvNames,
@@ -152,6 +159,7 @@ function readEnv(env: Env): ConfigInput {
     memory: readMemoryEnv(env),
     queue: readQueueEnv(env),
     ...readKillSwitchesEnv(env),
+    ...readTurnEngineEnv(env),
     encryption: readEncryption(env),
     secrets: readSecretsEnv(env),
     signIn: readSignInEnv(env),

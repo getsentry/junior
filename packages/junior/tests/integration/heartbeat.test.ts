@@ -18,12 +18,12 @@ import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import type { PiMessage } from "@/chat/pi/messages";
-import { setPlugins } from "@/chat/plugins/hooks/registry";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import { useAppContext } from "../fixtures/app-context";
 
 vi.hoisted(() => {
   process.env["JUNIOR_STATE_ADAPTER"] = "memory";
@@ -129,13 +129,12 @@ describe("plugin heartbeat", () => {
     process.env["JUNIOR_SCHEDULER_SECRET"] = "heartbeat-secret";
     process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     process.env["JUNIOR_SECRET"] = "dispatch-secret";
-    setPlugins([]);
+    useAppContext();
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     global.fetch = originalFetch;
-    setPlugins([]);
     await disconnectStateAdapter();
     delete process.env["JUNIOR_SCHEDULER_SECRET"];
     delete process.env["CRON_SECRET"];
@@ -158,20 +157,22 @@ describe("plugin heartbeat", () => {
 
   it("runs plugin heartbeat hooks", async () => {
     const seen: number[] = [];
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "scheduler",
-          displayName: "Scheduler",
-          description: "Scheduler test plugin",
-        },
-        hooks: {
-          heartbeat(ctx) {
-            seen.push(ctx.nowMs);
+    useAppContext({
+      plugins: [
+        defineJuniorPlugin({
+          manifest: {
+            name: "scheduler",
+            displayName: "Scheduler",
+            description: "Scheduler test plugin",
           },
-        },
-      }),
-    ]);
+          hooks: {
+            heartbeat(ctx) {
+              seen.push(ctx.nowMs);
+            },
+          },
+        }),
+      ],
+    });
     const waitUntil = createWaitUntilCollector();
     const response = await testHeartbeat(
       new Request("https://example.invalid/api/internal/heartbeat", {

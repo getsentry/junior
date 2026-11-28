@@ -2,10 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { spaceSchema } from "@/api/schema";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
-import { eq } from "drizzle-orm";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getConversationStore } from "@/chat/db";
 import { getSpaceLead } from "@/chat/lead/conversation";
-import { juniorSpaces } from "@/db/schema";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import {
   apiFor,
@@ -16,14 +14,6 @@ import {
   startConversation,
   startThread,
 } from "../../fixtures/spaces-api";
-
-async function legacyArchivedAt(spaceId: string): Promise<Date | null> {
-  const [row] = await getDb()
-    .select({ archivedAt: juniorSpaces.archivedAt })
-    .from(juniorSpaces)
-    .where(eq(juniorSpaces.id, spaceId));
-  return row?.archivedAt ?? null;
-}
 
 describe("Space archive API", () => {
   afterEach(async () => {
@@ -108,13 +98,12 @@ describe("Space archive API", () => {
     ).toEqual([first, second].sort());
 
     // The Space's archive is its Lead's, so archiving the Lead as any root
-    // archives the Space. The Space row keeps the archive that 0.316.0 reads.
+    // archives the Space.
     expect((await archiveConversation(lead.conversationId)).status).toBe(200);
     expect(
       spaceSchema.parse(await (await send(ana, "GET", `/${space.id}`)).json())
         .archivedAt,
     ).not.toBeNull();
-    expect(await legacyArchivedAt(space.id)).not.toBeNull();
 
     // A retry after a failed stop stops the tree again, though the stop
     // added activity after what the page saw.
@@ -155,6 +144,5 @@ describe("Space archive API", () => {
         )
       ).status,
     ).toBe(200);
-    expect(await legacyArchivedAt(space.id)).toBeNull();
   });
 });

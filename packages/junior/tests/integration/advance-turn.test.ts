@@ -272,8 +272,7 @@ describe("advanceTurn", () => {
       await expect(modelCalls()).resolves.toEqual([]);
       await expect(harness.turn(turnId)).resolves.toEqual(before);
       await expect(harness.history()).resolves.toEqual([]);
-      // Only the stop's own message.
-      expect(pendingSteps(turnId)).toBe(state === "cancelled" ? 1 : 0);
+      expect(pendingSteps(turnId)).toBe(0);
     },
   );
 
@@ -294,14 +293,32 @@ describe("advanceTurn", () => {
       storedReply(reply),
     ]);
     const events = await harness.events();
+    // Compat: main's visible message and turn_started come first.
     expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `message:inbox:${inputId}`,
+      `turn:${turnId}:started`,
       `inbox:${inputId}`,
       `step:${turnId}:0:0`,
     ]);
-    expect(events[0]!.data).toMatchObject({
-      type: "user_message",
-      provenance: { authority: "instruction", actor: ACTOR },
-    });
+    expect(events.map((event) => event.data)).toMatchObject([
+      {
+        type: "message",
+        messageId: `inbox:${inputId}`,
+        role: "user",
+        text: "How many Turns?",
+      },
+      {
+        type: "turn_started",
+        turnId,
+        inputMessageIds: [`inbox:${inputId}`],
+        surface: "slack",
+      },
+      {
+        type: "user_message",
+        provenance: { authority: "instruction", actor: ACTOR },
+      },
+      { type: "assistant_message" },
+    ]);
     await expect(findUnreadInputs(harness.engineCtx, turnId)).resolves.toEqual(
       [],
     );
@@ -389,8 +406,8 @@ describe("advanceTurn with tools", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
-    // The stop's message. The tool step's own message was delivered.
-    expect(pendingSteps(cancelledTurnId)).toBe(1);
+    // The tool step's own message was delivered.
+    expect(pendingSteps(cancelledTurnId)).toBe(0);
   });
 
   it("runs a tool that must not run twice on the first attempt of its step", async () => {
@@ -523,6 +540,36 @@ describe("advanceTurn with tools", () => {
     await expect(
       findUnreadInputs(harness.engineCtx, toolTurnId),
     ).resolves.toEqual([expect.objectContaining({ inputId })]);
+  });
+
+  it("writes main's visible message for an input that arrives in a running Turn", async () => {
+    await startHarness([sendTool([])]);
+    await setModelReplies([
+      sendCallReply(),
+      createAssistantMessage({ type: "text", text: "Sent." }),
+    ]);
+    const { turnId: toolTurnId } = await harness.send({
+      text: "How many Turns?",
+    });
+    await harness.runStep();
+    const { inputId } = await harness.send({ text: "Also send it to Sam." });
+
+    await harness.runStep();
+    await harness.runStep();
+
+    await expect(harness.turn(toolTurnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    const events = await harness.events();
+    const keys = events.map((event) => event.idempotencyKey);
+    // Compat: the person's message comes before the step reads the input.
+    expect(keys.indexOf(`message:inbox:${inputId}`)).toBeGreaterThan(-1);
+    expect(keys.indexOf(`message:inbox:${inputId}`)).toBeLessThan(
+      keys.indexOf(`inbox:${inputId}`),
+    );
+    expect(
+      events.filter((event) => event.data.type === "turn_started"),
+    ).toHaveLength(1);
   });
 });
 
@@ -709,8 +756,7 @@ describe("advanceTurn with a test step", () => {
       leaseOwner: null,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    // Only the stop's own message.
-    expect(engine.sentStepMessages()).toBe(1);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it("writes nothing when the model request throws its own error after a cancel", async () => {
@@ -732,8 +778,7 @@ describe("advanceTurn with a test step", () => {
       state: "cancelled",
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    // Only the stop's own message.
-    expect(engine.sentStepMessages()).toBe(1);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it("stops the step when another invocation takes over the Turn during it, and writes nothing", async () => {
@@ -906,8 +951,8 @@ describe("advanceTurn with a test step", () => {
     },
   );
 
-  it("continues a completed Turn when an input arrives during the step, and sends the next step", async () => {
-    await engine.addTestInput("How many Turns?");
+  it("drops a final reply when an input arrives during the step, and runs the step again", async () => {
+    const firstInputId = await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "Three." });
     const step = stepWith([reply]);
     let lateInputId: string | undefined;
@@ -923,13 +968,12 @@ describe("advanceTurn with a test step", () => {
     });
 
     const turn = await engine.readTurn();
-    expect(turn).toMatchObject({ state: "queued", stepSeq: 1 });
+    // The redo is not a failed attempt, so it uses none.
+    expect(turn).toMatchObject({ state: "queued", stepSeq: 0, attempts: 0 });
     expect(turn.endedAt).toBeNull();
-    await expect(engine.loadHistory()).resolves.toEqual([
-      userText("How many Turns?"),
-      storedReply(reply),
-    ]);
+    await expect(engine.loadHistory()).resolves.toEqual([]);
     await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
+      expect.objectContaining({ inputId: firstInputId }),
       expect.objectContaining({ inputId: lateInputId }),
     ]);
     expect(engine.sentStepMessages()).toBe(1);
