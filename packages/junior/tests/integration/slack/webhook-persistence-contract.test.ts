@@ -13,6 +13,7 @@ import {
   startLocalVercelQueueServer,
   type LocalVercelQueueServer,
 } from "@/chat/queue/local-server";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { claimTurn } from "@/core/turn/state";
 import { juniorIdentities, juniorTurnInbox, juniorTurns } from "@/db/schema";
@@ -653,5 +654,69 @@ describe("Slack webhook Turn engine switch", () => {
       turns: [{ id: turn!.id, state: "cancelled" }],
     });
     expect(queue.queuedMessages()).toEqual([]);
+  });
+
+  it("stops core Turns by sent time on the core Turn engine, and drops a mention sent before the stop", async () => {
+    useCoreEngine();
+    const threadMessage = (text: string, ts: string) =>
+      slackEnvelope({
+        text: `<@${SLACK_BOT_USER_ID}> ${text}`,
+        threadTs: "1712345.0001",
+        ts,
+      });
+    const inputTurns = async () =>
+      Object.fromEntries(
+        (await coreRows(conversationId)).inputs.map((input) => [
+          input.idempotencyKey.split(":").at(-1),
+          input.turnId,
+        ]),
+      );
+    const stateOf = async (turnId: string | undefined) =>
+      (await coreRows(conversationId)).turns.find((turn) => turn.id === turnId)
+        ?.state;
+    const { queue } = await sendSlack(mention);
+    const [first] = (await coreRows(conversationId)).turns;
+    await claimTurn(createEngineContext(getChatConfig()), first!.id);
+    await sendSlack(threadMessage("and the canary", "1712345.0030"), queue);
+
+    // Slack delivers the stop, sent between the two mentions, after both.
+    await sendSlack(threadMessage("stop", "1712345.0020"), queue);
+
+    // The mention sent before the stop drops with its Turn. The later one
+    // waits in a new Turn and ends the stop.
+    let turns = await inputTurns();
+    expect(turns["1712345.0001"]).toBe(first!.id);
+    await expect(stateOf(first!.id)).resolves.toBe("cancelled");
+    expect(turns["1712345.0030"]).not.toBe(first!.id);
+    await expect(stateOf(turns["1712345.0030"])).resolves.toBe("queued");
+    await expect(
+      getConversationStoppedAtMs(conversationId),
+    ).resolves.toBeUndefined();
+
+    await sendSlack(threadMessage("stop", "1712345.0040"), queue);
+    await expect(stateOf(turns["1712345.0030"])).resolves.toBe("cancelled");
+    // A mention sent before this stop but delivered after it starts no Turn
+    // and leaves the Conversation stopped.
+    await sendSlack(threadMessage("check the deploy", "1712345.0035"), queue);
+    expect(Object.keys(await inputTurns())).not.toContain("1712345.0035");
+    expect(
+      (await coreRows(conversationId)).turns.filter(
+        (turn) => turn.state === "queued",
+      ),
+    ).toEqual([]);
+    await expect(getConversationStoppedAtMs(conversationId)).resolves.toBe(
+      1_712_345_004,
+    );
+
+    // A mention sent after the stop runs and ends it.
+    await sendSlack(
+      threadMessage("check the next deploy", "1712345.0050"),
+      queue,
+    );
+    turns = await inputTurns();
+    await expect(stateOf(turns["1712345.0050"])).resolves.toBe("queued");
+    await expect(
+      getConversationStoppedAtMs(conversationId),
+    ).resolves.toBeUndefined();
   });
 });

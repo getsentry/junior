@@ -1,7 +1,7 @@
 // The state changes of a Turn, one function each: claimTurn runs a queued
 // Turn, or takes over a running one whose lease expired. commitStep completes
 // it or queues it again (continue), as releaseTurn does. failTurn fails it.
-// stopTurns cancels a queued or running Turn. completed, failed and cancelled
+// cancelTurns ends a queued or running Turn. completed, failed and cancelled
 // are final. A lease covers one step.
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -36,7 +36,6 @@ import { historyItemFromPiMessage } from "@/core/history/items";
 import { appendAgentHistory } from "@/core/history/write";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
-import { publishTurnEnded } from "@/core/turn/ended";
 import { findUnreadInputs, inputEventKey } from "@/core/turn/inbox";
 import { recordReplies } from "@/core/turn/outbox";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
@@ -747,40 +746,40 @@ export async function releaseTurn(
 }
 
 /**
- * Cancels every queued and running Turn of a Conversation in one commit, with
- * no lease. Moving each `lease_epoch` keeps a running step from committing,
- * and the lock sends a later input to a new Turn. It then publishes the
- * message that each stopped Turn ended.
+ * Cancels every queued and running Turn of a Conversation, with no lease, and
+ * returns their ids in run order. Call it under the Conversation lock, as
+ * `stopTurns` does. Moving each `lease_epoch` keeps a running step from
+ * committing.
  */
-export async function stopTurns(
-  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
+export async function cancelTurns(
+  { executor }: Pick<EngineContext, "executor">,
   conversationId: string,
 ): Promise<string[]> {
-  const stopped = await executor.transaction(() =>
-    withConversationEventLock(executor, conversationId, () =>
-      executor
-        .db()
-        .update(juniorTurns)
-        .set({
-          state: "cancelled",
-          leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          updatedAt: sql`now()`,
-          endedAt: sql`now()`,
-        })
-        .where(
-          and(
-            eq(juniorTurns.conversationId, conversationId),
-            inArray(juniorTurns.state, ["queued", "running"]),
-          ),
-        )
-        .returning({ id: juniorTurns.id }),
-    ),
-  );
-  for (const { id } of stopped) {
-    // oxlint-disable-next-line no-await-in-loop -- Few Turns stop at once, and a failed send fails the stop.
-    await publishTurnEnded({ queue }, { conversationId, turnId: id });
+  const db = executor.db();
+  const open = await db
+    .select({ id: juniorTurns.id })
+    .from(juniorTurns)
+    .where(
+      and(
+        eq(juniorTurns.conversationId, conversationId),
+        inArray(juniorTurns.state, ["queued", "running"]),
+      ),
+    )
+    .orderBy(...runOrder);
+  const turnIds = open.map(({ id }) => id);
+  if (turnIds.length === 0) {
+    return [];
   }
-  return stopped.map(({ id }) => id);
+  await db
+    .update(juniorTurns)
+    .set({
+      state: "cancelled",
+      leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      updatedAt: sql`now()`,
+      endedAt: sql`now()`,
+    })
+    .where(inArray(juniorTurns.id, turnIds));
+  return turnIds;
 }

@@ -23,7 +23,7 @@ import {
 } from "@/chat/task-execution/store";
 import type { StopConversationWorkResult } from "@/chat/task-execution/state";
 import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
-import { stopTurns } from "@/core/turn/state";
+import { stopTurns } from "@/core/turn/schedule";
 import { juniorConversations } from "@/db/schema";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -33,6 +33,7 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
+import { compat__stoppedMessages } from "@/turn-steps/compat__stopped-input";
 import { createEngineContext } from "@/turn-steps/engine-context";
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
@@ -198,7 +199,7 @@ export async function stopConversationTree(
       return { status: "no_work" };
     }
     if (getChatConfig().turnEngine === "core") {
-      return await stopCoreTurns(conversationId, options.onStopSaved);
+      return await stopCoreTurns(conversationId, options);
     }
     return await stopConversationWork({
       conversationId,
@@ -212,23 +213,43 @@ export async function stopConversationTree(
 }
 
 /**
- * Cancel the queued and running core Turns of a Conversation. Core keeps no
- * mailbox, so a stop drops no pending messages, and the first stopped Turn
- * stands in for main's run.
+ * Cancel the queued and running core Turns of a Conversation by sent time.
+ * The person input that the stop drops comes back as main's pending
+ * messages. Person input sent after the stop moved to a new Turn, so it ends
+ * the stop, as it does when it arrives later. The first stopped Turn stands
+ * in for main's run.
  */
 async function stopCoreTurns(
   conversationId: string,
-  onStopSaved: (() => void) | undefined,
+  options: {
+    onStopSaved?: (() => void) | undefined;
+    sentAtOrBeforeMs?: number | undefined;
+  },
 ): Promise<StopConversationWorkResult> {
-  const [turnId] = await stopTurns(
+  const { turnIds, dropped, moved } = await stopTurns(
     createEngineContext(getChatConfig()),
     conversationId,
+    { sentAtOrBeforeMs: options.sentAtOrBeforeMs },
   );
+  const [turnId] = turnIds;
   if (!turnId) {
     return { status: "no_work" };
   }
-  onStopSaved?.();
-  return { status: "requested", runId: turnId, pendingMessages: [] };
+  options.onStopSaved?.();
+  const movedPersonInput = moved.filter((input) =>
+    isPersonInput(input.source.kind),
+  );
+  if (movedPersonInput.length > 0) {
+    await resumeConversationTree(
+      conversationId,
+      Math.max(...movedPersonInput.map((input) => input.sentAt.getTime())),
+    );
+  }
+  return {
+    status: "requested",
+    runId: turnId,
+    pendingMessages: compat__stoppedMessages(conversationId, dropped),
+  };
 }
 
 /**
@@ -276,8 +297,9 @@ export async function resumeConversationTree(
 
 /**
  * Resume a stopped Conversation when a person sent input after the stop.
- * Known gap: input sent before the stop but received after it still runs,
- * and the Conversation stays stopped.
+ * Known gap on main's Turn engine: input sent before the stop but received
+ * after it still runs, and the Conversation stays stopped. The core Turn
+ * engine drops that input at intake (`scheduleInboundMessage`).
  */
 export async function resumeForPersonInput(
   conversationId: string,

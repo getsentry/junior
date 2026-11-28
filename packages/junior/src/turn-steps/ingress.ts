@@ -16,7 +16,11 @@ import {
   getDispatchIdForConversation,
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
-import { isTopLevel } from "@/chat/conversations/kind-behavior";
+import { isPersonInput, isTopLevel } from "@/chat/conversations/kind-behavior";
+import {
+  getConversationStoppedAtMs,
+  resumeConversationTree,
+} from "@/chat/conversations/session-stop";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
@@ -171,6 +175,19 @@ export async function scheduleInboundMessage(
   message: InboundMessage,
   options: { startDelayMs?: number | undefined } = {},
 ): Promise<AppendInboundMessageResult> {
+  // A stop applies by sent time. Person input sent by the stop drops, also
+  // when it arrives later; person input sent after it ends the stop.
+  if (isPersonInput(message.source)) {
+    const stoppedAtMs = await getConversationStoppedAtMs(
+      message.conversationId,
+    );
+    if (stoppedAtMs !== undefined) {
+      if (message.createdAtMs <= stoppedAtMs) {
+        return { status: "appended" };
+      }
+      await resumeConversationTree(message.conversationId, message.createdAtMs);
+    }
+  }
   const facts = await inputFacts(message);
   if (!facts.actorIdentityId) {
     throw new Error(`${message.source} input has no author Identity`);

@@ -13,13 +13,8 @@ import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
 import { findUnreadInputs } from "@/core/turn/inbox";
-import {
-  claimTurn,
-  commitStep,
-  failTurn,
-  holdsLease,
-  stopTurns,
-} from "@/core/turn/state";
+import { stopTurns } from "@/core/turn/schedule";
+import { claimTurn, commitStep, failTurn, holdsLease } from "@/core/turn/state";
 import {
   juniorConversationEvents,
   juniorConversations,
@@ -236,9 +231,9 @@ describe("Turn state", () => {
   it("cancels a running Turn and fences out its lease holder", async () => {
     const claimed = (await claim())!;
 
-    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toEqual([
-      turnId,
-    ]);
+    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toMatchObject({
+      turnIds: [turnId],
+    });
     const cancelled = await readTurn();
     expect(cancelled).toMatchObject({
       state: "cancelled",
@@ -253,9 +248,9 @@ describe("Turn state", () => {
   });
 
   it("cancels a queued Turn so no worker can claim it", async () => {
-    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toEqual([
-      turnId,
-    ]);
+    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toMatchObject({
+      turnIds: [turnId],
+    });
     const cancelled = await readTurn();
     expect(cancelled).toMatchObject({
       state: "cancelled",
@@ -361,7 +356,11 @@ describe("Turn state", () => {
         failureCode: "model_execution_failed",
       }),
     ).resolves.toBe(false);
-    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toEqual([]);
+    await expect(stopTurns(engineCtx, CONVERSATION_ID)).resolves.toEqual({
+      turnIds: [],
+      dropped: [],
+      moved: [],
+    });
     await expect(readTurn()).resolves.toEqual(completed);
   });
 

@@ -18,11 +18,15 @@ import { publishTurnEnded } from "@/core/turn/ended";
 import type { EngineContext } from "@/core/engine-context";
 import {
   findInputTurn,
+  findSourcedUnreadInputs,
   findUnreadInputs,
+  type SourcedUnreadInput,
   type TurnInput,
+  type UnreadInput,
 } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import {
+  cancelTurns,
   createTurn,
   failTurn,
   findOpenTurn,
@@ -183,7 +187,7 @@ export async function scheduleInput(
   };
 }
 
-// Not exported, like addInput: only endFailedTurn moves inputs, under the
+// Not exported, like addInput: only `moveToNextTurn` moves inputs, under the
 // Conversation lock. A row keeps its id and idempotency key.
 async function moveInputs(
   { executor }: Pick<EngineContext, "executor">,
@@ -198,47 +202,41 @@ async function moveInputs(
 }
 
 /**
- * Moves the unread inputs of a failed Turn that arrived after its last claim
- * to the Turn that `assignTurn` picks for a deferred input. They share the
- * failed Turn's group key, so they move together. The failed Turn
- * keeps, and so drops, the inputs that an attempt claimed it with.
+ * Moves inputs of one Turn that ended to the Turn that `assignTurn` picks for
+ * a deferred input. They share the ended Turn's group key, so they move
+ * together. Call it under the Conversation lock.
  */
-async function moveLeftovers(
+async function moveToNextTurn(
   { executor }: Pick<EngineContext, "executor">,
-  ended: { turnId: string; conversationId: string },
+  conversationId: string,
+  inputs: Array<Pick<UnreadInput, "inputId" | "groupKey">>,
 ): Promise<void> {
-  const leftovers = (await findUnreadInputs({ executor }, ended.turnId)).filter(
-    (input) => input.attemptedAt === null,
-  );
-  const [first] = leftovers;
+  const [first] = inputs;
   if (!first) {
     return;
   }
   const choice = assignTurn(
     { ...first, delivery: "defer" },
-    await findOpenTurns({ executor }, ended.conversationId),
+    await findOpenTurns({ executor }, conversationId),
   );
   const target =
     "join" in choice
       ? choice.join
       : await createTurn(
           { executor },
-          {
-            conversationId: ended.conversationId,
-            priority: choice.create.priority,
-          },
+          { conversationId, priority: choice.create.priority },
         );
   await moveInputs(
     { executor },
-    leftovers.map((input) => input.inputId),
+    inputs.map((input) => input.inputId),
     target.turnId,
   );
 }
 
 /**
  * Ends a running Turn as failed and, in the same commit, moves its inputs
- * that arrived after its last claim to the next Turn. A crash after the
- * commit loses no input: the next Turn is queued, so the sweep finds it.
+ * that arrived after its last claim to the next Turn; it drops the rest. A
+ * crash after the commit loses no input: the sweep finds the queued Turn.
  * `discarded` is the usage of a failed model reply that the Turn drops.
  * False when the lease is lost, and then nothing changes.
  */
@@ -256,10 +254,60 @@ export async function endFailedTurn(
       ) {
         return false;
       }
-      await moveLeftovers({ executor }, lease);
+      const leftovers = (
+        await findUnreadInputs({ executor }, lease.turnId)
+      ).filter((input) => input.attemptedAt === null);
+      await moveToNextTurn({ executor }, lease.conversationId, leftovers);
       return true;
     }),
   );
+}
+
+/** The Turns that a stop cancelled, and where their unread inputs went. */
+export type StoppedTurns = {
+  /** The cancelled Turns, in run order. */
+  turnIds: string[];
+  /** Unread inputs sent at or before the cutoff. They stay on their Turn. */
+  dropped: SourcedUnreadInput[];
+  /** Unread inputs sent after the cutoff. They moved to a queued Turn. */
+  moved: SourcedUnreadInput[];
+};
+
+/**
+ * Stops a Conversation's work by sent time. In one commit under the lock it
+ * cancels every queued and running Turn. Their unread inputs sent at or
+ * before `sentAtOrBeforeMs`, or all of them with no cutoff, stay and drop;
+ * later ones move to a queued Turn. Then it reconciles each stopped Turn.
+ */
+export async function stopTurns(
+  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
+  conversationId: string,
+  { sentAtOrBeforeMs }: { sentAtOrBeforeMs?: number | undefined } = {},
+): Promise<StoppedTurns> {
+  const afterCutoff = (input: SourcedUnreadInput) =>
+    sentAtOrBeforeMs !== undefined && input.sentAt.getTime() > sentAtOrBeforeMs;
+  const stopped = await executor.transaction(() =>
+    withConversationEventLock(executor, conversationId, async () => {
+      const turnIds = await cancelTurns({ executor }, conversationId);
+      const dropped: SourcedUnreadInput[] = [];
+      const moved: SourcedUnreadInput[] = [];
+      for (const turnId of turnIds) {
+        // oxlint-disable-next-line no-await-in-loop -- Few Turns stop at once, and each move must see the Turns that the last one made.
+        const unread = await findSourcedUnreadInputs({ executor }, turnId);
+        const later = unread.filter(afterCutoff);
+        dropped.push(...unread.filter((input) => !afterCutoff(input)));
+        moved.push(...later);
+        // oxlint-disable-next-line no-await-in-loop -- As above.
+        await moveToNextTurn({ executor }, conversationId, later);
+      }
+      return { turnIds, dropped, moved };
+    }),
+  );
+  for (const turnId of stopped.turnIds) {
+    // oxlint-disable-next-line no-await-in-loop -- Few Turns stop at once, and a failed send fails the stop.
+    await reconcileTurn({ executor, queue }, turnId);
+  }
+  return stopped;
 }
 
 /**

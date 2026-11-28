@@ -1,5 +1,13 @@
 import { Hono } from "hono";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createAcpConversations } from "@/api/acp/conversations";
 import { stopChildAgentsOf } from "@/chat/child-agents/stop";
@@ -18,7 +26,12 @@ import {
   stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
+import { getChatConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
+import {
+  startLocalVercelQueueServer,
+  type LocalVercelQueueServer,
+} from "@/chat/queue/local-server";
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import {
   ackMessages,
@@ -47,6 +60,7 @@ import {
   createConversationWorkHarness,
   deferred,
 } from "../../../fixtures/conversation-work";
+import { patchConfig } from "../../../fixtures/config";
 import { finishRun } from "../../../fixtures/thread-input";
 import { signedInViewer } from "../../../fixtures/user";
 
@@ -602,5 +616,66 @@ describe("conversation stop API", () => {
     // A person's input to the root ends the stop of that child agent too.
     await resumeConversationTree(created.conversationId, stoppedAtMs + 2_000);
     await expect(getConversationStoppedAtMs(missed)).resolves.toBeUndefined();
+  });
+});
+
+describe("conversation stop API on the core Turn engine", () => {
+  // Core publishes each Turn message to Vercel Queues. The server keeps them
+  // with no consumer, so the Turns stay queued until the stop.
+  let queueServer: LocalVercelQueueServer;
+
+  beforeAll(async () => {
+    queueServer = await startLocalVercelQueueServer({ consumers: [] });
+  });
+
+  afterAll(async () => {
+    await queueServer.close();
+  });
+
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("returns the viewer's queued text from the core Turns it stops, and a second stop finds no work", async () => {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+    const fixture = await createConversationFixture();
+    const { actor, conversationStore, queue, state } = fixture;
+    const created = await createAndEnqueueConversation(
+      { actor, idempotencyKey: "core-stop-root", message: "Check the deploy." },
+      { conversationStore, queue, state },
+    );
+    const otherQueued = await appendAndEnqueueWebMessage(
+      {
+        actor: webActorFromUser(await signedInViewer("bob@example.com")),
+        conversationId: created.conversationId,
+        idempotencyKey: "core-stop-other",
+        message: "Bob's queued note.",
+      },
+      { conversationStore, queue, state },
+    );
+    const stop = async () =>
+      stopConversationTurnResponseSchema.parse(
+        await (
+          await stopRequest(fixture, created.conversationId, actor.email)
+        ).json(),
+      );
+
+    await expect(stop()).resolves.toEqual({
+      conversationId: created.conversationId,
+      status: "requested",
+      stoppedInboundMessageIds: [created.messageId, otherQueued.messageId],
+      stoppedMessages: [
+        { inboundMessageId: created.messageId, text: "Check the deploy." },
+      ],
+    });
+    await expect(stop()).resolves.toEqual({
+      conversationId: created.conversationId,
+      status: "no_work",
+      stoppedInboundMessageIds: [],
+      stoppedMessages: [],
+    });
   });
 });
