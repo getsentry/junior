@@ -72,6 +72,7 @@
     "e2e/conversations-outline.spec.ts",
     "e2e/long-press.ts",
     "e2e/long-transcript-fixture.ts",
+    "e2e/page-load-error.spec.ts",
     "playwright.config.ts",
     "tsdown.client.config.ts"
   ]

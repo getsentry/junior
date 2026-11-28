@@ -13,6 +13,7 @@ import { RouterProvider } from "react-router/dom";
 import { Toaster } from "./client/components/ui/toast";
 import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DocumentTitleProvider } from "./client/documentTitle";
+import { RouteLoadError } from "./client/RouteErrorBoundary";
 import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
 import {
@@ -132,9 +133,14 @@ export function startDashboard(Shell: ComponentType): void {
   if (!root) {
     throw new Error("Dashboard root element was not found");
   }
-  const router = createBrowserRouter([{ path: "*", element: <Shell /> }], {
-    basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/",
-  });
+  // A failure outside the page area, such as a lazy dialog of the shell,
+  // replaces the shell.
+  const router = createBrowserRouter(
+    [{ path: "*", element: <Shell />, errorElement: <RouteLoadError /> }],
+    {
+      basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/",
+    },
+  );
 
   createRoot(root).render(
     <DashboardErrorBoundary>

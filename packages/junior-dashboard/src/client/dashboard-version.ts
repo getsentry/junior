@@ -40,6 +40,30 @@ export function useDashboardServerVersion(
   return version;
 }
 
+// The version that this tab last reloaded to reach. A tab that still fails
+// on that version stops, so a broken file does not reload it forever.
+const RELOADED_FOR_VERSION_KEY = "junior:dashboard:reloaded-for-version";
+
+/**
+ * Reload once to load the server's newer bundle. A deploy removes the files
+ * of the old bundle, so this tab's lazy files can fail to load. Returns false
+ * when the versions match, or this tab already reloaded for that version.
+ */
+export function reloadForNewDashboardVersion(serverVersion?: string): boolean {
+  if (!serverVersion || !dashboardVersionDrift(serverVersion)) return false;
+  try {
+    if (sessionStorage.getItem(RELOADED_FOR_VERSION_KEY) === serverVersion) {
+      return false;
+    }
+    sessionStorage.setItem(RELOADED_FOR_VERSION_KEY, serverVersion);
+  } catch {
+    // Without storage, the tab cannot tell a second reload from the first.
+    return false;
+  }
+  window.location.reload();
+  return true;
+}
+
 /** Report whether the browser bundle and server use different known versions. */
 export function dashboardVersionDrift(serverVersion?: string): boolean {
   return (
