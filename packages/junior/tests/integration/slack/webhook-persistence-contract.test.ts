@@ -8,12 +8,15 @@ import {
   getConversationEventStore,
   getConversationStore,
   getDb,
+  getSqlExecutor,
 } from "@/chat/db";
 import {
   startLocalVercelQueueServer,
   type LocalVercelQueueServer,
 } from "@/chat/queue/local-server";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
 import { getConversationStoppedAtMs } from "@/chat/conversations/stop-state";
+import { withConversationEventLock } from "@/conversation-events/lock";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { claimTurn } from "@/core/turn/state";
 import { juniorIdentities, juniorTurnInbox, juniorTurns } from "@/db/schema";
@@ -30,6 +33,7 @@ import {
   createConversationWorkQueueTestAdapter,
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
+  deferred,
   handleSlackWebhookAndFlush,
   slackEnvelope,
   slackWebhookRequest,
@@ -718,5 +722,51 @@ describe("Slack webhook Turn engine switch", () => {
     await expect(
       getConversationStoppedAtMs(conversationId),
     ).resolves.toBeUndefined();
+  });
+
+  it("drops a mention sent before a stop that saves while core intake waits for the Conversation lock", async () => {
+    useCoreEngine();
+    const { queue } = await sendSlack(mention);
+    const stopping = deferred();
+    const locked = deferred();
+    // The test holds the lock that core intake waits for, and stops the
+    // Conversation under it. So the stop saves after intake starts, and
+    // before intake schedules.
+    const stop = withConversationEventLock(
+      getSqlExecutor(),
+      conversationId,
+      async () => {
+        locked.resolve();
+        await stopping.promise;
+        await stopConversationTree([conversationId], {
+          sentAtOrBeforeMs: 1_712_345_002,
+          stoppedAtMs: 1_712_345_002,
+        });
+      },
+    );
+    await locked.promise;
+    const sending = sendSlack(
+      slackEnvelope({
+        text: `<@${SLACK_BOT_USER_ID}> check the deploy`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0015",
+      }),
+      queue,
+    );
+    // Time for intake to reach the lock. A read of the stop before the lock
+    // would miss it then.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    stopping.resolve();
+    await stop;
+    await sending;
+
+    const { turns, inputs } = await coreRows(conversationId);
+    expect(inputs.map((input) => input.idempotencyKey)).not.toContainEqual(
+      expect.stringContaining("1712345.0015"),
+    );
+    expect(turns.map((turn) => turn.state)).toEqual(["cancelled"]);
+    await expect(getConversationStoppedAtMs(conversationId)).resolves.toBe(
+      1_712_345_002,
+    );
   });
 });

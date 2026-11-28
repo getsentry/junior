@@ -44,6 +44,9 @@ import { juniorTurnInbox } from "@/db/schema";
 /** The Turn an input went to, and whether it created the Turn or was known. */
 type ScheduleResult = { turnId: string; created: boolean; duplicate: boolean };
 
+/** An input that the caller's `admit` refused. Nothing was written. */
+type Refused = { refused: true };
+
 type Placement = ScheduleResult & {
   publish: boolean;
   /** A queued Turn that the input superseded, which ended now. */
@@ -145,6 +148,11 @@ async function placeInput(
   };
 }
 
+type ScheduledInput = TurnInput & {
+  delivery: MailboxDelivery;
+  startDelayMs?: number | undefined;
+};
+
 /**
  * Puts an input into the Turn that `assignTurn` picks, then publishes what
  * the placement calls for, such as the end of a Turn it superseded. A known
@@ -153,20 +161,33 @@ async function placeInput(
  * `startDelayMs` holds the Turn that this publishes, so later inputs join it.
  */
 export async function scheduleInput(
-  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
-  {
-    startDelayMs,
-    ...input
-  }: TurnInput & {
-    delivery: MailboxDelivery;
-    startDelayMs?: number | undefined;
+  ctx: Pick<EngineContext, "executor" | "queue">,
+  input: ScheduledInput,
+): Promise<ScheduleResult>;
+export async function scheduleInput(
+  ctx: Pick<EngineContext, "executor" | "queue">,
+  input: ScheduledInput,
+  options: {
+    /** Runs under the Conversation lock first. False writes nothing. */
+    admit: () => Promise<boolean>;
   },
-): Promise<ScheduleResult> {
+): Promise<ScheduleResult | Refused>;
+export async function scheduleInput(
+  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
+  { startDelayMs, ...input }: ScheduledInput,
+  options: { admit?: () => Promise<boolean> } = {},
+): Promise<ScheduleResult | Refused> {
   const placement = await withConversationEventLock(
     executor,
     input.conversationId,
-    () => placeInput({ executor }, input),
+    async () =>
+      options.admit && !(await options.admit())
+        ? undefined
+        : placeInput({ executor }, input),
   );
+  if (!placement) {
+    return { refused: true };
+  }
   if (placement.ended) {
     await publishTurnEnded(
       { queue },
