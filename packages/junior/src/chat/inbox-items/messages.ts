@@ -30,7 +30,9 @@ import {
 } from "@/chat/inbox-items/user-input-request";
 import { juniorConversations } from "@/db/schema";
 import type { InboxItemChangeRecord } from "./change-record";
+import { getPlugins } from "@/chat/plugins/hooks/registry";
 import { isPluginInboxItem } from "./access";
+import { subjectKindActionLabel } from "./subjects";
 import type { InboxItem } from "./store";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
 
@@ -75,7 +77,15 @@ export function renderInboxItemMessage(
     ? [`Question: ${userInputQuestionText(request)}`]
     : [];
   switch (change.kind) {
-    case "submitted":
+    case "submitted": {
+      const action = subjectKindActionLabel(
+        item.subject.kind,
+        getPlugins(),
+        item.closeAction,
+      );
+      if (action) {
+        return `${personName(change.user)} chose ${action} on ${label}. The item is done.`;
+      }
       return [
         `${personName(change.user)} answered ${label}. The item is done.`,
         "",
@@ -83,6 +93,7 @@ export function renderInboxItemMessage(
           ? formatUserInputAnswer(request, item.answer)
           : "(no answer)",
       ].join("\n");
+    }
     case "dismissed":
       return [
         `${personName(change.user)} dismissed ${label}.`,

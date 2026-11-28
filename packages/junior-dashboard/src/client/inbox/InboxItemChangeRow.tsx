@@ -32,6 +32,7 @@ import {
   InboxItemAssignees,
   InboxItemCloser,
   InboxItemTitle,
+  inboxItemCloser,
 } from "./InboxItemPeople";
 import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
 import { useQuestionInViewRef } from "./WaitingQuestions";
@@ -272,7 +273,7 @@ function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
           ),
         };
   }
-  const by = item.closedBy ? (
+  const by = inboxItemCloser(item) ? (
     <>
       {" "}
       by <InboxItemCloser item={item} />
@@ -290,7 +291,7 @@ function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
     answer:
       !answerShown && question && item.answer
         ? answerLine(question, item.answer)
-        : undefined,
+        : item.closeAction,
     icon: CircleCheck,
     iconClassName: "text-emerald-500",
     label: (

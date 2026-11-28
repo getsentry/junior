@@ -7,6 +7,7 @@ import type {
   HeartbeatHookContext,
   ObjectSubject,
   PluginHttpCache,
+  PluginInboxItemRecord,
   PluginReviewNotice,
   PluginStartedTaskContext,
   PluginState,
@@ -144,8 +145,29 @@ export function createPluginHarness(
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
   const { codeChanges } = fixture.codeIndex;
-  /** The assignees of each open inbox item, by subject. */
-  const openNotices = new Map<string, string[]>();
+  /**
+   * The items of each subject, newest first, with the assignees of the
+   * open one, like core's item history.
+   */
+  const items = new Map<
+    string,
+    Array<PluginInboxItemRecord & { assignees: string[] }>
+  >();
+  let itemCount = 0;
+  const openItem = (key: string) => {
+    const latest = items.get(key)?.[0];
+    return latest?.status === "open" ? latest : undefined;
+  };
+  /** Close the open item of a subject, and return whether one was open. */
+  const closeItem = (
+    key: string,
+    close: Pick<PluginInboxItemRecord, "action" | "closedAtMs" | "status">,
+  ): boolean => {
+    const item = openItem(key);
+    if (!item) return false;
+    Object.assign(item, { closedAtMs: Date.now(), ...close });
+    return true;
+  };
   const events: EventPublisher = {
     async hasMatch(candidates) {
       return candidates.some(
@@ -169,6 +191,11 @@ export function createPluginHarness(
   const inboxItems: HeartbeatHookContext["inboxItems"] = {
     forConversation(conversationId) {
       return {
+        async history(subject) {
+          return (items.get(subjectKey(subject)) ?? []).map(
+            ({ assignees: _assignees, ...record }) => ({ ...record }),
+          );
+        },
         async upsert(notice) {
           if (failures.upsert > 0) {
             failures.upsert -= 1;
@@ -178,21 +205,33 @@ export function createPluginHarness(
           // closes when nobody is left. `notices` records each item that
           // opens and each ask that pushes.
           const key = subjectKey(notice.subject);
-          const on = openNotices.get(key);
+          const on = openItem(key);
           const assignees = notice.assigneeIdentityIds.filter(
-            (id) => notice.askedIdentityIds.includes(id) || on?.includes(id),
+            (id) =>
+              notice.askedIdentityIds.includes(id) ||
+              on?.assignees.includes(id),
           );
           if (assignees.length === 0) {
-            if (openNotices.delete(key)) recorded.closedNotices.push(key);
+            if (closeItem(key, { status: "done" })) {
+              recorded.closedNotices.push(key);
+            }
             return;
           }
-          openNotices.set(key, assignees);
-          if (on && notice.askedIdentityIds.length === 0) return;
+          if (on) {
+            on.assignees = assignees;
+            if (notice.askedIdentityIds.length === 0) return;
+          } else {
+            itemCount += 1;
+            items.set(key, [
+              { assignees, id: `item-${itemCount}`, status: "open" },
+              ...(items.get(key) ?? []),
+            ]);
+          }
           recorded.notices.push({ conversationId, notice });
         },
         async close(input) {
           const key = subjectKey(input.subject);
-          if (!openNotices.delete(key)) return false;
+          if (!closeItem(key, { status: input.status })) return false;
           recorded.closedNotices.push(key);
           return true;
         },
@@ -376,18 +415,24 @@ export function createPluginHarness(
   }
 
   /**
-   * A person picks a choice on an open item. Like core, the item closes
-   * first, then the plugin gets the answer.
+   * A person runs a kind action on an open item. Like core, the item closes
+   * first, then the plugin gets the action.
    */
-  async function answer(input: {
-    choice: string;
+  async function act(input: {
+    action: string;
     conversationId: string;
     itemId: string;
     nowMs: number;
     subject: { id: string; kind: string };
   }): Promise<void> {
-    expect(openNotices.delete(subjectKey(input.subject))).toBe(true);
-    await githubPlugin().hooks!.inboxItemAnswered!({
+    const key = subjectKey(input.subject);
+    expect(openItem(key)?.id).toBe(input.itemId);
+    closeItem(key, {
+      action: input.action,
+      closedAtMs: input.nowMs,
+      status: "done",
+    });
+    await githubPlugin().hooks!.inboxItemAction!({
       ...input,
       cache,
       codeChanges,
@@ -429,12 +474,12 @@ export function createPluginHarness(
    * tells the plugin nothing.
    */
   const dismiss = (key: string) => {
-    openNotices.delete(key);
+    closeItem(key, { status: "dismissed" });
   };
 
   return {
     ...recorded,
-    answer,
+    act,
     cache,
     deliver,
     dismiss,

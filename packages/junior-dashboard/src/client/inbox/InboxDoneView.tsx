@@ -37,7 +37,7 @@ import { inboxItemTitleText } from "./inboxItemFormat";
 function outcomeOf(item: InboxItemPayload): string | undefined {
   const question = inboxItemQuestion(item.request);
   if (question && item.answer) return answerLine(question, item.answer);
-  return item.closeReason;
+  return item.closeAction ?? item.closeReason;
 }
 
 function DoneRow(props: {

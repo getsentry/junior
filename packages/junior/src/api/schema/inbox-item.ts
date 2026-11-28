@@ -1,5 +1,6 @@
 import * as z from "zod";
 import {
+  PLUGIN_INBOX_ACTION_ICONS,
   objectTypeSchema,
   ownedObjectAnnotationSchema,
 } from "@sentry/junior-plugin-api";
@@ -42,21 +43,24 @@ export const inboxItemSchema = z
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
+    /** Who answered. Unset when no known person did. */
+    answeredBy: personSchema.optional(),
     /** True for an item for Everyone, also one with no assignees. */
     assignedToEveryone: z.boolean(),
     assignees: z.array(personSchema),
     automationId: z.string().min(1).optional(),
     body: z.string(),
-    /** True when the viewer can take, submit, dismiss, or mark it done. */
+    /** True when the item is for the viewer: theirs, or for Everyone. */
     canAct: z.boolean(),
     /**
-     * True when the viewer can answer the open question. A public question
-     * takes an answer from anyone who can see it, also when `canAct` is
-     * false.
+     * True when the viewer can answer or dismiss the open item. Anyone who
+     * can see a public question can, also when `canAct` is false.
      */
     canAnswer: z.boolean(),
-    /** True when the viewer can act and is not already the only assignee. */
+    /** True when `canAct` and the viewer is not already the only assignee. */
     canTake: z.boolean(),
+    /** The label of the kind action that closed it, such as Resume. */
+    closeAction: z.string().min(1).optional(),
     closeReason: z.string().min(1).optional(),
     closedAt: z.string().datetime().optional(),
     /** Unset for an open item, or when an agent closed it. */
@@ -127,6 +131,21 @@ export const inboxItemSchema = z
       .object({
         id: z.string().min(1),
         kind: z.string().min(1),
+        /**
+         * The buttons of a plugin kind, such as Resume. Each one closes the
+         * item as done with `{ action: "done", id }`.
+         */
+        actions: z
+          .array(
+            z
+              .object({
+                icon: z.enum(PLUGIN_INBOX_ACTION_ICONS).optional(),
+                id: z.string().min(1),
+                label: z.string().min(1),
+              })
+              .strict(),
+          )
+          .optional(),
         /**
          * What else the viewer's Dismiss changes on the provider, such as
          * `Also removes you from the reviewers on GitHub.` Unset when it
@@ -330,8 +349,13 @@ export const inboxItemParamsSchema = z
 export const inboxItemActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("take") }).strict(),
   z.object({ action: z.literal("dismiss") }).strict(),
-  /** Mark the To-do of a To-do item done. */
-  z.object({ action: z.literal("done") }).strict(),
+  /**
+   * Mark the To-do of a To-do item done, or run the action `id` of the
+   * item's subject kind, such as `resume`. Either closes the item as done.
+   */
+  z
+    .object({ action: z.literal("done"), id: z.string().min(1).optional() })
+    .strict(),
   z
     .object({
       action: z.literal("submit"),

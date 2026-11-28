@@ -23,9 +23,9 @@ groups and acts on its rows.
   asks. It can link to other objects, such as a pull request.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
-- Only an assignee answers a private item that has assignees. Anyone who
-  can see a public question can answer it, but only an assignee dismisses
-  or takes it. The answer carries the authority of the person who gives
+- Only an assignee answers or dismisses a private item that has assignees.
+  Anyone who can see a public question can answer or dismiss it. The
+  answer carries the authority of the person who gives
   it. Junior, an Event, or a trigger never answers or approves for a
   person.
 - "Needs you" means one thing on every surface: an ask or a Conversation
@@ -36,7 +36,7 @@ groups and acts on its rows.
 - The Inbox filters its asks by type: PRs (a code change's own asks,
   such as Review requested), Decisions (other asks with a form, also
   when they cite a code change), To-dos (the viewer's To-dos), and Other
-  (the rest, such as Resume). Each count holds the asks
+  (the rest, such as Keep fixing). Each count holds the asks
   that wait on the viewer, one per ask. The type counts add up to All, and
   All is the Inbox count. A type with nothing waiting hides, but All always
   shows.
@@ -65,7 +65,7 @@ groups and acts on its rows.
   single-choice question clears it. A card has one Additional notes box,
   where the person can also write an answer that no choice fits: Enter adds
   a line, and Send or Cmd/Ctrl+Enter sends the answers with the notes. An
-  action that takes no words, such as a plugin's Resume, is one click.
+  action that takes no words, such as a plugin's Keep fixing, is one click.
 - The first answer closes the item for everyone, and the item records who
   closed it and when.
 - A dismiss closes the item for everyone, unless its subject gives each
@@ -93,14 +93,15 @@ groups and acts on its rows.
   about the same object changes, such as from review to merge, the same
   item shows the new ask.
 - A question belongs to the Conversation where Junior asked it, and holds
-  its title, body, form, and answer. Related links that older questions
-  stored still show on the card, but they never decide the card or add
-  related work to another item.
+  its title, body, form, and answer, with who answered it and when.
+  Related links that older questions stored still show on the card, but
+  they never decide the card or add related work to another item.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
-- The answer to an item that a plugin added goes to that plugin, which does
-  the work, such as Resume on a merge conflict fix that did not land. It
-  starts no Turn.
+- A plugin's subject kind can define actions, such as Keep fixing on a
+  merge conflict fix that did not land. Each shows as a button on the
+  kind's open items. A click closes the item as done, the item records the
+  action, and the plugin does the work. It starts no Turn.
 - An item is visible to whoever can see its subject's owner. An item from
   a public Conversation is visible to the whole workspace. Everyone means
   the people who can see the item's owner.

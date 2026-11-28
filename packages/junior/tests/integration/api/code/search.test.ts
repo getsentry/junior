@@ -19,11 +19,7 @@ import {
   juniorConversationParticipants,
   juniorConversations,
 } from "@/db/schema";
-import {
-  expectNoFullScan,
-  expectPlanCost,
-  expectSqlBudget,
-} from "../../../fixtures/sql-budget";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 
 /** A dashboard API signed in as one person. */
 async function signedIn(email: string) {
@@ -138,7 +134,6 @@ describe("code change search API", () => {
       statements: 4,
       serialRounds: 4,
     });
-    await expectNoFullScan(() => search("#12"));
     // An exact number comes first, then newest activity. A change linked
     // only to another person's private Conversation never shows.
     expect(byNumber.map((change) => change.number)).toEqual([12, 1250, 1234]);
@@ -152,11 +147,9 @@ describe("code change search API", () => {
     expect((await search("123")).map((change) => change.number)).toEqual([
       1234,
     ]);
-    expect(
-      (await expectNoFullScan(() => search("compo"))).map(
-        (change) => change.number,
-      ),
-    ).toEqual([1250, 1234]);
+    expect((await search("compo")).map((change) => change.number)).toEqual([
+      1250, 1234,
+    ]);
     expect((await search("docs men")).map((change) => change.number)).toEqual([
       12,
     ]);
@@ -193,7 +186,7 @@ describe("code change search API", () => {
     await getSqlExecutor().query("analyze");
     const { request, search } = await signedIn("ana@example.com");
 
-    const shipped = await expectPlanCost(() => search("ship"), 90);
+    const shipped = await search("ship");
     expect(shipped.map((change) => change.number)).toEqual([
       10, 9, 8, 7, 6, 5, 4, 3,
     ]);

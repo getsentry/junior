@@ -258,7 +258,7 @@ describe("Slack webhook: Inbox item cards", () => {
     expect(work?.messages[0]?.input.text).toContain("Decision (q1): Ship it");
   });
 
-  it("gives a click on a plugin item's choice to the plugin, with no Turn", async () => {
+  it("gives a click on a plugin kind's action to the plugin, with no Turn", async () => {
     const answers: string[] = [];
     let fails = true;
     await createApp({
@@ -266,6 +266,7 @@ describe("Slack webhook: Inbox item cards", () => {
         defineJuniorPlugin({
           inboxSubjects: [
             {
+              actions: [{ id: "resume", label: "Resume" }],
               kind: "deploy_stopped",
               label: "Deploys stopped",
               owner: TEST_PLUGIN_INBOX_OWNER,
@@ -277,8 +278,8 @@ describe("Slack webhook: Inbox item cards", () => {
             description: "Deploy test plugin",
           },
           hooks: {
-            inboxItemAnswered: ({ choice, subject }) => {
-              answers.push(`${subject.id}: ${choice}`);
+            inboxItemAction: ({ action, subject }) => {
+              answers.push(`${subject.id}: ${action}`);
               if (fails) throw new Error("deploy API is down");
             },
           },
@@ -296,12 +297,11 @@ describe("Slack webhook: Inbox item cards", () => {
       askedIdentityIds: ["identity:U123"],
       assigneeIdentityIds: ["identity:U123"],
       body: "Deploys of `api` stopped after 3 failures.",
-      choices: [{ label: "Resume" }],
       subject: { id: "api", kind: "deploy_stopped" },
       title: "Deploys stopped · api",
     });
 
-    // The card asks the body once, and has one button and no Other….
+    // The card shows the body once, and the kind's action after Dismiss.
     const [card] = slackApiOutbox.messages();
     const text = blocksOf(card)[0]?.text ?? "";
     expect(text.split("Deploys of `api` stopped")).toHaveLength(2);
@@ -309,24 +309,28 @@ describe("Slack webhook: Inbox item cards", () => {
       blocksOf(card)
         .find((block) => block.type === "actions")
         ?.elements?.map((element) => element.action_id),
-    ).toEqual(["junior_review_item:dismiss", "junior_review_item:choice:0"]);
+    ).toEqual([
+      "junior_review_item:dismiss",
+      "junior_review_item:action:resume",
+    ]);
 
     const [item] = await getDb().select().from(juniorInboxItems);
     const resume = (actionTs: string) =>
       click({
-        actionId: "junior_review_item:choice:0",
+        actionId: "junior_review_item:action:resume",
         actionTs,
         itemId: item!.id,
         userId: "U123",
-        value: buttonValue(card, "junior_review_item:choice:0"),
+        value: buttonValue(card, "junior_review_item:action:resume"),
       });
     // The plugin fails after the click closes the item. The card keeps its
     // button, and a second click calls the plugin again.
     await resume("1712345.0003").catch(() => undefined);
     fails = false;
     await resume("1712345.0004");
-    expect(answers).toEqual(["api: Resume", "api: Resume"]);
+    expect(answers).toEqual(["api: resume", "api: resume"]);
     expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
+      closeAction: "resume",
       status: "done",
     });
     // The plugin does the work, so the thread starts no Turn.

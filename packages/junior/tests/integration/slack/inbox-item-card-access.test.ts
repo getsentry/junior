@@ -80,7 +80,7 @@ describe("Slack webhook: who answers an Inbox item card", () => {
     ]);
   });
 
-  it("lets anyone in a public channel answer its question, but not dismiss it", async () => {
+  it("lets anyone in a public channel answer its question", async () => {
     const { click, interact, state } = inboxItemCardHarness({
       allowedDomains: ["example.com"],
     });
@@ -137,16 +137,7 @@ describe("Slack webhook: who answers an Inbox item card", () => {
     expect((await getInboxItem(getDb(), item.id))?.status).toBe("open");
 
     // Ben is in the channel but not assigned. He can open the answer form
-    // and answer, but only an assignee dismisses.
-    await click({
-      actionId: "junior_review_item:dismiss",
-      actionTs: "1712345.0004",
-      itemId: item.id,
-      userId: "U456",
-    });
-    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params).toMatchObject(
-      { text: "Only an assignee can act on this item.", user: "U456" },
-    );
+    // and answer.
     await click({
       actionId: "junior_review_item:answer",
       actionTs: "1712345.0005",

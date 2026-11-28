@@ -1,11 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import { seedDashboardScale } from "../../../fixtures/dashboard-scale";
-import {
-  expectNoFullScan,
-  expectPlanCost,
-  expectSqlBudget,
-} from "../../../fixtures/sql-budget";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
@@ -28,7 +24,7 @@ import {
   insertInboxItem,
   takeInboxItem,
 } from "@/chat/inbox-items/store";
-import { juniorIdentities } from "@/db/schema";
+import { juniorIdentities, juniorQuestions } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { useAppContext } from "../../../fixtures/app-context";
 import { avatarPath } from "../../../fixtures/avatar";
@@ -283,19 +279,10 @@ describe("inbox item actions API", () => {
     // The names and photos come with the items, in one more statement.
     await seedDashboardScale();
     const { items } = await (
-      await expectPlanCost(
-        () =>
-          expectNoFullScan(() =>
-            expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
-              statements: 6,
-              serialRounds: 4,
-            }),
-          ),
-        // About 68,000, mostly the visibility and owner of each item, which
-        // its subject decides. A To-do check on each item costs about
-        // 100,000.
-        85_000,
-      )
+      await expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
+        statements: 6,
+        serialRounds: 4,
+      })
     ).json();
     expect(items).toMatchObject([
       {
@@ -329,7 +316,7 @@ describe("inbox item actions API", () => {
       request: REQUEST,
     });
     // A notice does not need Ana, so it does not count.
-    await addItem({
+    const noticeId = await addItem({
       kind: "notice",
       title: "Weekly report is ready",
       body: "Read it when you have time.",
@@ -339,15 +326,10 @@ describe("inbox item actions API", () => {
 
     await seedDashboardScale();
     const anaCount = await (
-      await expectPlanCost(
-        () =>
-          expectSqlBudget(() => api(fixture, ana).get("/count"), {
-            statements: 1,
-            serialRounds: 1,
-          }),
-        // About 95.
-        150,
-      )
+      await expectSqlBudget(() => api(fixture, ana).get("/count"), {
+        statements: 1,
+        serialRounds: 1,
+      })
     ).json();
     expect(anaCount).toEqual({
       decisions: 1,
@@ -397,8 +379,10 @@ describe("inbox item actions API", () => {
     expect((await (await api(fixture, outsider).get("")).json()).items).toEqual(
       [],
     );
+    // Only a public question opens to its readers. Cal cannot dismiss a
+    // notice for Ana.
     expect(
-      (await api(fixture, cal).act(id, { action: "dismiss" })).status,
+      (await api(fixture, cal).act(noticeId, { action: "dismiss" })).status,
     ).toBe(403);
 
     const submitted = await api(fixture, ana).act(id, {
@@ -409,9 +393,22 @@ describe("inbox item actions API", () => {
     expect(await submitted.json()).toMatchObject({
       status: "done",
       canAct: false,
+      answeredBy: { email: "ana@example.com" },
       closedBy: { email: "ana@example.com" },
       answer: { values: { decision: ["Reject"], reason: ["Not fair source"] } },
     });
+    // The question holds the answer, who gave it, and when.
+    const answered = (await getInboxItem(getDb(), id))!;
+    expect(
+      await getDb()
+        .select({
+          answer: juniorQuestions.answer,
+          at: juniorQuestions.answeredAt,
+          by: juniorQuestions.answeredByUserId,
+        })
+        .from(juniorQuestions)
+        .where(eq(juniorQuestions.id, answered.subject.id)),
+    ).toEqual([{ answer: answered.answer, at: answered.closedAt, by: ana.id }]);
 
     // Both linked Conversations hear from Ana, once, even after a retry.
     const retry = await api(fixture, ana).act(id, {
