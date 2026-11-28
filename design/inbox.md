@@ -71,6 +71,9 @@ groups and acts on its rows.
 - A person who wants someone else to act snoozes it until it closes.
   Snooze is per person. The item then waits in their Snoozed view, where
   they can still answer it, dismiss it, or wake it.
+- A row in Snoozed says what ends its snooze, and when the person snoozed
+  it, in a muted line, such as "Until Tue, Dec 9, 09:00 · snoozed 2 hours
+  ago".
 - A card's actions read Dismiss, Snooze, then the main action, such as
   Send, last. Every card that shows an item uses this order.
 - An item with no assignee is up for grabs. Anyone who can see it can take
