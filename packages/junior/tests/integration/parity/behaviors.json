@@ -49,9 +49,9 @@
         "path": "main-only"
       }
     ],
-    "needsDecision": "design/todos.md Gap says a child's done result closes its To-dos and archive does not; main closes them on archive and leaves them open on done. Which is right?",
     "mergedIds": ["product-features:todos-child-archive-closes-done"],
-    "note": "The archive read is SQL only (store.ts:451-474); likely engine-neutral, but the test drains the child with main's harness. [product-features:todos-child-archive-closes-done] Archive close is a read of stored archivedAt (engine-neutral), but the tests drain the child with main's harness. design/todos.md Gap 1 looks stale against this code and test."
+    "note": "The archive read is SQL only (store.ts:451-474); likely engine-neutral, but the test drains the child with main's harness. [product-features:todos-child-archive-closes-done] Archive close is a read of stored archivedAt (engine-neutral), but the tests drain the child with main's harness. design/todos.md Gap 1 looks stale against this code and test.",
+    "decision": "Decided 2026-11-28 (Thomas Jiang): match main, which matches the design/todos.md Rule: archiving a child closes its open To-dos as done, and its result does not (getsentry/junior#4418). The first design/todos.md Gap is stale."
   },
   {
     "id": "agent-teams:archiveagent-apply-to-children",
