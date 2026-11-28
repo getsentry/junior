@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import {
   afterAll,
@@ -31,7 +32,9 @@ import { createEngineContext } from "@/turn-steps/engine-context";
 import { turnStepConsumer } from "@/turn-steps/consumer";
 import { getChatConfig } from "@/chat/config";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { juniorTurns } from "@/db/schema";
 import { getQueueProvider } from "@/chat/queue/provider";
 import {
   startLocalVercelQueueServer,
@@ -40,6 +43,7 @@ import {
 import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import {
   ackMessages,
+  appendAndEnqueueInboundMessage,
   completeConversationWork,
   getConversationWorkState,
   startConversationWork,
@@ -641,6 +645,56 @@ describe("conversation stop API on the core Turn engine", () => {
 
   afterEach(async () => {
     await closeConversationFixture();
+  });
+
+  it("drops an Event sent after a timed stop's cutoff, so the core Turns stay stopped", async () => {
+    patchConfig({
+      turnEngine: "core",
+      queue: { ...getChatConfig().queue, apiUrl: queueServer.url.href },
+    });
+    const { actor, conversationStore, queue, state } =
+      await createConversationFixture();
+    const created = await createAndEnqueueConversation(
+      {
+        actor,
+        idempotencyKey: "core-timed-stop",
+        message: "Check the deploy.",
+      },
+      { conversationStore, queue, state },
+    );
+    const stoppedAtMs = Date.now();
+    await appendAndEnqueueInboundMessage({
+      message: createEventInboundMessage({
+        event: {
+          eventKey: "checks-failed-1",
+          eventType: "pull_request.checks.failed",
+          identifier: "getsentry/junior#1563",
+          namespace: "github",
+          occurredAtMs: stoppedAtMs + 1_000,
+          trustedSummary: "The subscribed check failed.",
+        },
+        subscription: { conversationId: created.conversationId, id: "watch-1" },
+        text: "The subscribed check failed.",
+      }),
+      queue,
+      state,
+    });
+
+    await stopConversationTree([created.conversationId], {
+      queue,
+      sentAtOrBeforeMs: stoppedAtMs,
+      state,
+      stoppedAtMs,
+    });
+
+    const turns = await getDb()
+      .select({ state: juniorTurns.state })
+      .from(juniorTurns)
+      .where(eq(juniorTurns.conversationId, created.conversationId));
+    expect(turns.map((turn) => turn.state)).not.toContain("queued");
+    await expect(
+      getConversationStoppedAtMs(created.conversationId),
+    ).resolves.toBe(stoppedAtMs);
   });
 
   it("returns the viewer's queued text from the core Turns it stops, and a second stop finds no work", async () => {

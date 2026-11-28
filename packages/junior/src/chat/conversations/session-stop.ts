@@ -216,20 +216,22 @@ async function stopCoreTurns(
   const { turnIds, dropped, moved } = await stopTurns(
     createEngineContext(getChatConfig()),
     conversationId,
-    { sentAtOrBeforeMs: options.sentAtOrBeforeMs },
+    {
+      sentAtOrBeforeMs: options.sentAtOrBeforeMs,
+      // Automated input sent after the stop drops: it would run while the
+      // Conversation stays stopped.
+      canMove: (input) => isPersonInput(input.source.kind),
+    },
   );
   const [turnId] = turnIds;
   if (!turnId) {
     return { status: "no_work" };
   }
   options.onStopSaved?.();
-  const movedPersonInput = moved.filter((input) =>
-    isPersonInput(input.source.kind),
-  );
-  if (movedPersonInput.length > 0) {
+  if (moved.length > 0) {
     await resumeConversationTree(
       conversationId,
-      Math.max(...movedPersonInput.map((input) => input.sentAt.getTime())),
+      Math.max(...moved.map((input) => input.sentAt.getTime())),
     );
   }
   return {

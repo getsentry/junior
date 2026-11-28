@@ -288,25 +288,34 @@ export async function endFailedTurn(
 export type StoppedTurns = {
   /** The cancelled Turns, in run order. */
   turnIds: string[];
-  /** Unread inputs sent at or before the cutoff. They stay on their Turn. */
+  /** Unread inputs that did not move. They stay on their Turn. */
   dropped: SourcedUnreadInput[];
-  /** Unread inputs sent after the cutoff. They moved to a queued Turn. */
+  /** Unread inputs that moved to a queued Turn. */
   moved: SourcedUnreadInput[];
 };
 
 /**
  * Stops a Conversation's work by sent time. In one commit under the lock it
- * cancels every queued and running Turn. Their unread inputs sent at or
- * before `sentAtOrBeforeMs`, or all of them with no cutoff, stay and drop;
- * later ones move to a queued Turn. Then it reconciles each stopped Turn.
+ * cancels every queued and running Turn. Their unread inputs sent after
+ * `sentAtOrBeforeMs` that `canMove` accepts move to a queued Turn; the rest,
+ * or all of them with no cutoff, stay and drop. Then it reconciles each
+ * stopped Turn.
  */
 export async function stopTurns(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   conversationId: string,
-  { sentAtOrBeforeMs }: { sentAtOrBeforeMs?: number | undefined } = {},
+  {
+    sentAtOrBeforeMs,
+    canMove = () => true,
+  }: {
+    sentAtOrBeforeMs?: number | undefined;
+    canMove?: ((input: SourcedUnreadInput) => boolean) | undefined;
+  } = {},
 ): Promise<StoppedTurns> {
   const afterCutoff = (input: SourcedUnreadInput) =>
-    sentAtOrBeforeMs !== undefined && input.sentAt.getTime() > sentAtOrBeforeMs;
+    sentAtOrBeforeMs !== undefined &&
+    input.sentAt.getTime() > sentAtOrBeforeMs &&
+    canMove(input);
   const stopped = await executor.transaction(() =>
     withConversationEventLock(executor, conversationId, async () => {
       const turnIds = await cancelTurns({ executor }, conversationId);
