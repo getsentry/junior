@@ -615,6 +615,7 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                   ],
                 },
                 title: github.title ?? "Add the Inbox notice",
+                updatedAt: "2026-07-01T12:00:00Z",
                 url: PULL_URL,
               },
             },

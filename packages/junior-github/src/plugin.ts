@@ -43,6 +43,7 @@ import {
   loadPullRequestLifecycles,
   loadRepositoryFullNames,
   loadPullRequestCommitPages,
+  loadPullRequestCards,
   loadPullRequestHeadFacts,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
@@ -256,13 +257,18 @@ export function githubPlugin(
         env: { appIdEnv, installationIdEnv, privateKeyEnv },
       }),
       [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
-      [GITHUB_PULL_REQUEST_PATCH_TASK]: githubPullRequestPatchTask(
-        async (refs) =>
+      [GITHUB_PULL_REQUEST_PATCH_TASK]: githubPullRequestPatchTask({
+        loadCards: async (refs) =>
+          await loadPullRequestCards(
+            { appIdEnv, installationIdEnv, privateKeyEnv },
+            refs,
+          ),
+        loadHeadFacts: async (refs) =>
           await loadPullRequestHeadFacts(
             { appIdEnv, installationIdEnv, privateKeyEnv },
             refs,
           ),
-      ),
+      }),
       [GITHUB_PULL_REQUEST_REQUESTER_BACKFILL_TASK]:
         githubPullRequestRequesterBackfillTask,
       [GITHUB_REPOSITORY_NAME_REPAIR_TASK]: githubRepositoryNameRepairTask(

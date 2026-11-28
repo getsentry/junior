@@ -272,11 +272,14 @@ export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
         baseRefName
         baseRef { associatedPullRequests(states: [OPEN]) { totalCount } }
         commits(last: 1) { nodes { commit { committedDate } } }
+        headRefOid
         isDraft
         isInMergeQueue
         mergeStateStatus
+        reviewDecision
         state
         title
+        updatedAt
         url
         reviewRequests(first: 100) {
           nodes { requestedReviewer { __typename ... on User { login } } }
@@ -516,6 +519,7 @@ const PULL_REQUEST_CARD = githubGraphql(`
   }
 
   fragment Card on PullRequest {
+    databaseId
     url
     number
     state
@@ -558,8 +562,9 @@ const PULL_REQUEST_CARD = githubGraphql(`
   }
 `);
 
-// Only the merge state and check counts of one pull request, for the patch
-// after a push. `pullRequestHeadFacts` repeats it like the cards.
+// The merge state, check counts, and review state of one pull request, for
+// the patch after a push, check, or review. `pullRequestHeadFacts` repeats
+// it like the cards.
 const PULL_REQUEST_HEAD_FACT = githubGraphql(`
   query PullRequestHeadFacts($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
@@ -572,6 +577,18 @@ const PULL_REQUEST_HEAD_FACT = githubGraphql(`
     updatedAt
     headRefOid
     mergeable
+    reviewRequests(first: 5) {
+      nodes {
+        requestedReviewer {
+          ... on User { login }
+          ... on Bot { login }
+        }
+      }
+    }
+    reviewDecision
+    latestOpinionatedReviews(first: 5, writersOnly: true) {
+      nodes { state }
+    }
     commits(last: 1) {
       nodes {
         commit {
@@ -644,9 +661,9 @@ export function pullRequestCards(count: number): GitHubGraphqlOperation {
 }
 
 /**
- * Return the query that reads only the merge state and check counts of
- * `count` pull requests by repository and number, for the patch after a
- * push. It has the aliases and variables of `pullRequestCards`.
+ * Return the query that reads the merge state, check counts, and review
+ * state of `count` pull requests by repository and number, for the patch.
+ * It has the aliases and variables of `pullRequestCards`.
  */
 export function pullRequestHeadFacts(count: number): GitHubGraphqlOperation {
   return aliasedPullRequests(PULL_REQUEST_HEAD_FACT, count);
