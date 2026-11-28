@@ -4,6 +4,7 @@ import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
+import { askQuestionId } from "@/chat/inbox-items/request";
 import {
   questionSubject,
   readInboxItemAgentScope,
@@ -28,27 +29,24 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   assigneesSchema,
-  bodySchema,
-  conversationIdsSchema,
   itemResult,
   inboxItemDelivery,
-  questionInput,
-  relatedInput,
-  requestInput,
-  requestInputSchema,
-  titleSchema,
+  questionContent,
+  questionsSchema,
   type InboxItemToolContext,
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
-import { inboxItemQuestion } from "@/chat/inbox-items/request";
+
+// Unlike Claude Code's AskUserQuestion, the call returns before the person
+// answers, so the result says that no answer exists yet. A model that reads
+// a finished call as an answer invents one.
+const ASKED_NEXT_STEP = `The questions were sent. There is no answer yet. The answer arrives in a later Turn as a \`<question-answer>\` with the id of this call; a dismiss comes as a note. Do not guess the answer. If your next step needs it, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Otherwise, finish the work that does not need it, then end the Turn.`;
 
 /**
- * Pick the assignees of a new item when the agent names none: the User of
- * the Actor, or else the creator of the Automation of this run. A Turn with
- * a system Actor, such as an event Turn, or an app Actor falls back to the
- * active Participants of the Conversation, except the app. A Slack Actor
- * without a Junior User gets an item with no assignees, so that the agent can
- * still ask; any person in the thread can then answer it on its card.
+ * Pick the assignees when the agent names none: the Actor's User, else the
+ * Automation's creator, else the Conversation's active Participants. A Slack
+ * Actor without a Junior User gets no assignees, so the agent can still ask
+ * and any person in the thread can answer on the card.
  */
 async function defaultAssignees(
   scope: InboxItemAgentScope,
@@ -68,8 +66,9 @@ async function defaultAssignees(
   };
 }
 
-export const addInboxItemToolDefinition = zodToolDefinition({
-  description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes in the Inbox and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<inbox-item-answer>\` with the item id. A dismiss comes as a note. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
+export const askUserQuestionToolDefinition = zodToolDefinition({
+  description:
+    "Ask a person one or more questions with choices when you need their decision or input before you can go on. This is how you ask a person anything. Do not use it to report a result, an error, or an action that failed or was refused: say that in your reply. The questions go in their Inbox and, in a Slack thread, show as a card. The person answers in a later Turn, not in this call. Returns the Inbox item and what to do until the answer comes.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -78,72 +77,45 @@ export const addInboxItemToolDefinition = zodToolDefinition({
   },
   inputSchema: z
     .object({
-      kind: z
-        .enum(["notice", "action"])
-        .describe(
-          "Use `action` with a `request` to ask. Use `notice` only to tell a person something.",
-        ),
-      title: titleSchema,
-      body: bodySchema,
+      questions: questionsSchema,
       assignees: assigneesSchema
         .nullable()
         .optional()
         .describe(
-          "Who can act on the item. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
-        ),
-      request: requestInputSchema
-        .nullable()
-        .optional()
-        .describe(
-          "Required for an action item. A notice may have one with only `related`. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
-        ),
-      conversation_ids: conversationIdsSchema
-        .nullable()
-        .optional()
-        .describe(
-          "Other Conversations to link. The current Conversation is always linked.",
+          "Who is asked. Omit for the person in this Turn, else the Automation creator in an Automation run, else the people still subscribed to the Conversation.",
         ),
     })
     .strict(),
   outputSchema: juniorToolOutputSchema,
 });
 
-/** Create the tool that adds an Inbox item that asks a new question. */
-export function createAddInboxItemTool(
+/** Create the tool that asks a person questions in a new Inbox item. */
+export function createAskUserQuestionTool(
   context: InboxItemToolContext,
   services: InboxItemToolServices,
 ) {
   return zodTool({
-    ...addInboxItemToolDefinition,
+    ...askUserQuestionToolDefinition,
     execute: async (input, options) => {
-      const question = questionInput(input.kind, input.request);
-      const related = relatedInput(input.request?.related);
+      const content = questionContent(input.questions);
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
       // Each call asks a new question. A retry of the same tool call keeps
       // the same question id, so it cannot add a second item.
+      // Its answer names the call, so a call without an id gets none.
       const subject = questionSubject(
-        `ask:${options.toolCallId ?? randomUUID()}`,
+        options.toolCallId
+          ? askQuestionId(context.conversationId, options.toolCallId)
+          : `question:${randomUUID()}`,
       );
       // The item is as private as the Conversation that asks it.
       const visibility: InboxItemVisibility = scope.inPrivateConversation
         ? "private"
         : "public";
-      const conversationIds = [
-        ...new Set([context.conversationId, ...(input.conversation_ids ?? [])]),
-      ];
-      // A related Conversation passes the same check as a linked one, so
-      // the card cannot show a Conversation that the item's readers may not see.
+      const conversationIds = [context.conversationId];
       await requireInboxItemLinks({
-        allowedIds: new Set([context.conversationId]),
-        conversationIds: [
-          ...new Set([
-            ...conversationIds,
-            ...related.flatMap((entry) =>
-              entry.conversationId ? [entry.conversationId] : [],
-            ),
-          ]),
-        ],
+        allowedIds: new Set(conversationIds),
+        conversationIds,
         scope,
         tenant: scope.tenant,
         visibility,
@@ -165,36 +137,35 @@ export function createAddInboxItemTool(
         !scope.actorIsPerson
       ) {
         throw new ToolInputError(
-          "Only people act on items, and this one would have none: this Turn has no person, and no default assignee has a User. Set `assignees` to the person who should act, or reply in text.",
+          "Only people answer questions, and this one would have none: this Turn has no person, and no default assignee has a User. Set `assignees` to the person who should answer, or reply in text.",
         );
       }
       await requireInboxItemAssignees({
         assignees,
         automationId: scope.reader.automationId,
-        conversationIds: [context.conversationId],
+        conversationIds,
         scope,
         visibility,
       });
-      const request = requestInput(question, related);
       // A Turn replays a call that committed before its result was saved.
       // Its question already has the item, so the replay goes on with it.
       const item =
         (await insertInboxItem(db, {
           assignedToEveryone: assignees.everyone,
           assigneeUserIds: assignees.userIds,
-          body: input.body,
+          body: content.body,
           conversationIds,
-          kind: input.kind,
+          kind: "action",
           subject,
-          title: input.title,
-          ...(request ? { request } : undefined),
+          title: content.title,
+          request: content.request,
           owner: { id: context.conversationId, kind: "conversation" },
           ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
           nowMs: Date.now(),
         })) ?? (await getOpenInboxItemBySubject(db, subject));
       if (!item) {
         throw new ToolInputError(
-          "This tool call already added its item. To change it, update it by its id.",
+          "This tool call already asked its question. To change it, update its Inbox item by its id.",
         );
       }
       await deliverInboxItemChange({
@@ -203,21 +174,20 @@ export function createAddInboxItemTool(
         nowMs: Date.now(),
       });
       await publishWaiting(services, context.conversationId, item);
-      return { item: itemResult(item) };
+      return { item: itemResult(item), next_step: ASKED_NEXT_STEP };
     },
   });
 }
 
 /**
- * Report that the Conversation that asked waits on a person when the item
- * is an action. The Event key is the item, so it reports each item once.
+ * Report that the Conversation that asked waits on a person. The Event key
+ * is the item, so it reports each item once.
  */
 async function publishWaiting(
   services: InboxItemToolServices,
   conversationId: string,
-  item: Pick<InboxItem, "body" | "id" | "kind" | "request">,
+  item: Pick<InboxItem, "body" | "id">,
 ): Promise<void> {
-  if (item.kind !== "action") return;
   await publishAgentUpdate(
     conversationId,
     { type: "waiting", inboxItemId: item.id },
@@ -225,7 +195,7 @@ async function publishWaiting(
       queue: services.queue(),
       update: async () => ({
         status: "waiting",
-        text: inboxItemQuestion(item.request)?.question ?? item.body,
+        text: item.body,
       }),
     },
   );

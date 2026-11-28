@@ -11,6 +11,7 @@ import type { InboxItem } from "@/chat/inbox-items/store";
 import type { InboxSubjectView } from "@/api/inbox-items/resolve-subjects";
 import { subjectKey } from "@/chat/inbox-items/subject-links";
 import { inboxItemQuestion } from "@/chat/inbox-items/request";
+import { userInputQuestionText } from "@/chat/inbox-items/user-input-request";
 
 /** MCP view of one Inbox item. Answers happen in Slack or the dashboard. */
 export const mcpInboxItemSchema = z
@@ -61,7 +62,7 @@ export function mcpInboxItem(
     status: item.status,
     title: item.title,
     body: item.body,
-    ...(question ? { question: question.question } : undefined),
+    ...(question ? { question: userInputQuestionText(question) } : undefined),
     assignees: item.assignedToEveryone
       ? []
       : item.assignees.map((person) => person.displayName ?? person.email),

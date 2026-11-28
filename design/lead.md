@@ -53,7 +53,7 @@ theirs to decide.
 
 ## Gaps
 
-- The Lead lists no `addInboxItem`, `updateInboxItem`, or provider read
+- The Lead lists no `askUserQuestion`, `updateInboxItem`, or provider read
   tools yet. So it asks members in its reply, and it cannot check a child's
   claim. getsentry/junior#4421 tracks it.
 - On a Turn that a child or an Event started, the Lead's final text posts.

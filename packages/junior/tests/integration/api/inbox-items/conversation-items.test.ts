@@ -3,8 +3,8 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb } from "@/chat/db";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
-import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
+import { createAskUserQuestionTool } from "@/chat/inbox-items/tools/ask-user-question";
+import { ask } from "../../../fixtures/questions";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
@@ -15,19 +15,6 @@ import {
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
-
-const REQUEST: UserInputRequest = {
-  question: "Approve or reject this entry?",
-  fields: [
-    {
-      id: "decision",
-      kind: "choice",
-      label: "Decision",
-      options: [{ label: "Approve" }, { label: "Reject" }],
-    },
-    { id: "reason", kind: "text", label: "Reason" },
-  ],
-};
 
 /** A person signed in to the dashboard, linked to Slack workspace T123. */
 async function user(email: string): Promise<User> {
@@ -101,7 +88,7 @@ describe("inbox items of a Conversation", () => {
       });
     // An event Turn asks without naming anyone, so the item goes to the
     // active Participants: only Ben.
-    const tool = createAddInboxItemTool(
+    const tool = createAskUserQuestionTool(
       {
         conversationId: "local:web:shared",
         resolveActorIdentity: async () => undefined,
@@ -110,21 +97,15 @@ describe("inbox items of a Conversation", () => {
       createSlackInboxItemToolServices(createConversationWorkQueueTestAdapter),
     );
     const { item } = await (tool as any).execute(
-      {
-        kind: "action",
-        title: "Close the tracking issue?",
-        body: "The pull request merged.",
-        request: REQUEST,
-      },
+      (tool as any).prepareArguments({
+        questions: ask("Close the tracking issue?"),
+      }),
       {},
     );
     const { item: other } = await (tool as any).execute(
-      {
-        kind: "action",
-        title: "Delete the release branch?",
-        body: "The release shipped.",
-        request: REQUEST,
-      },
+      (tool as any).prepareArguments({
+        questions: ask("Delete the release branch?"),
+      }),
       {},
     );
     const ids = async (viewer: User, path: string) =>
@@ -170,7 +151,7 @@ describe("inbox items of a Conversation", () => {
     });
     const answered = await api(fixture, cal).act(item.id, {
       action: "submit",
-      answer: { values: { decision: ["Approve"] } },
+      answer: { values: { q1: ["Yes"] } },
     });
     expect(answered.status).toBe(200);
     expect(await answered.json()).toMatchObject({

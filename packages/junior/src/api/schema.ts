@@ -19,8 +19,9 @@ export {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
+  userInputQuestionText,
 } from "../chat/inbox-items/user-input-request";
-export { inboxItemQuestion } from "../chat/inbox-items/request";
+export { ASK_TOOL_NAMES, inboxItemQuestion } from "../chat/inbox-items/request";
 export type {
   UserInputAnswer,
   UserInputField,

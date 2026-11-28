@@ -182,7 +182,7 @@ test.describe("new UI", () => {
 
     const auditItem = asks.locator("[data-inbox-card]");
     await auditItem.getByRole("radio", { name: "Reject" }).click();
-    await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
+    await auditItem.getByLabel("Additional notes").fill("Ask legal first.");
     await screenshot(page, "inbox-row-answer", {
       lightTheme: true,
       view: "desktop",
@@ -710,8 +710,8 @@ test.describe("new UI", () => {
     // The message names the person it mentions, as the transcript does.
     await expect(message).toContainText("Ada Lovelace");
     await expect(message).not.toContainText("U0MOCKADA");
-    // The question comes first, right under its label, then Junior's
-    // message, then the form, which ends with Send on the right.
+    // Junior's message comes first, then the question right under its
+    // label, then the form, which ends with Send on the right.
     const ask = page.locator("[data-inbox-item]").filter({ has: message });
     const send = ask.getByRole("button", { name: "Send" });
     const order = await ask.evaluate((section, asked) => {
@@ -729,9 +729,9 @@ test.describe("new UI", () => {
         form: at(form),
       };
     }, asked.request.question);
-    expect(order.question).toBeGreaterThanOrEqual(0);
-    expect(order.question).toBeLessThan(order.message);
-    expect(order.message).toBeLessThan(order.form);
+    expect(order.message).toBeGreaterThanOrEqual(0);
+    expect(order.message).toBeLessThan(order.question);
+    expect(order.question).toBeLessThan(order.form);
     expect(order.last).toBe("Send");
     await expect(send).toBeVisible();
     await expect(message).not.toContainText("Checking the canary first.");

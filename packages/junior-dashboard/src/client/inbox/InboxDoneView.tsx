@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import {
   inboxItemQuestion,
   type InboxItemPayload,
+  userInputQuestionText,
 } from "@sentry/junior/api/schema";
 
 import { DisplayText } from "../display-text/DisplayText";
@@ -56,7 +57,7 @@ function DoneRow(props: {
   const text =
     item.kind === "notice" || !question
       ? inboxItemText(item)
-      : question.question;
+      : userInputQuestionText(question);
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
   const detail = (
