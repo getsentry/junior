@@ -131,11 +131,16 @@ export function ConversationLinkedWork(props: {
   );
 }
 
-/** An open code change, or work that failed or needs attention. */
+/**
+ * An open code change, a Conversation that needs input, or work that failed
+ * or needs attention.
+ */
 function linkPending(link: ConversationLink): boolean {
   if (link.objectType === "code_change") {
     return link.status !== "merged" && link.status !== "closed";
   }
+  // Conversation cards say "needs input" for a failed Turn or an open ask.
+  if (link.objectType === "conversation") return link.status === "needs input";
   const { tone } = objectPresentation(link);
   return tone === "danger" || tone === "warning";
 }
