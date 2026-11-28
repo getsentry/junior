@@ -20,10 +20,8 @@ import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import { mapBounded } from "@/chat/fan-out";
-import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
+import { syncTodoInboxItems } from "@/chat/inbox-items/todo-items";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
-import { syncTodoInboxItems } from "./inbox-items";
 import { renderTodosSnapshot } from "./prompt";
 import { todoRef } from "./tool-output";
 import {
@@ -118,30 +116,44 @@ function requireOpenTodosFit(before: readonly Todo[], after: readonly Todo[]) {
   );
 }
 
-// A Drizzle transaction, not `executor.transaction`: the Inbox item writes
-// of `syncTodoInboxItems` open their own transactions, which nest as
-// savepoints only inside a Drizzle one. Call it outside an executor
-// transaction. `sync` syncs the Conversation's To-do items in the
-// transaction. The items that it added or changed push after the commit,
-// because the push reads them outside the transaction.
+/**
+ * Serialize the To-do changes of one Conversation, and the readers that
+ * must see the last of them, until the transaction ends.
+ */
+export async function lockTodos(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<void> {
+  await db.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${`${TODOS_LOCK_PREFIX}:${conversationId}`}))`,
+  );
+}
+
+// A Drizzle transaction, not `executor.transaction`, so callers can nest
+// Drizzle writes as savepoints. Call it outside an executor transaction.
+// `changed` marks a change that a person can see: after the commit, the
+// Inbox syncs the To-do items of the Conversation.
 async function withTodosLock<T>(
   executor: JuniorSqlDatabase,
   conversationId: string,
   callback: (
     db: JuniorDatabase,
-    sync: (nowMs: number) => Promise<void>,
+    changed: (nowMs: number) => void,
   ) => Promise<T>,
 ): Promise<T> {
-  let itemIds: string[] = [];
+  let changedAtMs: number | undefined;
   const result = await executor.db().transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`${TODOS_LOCK_PREFIX}:${conversationId}`}))`,
-    );
-    return await callback(tx, async (nowMs) => {
-      itemIds = await syncTodoInboxItems(tx, { conversationId, nowMs });
+    await lockTodos(tx, conversationId);
+    return await callback(tx, (nowMs) => {
+      changedAtMs = nowMs;
     });
   });
-  await mapBounded(itemIds, (itemId) => syncInboxItemPush(itemId));
+  if (changedAtMs !== undefined) {
+    await syncTodoInboxItems(executor.db(), {
+      conversationId,
+      nowMs: changedAtMs,
+    });
+  }
   return result;
 }
 
@@ -158,7 +170,7 @@ export async function changeTodos(
 ): Promise<{ todos: Todo[]; replacedPersonChanges: Todo[] }> {
   const { change, conversationId } = args;
   const now = new Date(args.nowMs);
-  return await withTodosLock(executor, conversationId, async (db, sync) => {
+  return await withTodosLock(executor, conversationId, async (db, changed) => {
     const rows = new Map(
       (
         await db
@@ -242,7 +254,7 @@ export async function changeTodos(
     const todos = await readTodos(db, conversationId);
     // Throwing rolls the transaction back.
     requireOpenTodosFit(before, todos);
-    await sync(args.nowMs);
+    changed(args.nowMs);
     // Open detail views of the Conversation reload the To-dos on this bump.
     await touchConversationDetail(db, [conversationId]);
     return {
@@ -273,7 +285,7 @@ export async function setTodoStatusByUser(
   },
 ): Promise<Todo | undefined> {
   const { conversationId } = args;
-  return await withTodosLock(executor, conversationId, async (db, sync) => {
+  return await withTodosLock(executor, conversationId, async (db, changed) => {
     const updated = await db
       .update(juniorTodos)
       .set({
@@ -297,7 +309,7 @@ export async function setTodoStatusByUser(
       )
       .returning({ id: juniorTodos.id });
     if (updated.length === 0) return undefined;
-    await sync(args.nowMs);
+    changed(args.nowMs);
     await touchConversationDetail(db, [conversationId]);
     const todos = await readTodos(db, conversationId);
     return todos.find((todo) => todo.id === args.id);

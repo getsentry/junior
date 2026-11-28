@@ -6,6 +6,7 @@
  * feature. `coreConversationReactions()` lists the reactions.
  */
 import type { SlackAdapter } from "@chat-adapter/slack";
+import type { User } from "@sentry/junior-plugin-api";
 import { coreConversationReactions } from "@/chat/plugins/core-registrations";
 import type { ResolvedAssignees } from "@/chat/questions/assignees";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -18,14 +19,32 @@ export interface ConversationChangeServices {
 }
 
 /** One committed change of a Conversation's own data. */
-export type ConversationChange = {
-  /** A question that an agent asked. A replayed ask reports it again. */
-  kind: "question_asked";
-  asked: ResolvedAssignees;
-  conversationId: string;
-  questionId: string;
-  services: ConversationChangeServices;
-};
+export type ConversationChange =
+  | {
+      /** A question that an agent asked. A replayed ask reports it again. */
+      kind: "question_asked";
+      asked: ResolvedAssignees;
+      conversationId: string;
+      questionId: string;
+      services: ConversationChangeServices;
+    }
+  | {
+      /**
+       * A message that a person sent to Junior. `canAnswer` checks the
+       * author when the message did not mention Junior. `viewed` is set
+       * when the person sent it from the dashboard, where they also saw the
+       * transcript so far.
+       */
+      kind: "person_message";
+      canAnswer?: (() => Promise<boolean>) | undefined;
+      conversationId: string;
+      resolveUser: () => Promise<User | undefined>;
+      services: ConversationChangeServices;
+      text: string;
+      viewed?: boolean;
+    }
+  /** Slack delivery of a detached Conversation started again. */
+  | { kind: "delivery_resumed"; conversationId: string };
 
 /** A feature's reaction to one committed Conversation change. */
 export type ConversationChangeReaction = (

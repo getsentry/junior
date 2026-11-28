@@ -11,11 +11,10 @@ import { runCacheWarmup } from "@/chat/cache-warming/warmup";
 import {
   MINUTE,
   conversationId,
-  context,
   timerConversationId,
   parentConversationId,
   endTurn,
-  toolCall,
+  askQuestion,
   startChildAgent,
   scheduledHorizon,
   scheduledWarmup,
@@ -119,7 +118,7 @@ describe("cache warming of idle periods that wait on other work", () => {
     }
   });
 
-  it("records the gap of an idle period that waits on a child agent or an Inbox item in the segment's child", async () => {
+  it("records the gap of an idle period that waits on a child agent or a question in the segment's child", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const state = getStateAdapter();
     // People reply after 8 minutes in the segment. Its children have no gaps
@@ -146,11 +145,9 @@ describe("cache warming of idle periods that wait on other work", () => {
       vi.setSystemTime(Date.now() + 2 * MINUTE);
       await endTurn(true, parentConversationId);
 
-      // Another Turn asked an Inbox item.
-      await endTurn(true, conversationId, {
-        ...context,
-        messages: [...context.messages, toolCall("askUserQuestion")],
-      });
+      // Another Turn asked a question, which waits for an answer.
+      await askQuestion(conversationId);
+      await endTurn(true, conversationId);
       vi.setSystemTime(Date.now() + 3 * MINUTE);
       await endTurn(true, conversationId);
 

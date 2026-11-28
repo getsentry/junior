@@ -12,7 +12,7 @@ import { handleSlackForm } from "./slack-form";
 import { saveSkippedSlackMessage } from "./slack-skipped-message";
 import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
 import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
-import { pushConversationInboxItemsNow } from "@/chat/notifications/inbox-item-push";
+import { reactToConversationChange } from "@/chat/conversations/change-reactions";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
@@ -73,7 +73,6 @@ import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
@@ -81,11 +80,11 @@ import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-ident
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
-import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import {
   logException,
+  runBestEffort,
   setSpanAttributes,
   withLogContext,
   withSpan,
@@ -458,12 +457,8 @@ async function routeParsedMessage(args: {
   }
 
   // A mention in the thread attaches a detached Conversation again.
-  if (
-    route === "mention" &&
-    (await resumeConversationDelivery(conversationId))
-  ) {
-    await pushConversationInboxItemsNow(conversationId);
-  }
+  const resumed =
+    route === "mention" && (await resumeConversationDelivery(conversationId));
 
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
@@ -489,20 +484,17 @@ async function routeParsedMessage(args: {
       route,
       state: args.state,
     });
-  // A message from a person to Junior answers the open questions that the
-  // agent asked in this Conversation, like a click on their cards. A reply in
-  // a subscribed thread starts a Turn too, so it answers in the same way. It
-  // skips the allowed domain check above. The close checks the domain only
-  // when an open item can match, so most replies need no profile lookup.
-  const closeAnswered = async () => {
-    if (message.author.isBot === true) return;
-    await closeInboxItemsAnsweredByReply({
+  // A message from a person to Junior can answer the open questions that
+  // the agent asked in this Conversation, like a click on their cards. A
+  // reply in a subscribed thread starts a Turn too, so it can answer in the
+  // same way. It skips the allowed domain check above, so `canAnswer` checks
+  // it, only when an open question can match.
+  const reportMessage = () =>
+    reactToConversationChange({
       ...(route === "subscribed" ? { canAnswer: isAuthorTrusted } : undefined),
       conversationId,
-      delivery: {
-        queue: args.queue,
-        show: createInboxItemShow(() => args.adapter),
-      },
+      kind: "person_message",
+      services: { queue: () => args.queue, slackAdapter: () => args.adapter },
       resolveUser: async () => {
         const teamId = args.installation.teamId;
         const userId = parseActorUserId(message.author.userId);
@@ -515,19 +507,33 @@ async function routeParsedMessage(args: {
         stripLeadingSlackMentionToken: true,
       }),
     });
+  // The reactions can call the decision model, so they run after the
+  // ingress lock is released. The message is saved by then, so a failed
+  // reaction is logged and never fails or blocks a message.
+  const reactAfterUnlock = async () => {
+    if (resumed) {
+      await runBestEffort(
+        () =>
+          reactToConversationChange({
+            conversationId,
+            kind: "delivery_resumed",
+          }),
+        "slack.delivery_resume_reaction.failed",
+      );
+    }
+    if (message.author.isBot === true) return;
+    await runBestEffort(reportMessage, "slack.message_reaction.failed");
   };
-  // The close can call the decision model, so it runs after the ingress
-  // lock is released and does not block later messages in the thread.
   try {
     await persist();
   } catch (error) {
     // A failed queue wake can follow a saved reply. The reply still answers.
     if (error instanceof SlackEventPersistenceError && error.saved) {
-      args.runAfterUnlock(closeAnswered);
+      args.runAfterUnlock(reactAfterUnlock);
     }
     throw error;
   }
-  args.runAfterUnlock(closeAnswered);
+  args.runAfterUnlock(reactAfterUnlock);
 }
 
 /**

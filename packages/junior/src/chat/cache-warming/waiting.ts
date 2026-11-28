@@ -1,13 +1,13 @@
 /**
  * What an idle period waits for besides a person: a timer, a child agent, a
- * Inbox item, or another Watch. Junior reads it once, when an idle period
+ * question, or another Watch. Junior reads it once, when an idle period
  * starts, not on each warmup.
  */
-import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import { listChildAgents } from "@/chat/child-agents/list";
+import { getDb } from "@/chat/db";
 import { listWatches, type Watch } from "@/chat/events/store";
+import { hasOpenQuestion } from "@/chat/questions/store";
 import type { WaitingOn } from "./model";
-import { ASK_TOOL_NAMES } from "@/chat/questions/request";
 
 /**
  * Idle time at which the earliest timer Watch of the Conversation is due,
@@ -24,39 +24,16 @@ export function earliestTimerDueIdleMs(
   return dueIdleMs <= maxDueIdleMs ? dueIdleMs : undefined;
 }
 
-// Whether the Turn called `askUserQuestion` after its last user message. A
-// message that steers the Turn is a user message too, so only the calls
-// after it count. Calls inside `codemode` or `executeTool` do not count.
-function askedInboxItem(
-  messages: Context["messages"],
-  final: AssistantMessage,
-): boolean {
-  for (const message of [final, ...[...messages].reverse()]) {
-    if (message.role === "user") return false;
-    if (
-      message.role === "assistant" &&
-      message.content.some(
-        (part) => part.type === "toolCall" && ASK_TOOL_NAMES.has(part.name),
-      )
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /**
  * The active Watches of the Conversation, and what else its idle period
  * waits on. Watches include timers and the event Watches that tools such as
  * `createPullRequest` add. A child agent that still runs comes first: its
  * result starts a Turn without a person. When `idleNeedsPendingWork`, as in
  * an Automation run, only a child agent or a Watch can start a later Turn, so
- * an Inbox item does not count.
+ * an open question does not count.
  */
 export async function readPendingWork(
   conversationId: string,
-  messages: Context["messages"],
-  final: AssistantMessage,
   idleNeedsPendingWork: boolean,
 ): Promise<{ watches: Watch[]; waitingOn?: WaitingOn }> {
   const [watches, children] = await Promise.all([
@@ -69,7 +46,7 @@ export async function readPendingWork(
   if (idleNeedsPendingWork) {
     return watches.length > 0 ? { watches, waitingOn: "watch" } : { watches };
   }
-  return askedInboxItem(messages, final)
+  return (await hasOpenQuestion(getDb(), conversationId))
     ? { watches, waitingOn: "review" }
     : { watches };
 }

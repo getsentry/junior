@@ -1,19 +1,23 @@
 /**
  * How the Inbox follows a Conversation's own data after core commits it:
- * a question gets its item. Core reports each change through
+ * a question gets its item, and a person's message answers the open
+ * questions that it matches. Core reports each change through
  * `reactToConversationChange` and never calls the Inbox itself.
  */
 import type { ConversationChange } from "@/chat/conversations/change-reactions";
 import { getDb } from "@/chat/db";
+import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import {
   deliverInboxItemChange,
   type InboxItemDelivery,
 } from "@/chat/inbox-items/changes";
 import { questionSubject } from "@/chat/inbox-items/access";
+import { closeReadReplyNotice } from "@/chat/inbox-items/reply-notice";
 import {
   getOpenInboxItemBySubject,
   insertInboxItem,
 } from "@/chat/inbox-items/store";
+import { pushConversationInboxItemsNow } from "@/chat/notifications/inbox-item-push";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getQuestion } from "@/chat/questions/store";
 
@@ -63,6 +67,25 @@ async function addQuestionItem(change: Change<"question_asked">) {
   });
 }
 
+async function answerByMessage(change: Change<"person_message">) {
+  await closeInboxItemsAnsweredByReply({
+    ...(change.canAnswer ? { canAnswer: change.canAnswer } : undefined),
+    conversationId: change.conversationId,
+    delivery: delivery(change.services),
+    resolveUser: change.resolveUser,
+    text: change.text,
+  });
+  if (!change.viewed) return;
+  // The person saw the transcript so far, so the reply notice closes.
+  const user = await change.resolveUser();
+  if (!user) return;
+  await closeReadReplyNotice(getDb(), {
+    conversationId: change.conversationId,
+    nowMs: Date.now(),
+    userId: user.id,
+  });
+}
+
 /** The Inbox's reaction to one committed Conversation change. */
 export async function reactInboxToConversationChange(
   change: ConversationChange,
@@ -70,5 +93,9 @@ export async function reactInboxToConversationChange(
   switch (change.kind) {
     case "question_asked":
       return await addQuestionItem(change);
+    case "person_message":
+      return await answerByMessage(change);
+    case "delivery_resumed":
+      return await pushConversationInboxItemsNow(change.conversationId);
   }
 }

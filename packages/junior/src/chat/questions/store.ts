@@ -8,6 +8,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorQuestions, juniorUsers } from "@/db/schema";
+import { questionWaits } from "@/db/schema/questions";
 import type { InboxItemNoticeRequest, InboxItemRequest } from "./request";
 import type { UserInputAnswer } from "./user-input-request";
 
@@ -156,4 +157,22 @@ export async function getQuestion(
         }
       : undefined),
   };
+}
+
+/** Return whether the Conversation has a question that waits for an answer. */
+export async function hasOpenQuestion(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: juniorQuestions.id })
+    .from(juniorQuestions)
+    .where(
+      and(
+        eq(juniorQuestions.conversationId, conversationId),
+        questionWaits(juniorQuestions),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }

@@ -1,8 +1,9 @@
 /**
  * A To-do for a person shows in that person's Inbox as an action item that
  * core owns, the way an Automation alert does. The To-do is the record; the
- * item follows it. Each To-do change syncs the items of its Conversation in
- * the same transaction, so the Inbox never shows a To-do that closed.
+ * item follows it. After each To-do change commits, the Inbox syncs the
+ * items of its Conversation under the To-do lock, so the sync reads the
+ * To-dos that the last change wrote.
  *
  * The item is private and links no Conversation, so only its assignee sees
  * it: no other person, no agent, and no Slack thread. The Conversation owns
@@ -35,7 +36,10 @@ import {
   juniorInboxItems,
   juniorTodos,
 } from "@/db/schema";
-import { isOpenTodoStatus } from "./types";
+import { lockTodos } from "@/chat/todos/store";
+import { isOpenTodoStatus } from "@/chat/todos/types";
+import { mapBounded } from "@/chat/fan-out";
+import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 
 /**
  * The subject id of the Inbox item of one To-do, which is also its dedupe
@@ -60,13 +64,25 @@ function closeReason(todo: TodoRow | undefined): string | undefined {
 
 /**
  * Add, change, or close the Inbox items of one Conversation's To-dos, to
- * match the To-dos now. Each open To-do for a person who can see the
- * Conversation has one open item. Call it inside the transaction of each
- * To-do change, under the To-do lock. It writes nothing when the items are
- * already right. Return the ids of the open items that it added or changed,
- * so the caller can push them after the transaction commits.
+ * match the committed To-dos, then push the open items that it added or
+ * changed. Each open To-do for a person who can see the Conversation has one
+ * open item. It writes nothing when the items are already right.
  */
 export async function syncTodoInboxItems(
+  db: JuniorDatabase,
+  args: { conversationId: string; nowMs: number },
+): Promise<void> {
+  // A Drizzle transaction: the item writes open their own transactions,
+  // which nest as savepoints only inside one.
+  const shown = await db.transaction(async (tx) => {
+    await lockTodos(tx, args.conversationId);
+    return await syncLockedTodoItems(tx, args);
+  });
+  // The push reads the items outside the transaction.
+  await mapBounded(shown, (itemId) => syncInboxItemPush(itemId));
+}
+
+async function syncLockedTodoItems(
   db: JuniorDatabase,
   args: { conversationId: string; nowMs: number },
 ): Promise<string[]> {
