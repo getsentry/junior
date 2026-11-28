@@ -266,6 +266,15 @@ describe("Google Docs, Sheets, and Slides tools", () => {
         content: "# Q4 plan",
       });
     }
+    // Drive searches miss a file that Junior opens only through a link
+    // share, so the owner reads it from the metadata alone.
+    const owner = readAs("Bob@example.com");
+    await expect(owner.read()).resolves.toMatchObject({
+      content: "# Q4 plan",
+    });
+    expect(
+      owner.fetch.mock.calls.map(([call]) => call.operation),
+    ).not.toContain("google.drive.files.list");
     // Drive lists an older Doc shared by link only with its resource key.
     const keyed = readAs("link@other.com");
     await expect(

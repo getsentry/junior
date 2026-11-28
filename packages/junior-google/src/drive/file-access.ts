@@ -84,9 +84,9 @@ async function queryFindsFile(
 }
 
 /**
- * Return whether a person can open the file in Drive. The file names them,
- * anyone can open it, or anyone in their allowed domain can open it and that
- * domain owns it. Group shares do not name the person.
+ * Return whether a person can open the file in Drive. They own it, the file
+ * names them, anyone can open it, or anyone in their allowed domain can open
+ * it and that domain owns it. Group shares do not name the person.
  */
 export async function personCanOpenFile(
   ctx: DriveContext,
@@ -95,6 +95,17 @@ export async function personCanOpenFile(
   allowedDomains: string[],
 ): Promise<boolean> {
   const person = email.toLowerCase();
+  // Drive searches only Junior's own corpus, such as files shared with it
+  // by name. A file that Junior opens through a link share is not in it, so
+  // the searches below miss it even for its owner. The metadata names the
+  // owner.
+  if (
+    (file.owners ?? []).some(
+      (owner) => owner.emailAddress?.toLowerCase() === person,
+    )
+  ) {
+    return true;
+  }
   const domain = emailDomain(person);
   // A shared-drive file has no owner, so only a share that names the person
   // counts.
